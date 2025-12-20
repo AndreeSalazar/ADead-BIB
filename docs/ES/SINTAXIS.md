@@ -1,235 +1,215 @@
-# 📝 Referencia de Sintaxis ADead-BIB
+# 📝 Sintaxis ADead-BIB (Estilo Python)
 
-> **Autor:** Eddi Andreé Salazar Matos | **Hecho con ❤️ en Perú** 🇵🇪
+## 🎯 Principios de Diseño
+
+- ✅ **Estilo Python**: Similar pero no igual
+- ✅ **Simple y legible**: Fácil de entender
+- ✅ **Expresivo**: Permite código claro
+- ✅ **Sin complejidad innecesaria**
 
 ---
 
-## Sintaxis Básica
+## 📋 Elementos Básicos
 
-ADead-BIB usa sintaxis estilo Python con extensiones para OOP.
+### Comentarios
+```adB
+# Comentario de una línea
+# Los comentarios empiezan con #
+```
 
-### Hola Mundo
-
-```python
+### Función Principal
+```adB
 def main():
-    print("Hola, Mundo!")
+    print("Hello, World!")
 ```
 
 ### Variables
+```adB
+# Asignación simple
+x = 10
+y = 20
+result = x + y
+```
 
-```python
+### Tipos de Datos
+
+#### Números
+```adB
+# Enteros
+x = 42
+y = -10
+
+# Flotantes (futuro)
+# x = 3.14
+```
+
+#### Strings
+```adB
+message = "Hello, World!"
+name = "ADead-BIB"
+```
+
+#### Booleanos (futuro)
+```adB
+# flag = True
+# flag = False
+```
+
+---
+
+## 🔤 Operaciones
+
+### Aritméticas
+```adB
+a = 10
+b = 20
+suma = a + b      # 30
+resta = a - b     # -10
+multiplicacion = a * b  # 200
+division = b / a  # 2
+```
+
+### Comparaciones (futuro)
+```adB
+# igual = a == b
+# diferente = a != b
+# mayor = a > b
+# menor = a < b
+```
+
+---
+
+## 🏗️ Estructuras de Control
+
+### Condicionales (futuro)
+```adB
+# if x > 10:
+#     print("Mayor que 10")
+# else:
+#     print("Menor o igual")
+```
+
+### Bucles (futuro)
+```adB
+# while x > 0:
+#     print(x)
+#     x = x - 1
+```
+
+---
+
+## 📞 Funciones
+
+### Definición
+```adB
+def nombre_funcion():
+    print("Hola")
+
+def suma(a, b):
+    return a + b
+```
+
+### Llamadas
+```adB
+print("Hello")
+resultado = suma(10, 20)
+```
+
+---
+
+## 🎯 Sintaxis para hello_world.adB
+
+### Versión Simple (MVP)
+```adB
+def main():
+    print("Hello, World!")
+```
+
+### Versión con Variables
+```adB
+def main():
+    message = "Hello, World!"
+    print(message)
+```
+
+---
+
+## 📊 Comparación con Python
+
+| Característica | Python | ADead-BIB | Notas |
+|---------------|--------|-----------|-------|
+| Indentación | ✅ Obligatoria | ✅ Obligatoria | Igual |
+| `def` funciones | ✅ | ✅ | Igual |
+| `print()` | ✅ | ✅ | Similar |
+| Tipos explícitos | ❌ | ❌ (por ahora) | Igual |
+| `:` después de `def` | ✅ | ✅ | Igual |
+| Strings | `"..."` o `'...'` | `"..."` | Solo dobles por ahora |
+| Comentarios | `#` | `#` | Igual |
+
+---
+
+## 🚀 Ejemplos
+
+### Ejemplo 1: Hola Mundo
+```adB
+def main():
+    print("Hello, World!")
+```
+
+### Ejemplo 2: Variables y Operaciones
+```adB
 def main():
     x = 10
     y = 20
-    z = x + y
-    print(z)
+    result = x + y
+    print(result)
 ```
 
-### Operaciones
-
-```python
-# Aritméticas
-a = 10 + 5    # Suma
-b = 10 - 5    # Resta
-c = 10 * 5    # Multiplicación
-d = 10 / 5    # División
-e = 10 % 3    # Módulo
-
-# Comparaciones
-x == y        # Igual
-x != y        # Diferente
-x < y         # Menor que
-x <= y        # Menor o igual
-x > y         # Mayor que
-x >= y        # Mayor o igual
-```
-
----
-
-## Control de Flujo
-
-### If/Elif/Else
-
-```python
+### Ejemplo 3: Múltiples Prints
+```adB
 def main():
-    x = 10
-    
-    if x > 5:
-        print("Mayor que 5")
-    elif x == 5:
-        print("Igual a 5")
-    else:
-        print("Menor que 5")
-```
-
-### Bucle While
-
-```python
-def main():
-    i = 0
-    while i < 5:
-        print(i)
-        i = i + 1
-```
-
-### Bucle For
-
-```python
-def main():
-    for i in range(5):
-        print(i)
+    print("First line")
+    print("Second line")
+    print("Third line")
 ```
 
 ---
 
-## Funciones
+## ⚠️ Limitaciones Iniciales (MVP)
 
-```python
-def sumar(a, b):
-    return a + b
+Para el primer paso (hello_world), solo soportamos:
 
-def main():
-    resultado = sumar(10, 20)
-    print(resultado)
+✅ **Soportado:**
+- `def main():`
+- `print("string")`
+- Variables simples: `x = value`
+- Strings literales: `"..."`
+
+❌ **No soportado (futuro):**
+- Parámetros de función
+- `return`
+- Condicionales (`if`, `else`)
+- Bucles (`while`, `for`)
+- Operadores complejos
+- Múltiples tipos
+
+---
+
+## 🎯 Gramática BNF (Simplificada para MVP)
+
+```
+program      ::= function_def
+function_def ::= "def" identifier "()" ":" statement_list
+statement_list ::= (statement NEWLINE)+
+statement    ::= print_stmt | assign_stmt
+print_stmt   ::= "print" "(" string_literal ")"
+assign_stmt  ::= identifier "=" (number | string_literal)
+identifier   ::= [a-zA-Z_][a-zA-Z0-9_]*
+string_literal ::= '"' [^"]* '"'
+number       ::= [0-9]+
 ```
 
 ---
 
-## Programación Orientada a Objetos
+**Nota**: Esta sintaxis evolucionará. Empezamos simple para hacer funcionar `hello_world.adB`.
 
-### Clases
-
-```python
-class Entidad:
-    x = 0
-    y = 0
-    
-    def mover(self, dx, dy):
-        self.x = self.x + dx
-        self.y = self.y + dy
-```
-
-### Herencia
-
-```python
-class Jugador extends Entidad:
-    salud = 100
-    
-    def recibir_dano(self, cantidad):
-        self.salud = self.salud - cantidad
-```
-
-### Métodos Virtuales
-
-```python
-class Entidad:
-    virtual def actualizar(self):
-        pass
-
-class Jugador extends Entidad:
-    override def actualizar(self):
-        print("Jugador actualizando")
-```
-
----
-
-## Funciones Incorporadas (70+)
-
-### Funciones Matemáticas
-
-| Función | Descripción | Ejemplo |
-|---------|-------------|---------|
-| `abs(x)` | Valor absoluto | `abs(-5)` → 5 |
-| `min(a, b)` | Mínimo | `min(3, 7)` → 3 |
-| `max(a, b)` | Máximo | `max(3, 7)` → 7 |
-| `pow(x, n)` | Potencia | `pow(2, 3)` → 8 |
-| `sqrt(x)` | Raíz cuadrada | `sqrt(16)` → 4 |
-| `sqr(x)` | Cuadrado | `sqr(5)` → 25 |
-| `cube(x)` | Cubo | `cube(3)` → 27 |
-| `factorial(n)` | Factorial | `factorial(5)` → 120 |
-| `fib(n)` | Fibonacci | `fib(10)` → 55 |
-| `gcd(a, b)` | MCD | `gcd(12, 8)` → 4 |
-
-### Funciones de IA/Matrices
-
-| Función | Descripción | Ejemplo |
-|---------|-------------|---------|
-| `dot(a,b,c,d)` | Producto punto | `dot(2,3,4,5)` → 26 |
-| `sum_sq(a,b,...)` | Suma de cuadrados | `sum_sq(3,4)` → 25 |
-| `norm_sq(a,b,...)` | Norma al cuadrado | `norm_sq(3,4)` → 25 |
-| `weighted_sum(v,w,...)` | Suma ponderada | `weighted_sum(10,2,20,3)` → 80 |
-| `relu(x)` | Activación ReLU | `relu(-3)` → 0 |
-| `scale(x, f)` | Escalar x*f/100 | `scale(200,50)` → 100 |
-| `lerp(a, b, t)` | Interpolación lineal | `lerp(0,100,50)` → 50 |
-
-### Funciones de Utilidad
-
-| Función | Descripción | Ejemplo |
-|---------|-------------|---------|
-| `inc(x)` | Incrementar | `inc(5)` → 6 |
-| `dec(x)` | Decrementar | `dec(5)` → 4 |
-| `double(x)` | Duplicar | `double(5)` → 10 |
-| `half(x)` | Mitad | `half(10)` → 5 |
-| `sign(x)` | Signo (-1, 0, 1) | `sign(-5)` → -1 |
-| `clamp(x, min, max)` | Limitar valor | `clamp(15, 0, 10)` → 10 |
-| `between(x, a, b)` | Verificar rango | `between(5, 0, 10)` → 1 |
-
----
-
-## Comentarios
-
-```python
-# Este es un comentario de una línea
-
-def main():
-    # Los comentarios pueden estar en cualquier lugar
-    print("Hola")  # Incluso aquí
-```
-
----
-
-## Ejemplo: Programa Completo
-
-```python
-# Un sistema simple de entidades de juego
-# Autor: Eddi Andreé Salazar Matos
-
-class Entidad:
-    x = 0
-    y = 0
-    
-    virtual def actualizar(self):
-        pass
-    
-    def mover(self, dx, dy):
-        self.x = self.x + dx
-        self.y = self.y + dy
-
-class Jugador extends Entidad:
-    salud = 100
-    velocidad = 5
-    
-    override def actualizar(self):
-        print("Jugador en:")
-        print(self.x)
-        print(self.y)
-
-def main():
-    print("Juego Iniciando!")
-    
-    # Usando funciones incorporadas
-    dano = max(10, 5)
-    print("Daño:")
-    print(dano)
-    
-    # Funciones de IA
-    similitud = dot(1, 2, 3, 4)
-    print("Similitud:")
-    print(similitud)
-    
-    print("Juego Terminado!")
-```
-
----
-
-**Creado por Eddi Andreé Salazar Matos** | eddi.salazar.dev@gmail.com | 🇵🇪
