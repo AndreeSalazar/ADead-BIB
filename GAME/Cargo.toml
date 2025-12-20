@@ -1,0 +1,16 @@
+[package]
+name = "adead-vulkan-bird"
+version = "0.1.0"
+edition = "2021"
+authors = ["Eddi Andreé Salazar Matos <eddi.salazar.dev@gmail.com>"]
+description = "Flappy Bird clone using Vulkan + ADead-BIB Runtime"
+
+[dependencies]
+winit = "0.29"
+softbuffer = "0.4"
+rand = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
