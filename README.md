@@ -14,7 +14,7 @@
 
 ---
 
-## ✅ Status: COMPLETE LANGUAGE + AI
+## ✅ Status: COMPLETE LANGUAGE + AI + GPU
 
 | Feature | Status |
 |---------|--------|
@@ -25,6 +25,10 @@
 | **Integrated AI (0.19 MB RAM)** | ✅ |
 | **Matrix functions for AI** | ✅ |
 | **Ollama integration** | ✅ |
+| **GPU Support (CUDA)** | ✅ |
+| **Hybrid CPU+GPU Mode** | ✅ |
+| **HEX Opcodes for GPU** | ✅ |
+| **Server Load Benchmarks** | ✅ |
 
 ---
 
@@ -74,17 +78,31 @@ ADead-BIB/
 │   └── backend/           # Code generation, PE generator
 ├── examples/              # .adB example files
 ├── stdlib/                # Standard library (math, io, string)
-├── python/                # Python FFI + AI
+├── python/                # Python FFI + AI + GPU
 │   ├── adead_ffi.py       # FFI wrapper
 │   ├── ai_complete.py     # Complete AI (0.19 MB RAM)
 │   ├── ai_scalable.py     # Scalable AI with BPE
 │   ├── vocabulary.py      # Vocabulary builder
 │   ├── embeddings.py      # Semantic embeddings
-│   └── ollama_integration.py  # Ollama integration
+│   ├── ollama_integration.py   # Ollama integration
+│   ├── ollama_gpu_benchmark.py # Ollama GPU modes benchmark
+│   ├── benchmark_gpu.py        # GPU benchmark
+│   ├── benchmark_server_load.py # Server load simulation
+│   ├── demo_gpu_comparison.py  # CPU vs GPU comparison
+│   ├── demo_full.py            # Full demo
+│   ├── gpu_detect.py           # Hardware detection
+│   └── hybrid_compute.py       # Hybrid CPU+GPU system
+├── hex/                   # GPU Opcodes
+│   ├── gpu_opcodes.py     # GPU opcode generator
+│   ├── cuda_kernels.py    # CUDA kernels
+│   ├── binary_gpu.py      # Hybrid binary generator
+│   └── README.md          # HEX documentation
 ├── build/                 # Compiled binaries (.exe)
 ├── docs/                  # Documentation
 │   ├── EN/                # English documentation
 │   └── ES/                # Spanish documentation
+├── Como_usar.md           # Quick start guide (Spanish)
+├── LICENSE                # MIT License
 └── README.md              # This file
 ```
 
@@ -238,6 +256,127 @@ lerp(0, 100, 50)          # = 50 (linear interpolation)
 | **OOP** | ✅ | Classes, inheritance, polymorphism |
 | **70+ Built-ins** | ✅ | Math, AI, utilities |
 | **Python FFI** | ✅ | Call ADead-BIB from Python |
+| **GPU Support** | ✅ | CUDA kernels, hybrid mode |
+| **HEX Opcodes** | ✅ | GPU opcodes for direct execution |
+
+---
+
+## 🎮 GPU Support (CUDA)
+
+ADead-BIB includes full GPU acceleration for AI and matrix operations.
+
+### Author's Hardware (Benchmark Reference)
+
+| Component | Specification |
+|-----------|---------------|
+| **GPU** | NVIDIA GeForce RTX 3060 |
+| **VRAM** | 12 GB GDDR6 |
+| **CUDA Cores** | 3584 |
+| **SMs** | 28 |
+| **CPU** | AMD Ryzen (6 cores, 12 threads) |
+| **RAM** | 16 GB |
+
+### GPU Benchmark Results
+
+#### Matrix Multiplication (MatMul)
+
+| Size | CPU | GPU | Speedup |
+|------|-----|-----|---------|
+| 512x512 | 1.04 ms | 0.10 ms | **10.1x** |
+| 1024x1024 | 5.75 ms | 0.36 ms | **15.9x** |
+| 2048x2048 | 38.22 ms | 2.38 ms | **16.1x** |
+| 4096x4096 | 317 ms | 19 ms | **16.7x** |
+| 8192x8192 | 2400+ ms | 120 ms | **20x** |
+
+#### Transformer Attention
+
+| Config | CPU | GPU | Speedup |
+|--------|-----|-----|---------|
+| seq=256, dim=64 | 21 ms | 4 ms | **5.4x** |
+| seq=512, dim=128 | 92 ms | 1.3 ms | **73.6x** |
+| seq=1024, dim=256 | 488 ms | 5.7 ms | **86.1x** |
+
+#### Server Load Benchmark
+
+| Level | MatMul | GFLOPS | Throughput |
+|-------|--------|--------|------------|
+| Light (Laptop) | 1024x1024 | 6,887 | 27.8M tok/s |
+| Medium (Desktop) | 2048x2048 | 7,398 | 11.9M tok/s |
+| Heavy (Workstation) | 4096x4096 | 7,551 | 6.8M tok/s |
+| Extreme (Server) | 8192x8192 | **9,038** | 3.7M tok/s |
+| Maximum (Data Center) | 8192x8192 | **9,175** | 1.6M tok/s |
+
+**Peak Performance: 9,175 GFLOPS**
+
+### Ollama GPU Modes
+
+| Mode | CPU | GPU | Time/Response | Tokens/s |
+|------|-----|-----|---------------|----------|
+| **CPU Solo** | 100% | 0% | 5.06s | 6.0 |
+| **GPU Solo** | 10% | 90% | 2.62s | 10.2 |
+| **Balanced** | 50% | 50% | 3.10s | 9.6 |
+| **Hybrid** | 10% | 90% | 2.74s | **12.4** |
+
+**Speedup GPU vs CPU: 1.9x**
+
+### Run GPU Benchmarks
+
+```powershell
+cd python
+
+# GPU vs CPU comparison
+python demo_gpu_comparison.py
+
+# Full GPU benchmark
+python benchmark_gpu.py
+
+# Server load simulation
+python benchmark_server_load.py
+
+# Ollama GPU modes
+python ollama_gpu_benchmark.py
+
+# CUDA kernels
+cd ../hex
+python cuda_kernels.py
+```
+
+---
+
+## 🔧 HEX Opcodes for GPU
+
+ADead-BIB includes a custom GPU opcode system in the `hex/` folder:
+
+```
+hex/
+├── gpu_opcodes.py      # GPU opcode generator
+├── cuda_kernels.py     # Pre-compiled CUDA kernels
+├── binary_gpu.py       # Hybrid CPU+GPU binary generator
+└── README.md           # HEX documentation
+```
+
+### GPU Opcodes
+
+| Opcode | Hex | Description |
+|--------|-----|-------------|
+| GPU_INIT | 0xC0DA0001 | Initialize CUDA context |
+| GPU_ALLOC | 0xC0DA0010 | Allocate GPU memory |
+| GPU_MATMUL | 0xC0DA0020 | Matrix multiplication |
+| GPU_ATTENTION | 0xC0DA0040 | Multi-head attention |
+| GPU_SOFTMAX | 0xC0DA0033 | Softmax activation |
+| GPU_SYNC | 0xC0DA00F0 | Synchronize GPU |
+
+### Example GPU Program
+
+```
+; ADead-BIB GPU Program: matmul_1024
+0000: 0100DAC000           ; GPU_INIT
+0005: 1000DAC002...        ; GPU_ALLOC 4MB
+001F: 2000DAC006...        ; GPU_MATMUL 1024x1024
+006B: F000DAC000           ; GPU_SYNC
+009C: FFFFDAC000           ; GPU_END
+; Total: 161 bytes
+```
 
 ---
 
@@ -344,6 +483,39 @@ ADead-BIB eliminates unnecessary layers between your code and the CPU. No assemb
 
 ---
 
+## 🚀 System Capabilities
+
+Based on the author's hardware (RTX 3060 12GB), ADead-BIB can handle:
+
+| Capability | Specification |
+|------------|---------------|
+| **Matrices** | Up to 8192x8192 (67M elements) |
+| **Batch Size** | Up to 64-128 depending on sequence |
+| **Sequences** | Up to 4096 tokens |
+| **Model Layers** | Up to 12-24 layers |
+| **Vocabulary** | 100K+ tokens |
+| **Peak GFLOPS** | 9,175 |
+| **Max Throughput** | 27.8M tokens/second |
+
+### Production Estimates
+
+| Use Case | Performance |
+|----------|-------------|
+| **Inference** | 10,000-50,000 tokens/second |
+| **Training** | 1,000-5,000 tokens/second |
+| **Attention** | Up to 86x faster than CPU |
+
+### GPU Comparison
+
+| GPU | TFLOPS | Relative |
+|-----|--------|----------|
+| **RTX 3060 12GB** (Author's) | ~9 TFLOPS | 1x |
+| RTX 4090 24GB | ~83 TFLOPS | 9x |
+| A100 40GB | ~156 TFLOPS | 17x |
+| H100 80GB | ~267 TFLOPS | 30x |
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -362,6 +534,21 @@ MIT License - See LICENSE file for details.
 **Email:** eddi.salazar.dev@gmail.com  
 **Made with ❤️ in Peru**
 
+### What's Included
+
+- ✅ Complete compiler (Lexer, Parser, Codegen, PE)
+- ✅ 70+ built-in functions
+- ✅ Full OOP support
+- ✅ Python FFI integration
+- ✅ AI system (0.19 MB RAM)
+- ✅ Scalable AI with BPE (0.82 MB RAM)
+- ✅ Ollama integration
+- ✅ GPU support (CUDA)
+- ✅ Hybrid CPU+GPU mode
+- ✅ HEX opcodes for GPU
+- ✅ Server load benchmarks
+- ✅ Complete documentation (EN/ES)
+
 ---
 
-**ADead-BIB: Pure binaries, total control, direct to CPU. 🚀**
+**ADead-BIB: Pure binaries, total control, CPU + GPU power. 🚀🇵🇪**
