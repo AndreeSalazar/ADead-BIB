@@ -1,88 +1,51 @@
 # 📊 Estado del Proyecto ADead-BIB
 
-## ✅ Completado - Primer Paso
+## ✅ COMPLETADO - Lenguaje Funcional con OOP
 
-### 🎯 Objetivo Alcanzado
-- ✅ **Sintaxis estilo Python** definida y documentada
-- ✅ **Parser funcional** que parsea `hello_world.adB` correctamente
-- ✅ **Estructura completa** del proyecto (Rust + C++)
-- ✅ **Build system** funcionando
+### 🎯 Objetivos Alcanzados
 
-### 📁 Archivos Creados
-
-#### Documentación
-- ✅ `docs/SINTAXIS.md` - Sintaxis completa del lenguaje
-- ✅ `docs/RECOMENDACION.md` - Por qué Ruta 2
-- ✅ `docs/ESTRUCTURA.md` - Estructura del proyecto
-- ✅ `docs/PRIMER_PASO.md` - Estado del primer paso
-- ✅ `ESTADO.md` - Este archivo
-
-#### Código Rust
-- ✅ `Cargo.toml` - Configuración del proyecto
-- ✅ `src/rust/lib.rs` - Librería principal
-- ✅ `src/rust/main.rs` - Compilador principal
-- ✅ `src/rust/frontend/lexer.rs` - Tokenizador
-- ✅ `src/rust/frontend/parser.rs` - Parser
-- ✅ `src/rust/frontend/ast.rs` - Estructuras AST
-- ✅ `src/rust/backend/pe.rs` - Generador PE (estructura)
-- ✅ `src/rust/backend/elf.rs` - Generador ELF (estructura)
-
-#### Código C++
-- ✅ `CMakeLists.txt` - Configuración CMake
-- ✅ `src/cpp/emitter/emitter.h` - Header del emitter
-- ✅ `src/cpp/emitter/emitter.cpp` - Implementación
-- ✅ `src/cpp/emitter/opcodes.cpp` - Utilidades
-
-#### Build y Scripts
-- ✅ `build.ps1` - Script de build (Windows)
-- ✅ `.gitignore` - Configuración Git
-
-#### Ejemplos
-- ✅ `examples/hello_world.adB` - Primer ejemplo
+| Característica | Estado | Descripción |
+|----------------|--------|-------------|
+| **Lexer** | ✅ | Tokeniza código .adB |
+| **Parser** | ✅ | Genera AST con OOP |
+| **Codegen** | ✅ | Emite opcodes x86-64 |
+| **PE Generator** | ✅ | Binarios Windows funcionales |
+| **Variables** | ✅ | Stack-based |
+| **Operaciones** | ✅ | +, -, *, /, % |
+| **Comparaciones** | ✅ | ==, !=, <, <=, >, >= |
+| **Condicionales** | ✅ | if/elif/else |
+| **Bucles** | ✅ | while, for |
+| **Funciones** | ✅ | Con parámetros |
+| **OOP** | ✅ | Clases, herencia, polimorfismo |
+| **print()** | ✅ | Strings y números |
 
 ---
 
-## 🧪 Prueba Exitosa
+## 🧪 Pruebas Exitosas
 
-```bash
-$ cargo run --release examples/hello_world.adB
-Compilando: examples/hello_world.adB -> hello_world.exe
-✓ Archivo leído
-✓ Parseado exitoso
-⚠ Emisión de opcodes: TODO (C++)
-✓ Binario PE generado: hello_world.exe
-✅ Compilación exitosa!
+### Hello World
+```powershell
+cargo run --release examples/hello_world.adB
+.\hello_world.exe
+# Output: Hello, World!
 ```
 
-**✅ El parser parsea correctamente `hello_world.adB`**
+### Demo con Variables
+```powershell
+cargo run --release examples/demo.adB
+.\demo.exe
+# Output:
+# === ADead-BIB Demo ===
+# 30
+# Hello, World!
+```
 
----
-
-## ✅ Logros Recientes
-
-### PE Válido y Ejecutable
-- ✅ PE básico válido que Windows acepta
-- ✅ Generación de opcodes (25 bytes para printf)
-- ✅ Import Table implementada (msvcrt.dll, printf)
-- ✅ Sección .data para strings
-- ✅ Estructura PE completa (DOS, COFF, Optional Headers, Sections)
-
-### Estado Actual
-- ✅ Compilador genera binarios PE válidos
-- ✅ Opcodes para printf generados
-- ⚠️ Import Table necesita ajustes en offsets
-- ⚠️ Ejecutable no ejecuta correctamente (necesita refinamiento)
-
-## 🚧 Próximos Pasos (Pendientes)
-
-### Refinamiento Import Table
-- [ ] Corregir offsets de Import Table en PE
-- [ ] Verificar estructura IMAGE_IMPORT_DESCRIPTOR
-- [ ] Asegurar IAT correctamente alineada
-
-### Prueba Final
-- [ ] Ejecutar hello_world.exe exitosamente
-- [ ] Verificar que imprime "Hello, World!"
+### Juego Simple
+```powershell
+cargo run --release examples/game_simple.adB
+.\game_simple.exe
+# Output: Posiciones de jugador y enemigo, cálculos de distancia
+```
 
 ---
 
@@ -90,21 +53,28 @@ Compilando: examples/hello_world.adB -> hello_world.exe
 
 ```
 [████████████████████] 100% - Estructura y Parser ✅
-[████████████████░░░░]  80% - Emisión de Opcodes ✅ (printf implementado)
-[██████████████░░░░░░]  70% - Generación PE Completa ✅ (estructura completa, ajustes pendientes)
-[████████░░░░░░░░░░░░]  40% - Integración y Testing ⚠️ (PE válido, necesita refinamiento)
+[████████████████████] 100% - Emisión de Opcodes ✅
+[████████████████████] 100% - Generación PE ✅
+[████████████████████] 100% - Variables y Operaciones ✅
+[████████████████████] 100% - Control de Flujo ✅
+[████████████████████] 100% - OOP Básico ✅
+[████████████░░░░░░░░]  60% - OOP Avanzado 🚧
 ```
 
-**Total: ~75% del proyecto completo - ¡Casi terminado!**
+**Total: ~95% del lenguaje base completo**
 
 ---
 
-## 🎯 Siguiente Tarea
+## 🚧 Próximos Pasos
 
-**Integrar FFI Rust ↔ C++** para poder emitir opcodes desde el AST parseado.
+- [ ] Arrays y listas
+- [ ] Strings avanzados (concatenación, indexing)
+- [ ] Generación ELF (Linux)
+- [ ] Optimizaciones de código
+- [ ] VTable completa para polimorfismo
 
 ---
 
 **Fecha**: 2025-12-20
-**Estado**: ✅ Parser funcional, 🚧 Implementación en progreso
+**Estado**: ✅ Lenguaje funcional con OOP
 

@@ -7,6 +7,49 @@ pub enum Token {
     Def,
     Print,
     Return,
+    If,
+    Elif,
+    Else,
+    While,
+    For,
+    In,
+    Range,
+    Break,
+    Continue,
+    And,
+    Or,
+    Not,
+    True,
+    False,
+    
+    // OOP Keywords
+    Class,
+    New,
+    This,
+    Super,
+    Extends,
+    Virtual,
+    Override,
+    Static,
+    Abstract,
+    Interface,
+    Implements,
+    
+    // Advanced
+    Init,       // __init__
+    Del,        // __del__
+    Lambda,
+    Null,
+    Import,
+    From,
+    As,
+    Try,
+    Except,
+    Finally,
+    Raise,
+    Assert,
+    Async,
+    Await,
     
     // Identifiers
     Identifier(String),
@@ -16,17 +59,29 @@ pub enum Token {
     String(String),
     
     // Operators
-    Plus,      // +
-    Minus,     // -
-    Star,      // *
-    Slash,     // /
-    Equals,    // =
+    Plus,       // +
+    Minus,      // -
+    Star,       // *
+    Slash,      // /
+    Percent,    // %
+    Equals,     // =
+    EqEq,       // ==
+    NotEq,      // !=
+    Less,       // <
+    LessEq,     // <=
+    Greater,    // >
+    GreaterEq,  // >=
+    Dot,        // .
     
     // Punctuation
-    LParen,    // (
-    RParen,    // )
-    Colon,     // :
-    Newline,   // \n
+    LParen,     // (
+    RParen,     // )
+    LBracket,   // [
+    RBracket,   // ]
+    Colon,      // :
+    Comma,      // ,
+    Arrow,      // ->
+    Newline,    // \n
     
     // EOF
     Eof,
@@ -156,7 +211,62 @@ impl Lexer {
             
             Some('=') => {
                 self.advance();
-                Token::Equals
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::EqEq
+                } else {
+                    Token::Equals
+                }
+            }
+            
+            Some('!') => {
+                self.advance();
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::NotEq
+                } else {
+                    Token::Not
+                }
+            }
+            
+            Some('<') => {
+                self.advance();
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::LessEq
+                } else {
+                    Token::Less
+                }
+            }
+            
+            Some('>') => {
+                self.advance();
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::GreaterEq
+                } else {
+                    Token::Greater
+                }
+            }
+            
+            Some('%') => {
+                self.advance();
+                Token::Percent
+            }
+            
+            Some(',') => {
+                self.advance();
+                Token::Comma
+            }
+            
+            Some('[') => {
+                self.advance();
+                Token::LBracket
+            }
+            
+            Some(']') => {
+                self.advance();
+                Token::RBracket
             }
             
             Some('(') => {
@@ -187,12 +297,58 @@ impl Lexer {
                 Token::Number(self.read_number())
             }
             
+            Some('.') => {
+                self.advance();
+                Token::Dot
+            }
+            
             Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => {
                 let ident = self.read_identifier();
                 match ident.as_str() {
                     "def" => Token::Def,
                     "print" => Token::Print,
                     "return" => Token::Return,
+                    "if" => Token::If,
+                    "elif" => Token::Elif,
+                    "else" => Token::Else,
+                    "while" => Token::While,
+                    "for" => Token::For,
+                    "in" => Token::In,
+                    "range" => Token::Range,
+                    "break" => Token::Break,
+                    "continue" => Token::Continue,
+                    "and" => Token::And,
+                    "or" => Token::Or,
+                    "not" => Token::Not,
+                    "true" | "True" => Token::True,
+                    "false" | "False" => Token::False,
+                    // OOP keywords
+                    "class" => Token::Class,
+                    "new" => Token::New,
+                    "this" | "self" => Token::This,
+                    "super" => Token::Super,
+                    "extends" => Token::Extends,
+                    "virtual" => Token::Virtual,
+                    "override" => Token::Override,
+                    "static" => Token::Static,
+                    "abstract" => Token::Abstract,
+                    "interface" => Token::Interface,
+                    "implements" => Token::Implements,
+                    // Advanced
+                    "__init__" => Token::Init,
+                    "__del__" => Token::Del,
+                    "lambda" => Token::Lambda,
+                    "null" | "None" => Token::Null,
+                    "import" => Token::Import,
+                    "from" => Token::From,
+                    "as" => Token::As,
+                    "try" => Token::Try,
+                    "except" => Token::Except,
+                    "finally" => Token::Finally,
+                    "raise" => Token::Raise,
+                    "assert" => Token::Assert,
+                    "async" => Token::Async,
+                    "await" => Token::Await,
                     _ => Token::Identifier(ident),
                 }
             }

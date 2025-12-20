@@ -4,7 +4,7 @@
 
 Compilador que genera **binarios ejecutables puros** escribiendo opcodes directamente a la CPU, sin pasar por ensamblador. **Binario + HEX = ADead-BIB**.
 
-## ✅ Estado: FUNCIONAL
+## ✅ Estado: FUNCIONAL con OOP
 
 ```powershell
 cargo run --release examples/hello_world.adB
@@ -14,9 +14,10 @@ cargo run --release examples/hello_world.adB
 
 | Métrica | Valor |
 |---------|-------|
-| **Binario generado** | 1.5 KB |
-| **Código máquina** | 27 bytes |
+| **Binario mínimo** | 1.5 KB |
+| **Binario con juego** | 2 KB |
 | **Dependencias runtime** | 0 |
+| **OOP** | ✅ Clases, Herencia, Polimorfismo |
 
 ---
 
@@ -81,18 +82,29 @@ cargo run --release examples/hello_world.adB
 
 ## 📝 Sintaxis
 
-ADead-BIB usa sintaxis estilo Python:
+ADead-BIB usa sintaxis estilo Python con OOP:
 
 ```python
 # Función principal
 def main():
     print("Hello, World!")
-    
-# Variables (próximamente)
-def calc():
     x = 10
     y = 20
     print(x + y)
+
+# Clases con herencia
+class Entity:
+    x = 0
+    y = 0
+    
+    virtual def update(self):
+        pass
+
+class Player extends Entity:
+    health = 100
+    
+    override def update(self):
+        print("Player update")
 ```
 
 Ver `docs/SINTAXIS.md` para documentación completa.
@@ -160,17 +172,21 @@ ADead-BIB/
 | **Parser** | ✅ | Genera AST desde tokens |
 | **Codegen** | ✅ | Emite opcodes x86-64 |
 | **PE Generator** | ✅ | Genera binarios Windows |
-| **Import Table** | ✅ | Llama a funciones de sistema |
-| **print()** | ✅ | Imprime strings |
+| **Variables** | ✅ | Variables locales en stack |
+| **Operaciones** | ✅ | +, -, *, /, % |
+| **Comparaciones** | ✅ | ==, !=, <, <=, >, >= |
+| **Condicionales** | ✅ | if/elif/else |
+| **Bucles** | ✅ | while, for |
+| **Funciones** | ✅ | Con parámetros |
+| **OOP** | ✅ | Clases, herencia, polimorfismo |
+| **print()** | ✅ | Strings y números |
 
 ### Próximas Características
 
-- 🚧 Variables y asignaciones
-- 🚧 Operaciones aritméticas
-- 🚧 Condicionales (if/else)
-- 🚧 Bucles (while/for)
-- 🚧 Funciones personalizadas
+- 🚧 Arrays y listas
+- 🚧 Strings avanzados
 - 🚧 Generación ELF (Linux)
+- 🚧 Optimizaciones
 
 ---
 

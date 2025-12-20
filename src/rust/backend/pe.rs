@@ -46,7 +46,8 @@ pub fn generate_pe(opcodes: &[u8], data: &[u8], output_path: &str) -> Result<(),
     pe.push(0x0E); // MajorLinkerVersion
     pe.push(0x00); // MinorLinkerVersion
     
-    let code_size = 0x200u32; // Tamaño de .text alineado
+    // Calcular tamaño de .text alineado a 0x200
+    let code_size = ((opcodes.len() as u32 + 0x1FF) & !0x1FF).max(0x200);
     pe.extend_from_slice(&code_size.to_le_bytes()); // SizeOfCode
     pe.extend_from_slice(&0x200u32.to_le_bytes());  // SizeOfInitializedData
     pe.extend_from_slice(&0u32.to_le_bytes());       // SizeOfUninitializedData
@@ -112,11 +113,12 @@ pub fn generate_pe(opcodes: &[u8], data: &[u8], output_path: &str) -> Result<(),
     pe.extend_from_slice(&0x60000020u32.to_le_bytes()); // Characteristics: CODE | EXECUTE | READ
     
     // .rdata section
+    let rdata_file_offset = 0x200 + code_size;
     pe.extend_from_slice(b".rdata\0\0");
     pe.extend_from_slice(&0x1000u32.to_le_bytes()); // VirtualSize
     pe.extend_from_slice(&0x2000u32.to_le_bytes()); // VirtualAddress
     pe.extend_from_slice(&0x200u32.to_le_bytes());  // SizeOfRawData
-    pe.extend_from_slice(&0x400u32.to_le_bytes());  // PointerToRawData
+    pe.extend_from_slice(&rdata_file_offset.to_le_bytes());  // PointerToRawData
     pe.extend_from_slice(&0u32.to_le_bytes());
     pe.extend_from_slice(&0u32.to_le_bytes());
     pe.extend_from_slice(&0u16.to_le_bytes());
@@ -131,12 +133,12 @@ pub fn generate_pe(opcodes: &[u8], data: &[u8], output_path: &str) -> Result<(),
     // ========== .text Section (file offset 0x200, RVA 0x1000) ==========
     let text_start = pe.len();
     pe.extend_from_slice(opcodes);
-    // Pad to 0x200 bytes
-    while pe.len() < text_start + 0x200 {
+    // Pad to code_size bytes
+    while pe.len() < text_start + code_size as usize {
         pe.push(0);
     }
     
-    // ========== .rdata Section (file offset 0x400, RVA 0x2000) ==========
+    // ========== .rdata Section (file offset 0x200+code_size, RVA 0x2000) ==========
     let rdata_start = pe.len();
     
     // Import Directory Entry (20 bytes) at RVA 0x2000
