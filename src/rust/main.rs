@@ -6,8 +6,8 @@ use std::fs;
 use std::path::Path;
 
 use adead_bib::frontend::parser;
-use adead_bib::frontend::ast;
 use adead_bib::backend::pe;
+use adead_bib::backend::codegen;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -39,13 +39,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ast = parser::parse(&source)?;
     println!("✓ Parseado exitoso");
     
-    // 3. Emitir opcodes (C++) - TODO: Implementar FFI
-    // Por ahora, simulamos
-    println!("⚠ Emisión de opcodes: TODO (C++)");
-    let opcodes = Vec::<u8>::new(); // Placeholder
+    // 3. Emitir opcodes (Rust - directamente)
+    println!("⚙️  Emitiendo opcodes...");
+    let mut codegen = codegen::CodeGenerator::new(0x400000); // Base address
+    let (opcodes, data) = codegen.generate(&ast);
+    println!("✓ Opcodes generados: {} bytes", opcodes.len());
     
     // 4. Generar PE (Rust)
-    pe::generate_pe(&opcodes, &output_file)?;
+    println!("⚙️  Generando binario PE...");
+    pe::generate_pe(&opcodes, &data, &output_file)?;
     println!("✓ Binario PE generado: {}", output_file);
     
     println!("\n✅ Compilación exitosa!");

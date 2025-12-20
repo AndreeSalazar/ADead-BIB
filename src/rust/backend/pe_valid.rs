@@ -1,11 +1,10 @@
-// PE (Portable Executable) Generator
-// Genera binarios Windows .exe funcionales
-// Versión validada según especificación PE
+// PE Generator usando estructura validada
+// Basado en especificación PE de Microsoft
 
 use std::fs::File;
 use std::io::Write;
 
-pub fn generate_pe(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_pe_valid(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut file = File::create(output_path)?;
     
     // DOS Header (64 bytes)
@@ -115,7 +114,8 @@ pub fn generate_pe(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<()
     // NumberOfRvaAndSizes: 16
     opt[108..112].copy_from_slice(&16u32.to_le_bytes());
     
-    // Data Directories (todos 0 por ahora)
+    // Data Directories (todos 0 por ahora, excepto que necesitamos Import Table)
+    // Import Table RVA y Size (serán 0 por ahora)
     
     file.write_all(&opt)?;
     
@@ -154,3 +154,4 @@ pub fn generate_pe(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<()
     
     Ok(())
 }
+

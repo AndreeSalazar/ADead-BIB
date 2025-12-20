@@ -5,8 +5,9 @@ edition = "2021"
 
 [dependencies]
 nom = "7.1"
-object = "0.36"  # Para generar PE/ELF
+object = { version = "0.36", features = ["write_core"] }  # Para generar PE/ELF
 goblin = "0.7"   # Para parsing de binarios (opcional)
+pelite = "0.10"  # Para generar PE válidos
 
 [lib]
 name = "adead_bib"

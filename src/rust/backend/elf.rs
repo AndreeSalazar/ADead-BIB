@@ -4,7 +4,7 @@
 use std::fs::File;
 use std::io::Write;
 
-pub fn generate_elf(opcodes: &[u8], output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_elf(_opcodes: &[u8], output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Por ahora, placeholder
     // TODO: Implementar generación completa de ELF
     
