@@ -1,0 +1,44 @@
+# Build artifacts
+/target/
+/build/
+*.exe
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# Rust
+Cargo.lock
+target/
+
+# C++
+*.pdb
+*.ilk
+*.exp
+*.suo
+*.user
+*.sln.docstates
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output
+output/
+bin/
+dist/
+
+# Tests
+*.test
+test_output/
+
