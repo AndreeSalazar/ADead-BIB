@@ -1,6 +1,10 @@
 """
 ADead-BIB AI Scalable - Sistema de IA Escalable
 ================================================
+Author: Eddi Andreé Salazar Matos
+Email: eddi.salazar.dev@gmail.com
+Made with ❤️ in Peru 🇵🇪
+
 Versión mejorada con:
 - Tokenizador BPE básico
 - Vocabulario expandible (10K+)

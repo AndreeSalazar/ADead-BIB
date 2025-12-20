@@ -1,6 +1,9 @@
 """
-ADead-BIB FFI - Python Integration
-===================================
+ADead-BIB FFI - Foreign Function Interface
+==========================================
+Author: Eddi Andreé Salazar Matos
+Email: eddi.salazar.dev@gmail.com
+Made with ❤️ in Peru 🇵🇪
 Permite usar funciones ADead-BIB desde Python para procesamiento rápido.
 
 Uso:

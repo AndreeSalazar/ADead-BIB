@@ -2,123 +2,137 @@
 
 **Abstract Dead - Binary In Binary**
 
-Compilador que genera **binarios ejecutables puros** escribiendo opcodes directamente a la CPU, sin pasar por ensamblador. **Binario + HEX = ADead-BIB**.
+> A compiler that generates **pure executable binaries** by writing opcodes directly to the CPU, without going through an assembler. **Binary + HEX = ADead-BIB**.
 
-## ✅ Estado: LENGUAJE COMPLETO + IA
+---
 
-| Característica | Estado |
-|----------------|--------|
-| **60+ funciones built-in** | ✅ |
-| **OOP completo** | ✅ |
-| **Sistema de imports** | ✅ |
-| **FFI Python** | ✅ |
-| **IA integrada (0.19 MB RAM)** | ✅ |
+## 🇵🇪 Made with ❤️ in Peru
 
-## 📁 Estructura del Proyecto
+**Author:** Eddi Andreé Salazar Matos  
+**Email:** eddi.salazar.dev@gmail.com  
+**License:** MIT
 
+---
+
+## ✅ Status: COMPLETE LANGUAGE + AI
+
+| Feature | Status |
+|---------|--------|
+| **70+ built-in functions** | ✅ |
+| **Complete OOP** | ✅ |
+| **Import system** | ✅ |
+| **Python FFI** | ✅ |
+| **Integrated AI (0.19 MB RAM)** | ✅ |
+| **Matrix functions for AI** | ✅ |
+| **Ollama integration** | ✅ |
+
+---
+
+## � Quick Start
+
+### Prerequisites
+
+```bash
+# 1. Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# 2. Install Python 3.8+
+# Download from https://python.org
+
+# 3. Install Python dependencies
+pip install numpy
+
+# 4. (Optional) Install Ollama for AI demos
+winget install Ollama.Ollama
+ollama pull tinyllama
 ```
-ADead-BIB/
-├── src/rust/          # Compilador (Lexer, Parser, Codegen, PE)
-├── examples/          # Ejemplos .adB
-├── stdlib/            # Librería estándar (math, io, string)
-├── python/            # FFI Python + IA
-│   ├── adead_ffi.py   # Wrapper FFI
-│   └── ai_complete.py # IA completa (0.19 MB RAM)
-├── build/             # Binarios compilados (.exe)
-├── docs/              # Documentación
-├── ideas-2.md         # Roadmap del lenguaje
-└── ideas-3.md         # Arquitectura IA
-```
 
-## 🚀 Uso Rápido
+### Build & Run
 
 ```powershell
+# Clone the repository
+git clone https://github.com/yourusername/ADead-BIB.git
+cd ADead-BIB
+
+# Build the compiler
+cargo build --release
+
+# Compile and run Hello World
 cargo run --release examples/hello_world.adB
 .\hello_world.exe
 # Output: Hello, World!
 ```
 
-| Métrica | Valor |
-|---------|-------|
-| **Binario mínimo** | 1.5 KB |
-| **Binario con juego** | 2 KB |
-| **Dependencias runtime** | 0 |
-| **OOP** | ✅ Clases, Herencia, Polimorfismo |
+---
+
+## 📁 Project Structure
+
+```
+ADead-BIB/
+├── src/rust/              # Compiler (Lexer, Parser, Codegen, PE)
+│   ├── frontend/          # Lexer, Parser, AST
+│   └── backend/           # Code generation, PE generator
+├── examples/              # .adB example files
+├── stdlib/                # Standard library (math, io, string)
+├── python/                # Python FFI + AI
+│   ├── adead_ffi.py       # FFI wrapper
+│   ├── ai_complete.py     # Complete AI (0.19 MB RAM)
+│   ├── ai_scalable.py     # Scalable AI with BPE
+│   ├── vocabulary.py      # Vocabulary builder
+│   ├── embeddings.py      # Semantic embeddings
+│   └── ollama_integration.py  # Ollama integration
+├── build/                 # Compiled binaries (.exe)
+├── docs/                  # Documentation
+│   ├── EN/                # English documentation
+│   └── ES/                # Spanish documentation
+└── README.md              # This file
+```
 
 ---
 
-## 🎯 ¿Qué es ADead-BIB?
+## 🎯 What is ADead-BIB?
 
-Un compilador que transforma código con sintaxis estilo Python directamente en **opcodes x86-64** y genera **binarios PE ejecutables** sin usar ensamblador.
+A compiler that transforms Python-style syntax directly into **x86-64 opcodes** and generates **PE executable binaries** without using an assembler.
 
 ```
-hello_world.adB → Lexer → Parser → AST → Opcodes x86-64 → PE → CPU ejecuta
+hello_world.adB → Lexer → Parser → AST → x86-64 Opcodes → PE → CPU executes
 ```
 
-**La CPU ejecuta exactamente lo que escribes** - sin capas intermedias, sin runtime, sin overhead.
+**The CPU executes exactly what you write** - no intermediate layers, no runtime, no overhead.
 
 ---
 
-## 🔥 ¿Por qué es Diferente?
+## 🔥 Why is it Different?
 
-### Comparación con Otros Enfoques
+| Approach | Flow | Overhead |
+|----------|------|----------|
+| **C/C++** | Code → Compiler → ASM → Object → Linker → Binary | Medium |
+| **ASM** | ASM → Assembler → Object → Linker → Binary | Low |
+| **ADead-BIB** | Code → **Direct Opcodes** → Binary | **Minimal** |
 
-| Enfoque | Flujo | Overhead |
-|---------|-------|----------|
-| **C/C++** | Código → Compilador → ASM → Objeto → Linker → Binario | Medio |
-| **ASM** | ASM → Assembler → Objeto → Linker → Binario | Bajo |
-| **ADead-BIB** | Código → **Opcodes directos** → Binario | **Mínimo** |
+### Key Advantages
 
-### Ventajas Clave
-
-- ✅ **Sin ASM** - Escribimos bytes directamente, no texto ensamblador
-- ✅ **Sin Linker** - Generamos PE completo en un paso
-- ✅ **Sin Runtime** - Binarios standalone, sin dependencias
-- ✅ **Control Total** - Cada byte del ejecutable es tuyo
-- ✅ **Binarios Mínimos** - Solo lo necesario, nada más
+- ✅ **No ASM** - We write bytes directly, not assembler text
+- ✅ **No Linker** - We generate complete PE in one step
+- ✅ **No Runtime** - Standalone binaries, no dependencies
+- ✅ **Total Control** - Every byte of the executable is yours
+- ✅ **Minimal Binaries** - Only what's needed, nothing more
 
 ---
 
-## 🚀 Quick Start
+## 📝 Syntax
 
-### 1. Compilar ADead-BIB
-
-```powershell
-cargo build --release
-```
-
-### 2. Escribir un Programa
+ADead-BIB uses Python-style syntax with OOP:
 
 ```python
-# examples/hello_world.adB
-def main():
-    print("Hello, World!")
-```
-
-### 3. Compilar y Ejecutar
-
-```powershell
-cargo run --release examples/hello_world.adB
-.\hello_world.exe
-```
-
-**Output:** `Hello, World!`
-
----
-
-## 📝 Sintaxis
-
-ADead-BIB usa sintaxis estilo Python con OOP:
-
-```python
-# Función principal
+# Main function
 def main():
     print("Hello, World!")
     x = 10
     y = 20
     print(x + y)
 
-# Clases con herencia
+# Classes with inheritance
 class Entity:
     x = 0
     y = 0
@@ -133,102 +147,83 @@ class Player extends Entity:
         print("Player update")
 ```
 
-Ver `docs/SINTAXIS.md` para documentación completa.
+---
+
+## 🤖 AI Integration
+
+ADead-BIB includes a complete AI system with minimal RAM usage:
+
+### Run AI Demo
+
+```powershell
+cd python
+python ai_complete.py      # Basic AI (0.19 MB RAM)
+python ai_scalable.py      # Scalable AI with BPE (0.82 MB RAM)
+python vocabulary.py       # Build vocabulary
+python embeddings.py       # Semantic embeddings
+python ollama_integration.py  # Ollama integration (requires Ollama)
+```
+
+### AI Features
+
+| Feature | Status | RAM |
+|---------|--------|-----|
+| BPE Tokenizer | ✅ | - |
+| Semantic Embeddings | ✅ | 0.06 MB |
+| Multi-head Attention | ✅ | 0.03 MB |
+| Feed-forward Network | ✅ | 0.06 MB |
+| Text Generation | ✅ | - |
+| Text Analysis | ✅ | - |
+| Similarity Scoring | ✅ | - |
+| **Total** | ✅ | **0.19 MB** |
+
+### Matrix Functions (Built-in)
+
+```python
+# In ADead-BIB code:
+dot(2, 3, 4, 5)           # = 26 (dot product)
+sum_sq(3, 4)              # = 25 (sum of squares)
+relu(-3)                  # = 0 (ReLU activation)
+weighted_sum(10, 2, 20, 3) # = 80
+scale(200, 50)            # = 100 (x * factor / 100)
+lerp(0, 100, 50)          # = 50 (linear interpolation)
+```
 
 ---
 
-## 🏗️ Arquitectura
+## 📊 Implemented Features
 
-```
-ADead-BIB/
-├── src/rust/
-│   ├── frontend/
-│   │   ├── lexer.rs      # Tokenizador
-│   │   ├── parser.rs     # Parser → AST
-│   │   └── ast.rs        # Estructuras AST
-│   └── backend/
-│       ├── codegen.rs    # AST → Opcodes x86-64
-│       └── pe.rs         # Generador PE Windows
-├── examples/
-│   └── hello_world.adB   # Ejemplo funcional
-└── docs/                 # Documentación
-```
-
-### Flujo Interno
-
-```
-1. Lexer    → Tokeniza código fuente
-2. Parser   → Construye AST
-3. Codegen  → Emite opcodes x86-64 directamente
-4. PE Gen   → Genera binario Windows ejecutable
-```
+| Component | Status | Description |
+|-----------|--------|-------------|
+| **Lexer** | ✅ | Tokenizes .adB code |
+| **Parser** | ✅ | Generates AST from tokens |
+| **Codegen** | ✅ | Emits x86-64 opcodes |
+| **PE Generator** | ✅ | Generates Windows binaries |
+| **Variables** | ✅ | Local variables on stack |
+| **Operations** | ✅ | +, -, *, /, % |
+| **Comparisons** | ✅ | ==, !=, <, <=, >, >= |
+| **Conditionals** | ✅ | if/elif/else |
+| **Loops** | ✅ | while, for |
+| **Functions** | ✅ | With parameters |
+| **OOP** | ✅ | Classes, inheritance, polymorphism |
+| **70+ Built-ins** | ✅ | Math, AI, utilities |
+| **Python FFI** | ✅ | Call ADead-BIB from Python |
 
 ---
 
-## 💡 Casos de Uso
+## 🔬 Technical Details
 
-### 🎯 Uso General
-- Compilador para aplicaciones de sistema
-- Herramientas de línea de comandos
-- Binarios pequeños y rápidos
-
-### 🔧 Trabajos Pesados
-- Procesamiento de datos de alto rendimiento
-- Aplicaciones donde cada ciclo de CPU importa
-- Sistemas embebidos con recursos limitados
-
-### 🎓 Aprendizaje
-- Entender cómo funcionan los binarios
-- Aprender opcodes x86-64
-- Comprender formato PE de Windows
-
-### 🚀 Potencial Futuro
-- **JIT Compiler** - Compilación en tiempo de ejecución
-- **Cross-compilation** - Generar binarios para múltiples plataformas
-- **Optimizador** - Optimizaciones a nivel de opcode
-- **VM Engine** - Runtime interpretado si se necesita
-
----
-
-## 📊 Características Implementadas
-
-| Componente | Estado | Descripción |
-|------------|--------|-------------|
-| **Lexer** | ✅ | Tokeniza código .adB |
-| **Parser** | ✅ | Genera AST desde tokens |
-| **Codegen** | ✅ | Emite opcodes x86-64 |
-| **PE Generator** | ✅ | Genera binarios Windows |
-| **Variables** | ✅ | Variables locales en stack |
-| **Operaciones** | ✅ | +, -, *, /, % |
-| **Comparaciones** | ✅ | ==, !=, <, <=, >, >= |
-| **Condicionales** | ✅ | if/elif/else |
-| **Bucles** | ✅ | while, for |
-| **Funciones** | ✅ | Con parámetros |
-| **OOP** | ✅ | Clases, herencia, polimorfismo |
-| **print()** | ✅ | Strings y números |
-
-### Próximas Características
-
-- 🚧 Arrays y listas
-- 🚧 Strings avanzados
-- 🚧 Generación ELF (Linux)
-- 🚧 Optimizaciones
-
----
-
-## 🔬 Detalles Técnicos
-
-### Layout del PE Generado
+### Generated PE Layout
 
 ```
 0x0000 - Headers (DOS, PE, COFF, Optional, Sections)
-0x1000 - .text  (código ejecutable - opcodes)
-0x2000 - .rdata (imports + datos)
+0x1000 - .text  (executable code - opcodes)
+0x2000 - .rdata (imports + data)
 ```
 
-### Ejemplo de Opcodes Generados
+### Example Generated Opcodes
 
-Para `print("Hello, World!")`:
+For `print("Hello, World!")`:
 
 ```asm
 48 83 EC 28          ; sub rsp, 40 (shadow space)
@@ -239,35 +234,48 @@ FF 15 xx xx xx xx    ; call [rip+offset] (printf)
 C3                   ; ret
 ```
 
-**27 bytes de código máquina** - directo a la CPU.
+**27 bytes of machine code** - direct to CPU.
 
 ---
 
-## 📚 Documentación
+## 📚 Documentation
 
-| Documento | Descripción |
-|-----------|-------------|
-| `docs/SINTAXIS.md` | Sintaxis completa del lenguaje |
-| `docs/ESTRUCTURA.md` | Estructura del proyecto |
-| `docs/POTENCIAL.md` | Potencial y evoluciones posibles |
-| `Rutas.md` | Todas las rutas para generar binarios |
-
----
-
-## 🎯 Filosofía
-
-> **"Código → Opcodes → Binario"**
-
-ADead-BIB elimina las capas innecesarias entre tu código y la CPU. No hay ensamblador, no hay linker, no hay runtime. Solo bytes que la CPU ejecuta directamente.
-
-**Menos pasos = Menos errores = Más control = Mejor performance**
+| Document | Language | Description |
+|----------|----------|-------------|
+| `docs/EN/` | English | English documentation |
+| `docs/ES/` | Spanish | Spanish documentation |
+| `docs/IDEAS/` | Mixed | Development roadmaps |
 
 ---
 
-## 📖 Licencia
+## 🎯 Philosophy
 
-MIT License
+> **"Code → Opcodes → Binary"**
+
+ADead-BIB eliminates unnecessary layers between your code and the CPU. No assembler, no linker, no runtime. Just bytes that the CPU executes directly.
+
+**Fewer steps = Fewer errors = More control = Better performance**
 
 ---
 
-**ADead-BIB: Binarios puros, control total, directo a la CPU. 🚀**
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
+
+## 📖 License
+
+MIT License - See LICENSE file for details.
+
+---
+
+## 🇵🇪 Credits
+
+**Created by:** Eddi Andreé Salazar Matos  
+**Email:** eddi.salazar.dev@gmail.com  
+**Made with ❤️ in Peru**
+
+---
+
+**ADead-BIB: Pure binaries, total control, direct to CPU. 🚀**

@@ -1,6 +1,10 @@
 """
 ADead-BIB AI Complete - Sistema de IA Integrado
 ================================================
+Author: Eddi Andreé Salazar Matos
+Email: eddi.salazar.dev@gmail.com
+Made with ❤️ in Peru 🇵🇪
+
 Combina Python (cabeza) + ADead-BIB (motor de rendimiento)
 
 Componentes:
@@ -34,7 +38,6 @@ import numpy as np
 
 # ADead-BIB FFI
 from adead_ffi import ADeadBIB
-
 
 # =============================================================================
 # CONFIGURACIÓN
