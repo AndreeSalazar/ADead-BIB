@@ -4,7 +4,33 @@
 
 Compilador que genera **binarios ejecutables puros** escribiendo opcodes directamente a la CPU, sin pasar por ensamblador. **Binario + HEX = ADead-BIB**.
 
-## ✅ Estado: FUNCIONAL con OOP
+## ✅ Estado: LENGUAJE COMPLETO + IA
+
+| Característica | Estado |
+|----------------|--------|
+| **60+ funciones built-in** | ✅ |
+| **OOP completo** | ✅ |
+| **Sistema de imports** | ✅ |
+| **FFI Python** | ✅ |
+| **IA integrada (0.19 MB RAM)** | ✅ |
+
+## 📁 Estructura del Proyecto
+
+```
+ADead-BIB/
+├── src/rust/          # Compilador (Lexer, Parser, Codegen, PE)
+├── examples/          # Ejemplos .adB
+├── stdlib/            # Librería estándar (math, io, string)
+├── python/            # FFI Python + IA
+│   ├── adead_ffi.py   # Wrapper FFI
+│   └── ai_complete.py # IA completa (0.19 MB RAM)
+├── build/             # Binarios compilados (.exe)
+├── docs/              # Documentación
+├── ideas-2.md         # Roadmap del lenguaje
+└── ideas-3.md         # Arquitectura IA
+```
+
+## 🚀 Uso Rápido
 
 ```powershell
 cargo run --release examples/hello_world.adB

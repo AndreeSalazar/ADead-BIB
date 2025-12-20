@@ -156,13 +156,30 @@ pub struct Function {
     pub body: Vec<Stmt>,
 }
 
+// OOP: Interface/Trait
+#[derive(Debug, Clone)]
+pub struct Interface {
+    pub name: String,
+    pub methods: Vec<MethodSignature>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MethodSignature {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<String>,
+}
+
 // OOP: Clase con herencia y polimorfismo
 #[derive(Debug, Clone)]
 pub struct Class {
     pub name: String,
     pub parent: Option<String>,        // Herencia
+    pub implements: Vec<String>,       // Interfaces implementadas
     pub fields: Vec<Field>,
     pub methods: Vec<Method>,
+    pub constructor: Option<Method>,   // __init__
+    pub destructor: Option<Method>,    // __del__
 }
 
 #[derive(Debug, Clone)]
@@ -183,8 +200,18 @@ pub struct Method {
     pub is_static: bool,               // Método estático
 }
 
+// Sistema de imports
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub module: String,
+    pub items: Vec<String>,      // from module import item1, item2
+    pub alias: Option<String>,   // import module as alias
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
+    pub imports: Vec<Import>,
+    pub interfaces: Vec<Interface>,
     pub classes: Vec<Class>,
     pub functions: Vec<Function>,
 }
@@ -192,9 +219,15 @@ pub struct Program {
 impl Program {
     pub fn new() -> Self {
         Self {
+            imports: Vec::new(),
+            interfaces: Vec::new(),
             classes: Vec::new(),
             functions: Vec::new(),
         }
+    }
+    
+    pub fn add_import(&mut self, import: Import) {
+        self.imports.push(import);
     }
     
     pub fn add_function(&mut self, func: Function) {
@@ -203,6 +236,10 @@ impl Program {
     
     pub fn add_class(&mut self, class: Class) {
         self.classes.push(class);
+    }
+    
+    pub fn add_interface(&mut self, iface: Interface) {
+        self.interfaces.push(iface);
     }
 }
 

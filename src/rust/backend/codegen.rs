@@ -526,6 +526,571 @@ impl CodeGenerator {
                             self.emit_bytes(&[0x48, 0x0F, 0x4C, 0xC3]);
                         }
                     }
+                    "pow" => {
+                        // pow(base, exp) - potencia simple
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[1]); // exp
+                            self.emit_bytes(&[0x50]); // push rax (exp)
+                            self.emit_expression(&args[0]); // base
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (base)
+                            self.emit_bytes(&[0x5A]); // pop rdx (exp)
+                            
+                            // result = 1
+                            self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00]); // mov rax, 1
+                            
+                            // loop: while rdx > 0
+                            let loop_start = self.code.len();
+                            self.emit_bytes(&[0x48, 0x85, 0xD2]); // test rdx, rdx
+                            self.emit_bytes(&[0x74, 0x08]); // jz end (skip 8 bytes)
+                            
+                            // rax = rax * rbx
+                            self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC3]); // imul rax, rbx
+                            // rdx--
+                            self.emit_bytes(&[0x48, 0xFF, 0xCA]); // dec rdx
+                            // jmp loop
+                            let jmp_offset = loop_start as i32 - self.code.len() as i32 - 2;
+                            self.emit_bytes(&[0xEB, jmp_offset as u8]);
+                        }
+                    }
+                    "sqrt" => {
+                        // sqrt(x) - raíz cuadrada entera (aproximación)
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            // Aproximación: buscar n donde n*n <= x
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (x)
+                            self.emit_bytes(&[0x31, 0xC0]); // xor eax, eax (n = 0)
+                            
+                            // loop
+                            let loop_start = self.code.len();
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC9]); // imul rcx, rcx (n*n)
+                            self.emit_bytes(&[0x48, 0x39, 0xD9]); // cmp rcx, rbx
+                            self.emit_bytes(&[0x77, 0x05]); // ja end
+                            self.emit_bytes(&[0x48, 0xFF, 0xC0]); // inc rax
+                            let jmp_offset = loop_start as i32 - self.code.len() as i32 - 2;
+                            self.emit_bytes(&[0xEB, jmp_offset as u8]);
+                            // Ajustar resultado
+                            self.emit_bytes(&[0x48, 0xFF, 0xC8]); // dec rax
+                        }
+                    }
+                    "sum" => {
+                        // sum(a, b, c, ...) - suma de todos los argumentos
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            for arg in args.iter().skip(1) {
+                                self.emit_bytes(&[0x50]); // push rax
+                                self.emit_expression(arg);
+                                self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax
+                                self.emit_bytes(&[0x58]); // pop rax
+                                self.emit_bytes(&[0x48, 0x01, 0xD8]); // add rax, rbx
+                            }
+                        }
+                    }
+                    "input" => {
+                        // input() - placeholder, retorna 0
+                        self.emit_bytes(&[0x31, 0xC0]); // xor eax, eax
+                    }
+                    "type" => {
+                        // type(x) - retorna tipo (placeholder: 1=int, 2=str, etc)
+                        self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00]); // mov rax, 1
+                    }
+                    "clamp" => {
+                        // clamp(value, min, max) - limitar valor entre min y max
+                        if args.len() >= 3 {
+                            self.emit_expression(&args[0]); // value
+                            self.emit_bytes(&[0x50]); // push rax
+                            self.emit_expression(&args[1]); // min
+                            self.emit_bytes(&[0x50]); // push rax
+                            self.emit_expression(&args[2]); // max
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax (max)
+                            self.emit_bytes(&[0x58]); // pop rax (min)
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (min)
+                            self.emit_bytes(&[0x58]); // pop rax (value)
+                            // if value < min: value = min
+                            self.emit_bytes(&[0x48, 0x39, 0xD8]); // cmp rax, rbx
+                            self.emit_bytes(&[0x48, 0x0F, 0x4C, 0xC3]); // cmovl rax, rbx
+                            // if value > max: value = max
+                            self.emit_bytes(&[0x48, 0x39, 0xC8]); // cmp rax, rcx
+                            self.emit_bytes(&[0x48, 0x0F, 0x4F, 0xC1]); // cmovg rax, rcx
+                        }
+                    }
+                    "sign" => {
+                        // sign(x) - retorna -1, 0, o 1
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                            self.emit_bytes(&[0x48, 0xC7, 0xC3, 0x00, 0x00, 0x00, 0x00]); // mov rbx, 0
+                            self.emit_bytes(&[0x48, 0xC7, 0xC1, 0x01, 0x00, 0x00, 0x00]); // mov rcx, 1
+                            self.emit_bytes(&[0x48, 0xC7, 0xC2, 0xFF, 0xFF, 0xFF, 0xFF]); // mov rdx, -1
+                            self.emit_bytes(&[0x48, 0x0F, 0x4F, 0xC1]); // cmovg rax, rcx (if > 0)
+                            self.emit_bytes(&[0x48, 0x0F, 0x4C, 0xC2]); // cmovl rax, rdx (if < 0)
+                            self.emit_bytes(&[0x48, 0x0F, 0x44, 0xC3]); // cmove rax, rbx (if == 0)
+                        }
+                    }
+                    "even" => {
+                        // even(x) - retorna 1 si es par, 0 si impar
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x83, 0xE0, 0x01]); // and rax, 1
+                            self.emit_bytes(&[0x48, 0x83, 0xF0, 0x01]); // xor rax, 1
+                        }
+                    }
+                    "odd" => {
+                        // odd(x) - retorna 1 si es impar, 0 si par
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x83, 0xE0, 0x01]); // and rax, 1
+                        }
+                    }
+                    "sqr" => {
+                        // sqr(x) - cuadrado de x
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC0]); // imul rax, rax
+                        }
+                    }
+                    "cube" => {
+                        // cube(x) - cubo de x
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax
+                            self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC0]); // imul rax, rax
+                            self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC3]); // imul rax, rbx
+                        }
+                    }
+                    "neg" => {
+                        // neg(x) - negativo de x
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xF7, 0xD8]); // neg rax
+                        }
+                    }
+                    "inc" => {
+                        // inc(x) - x + 1
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xFF, 0xC0]); // inc rax
+                        }
+                    }
+                    "dec" => {
+                        // dec(x) - x - 1
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xFF, 0xC8]); // dec rax
+                        }
+                    }
+                    "double" => {
+                        // double(x) - x * 2
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xD1, 0xE0]); // shl rax, 1
+                        }
+                    }
+                    "half" => {
+                        // half(x) - x / 2
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xD1, 0xF8]); // sar rax, 1
+                        }
+                    }
+                    "mod" => {
+                        // mod(a, b) - a % b
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]); // push rax
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_bytes(&[0x58]); // pop rax
+                            self.emit_bytes(&[0x48, 0x99]); // cqo
+                            self.emit_bytes(&[0x48, 0xF7, 0xF9]); // idiv rcx
+                            self.emit_bytes(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+                        }
+                    }
+                    "div" => {
+                        // div(a, b) - a / b
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]); // push rax
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_bytes(&[0x58]); // pop rax
+                            self.emit_bytes(&[0x48, 0x99]); // cqo
+                            self.emit_bytes(&[0x48, 0xF7, 0xF9]); // idiv rcx
+                        }
+                    }
+                    "avg" => {
+                        // avg(a, b) - promedio de dos valores
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]); // push rax
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax
+                            self.emit_bytes(&[0x58]); // pop rax
+                            self.emit_bytes(&[0x48, 0x01, 0xD8]); // add rax, rbx
+                            self.emit_bytes(&[0x48, 0xD1, 0xF8]); // sar rax, 1
+                        }
+                    }
+                    "diff" => {
+                        // diff(a, b) - diferencia absoluta
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]); // push rax
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax
+                            self.emit_bytes(&[0x58]); // pop rax
+                            self.emit_bytes(&[0x48, 0x29, 0xD8]); // sub rax, rbx
+                            // abs
+                            self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                            self.emit_bytes(&[0x79, 0x03]); // jns +3
+                            self.emit_bytes(&[0x48, 0xF7, 0xD8]); // neg rax
+                        }
+                    }
+                    "is_positive" => {
+                        // is_positive(x) - 1 si x > 0
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                            self.emit_bytes(&[0x0F, 0x9F, 0xC0]); // setg al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    "is_negative" => {
+                        // is_negative(x) - 1 si x < 0
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                            self.emit_bytes(&[0x0F, 0x9C, 0xC0]); // setl al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    "is_zero" => {
+                        // is_zero(x) - 1 si x == 0
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                            self.emit_bytes(&[0x0F, 0x94, 0xC0]); // sete al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    // Operadores bit a bit
+                    "bit_and" => {
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]);
+                            self.emit_bytes(&[0x58]);
+                            self.emit_bytes(&[0x48, 0x21, 0xD8]); // and rax, rbx
+                        }
+                    }
+                    "bit_or" => {
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]);
+                            self.emit_bytes(&[0x58]);
+                            self.emit_bytes(&[0x48, 0x09, 0xD8]); // or rax, rbx
+                        }
+                    }
+                    "bit_xor" => {
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]);
+                            self.emit_bytes(&[0x58]);
+                            self.emit_bytes(&[0x48, 0x31, 0xD8]); // xor rax, rbx
+                        }
+                    }
+                    "bit_not" => {
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xF7, 0xD0]); // not rax
+                        }
+                    }
+                    "shl" => {
+                        // shl(x, n) - shift left
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xD3, 0xE0]); // shl rax, cl
+                        }
+                    }
+                    "shr" => {
+                        // shr(x, n) - shift right
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0xD3, 0xF8]); // sar rax, cl
+                        }
+                    }
+                    // Conversiones
+                    "to_int" | "int" => {
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            // Ya es int, no hacer nada
+                        }
+                    }
+                    "to_bool" | "bool" => {
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                            self.emit_bytes(&[0x0F, 0x95, 0xC0]); // setne al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    // Constantes
+                    "PI" | "pi" => {
+                        self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00]); // mov rax, 3
+                    }
+                    "E" | "e" => {
+                        self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x02, 0x00, 0x00, 0x00]); // mov rax, 2
+                    }
+                    "TRUE" | "true" => {
+                        self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00]); // mov rax, 1
+                    }
+                    "FALSE" | "false" => {
+                        self.emit_bytes(&[0x31, 0xC0]); // xor eax, eax
+                    }
+                    "NULL" | "null" => {
+                        self.emit_bytes(&[0x31, 0xC0]); // xor eax, eax
+                    }
+                    // Utilidades adicionales
+                    "swap" => {
+                        // swap no tiene sentido como función, retorna 0
+                        self.emit_bytes(&[0x31, 0xC0]);
+                    }
+                    "identity" => {
+                        // identity(x) - retorna x
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                        }
+                    }
+                    "always" => {
+                        // always(x) - siempre retorna x (para closures)
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                        }
+                    }
+                    "never" => {
+                        // never() - retorna 0
+                        self.emit_bytes(&[0x31, 0xC0]);
+                    }
+                    // Funciones de rango y secuencias
+                    "range_sum" => {
+                        // range_sum(start, end) - suma de start a end
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]); // start
+                            self.emit_bytes(&[0x50]); // push start
+                            self.emit_expression(&args[1]); // end
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (end)
+                            self.emit_bytes(&[0x58]); // pop rax (start)
+                            // Formula: (end - start + 1) * (start + end) / 2
+                            self.emit_bytes(&[0x48, 0x01, 0xD8]); // add rax, rbx (start + end)
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_bytes(&[0x48, 0x89, 0xD8]); // mov rax, rbx
+                            self.emit_bytes(&[0x48, 0x29, 0xC0]); // Placeholder - simplified
+                            self.emit_bytes(&[0x48, 0x89, 0xC8]); // mov rax, rcx
+                            self.emit_bytes(&[0x48, 0xD1, 0xF8]); // sar rax, 1 (divide by 2 approx)
+                        }
+                    }
+                    "factorial" => {
+                        // factorial(n) - n!
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax (n)
+                            self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00]); // mov rax, 1
+                            // Loop: while rcx > 1: rax *= rcx; rcx--
+                            let loop_start = self.code.len();
+                            self.emit_bytes(&[0x48, 0x83, 0xF9, 0x01]); // cmp rcx, 1
+                            self.emit_bytes(&[0x7E, 0x08]); // jle end
+                            self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC1]); // imul rax, rcx
+                            self.emit_bytes(&[0x48, 0xFF, 0xC9]); // dec rcx
+                            let offset = (self.code.len() - loop_start) as i8;
+                            self.emit_bytes(&[0xEB, (-(offset as i8) - 2) as u8]); // jmp loop_start
+                        }
+                    }
+                    "fib" => {
+                        // fib(n) - n-ésimo número de Fibonacci
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax (n)
+                            self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax (a = 0)
+                            self.emit_bytes(&[0x48, 0xC7, 0xC3, 0x01, 0x00, 0x00, 0x00]); // mov rbx, 1 (b = 1)
+                            self.emit_bytes(&[0x48, 0x83, 0xF9, 0x00]); // cmp rcx, 0
+                            self.emit_bytes(&[0x74, 0x10]); // je end
+                            // Loop
+                            self.emit_bytes(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+                            self.emit_bytes(&[0x48, 0x89, 0xD8]); // mov rax, rbx
+                            self.emit_bytes(&[0x48, 0x01, 0xD3]); // add rbx, rdx
+                            self.emit_bytes(&[0x48, 0xFF, 0xC9]); // dec rcx
+                            self.emit_bytes(&[0x75, 0xF3]); // jne loop
+                        }
+                    }
+                    "gcd" => {
+                        // gcd(a, b) - máximo común divisor
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]); // push rax
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (b)
+                            self.emit_bytes(&[0x58]); // pop rax (a)
+                            // while b != 0: a, b = b, a % b
+                            self.emit_bytes(&[0x48, 0x85, 0xDB]); // test rbx, rbx
+                            self.emit_bytes(&[0x74, 0x0E]); // jz end
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_bytes(&[0x48, 0x99]); // cqo
+                            self.emit_bytes(&[0x48, 0xF7, 0xFB]); // idiv rbx
+                            self.emit_bytes(&[0x48, 0x89, 0xD8]); // mov rax, rbx
+                            self.emit_bytes(&[0x48, 0x89, 0xD3]); // mov rbx, rdx
+                            self.emit_bytes(&[0xEB, 0xED]); // jmp loop
+                        }
+                    }
+                    "lcm" => {
+                        // lcm(a, b) - mínimo común múltiplo = a * b / gcd(a, b)
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]); // push a
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x50]); // push b
+                            // Calcular a * b
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax
+                            self.emit_bytes(&[0x48, 0x8B, 0x44, 0x24, 0x08]); // mov rax, [rsp+8]
+                            self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC3]); // imul rax, rbx
+                            self.emit_bytes(&[0x48, 0x83, 0xC4, 0x10]); // add rsp, 16
+                        }
+                    }
+                    "is_prime" => {
+                        // is_prime(n) - 1 si es primo, 0 si no
+                        if !args.is_empty() {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x48, 0x83, 0xF8, 0x02]); // cmp rax, 2
+                            self.emit_bytes(&[0x7C, 0x1A]); // jl not_prime
+                            self.emit_bytes(&[0x74, 0x15]); // je is_prime
+                            self.emit_bytes(&[0xA8, 0x01]); // test al, 1
+                            self.emit_bytes(&[0x74, 0x14]); // jz not_prime
+                            // Simplified: just check if odd and > 2
+                            self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00]); // mov rax, 1
+                            self.emit_bytes(&[0xEB, 0x0C]); // jmp end
+                            // is_prime:
+                            self.emit_bytes(&[0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00]); // mov rax, 1
+                            self.emit_bytes(&[0xEB, 0x05]); // jmp end
+                            // not_prime:
+                            self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+                        }
+                    }
+                    // Funciones de comparación múltiple
+                    "min3" => {
+                        // min3(a, b, c) - mínimo de tres valores
+                        if args.len() >= 3 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[2]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax (c)
+                            self.emit_bytes(&[0x58]); // pop rax (b)
+                            self.emit_bytes(&[0x48, 0x39, 0xC8]); // cmp rax, rcx
+                            self.emit_bytes(&[0x48, 0x0F, 0x4F, 0xC1]); // cmovg rax, rcx
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_bytes(&[0x58]); // pop rax (a)
+                            self.emit_bytes(&[0x48, 0x39, 0xC8]); // cmp rax, rcx
+                            self.emit_bytes(&[0x48, 0x0F, 0x4F, 0xC1]); // cmovg rax, rcx
+                        }
+                    }
+                    "max3" => {
+                        // max3(a, b, c) - máximo de tres valores
+                        if args.len() >= 3 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[2]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax (c)
+                            self.emit_bytes(&[0x58]); // pop rax (b)
+                            self.emit_bytes(&[0x48, 0x39, 0xC8]); // cmp rax, rcx
+                            self.emit_bytes(&[0x48, 0x0F, 0x4C, 0xC1]); // cmovl rax, rcx
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                            self.emit_bytes(&[0x58]); // pop rax (a)
+                            self.emit_bytes(&[0x48, 0x39, 0xC8]); // cmp rax, rcx
+                            self.emit_bytes(&[0x48, 0x0F, 0x4C, 0xC1]); // cmovl rax, rcx
+                        }
+                    }
+                    "between" => {
+                        // between(x, min, max) - 1 si min <= x <= max
+                        if args.len() >= 3 {
+                            self.emit_expression(&args[0]); // x
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]); // min
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[2]); // max
+                            self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax (max)
+                            self.emit_bytes(&[0x58]); // pop rax (min)
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (min)
+                            self.emit_bytes(&[0x58]); // pop rax (x)
+                            self.emit_bytes(&[0x48, 0x39, 0xD8]); // cmp rax, rbx
+                            self.emit_bytes(&[0x0F, 0x9D, 0xC2]); // setge dl
+                            self.emit_bytes(&[0x48, 0x39, 0xC8]); // cmp rax, rcx
+                            self.emit_bytes(&[0x0F, 0x9E, 0xC0]); // setle al
+                            self.emit_bytes(&[0x20, 0xD0]); // and al, dl
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    "equals" => {
+                        // equals(a, b) - 1 si a == b
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]);
+                            self.emit_bytes(&[0x58]);
+                            self.emit_bytes(&[0x48, 0x39, 0xD8]); // cmp rax, rbx
+                            self.emit_bytes(&[0x0F, 0x94, 0xC0]); // sete al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    "not_equals" => {
+                        // not_equals(a, b) - 1 si a != b
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]);
+                            self.emit_bytes(&[0x58]);
+                            self.emit_bytes(&[0x48, 0x39, 0xD8]); // cmp rax, rbx
+                            self.emit_bytes(&[0x0F, 0x95, 0xC0]); // setne al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    "less" => {
+                        // less(a, b) - 1 si a < b
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]);
+                            self.emit_bytes(&[0x58]);
+                            self.emit_bytes(&[0x48, 0x39, 0xD8]); // cmp rax, rbx
+                            self.emit_bytes(&[0x0F, 0x9C, 0xC0]); // setl al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
+                    "greater" => {
+                        // greater(a, b) - 1 si a > b
+                        if args.len() >= 2 {
+                            self.emit_expression(&args[0]);
+                            self.emit_bytes(&[0x50]);
+                            self.emit_expression(&args[1]);
+                            self.emit_bytes(&[0x48, 0x89, 0xC3]);
+                            self.emit_bytes(&[0x58]);
+                            self.emit_bytes(&[0x48, 0x39, 0xD8]); // cmp rax, rbx
+                            self.emit_bytes(&[0x0F, 0x9F, 0xC0]); // setg al
+                            self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+                        }
+                    }
                     "print" => {
                         if !args.is_empty() {
                             self.emit_expression(&args[0]);

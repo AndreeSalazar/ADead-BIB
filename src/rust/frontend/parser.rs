@@ -65,6 +65,13 @@ impl Parser {
         
         self.skip_newlines();
         
+        // Parse imports first
+        while matches!(self.peek(), Some(Token::Import) | Some(Token::From)) {
+            let import = self.parse_import()?;
+            program.add_import(import);
+            self.skip_newlines();
+        }
+        
         while self.peek().is_some() {
             match self.peek() {
                 Some(Token::Def) => {
@@ -77,11 +84,142 @@ impl Parser {
                     program.add_class(class);
                     self.skip_newlines();
                 }
+                Some(Token::Interface) => {
+                    let iface = self.parse_interface()?;
+                    program.add_interface(iface);
+                    self.skip_newlines();
+                }
                 _ => break,
             }
         }
         
         Ok(program)
+    }
+    
+    fn parse_import(&mut self) -> Result<Import, ParseError> {
+        if matches!(self.peek(), Some(Token::From)) {
+            // from module import item1, item2
+            self.advance();
+            let module = match self.advance() {
+                Some(Token::Identifier(m)) => m,
+                Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                None => return Err(ParseError::UnexpectedEof),
+            };
+            
+            self.expect(Token::Import)?;
+            
+            let mut items = Vec::new();
+            loop {
+                match self.advance() {
+                    Some(Token::Identifier(i)) => items.push(i),
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                }
+                if matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            
+            self.skip_newlines();
+            Ok(Import { module, items, alias: None })
+        } else {
+            // import module [as alias]
+            self.expect(Token::Import)?;
+            let module = match self.advance() {
+                Some(Token::Identifier(m)) => m,
+                Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                None => return Err(ParseError::UnexpectedEof),
+            };
+            
+            let alias = if matches!(self.peek(), Some(Token::As)) {
+                self.advance();
+                match self.advance() {
+                    Some(Token::Identifier(a)) => Some(a),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            
+            self.skip_newlines();
+            Ok(Import { module, items: Vec::new(), alias })
+        }
+    }
+    
+    fn parse_interface(&mut self) -> Result<Interface, ParseError> {
+        self.expect(Token::Interface)?;
+        
+        let name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        self.expect(Token::Colon)?;
+        self.skip_newlines();
+        
+        let mut methods = Vec::new();
+        
+        // Parse interface body (method signatures only)
+        loop {
+            self.skip_newlines();
+            if matches!(self.peek(), Some(Token::Def)) {
+                self.advance();
+                let method_name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                
+                self.expect(Token::LParen)?;
+                let mut params = Vec::new();
+                if !matches!(self.peek(), Some(Token::RParen)) {
+                    loop {
+                        if matches!(self.peek(), Some(Token::This)) {
+                            self.advance();
+                            if matches!(self.peek(), Some(Token::Comma)) {
+                                self.advance();
+                            }
+                            continue;
+                        }
+                        let param_name = match self.advance() {
+                            Some(Token::Identifier(n)) => n,
+                            Some(Token::RParen) => break,
+                            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                            None => return Err(ParseError::UnexpectedEof),
+                        };
+                        params.push(Param { name: param_name, type_name: None });
+                        if matches!(self.peek(), Some(Token::Comma)) {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(Token::RParen)?;
+                
+                // Optional return type
+                let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
+                    self.advance();
+                    match self.advance() {
+                        Some(Token::Identifier(t)) => Some(t),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                
+                self.skip_newlines();
+                
+                methods.push(MethodSignature { name: method_name, params, return_type });
+            } else {
+                break;
+            }
+        }
+        
+        Ok(Interface { name, methods })
     }
     
     fn parse_class(&mut self) -> Result<Class, ParseError> {
@@ -105,11 +243,31 @@ impl Parser {
             None
         };
         
+        // Interfaces: class Foo implements Bar, Baz:
+        let mut implements = Vec::new();
+        if matches!(self.peek(), Some(Token::Implements)) {
+            self.advance();
+            loop {
+                match self.advance() {
+                    Some(Token::Identifier(i)) => implements.push(i),
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                }
+                if matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        
         self.expect(Token::Colon)?;
         self.skip_newlines();
         
         let mut fields = Vec::new();
         let mut methods = Vec::new();
+        let mut constructor = None;
+        let mut destructor = None;
         
         // Parse class body
         loop {
@@ -117,7 +275,13 @@ impl Parser {
             match self.peek() {
                 Some(Token::Def) | Some(Token::Virtual) | Some(Token::Override) | Some(Token::Static) => {
                     let method = self.parse_method()?;
-                    methods.push(method);
+                    if method.name == "__init__" {
+                        constructor = Some(method);
+                    } else if method.name == "__del__" {
+                        destructor = Some(method);
+                    } else {
+                        methods.push(method);
+                    }
                 }
                 Some(Token::Identifier(_)) => {
                     let field = self.parse_field()?;
@@ -127,7 +291,7 @@ impl Parser {
             }
         }
         
-        Ok(Class { name, parent, fields, methods })
+        Ok(Class { name, parent, implements, fields, methods, constructor, destructor })
     }
     
     fn parse_field(&mut self) -> Result<Field, ParseError> {

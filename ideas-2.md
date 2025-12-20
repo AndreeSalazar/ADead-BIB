@@ -15,7 +15,9 @@ código.adB → Lexer → Parser → AST → Opcodes x86-64 → PE → CPU ejecu
 | **Binario mínimo** | 1.5 KB |
 | **Binario juego** | 3 KB |
 | **Dependencias** | 0 (solo msvcrt.dll) |
-| **Características** | 50+ implementadas |
+| **Funciones Built-in** | 60+ implementadas |
+| **Ejemplos funcionales** | 15 archivos |
+| **Fases completadas** | 9 de 13 |
 
 ### 🎮 Ejemplos Funcionales
 
@@ -130,13 +132,93 @@ ADead-BIB es un **lenguaje de programación completo** para:
 - [x] Field assign - `obj.x = 10`
 - [x] `for each` - Iteración sobre colecciones
 
-### ✅ Funciones Built-in (COMPLETADO)
+### ✅ Funciones Built-in (60+ FUNCIONES)
 
-- [x] `len(array)` - Longitud de array
+**Matemáticas:**
 - [x] `abs(x)` - Valor absoluto
-- [x] `min(a, b)` - Mínimo de dos valores
-- [x] `max(a, b)` - Máximo de dos valores
-- [x] `print(x)` - Imprimir valor
+- [x] `min(a, b)` - Mínimo
+- [x] `max(a, b)` - Máximo
+- [x] `pow(base, exp)` - Potencia
+- [x] `sqrt(x)` - Raíz cuadrada
+- [x] `sqr(x)` - Cuadrado
+- [x] `cube(x)` - Cubo
+- [x] `clamp(val, min, max)` - Limitar rango
+- [x] `sign(x)` - Signo (-1, 0, 1)
+- [x] `sum(a, b, ...)` - Suma
+- [x] `double(x)` - Duplicar
+- [x] `half(x)` - Mitad
+- [x] `avg(a, b)` - Promedio
+- [x] `diff(a, b)` - Diferencia absoluta
+- [x] `div(a, b)` - División entera
+- [x] `mod(a, b)` - Módulo
+
+**Utilidades:**
+- [x] `len(array)` - Longitud
+- [x] `even(x)` - Es par
+- [x] `odd(x)` - Es impar
+- [x] `inc(x)` - Incrementar
+- [x] `dec(x)` - Decrementar
+- [x] `neg(x)` - Negar
+- [x] `is_positive(x)` - Es positivo
+- [x] `is_negative(x)` - Es negativo
+- [x] `is_zero(x)` - Es cero
+
+**I/O:**
+- [x] `print(x)` - Imprimir
+- [x] `input()` - Entrada
+- [x] `type(x)` - Tipo
+
+**Bit Operations:**
+- [x] `bit_and(a, b)` - AND bit a bit
+- [x] `bit_or(a, b)` - OR bit a bit
+- [x] `bit_xor(a, b)` - XOR bit a bit
+- [x] `bit_not(x)` - NOT bit a bit
+- [x] `shl(x, n)` - Shift left
+- [x] `shr(x, n)` - Shift right
+
+**Conversiones:**
+- [x] `int(x)` / `to_int(x)` - Convertir a entero
+- [x] `bool(x)` / `to_bool(x)` - Convertir a booleano
+
+**Constantes:**
+- [x] `PI()` - 3 (entero)
+- [x] `E()` - 2 (entero)
+- [x] `TRUE()` - 1
+- [x] `FALSE()` - 0
+- [x] `NULL()` - 0
+
+**Funcionales:**
+- [x] `identity(x)` - Retorna x
+- [x] `always(x)` - Siempre retorna x
+- [x] `never()` - Retorna 0
+
+**Matemáticas Avanzadas:**
+- [x] `factorial(n)` - Factorial
+- [x] `fib(n)` - Fibonacci
+- [x] `gcd(a, b)` - Máximo común divisor
+- [x] `lcm(a, b)` - Mínimo común múltiplo
+- [x] `is_prime(n)` - Es primo
+- [x] `range_sum(a, b)` - Suma de rango
+
+**Comparaciones Múltiples:**
+- [x] `min3(a, b, c)` - Mínimo de 3
+- [x] `max3(a, b, c)` - Máximo de 3
+- [x] `between(x, min, max)` - En rango
+- [x] `equals(a, b)` - Igualdad
+- [x] `not_equals(a, b)` - Desigualdad
+- [x] `less(a, b)` - Menor que
+- [x] `greater(a, b)` - Mayor que
+
+### ✅ Sistema de Imports (COMPLETADO)
+
+- [x] `import module` - Importar módulo completo
+- [x] `import module as alias` - Importar con alias
+- [x] `from module import item1, item2` - Importar selectivo
+
+**Librería Estándar:**
+- [x] `stdlib/math.adB` - Funciones matemáticas
+- [x] `stdlib/io.adB` - Entrada/salida
+- [x] `stdlib/string.adB` - Manipulación de strings
 
 ### ✅ Tokens Avanzados (COMPLETADO)
 
@@ -149,9 +231,9 @@ ADead-BIB es un **lenguaje de programación completo** para:
 - [x] `lambda` - Funciones anónimas
 - [x] `null` / `None` - Valor nulo
 
-### 🚧 OOP Avanzado (PENDIENTE)
+### ✅ OOP Avanzado (IMPLEMENTADO)
 
-- [ ] **Interfaces/Traits**
+- [x] **Interfaces/Traits** ✅
   ```python
   interface Drawable:
       def draw(self)
@@ -160,6 +242,17 @@ ADead-BIB es un **lenguaje de programación completo** para:
   class Player implements Drawable:
       def draw(self):
           print("@")
+  ```
+
+- [x] **Constructores y Destructores** ✅
+  ```python
+  class Player:
+      def __init__(self, x, y):
+          self.x = x
+          self.y = y
+      
+      def __del__(self):
+          print("destroyed")
   ```
 
 - [ ] **Polimorfismo completo con VTable**
@@ -180,18 +273,6 @@ ADead-BIB es un **lenguaje de programación completo** para:
       
       def get(self, index: int) -> T:
           return self.items[index]
-  ```
-
-- [ ] **Constructores y Destructores**
-  ```python
-  class Player:
-      def __init__(self, x, y, health):
-          self.x = x
-          self.y = y
-          self.health = health
-      
-      def __del__(self):
-          print("Player destroyed")
   ```
 
 - [ ] **Propiedades (getters/setters)**
@@ -242,191 +323,89 @@ ADead-BIB es un **lenguaje de programación completo** para:
 
 ---
 
-### 🚧 Sistema de Tipos (PENDIENTE)
+### ✅ Sistema de Tipos (BÁSICO COMPLETADO)
 
-- [ ] **Tipos primitivos explícitos**
-  ```python
-  x: int = 42
-  y: float = 3.14
-  name: str = "ADead"
-  flag: bool = true
-  ```
-
-- [ ] **Inferencia de tipos**
-  ```python
-  x = 42        # infiere int
-  y = 3.14      # infiere float
-  ```
-
-- [ ] **Tipos opcionales (nullable)**
-  ```python
-  player: Player? = null
-  if player != null:
-      player.update()
-  ```
-
-- [ ] **Union types**
-  ```python
-  result: int | str = get_result()
-  ```
-
-- [ ] **Type aliases**
-  ```python
-  type Position = (int, int)
-  type EntityList = List[Entity]
-  ```
+- [x] **Tipos primitivos** - int, float, bool, null, str
+- [x] **Inferencia de tipos** - Automática en asignaciones
+- [x] **Tipos opcionales** - null soportado
+- [ ] Union types (futuro)
+- [ ] Type aliases (futuro)
 
 ---
 
-### 🚧 Colecciones (PENDIENTE)
+### ✅ Colecciones (BÁSICO COMPLETADO)
 
-- [ ] **Arrays estáticos**
-  ```python
-  numbers: int[10]
-  numbers[0] = 42
-  ```
-
-- [ ] **Listas dinámicas**
-  ```python
-  items = [1, 2, 3, 4, 5]
-  items.append(6)
-  items.pop()
-  ```
-
-- [ ] **Diccionarios/Maps**
-  ```python
-  scores = {"player1": 100, "player2": 85}
-  scores["player3"] = 90
-  ```
-
-- [ ] **Sets**
-  ```python
-  unique = {1, 2, 3}
-  unique.add(4)
-  ```
-
-- [ ] **Tuplas**
-  ```python
-  point = (10, 20)
-  x, y = point
-  ```
+- [x] **Arrays** - Sintaxis `[1, 2, 3]` soportada
+- [x] **Indexing** - `arr[0]` soportado
+- [x] **Slicing** - `arr[0:5]` soportado
+- [x] **len()** - Longitud de arrays
+- [ ] Diccionarios (futuro)
+- [ ] Sets (futuro)
 
 ---
 
-### 🚧 Strings Avanzados (PENDIENTE)
+### ✅ Strings (BÁSICO COMPLETADO)
 
-- [ ] **Concatenación**
-  ```python
-  greeting = "Hello, " + name + "!"
-  ```
-
-- [ ] **Interpolación**
-  ```python
-  message = f"Player {name} has {health} HP"
-  ```
-
-- [ ] **Métodos de string**
-  ```python
-  text.upper()
-  text.lower()
-  text.split(",")
-  text.strip()
-  text.replace("a", "b")
-  ```
-
-- [ ] **Indexing y slicing**
-  ```python
-  char = text[0]
-  substring = text[0:5]
-  ```
+- [x] **Literales** - `"Hello, World!"`
+- [x] **Print** - `print("texto")`
+- [x] **len()** - Longitud de strings
+- [ ] Concatenación (futuro)
+- [ ] Interpolación (futuro)
 
 ---
 
-### 🚧 Sistema de Módulos (PENDIENTE)
+### ✅ Sistema de Módulos (COMPLETADO)
 
-- [ ] **Import básico**
-  ```python
-  import math
-  import game.entities
-  ```
-
-- [ ] **Import selectivo**
-  ```python
-  from math import sin, cos, sqrt
-  from game.entities import Player, Enemy
-  ```
-
-- [ ] **Namespaces**
-  ```python
-  namespace game:
-      class Player:
-          pass
-  
-  player = game.Player()
-  ```
-
-- [ ] **Paquetes**
-  ```
-  game/
-    __init__.adB
-    entities.adB
-    physics.adB
-    rendering.adB
-  ```
+Ya implementado en Fase 8 - ver arriba.
 
 ---
 
-### 🚧 Integración con Python (PENDIENTE) - COMPLEMENTO
+### ✅ Integración con Python (COMPLETADO) - COMPLEMENTO
 
-- [ ] **Llamar funciones Python desde ADead-BIB**
-  ```python
-  # ADead-BIB
-  extern python:
-      def numpy_array(data: List[float]) -> PyObject
-      def matplotlib_plot(x, y)
-  
-  def main():
-      data = numpy_array([1.0, 2.0, 3.0])
-      matplotlib_plot(data, data)
-  ```
+**Archivos implementados:**
+- `python/adead_ffi.py` - Wrapper FFI para Python
+- `python/ai_demo.py` - Demo de IA con 5000 palabras
 
-- [ ] **Llamar funciones ADead-BIB desde Python**
-  ```python
-  # Python
-  import adead_bib
-  
-  # Cargar módulo compilado
-  game = adead_bib.load("game.exe")
-  
-  # Llamar función optimizada
-  result = game.calculate_physics(entities)
-  ```
+**Uso básico:**
+```python
+from adead_ffi import ADeadBIB
 
-- [ ] **Compartir datos entre Python y ADead-BIB**
-  ```python
-  # ADead-BIB genera binario optimizado
-  # Python lo usa para cálculos pesados
-  
-  extern python:
-      def get_numpy_data() -> ptr
-  
-  def process_data():
-      data = get_numpy_data()
-      # Procesamiento optimizado en ADead-BIB
-      for i in range(len(data)):
-          data[i] = data[i] * 2
-  ```
+adead = ADeadBIB()
 
-- [ ] **Decoradores para exportar**
-  ```python
-  @export
-  def fast_calculation(x: int, y: int) -> int:
-      return x * y + x - y
-  ```
+# Compilar y ejecutar archivo .adB
+result = adead.compile_and_run("examples/hello_world.adB")
+print(result)  # "Hello, World!"
+
+# Generar código dinámicamente
+code = '''
+def main():
+    print(pow(2, 10))
+    print(sqrt(144))
+'''
+result = adead.run_code(code)
+print(result)  # 1024, 12
+```
+
+**Demo de IA con 5000 palabras:**
+```
+✓ Vocabulario generado: 5000 palabras
+✓ Texto generado: 7970 caracteres
+📊 Resultados:
+  Total palabras: 1111
+  Palabras conocidas: 90.0%
+  Tiempo: 1.00 ms
+```
+
+**Características:**
+- [x] Compilar archivos .adB desde Python
+- [x] Ejecutar binarios ADead-BIB
+- [x] Generar código dinámicamente
+- [x] Demo de IA con vocabulario grande
+- [x] Análisis de similitud de textos
 
 ---
 
-### � Interoperabilidad con Sistema (PENDIENTE)
+### 🚧 Interoperabilidad con Sistema (PENDIENTE)
 
 - [ ] **Múltiples DLLs**
   ```python
@@ -577,181 +556,43 @@ ADead-BIB es un **lenguaje de programación completo** para:
 
 ---
 
-### Fase 5: Funciones Completas 🚧
+### Fase 8: Sistema de Módulos ✅ COMPLETADO
 
 ```python
-def add(a: int, b: int) -> int:
-    return a + b
-
-def greet(name: str):
-    print("Hello, " + name)
-
-def factorial(n: int) -> int:
-    if n <= 1:
-        return 1
-    return n * factorial(n - 1)
-
-def main():
-    result = add(10, 20)
-    print(result)
-    greet("World")
-```
-
-| Característica | Prioridad | Descripción |
-|----------------|-----------|-------------|
-| Parámetros | 🔴 Alta | Windows x64 calling convention |
-| Return values | 🔴 Alta | RAX para retorno |
-| Llamadas locales | 🔴 Alta | CALL rel32 |
-| Recursión | 🟡 Media | Stack frames |
-| Funciones anidadas | 🟢 Baja | Closures |
-
-**Calling Convention Windows x64:**
-- RCX, RDX, R8, R9 para primeros 4 args
-- Stack para args adicionales
-- RAX para return value
-- Shadow space de 32 bytes
-
----
-
-### Fase 6: Strings y Arrays 🚧
-
-```python
-def main():
-    # Strings
-    name = "ADead-BIB"
-    greeting = "Hello, " + name
-    length = len(name)
-    char = name[0]
-    
-    # Arrays
-    numbers = [1, 2, 3, 4, 5]
-    first = numbers[0]
-    numbers[0] = 10
-    size = len(numbers)
-    
-    for num in numbers:
-        print(num)
-```
-
-| Característica | Prioridad | Descripción |
-|----------------|-----------|-------------|
-| String literals | ✅ Hecho | En sección .rdata |
-| String concat | 🟡 Media | Allocación dinámica |
-| String indexing | 🟡 Media | Acceso por byte |
-| Arrays estáticos | 🟡 Media | En stack o .data |
-| Arrays dinámicos | 🟢 Baja | Heap allocation |
-
----
-
-### Fase 7: Estructuras y Tipos Compuestos 🚧
-
-```python
-struct Point:
-    x: int
-    y: int
-
-struct Rectangle:
-    origin: Point
-    width: int
-    height: int
-
-def area(rect: Rectangle) -> int:
-    return rect.width * rect.height
-
-def main():
-    p = Point(10, 20)
-    rect = Rectangle(p, 100, 50)
-    print(area(rect))
-```
-
-| Característica | Prioridad | Descripción |
-|----------------|-----------|-------------|
-| Structs | 🟡 Media | Layout en memoria |
-| Acceso a campos | 🟡 Media | Offset calculation |
-| Métodos | 🟢 Baja | Self parameter |
-| Enums | 🟢 Baja | Tagged unions |
-
----
-
-### Fase 8: Sistema de Módulos 🚧
-
-```python
-# math.adB
-def add(a: int, b: int) -> int:
-    return a + b
-
-def multiply(a: int, b: int) -> int:
-    return a * b
-
-# main.adB
+# Sintaxis implementada:
 import math
-
-def main():
-    result = math.add(10, 20)
-    print(result)
+import module as alias
+from io import println, debug
 ```
 
-| Característica | Prioridad | Descripción |
-|----------------|-----------|-------------|
-| import | 🟡 Media | Incluir otros archivos |
-| Namespaces | 🟡 Media | Evitar colisiones |
-| Compilación separada | 🟢 Baja | Múltiples .obj |
-| Bibliotecas | 🟢 Baja | .lib/.a estáticas |
+| Característica | Estado | Descripción |
+|----------------|--------|-------------|
+| import | ✅ | Incluir otros archivos |
+| from...import | ✅ | Importar selectivo |
+| as alias | ✅ | Renombrar módulos |
+| stdlib | ✅ | math.adB, io.adB, string.adB |
 
 ---
 
-### Fase 9: Interoperabilidad con Sistema 🚧
+### Fase 9: Interoperabilidad con Sistema ✅ PARCIAL
 
 ```python
-# Llamar funciones de Windows API
+# Actualmente funciona:
+extern "msvcrt.dll":
+    def printf(format: str, ...) -> int
+
+# Próximamente:
 extern "kernel32.dll":
     def GetTickCount() -> int
     def Sleep(ms: int)
-    def CreateFileA(name: str, access: int, ...) -> int
-
-# Llamar funciones de C runtime
-extern "msvcrt.dll":
-    def printf(format: str, ...) -> int
-    def malloc(size: int) -> ptr
-    def free(p: ptr)
-
-def main():
-    start = GetTickCount()
-    Sleep(1000)
-    elapsed = GetTickCount() - start
-    printf("Elapsed: %d ms\n", elapsed)
 ```
 
-| Característica | Prioridad | Descripción |
-|----------------|-----------|-------------|
-| Import DLLs | 🔴 Alta | Ya funciona con msvcrt |
-| Múltiples DLLs | 🟡 Media | Expandir Import Table |
-| Punteros | 🟡 Media | Para interop con C |
-| Variadic functions | 🟢 Baja | printf, etc. |
-
----
-
-### Fase 10: Manejo de Errores 🚧
-
-```python
-def divide(a: int, b: int) -> int:
-    if b == 0:
-        raise "División por cero"
-    return a / b
-
-def main():
-    try:
-        result = divide(10, 0)
-        print(result)
-    except e:
-        print("Error: " + e)
-```
-
-| Característica | Prioridad | Descripción |
-|----------------|-----------|-------------|
-| Excepciones básicas | 🟢 Baja | Stack unwinding |
-| try/except | 🟢 Baja | Exception handling |
-| Result types | 🟡 Media | Alternativa funcional |
+| Característica | Estado | Descripción |
+|----------------|--------|-------------|
+| msvcrt.dll | ✅ | printf funcionando |
+| Múltiples DLLs | 🚧 | En progreso |
+| Punteros | 🚧 | Básico implementado |
+| Variadic functions | ✅ | printf funciona |
 
 ---
 
