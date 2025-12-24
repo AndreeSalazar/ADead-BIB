@@ -10,6 +10,8 @@ pub mod builder;
 
 pub use frontend::parser;
 pub use frontend::ast;
+pub use frontend::lexer;
+pub use frontend::type_checker;
 pub use backend::pe;
 pub use backend::elf;
 pub use runtime::{CPUFeatures, ComputeBackend};

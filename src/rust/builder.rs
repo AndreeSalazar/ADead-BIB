@@ -5,7 +5,7 @@
 use crate::frontend::parser::Parser;
 use crate::frontend::type_checker::TypeChecker;
 use crate::frontend::ast::Program;
-use crate::optimizer::branch_detector::BranchDetector;
+use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
 use crate::backend::codegen_v2::{CodeGeneratorV2, Target};
 use crate::backend::{pe, elf};
@@ -82,7 +82,7 @@ impl Builder {
     /// Aplica optimizaciones al AST
     fn apply_optimizations(program: &mut Program) {
         let detector = BranchDetector::new();
-        let _transformer = BranchlessTransformer::new(); // Prefix with _ to suppress unused warning
+        let transformer = BranchlessTransformer::new();
         
         // Optimizar cada función
         for func in &mut program.functions {
@@ -90,14 +90,49 @@ impl Builder {
             let patterns = detector.analyze(&func.body);
             
             if !patterns.is_empty() {
-                // Aquí deberíamos aplicar las transformaciones.
-                // Por ahora, como BranchlessTransformer retorna nuevos Stmt,
-                // necesitaríamos un mecanismo para reemplazar los Stmt originales en el árbol.
-                // Esta es una implementación simplificada.
+                // Aplicar transformaciones branchless
+                let mut new_body = Vec::new();
+                let mut i = 0;
                 
-                // TODO: Implementar reemplazo en el AST
-                // func.body = transformer.transform_all(func.body, patterns);
+                while i < func.body.len() {
+                    let mut transformed = false;
+                    
+                    // Buscar si el statement actual coincide con algún patrón
+                    for pattern in &patterns {
+                        if let Some(replacement) = Self::try_transform_stmt(&func.body[i], pattern, &transformer) {
+                            new_body.extend(replacement);
+                            transformed = true;
+                            break;
+                        }
+                    }
+                    
+                    if !transformed {
+                        // Si no se transformó, mantener el statement original
+                        new_body.push(func.body[i].clone());
+                    }
+                    
+                    i += 1;
+                }
+                
+                func.body = new_body;
             }
+        }
+    }
+    
+    /// Intenta transformar un statement usando un patrón detectado
+    fn try_transform_stmt(
+        stmt: &crate::frontend::ast::Stmt,
+        pattern: &crate::optimizer::branch_detector::BranchPattern,
+        transformer: &BranchlessTransformer,
+    ) -> Option<Vec<crate::frontend::ast::Stmt>> {
+        // Verificar si el statement coincide con el patrón
+        match (stmt, pattern) {
+            (crate::frontend::ast::Stmt::If { .. }, BranchPattern::ReLU { .. }) |
+            (crate::frontend::ast::Stmt::If { .. }, BranchPattern::Select { .. }) => {
+                // Transformar el patrón
+                Some(transformer.transform(pattern.clone()))
+            }
+            _ => None,
         }
     }
 }

@@ -3,11 +3,14 @@
 //
 // Autor: Eddi Andreé Salazar Matos
 // Email: eddi.salazar.dev@gmail.com
+//
+// Nota: gpu_detect movido a backend/gpu/gpu_detect.rs
 
 pub mod cpu_detect;
-pub mod gpu_detect;
 pub mod dispatcher;
 
 pub use cpu_detect::{CPUFeatures, ComputeBackend};
-pub use gpu_detect::{GPUFeatures, GPUVendor, detect_vulkan_simple, detect_cuda_simple};
 pub use dispatcher::{AutoDispatcher, SystemInfo, PerformanceEstimator};
+
+// Re-export GPU detect desde backend
+pub use crate::backend::gpu::gpu_detect::{GPUFeatures, GPUVendor, detect_vulkan_simple, detect_cuda_simple};

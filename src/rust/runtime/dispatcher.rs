@@ -6,7 +6,7 @@
 // Email: eddi.salazar.dev@gmail.com
 
 use super::cpu_detect::{CPUFeatures, ComputeBackend};
-use super::gpu_detect::{GPUFeatures, GPUVendor};
+use crate::backend::gpu::gpu_detect::{GPUFeatures, GPUVendor};
 
 /// Umbral de tamaño para usar GPU (en elementos)
 const DEFAULT_GPU_THRESHOLD: usize = 1024 * 1024; // 1M elementos

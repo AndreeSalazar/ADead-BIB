@@ -21,9 +21,15 @@ pub enum ParseError {
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::UnexpectedToken(t) => write!(f, "Unexpected token: {:?}", t),
-            ParseError::UnexpectedEof => write!(f, "Unexpected EOF"),
-            ParseError::ExpectedToken(s) => write!(f, "Expected token: {}", s),
+            ParseError::UnexpectedToken(t) => {
+                write!(f, "❌ Syntax Error: Unexpected token '{:?}'. Check your syntax.", t)
+            }
+            ParseError::UnexpectedEof => {
+                write!(f, "❌ Syntax Error: Unexpected end of file. Missing closing brackets, parentheses, or statements.")
+            }
+            ParseError::ExpectedToken(s) => {
+                write!(f, "❌ Syntax Error: Expected '{}' but found something else.", s)
+            }
         }
     }
 }

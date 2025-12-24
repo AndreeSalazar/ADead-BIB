@@ -54,18 +54,35 @@ impl TypeChecker {
         match stmt {
             Stmt::Assign { name, value } => {
                 let val_type = self.infer_expr(value);
+                if val_type == Type::Unknown {
+                    eprintln!("⚠️  Warning: Cannot infer type for variable '{}'", name);
+                }
                 self.symbol_table.insert(name.clone(), val_type);
             }
             Stmt::If { condition, then_body, else_body } => {
-                self.infer_expr(condition); // Debe ser Bool
+                let cond_type = self.infer_expr(condition);
+                if cond_type != Type::Bool && cond_type != Type::Unknown {
+                    eprintln!("⚠️  Warning: Condition in if statement should be bool, found {:?}", cond_type);
+                }
                 for s in then_body { self.check_stmt(s); }
                 if let Some(else_stmts) = else_body {
                     for s in else_stmts { self.check_stmt(s); }
                 }
             }
             Stmt::Return(Some(expr)) => {
-                let _ret = self.infer_expr(expr);
-                // Aquí verificaríamos ret == self.current_return_type
+                let ret_type = self.infer_expr(expr);
+                if self.current_return_type != Type::Void && ret_type != self.current_return_type {
+                    if ret_type != Type::Unknown && self.current_return_type != Type::Unknown {
+                        eprintln!("⚠️  Warning: Return type mismatch. Expected {:?}, found {:?}", 
+                                 self.current_return_type, ret_type);
+                    }
+                }
+            }
+            Stmt::Return(None) => {
+                if self.current_return_type != Type::Void {
+                    eprintln!("⚠️  Warning: Function should return {:?}, but found void return", 
+                             self.current_return_type);
+                }
             }
             _ => {} // Implementar resto
         }
@@ -77,16 +94,58 @@ impl TypeChecker {
             Expr::Float(_) => Type::Float,
             Expr::String(_) => Type::String,
             Expr::Bool(_) => Type::Bool,
-            Expr::Variable(name) => self.symbol_table.get(name).cloned().unwrap_or(Type::Unknown),
-            Expr::BinaryOp { left, right, op: _op } => {
+            Expr::Null => Type::Unknown,
+            Expr::Variable(name) => {
+                self.symbol_table.get(name).cloned().unwrap_or_else(|| {
+                    eprintln!("⚠️  Warning: Variable '{}' used before assignment", name);
+                    Type::Unknown
+                })
+            }
+            Expr::BinaryOp { left, right, op } => {
                 let l = self.infer_expr(left);
                 let r = self.infer_expr(right);
                 
-                if l == Type::Float || r == Type::Float {
-                    Type::Float
-                } else {
-                    l
+                // Validar tipos compatibles
+                match op {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                        if l == Type::String || r == Type::String {
+                            eprintln!("⚠️  Warning: Cannot perform arithmetic on string types");
+                            return Type::Unknown;
+                        }
+                        if l == Type::Float || r == Type::Float {
+                            Type::Float
+                        } else if l == Type::Int && r == Type::Int {
+                            Type::Int
+                        } else {
+                            Type::Unknown
+                        }
+                    }
+                    BinOp::Mod => {
+                        if l != Type::Int || r != Type::Int {
+                            eprintln!("⚠️  Warning: Modulo operator requires integer operands");
+                            return Type::Unknown;
+                        }
+                        Type::Int
+                    }
+                    BinOp::And | BinOp::Or => {
+                        if l != Type::Bool || r != Type::Bool {
+                            eprintln!("⚠️  Warning: Logical operators require boolean operands");
+                            return Type::Unknown;
+                        }
+                        Type::Bool
+                    }
                 }
+            }
+            Expr::Comparison { left, right, op: _op } => {
+                let _l = self.infer_expr(left);
+                let _r = self.infer_expr(right);
+                Type::Bool
+            }
+            Expr::Call { name, args: _args } => {
+                // Por ahora, asumimos que las funciones built-in retornan tipos conocidos
+                // En el futuro, esto debería consultar la tabla de símbolos de funciones
+                eprintln!("⚠️  Warning: Cannot infer return type for function call '{}'", name);
+                Type::Unknown
             }
             _ => Type::Unknown,
         }
