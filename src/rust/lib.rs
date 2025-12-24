@@ -5,6 +5,7 @@
 pub mod frontend;
 pub mod backend;
 pub mod runtime;
+pub mod optimizer;
 
 pub use frontend::parser;
 pub use frontend::ast;

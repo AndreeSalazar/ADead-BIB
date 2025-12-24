@@ -10,7 +10,7 @@
 
 **Author:** Eddi Andreé Salazar Matos  
 **Email:** eddi.salazar.dev@gmail.com  
-**License:** MIT
+**License:** Apache 2.0
 
 ---
 
@@ -32,6 +32,7 @@
 | **Auto-Dispatch CPU/GPU** | ✅ NEW |
 | **Deterministic Runtime** | ✅ NEW |
 | **Server Load Benchmarks** | ✅ |
+| **Branchless Optimizer** | 🚧 WIP |
 
 ---
 
@@ -130,7 +131,7 @@ ADead-BIB/
 │   ├── Cargo.toml         # Dependencies
 │   └── README.md          # Game documentation
 ├── Como_usar.md           # Quick start guide (Spanish)
-├── LICENSE                # MIT License
+├── LICENSE                # Apache 2.0 License
 └── README.md              # This file
 ```
 
