@@ -78,8 +78,10 @@ cargo run --release examples/hello_world.adB
 ```
 ADead-BIB/
 ├── src/rust/              # Compiler (Lexer, Parser, Codegen, PE)
-│   ├── frontend/          # Lexer, Parser, AST
-│   └── backend/           # Code generation, PE generator
+│   ├── frontend/          # Lexer, Parser, AST, Types
+│   ├── backend/           # Code generation, PE/ELF, Syscalls
+│   ├── optimizer/         # Branchless & SIMD Optimizer
+│   └── builder.rs         # Orchestrator & Build System
 ├── examples/              # .adB example files
 ├── stdlib/                # Standard library (math, io, string)
 ├── python/                # Python FFI + AI + GPU

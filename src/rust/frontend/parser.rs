@@ -18,6 +18,18 @@ pub enum ParseError {
     ExpectedToken(&'static str),
 }
 
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::UnexpectedToken(t) => write!(f, "Unexpected token: {:?}", t),
+            ParseError::UnexpectedEof => write!(f, "Unexpected EOF"),
+            ParseError::ExpectedToken(s) => write!(f, "Expected token: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}
+
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
@@ -60,7 +72,7 @@ impl Parser {
         parser.parse()
     }
     
-    fn parse(&mut self) -> Result<Program, ParseError> {
+    pub fn parse(&mut self) -> Result<Program, ParseError> {
         let mut program = Program::new();
         
         self.skip_newlines();

@@ -6,6 +6,7 @@ pub mod frontend;
 pub mod backend;
 pub mod runtime;
 pub mod optimizer;
+pub mod builder;
 
 pub use frontend::parser;
 pub use frontend::ast;

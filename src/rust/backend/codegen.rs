@@ -63,6 +63,9 @@ impl CodeGenerator {
             Stmt::Expr(expr) => {
                 self.emit_expression(expr);
             }
+            _ => {
+                // Not implemented yet for legacy codegen
+            }
         }
     }
 
@@ -108,6 +111,9 @@ impl CodeGenerator {
             Expr::Call { .. } => {
                 // TODO: Implementar llamadas
             }
+            _ => {
+                // Not implemented yet for legacy codegen
+            }
         }
     }
 
@@ -144,6 +150,9 @@ impl CodeGenerator {
                 self.code.push(0x99);
                 // idiv rbx
                 self.emit_bytes(&[0x48, 0xF7, 0xFB]);
+            }
+            _ => {
+                // Not implemented yet for legacy codegen
             }
         }
     }
