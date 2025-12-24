@@ -76,6 +76,34 @@
       "importance": 1.0,
       "access_count": 0,
       "category": "conversations"
+    },
+    {
+      "content": "Usuario: sabes que gpu ¿uso?",
+      "timestamp": 1766615493.1711042,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ¿Que GPU uso en mi PC?",
+      "timestamp": 1766615500.2425969,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: RTX?",
+      "timestamp": 1766615503.9470983,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ¿algo más?",
+      "timestamp": 1766615508.7142131,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
     }
   ],
   "categories": [

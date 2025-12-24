@@ -28,6 +28,12 @@ python -m Metal_Dead --smart
 # 🔥 MÁXIMO PODER (Inteligencia + GPU MAX)
 python -m Metal_Dead --smart-gpu
 
+# 🤖 JARVIS - Asistente Completo (búsqueda web, datos, proyectos)
+python -m Metal_Dead --jarvis
+
+# 🎤 JARVIS con Voz (control por voz tipo Iron Man)
+python -m Metal_Dead --jarvis-voice
+
 # Demo del sistema
 python -m Metal_Dead --demo
 
@@ -45,6 +51,8 @@ Metal_Dead/
 ├── __main__.py           # Punto de entrada
 ├── core/
 │   ├── metal_dead.py     # Sistema principal
+│   ├── metal_dead_smart.py # IA con pensamiento crítico
+│   ├── intelligence.py   # Motor de inteligencia
 │   ├── memory.py         # Memoria persistente
 │   ├── context.py        # Contexto personal
 │   ├── tokenizer.py      # Tokenizador
@@ -52,7 +60,13 @@ Metal_Dead/
 ├── integrations/
 │   ├── gpu_compute.py    # GPU básico
 │   ├── gpu_advanced.py   # GPU MAX (Flash Attention)
-│   └── adead_accelerator.py  # ADead-BIB
+│   └── metal_dead_smart_gpu.py # Inteligencia + GPU
+├── jarvis/
+│   └── jarvis.py         # 🤖 Asistente JARVIS completo
+├── tools/
+│   ├── web_search.py     # 🌐 Búsqueda en internet
+│   ├── file_manager.py   # 📁 Creación de proyectos
+│   └── data_analyst.py   # 📊 Análisis de datos
 ├── ui/
 │   ├── chat.py           # Chat interactivo
 │   └── cli.py            # Línea de comandos

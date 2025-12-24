@@ -33,6 +33,8 @@ Ejemplos:
     parser.add_argument("--gpu-max", action="store_true", help="GPU MAX: Flash Attention + BF16")
     parser.add_argument("--smart", action="store_true", help="Modo inteligente (pensamiento crítico)")
     parser.add_argument("--smart-gpu", action="store_true", help="Inteligente + GPU MAX (máximo poder)")
+    parser.add_argument("--jarvis", action="store_true", help="🤖 Modo JARVIS (asistente completo)")
+    parser.add_argument("--jarvis-voice", action="store_true", help="🎤 JARVIS con control por voz")
     parser.add_argument("--adead", action="store_true", help="Aceleración ADead-BIB")
     parser.add_argument("--demo", action="store_true", help="Ejecutar demo")
     parser.add_argument("--benchmark", action="store_true", help="Ejecutar benchmark")
@@ -40,7 +42,11 @@ Ejemplos:
     
     args = parser.parse_args()
     
-    if getattr(args, 'smart_gpu', False):
+    if getattr(args, 'jarvis_voice', False):
+        mode = "jarvis_voice"
+    elif getattr(args, 'jarvis', False):
+        mode = "jarvis"
+    elif getattr(args, 'smart_gpu', False):
         mode = "smart_gpu"
     elif getattr(args, 'smart', False):
         mode = "smart"
@@ -59,6 +65,16 @@ Ejemplos:
         run_benchmark(mode)
     elif args.info:
         show_info()
+    elif mode == "jarvis":
+        from Metal_Dead.jarvis.jarvis import MetalJarvis, JarvisConfig
+        config = JarvisConfig(use_voice=False)
+        jarvis = MetalJarvis(config)
+        jarvis.interactive()
+    elif mode == "jarvis_voice":
+        from Metal_Dead.jarvis.jarvis import MetalJarvis, JarvisConfig
+        config = JarvisConfig(use_voice=True)
+        jarvis = MetalJarvis(config)
+        jarvis.voice_mode()
     else:
         from Metal_Dead.ui.chat import MetalDeadChat
         chat = MetalDeadChat(mode=mode)
