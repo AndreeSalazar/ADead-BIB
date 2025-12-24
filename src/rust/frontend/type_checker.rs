@@ -64,7 +64,7 @@ impl TypeChecker {
                 }
             }
             Stmt::Return(Some(expr)) => {
-                let ret = self.infer_expr(expr);
+                let _ret = self.infer_expr(expr);
                 // Aquí verificaríamos ret == self.current_return_type
             }
             _ => {} // Implementar resto
@@ -78,7 +78,7 @@ impl TypeChecker {
             Expr::String(_) => Type::String,
             Expr::Bool(_) => Type::Bool,
             Expr::Variable(name) => self.symbol_table.get(name).cloned().unwrap_or(Type::Unknown),
-            Expr::BinaryOp { left, right, op } => {
+            Expr::BinaryOp { left, right, op: _op } => {
                 let l = self.infer_expr(left);
                 let r = self.infer_expr(right);
                 

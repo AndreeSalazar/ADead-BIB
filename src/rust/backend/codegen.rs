@@ -1,70 +1,76 @@
-// Code Generator - Emite opcodes directamente desde AST
-// NO ASM - escribimos bytes directamente
-
-use crate::frontend::ast::*;
-
-const BASE_ADDRESS: u64 = 0x400000;
+use std::collections::HashMap;
+use crate::frontend::ast::{Stmt, Expr, BinOp, UnaryOp, CmpOp};
 
 pub struct CodeGenerator {
     code: Vec<u8>,
-    strings: Vec<String>,
+    data: Vec<u8>,
+    strings: HashMap<String, usize>, // String -> Offset in data
     string_addresses: Vec<u64>,
     base_address: u64,
+    variables: HashMap<String, usize>, // Name -> Stack Offset
+    stack_offset: usize,
 }
 
 impl CodeGenerator {
     pub fn new(base_address: u64) -> Self {
         Self {
             code: Vec::new(),
-            strings: Vec::new(),
+            data: Vec::new(),
+            strings: HashMap::new(),
             string_addresses: Vec::new(),
             base_address,
+            variables: HashMap::new(),
+            stack_offset: 0,
         }
     }
 
-    pub fn generate(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>) {
-        // Buscar función main
-        for func in &program.functions {
-            if func.name == "main" {
-                self.emit_function(func);
-                break;
-            }
-        }
+    pub fn generate(&mut self, program: &crate::frontend::ast::Program) -> (Vec<u8>, Vec<u8>) {
+        // Generar header y setup inicial
+        self.emit_prologue();
 
-        // Generar sección de datos (strings)
-        let data = self.generate_data_section();
-
-        (self.code.clone(), data)
-    }
-
-    fn emit_function(&mut self, func: &Function) {
-        // Para Windows x64, necesitamos un entry point válido
-        // Por ahora, código mínimo que simplemente retorna
-        
-        // Emitir statements
-        for stmt in &func.body {
+        for stmt in &program.statements {
             self.emit_statement(stmt);
         }
-        
-        // Retornar (código mínimo)
+
+        self.emit_epilogue();
+
+        (self.code.clone(), self.data.clone())
+    }
+
+    fn emit_prologue(&mut self) {
+        // push rbp
+        // mov rbp, rsp
+        self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]);
+    }
+
+    fn emit_epilogue(&mut self) {
+        // pop rbp
         // ret
-        self.code.push(0xC3);
+        self.code.extend_from_slice(&[0x5D, 0xC3]);
     }
 
     fn emit_statement(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::Print(expr) => {
-                self.emit_print(expr);
-            }
-            Stmt::Assign { name: _, value } => {
-                // Por ahora solo evaluamos, no guardamos
+            Stmt::Print(expr) => self.emit_print(expr),
+            Stmt::PrintNum(expr) => self.emit_print(expr), // Treat as print for now
+            Stmt::Assign { name, value } => {
                 self.emit_expression(value);
+                // mov [rbp - offset], rax
+                let offset = self.get_variable_offset(name);
+                self.code.push(0x48);
+                self.code.push(0x89);
+                self.code.push(0x85);
+                self.emit_u32(offset as u32); // Use u32 for offset
+            }
+            Stmt::If { condition: _condition, then_body: _then_body, else_body: _else_body } => {
+                // TODO: Implementar control flow
+                eprintln!("⚠️  If statement not implemented in legacy codegen");
             }
             Stmt::Expr(expr) => {
                 self.emit_expression(expr);
             }
             _ => {
-                // Not implemented yet for legacy codegen
+                eprintln!("⚠️  Statement type not implemented in legacy codegen: {:?}", stmt);
             }
         }
     }
@@ -72,16 +78,7 @@ impl CodeGenerator {
     fn emit_print(&mut self, expr: &Expr) {
         match expr {
             Expr::String(s) => {
-                // Versión simplificada: por ahora solo retornamos
-                // TODO: Agregar llamada a printf cuando Import Table esté lista
-                
-                // Por ahora, emitimos código que simplemente retorna
-                // Esto permite que el PE sea válido y ejecutable
-                // Luego agregamos printf
-                
                 eprintln!("⚠️  Print implementación pendiente - usando ret por ahora");
-                
-                // Guardamos el string para referencia futura
                 let _string_idx = self.add_string(s.clone());
             }
             _ => {
@@ -99,93 +96,101 @@ impl CodeGenerator {
                 self.code.push(0xC0); // ModR/M: rax
                 self.emit_u32(*n as u32);
             }
-            Expr::String(_) => {
-                // Ya manejado en emit_print
+            Expr::Float(f) => {
+                let bits = f.to_bits();
+                self.code.push(0x48);
+                self.code.push(0xB8);
+                self.emit_u64(bits);
             }
-            Expr::Variable(_) => {
-                // TODO: Implementar variables
+            Expr::String(s) => {
+                let string_idx = self.add_string(s.clone());
+                let string_addr = self.string_addresses[string_idx];
+                self.code.push(0x48); 
+                self.code.push(0xB8); 
+                self.emit_u64(string_addr);
+            }
+            Expr::Bool(b) => {
+                self.code.push(0x48);
+                self.code.push(0xC7);
+                self.code.push(0xC0);
+                self.emit_u32(if *b { 1 } else { 0 });
+            }
+            Expr::Null => {
+                self.emit_bytes(&[0x48, 0x31, 0xC0]);
+            }
+            Expr::Variable(name) => {
+                self.emit_variable_load(name);
             }
             Expr::BinaryOp { op, left, right } => {
                 self.emit_binary_op(op, left, right);
             }
-            Expr::Call { .. } => {
-                // TODO: Implementar llamadas
+            Expr::UnaryOp { op, expr } => {
+                self.emit_unary_op(op, expr);
             }
-            _ => {
-                // Not implemented yet for legacy codegen
+            Expr::Comparison { op, left, right } => {
+                self.emit_comparison(op, left, right);
             }
-        }
-    }
-
-    fn emit_binary_op(&mut self, op: &BinOp, left: &Expr, right: &Expr) {
-        // Evaluar left
-        self.emit_expression(left);
-        // push rax
-        self.code.push(0x50);
-        
-        // Evaluar right
-        self.emit_expression(right);
-        // mov rbx, rax
-        self.emit_bytes(&[0x48, 0x89, 0xC3]);
-        
-        // pop rax
-        self.code.push(0x58);
-        
-        match op {
-            BinOp::Add => {
-                // add rax, rbx
-                self.emit_bytes(&[0x48, 0x01, 0xD8]);
+            Expr::Call { name, args } => {
+                self.emit_function_call(name, args);
             }
-            BinOp::Sub => {
-                // sub rax, rbx
-                self.emit_bytes(&[0x48, 0x29, 0xD8]);
+            Expr::Array(elements) => {
+                self.emit_array_creation(elements);
             }
-            BinOp::Mul => {
-                // imul rax, rbx
-                self.emit_bytes(&[0x48, 0x0F, 0xAF, 0xC3]);
+            Expr::Index { object, index } => {
+                self.emit_index_access(object, index);
             }
-            BinOp::Div => {
-                // cqo (sign extend rax to rdx:rax)
-                self.code.push(0x48);
-                self.code.push(0x99);
-                // idiv rbx
-                self.emit_bytes(&[0x48, 0xF7, 0xFB]);
+            Expr::Slice { object, start, end } => {
+                self.emit_slice(object, start, end);
             }
-            _ => {
-                // Not implemented yet for legacy codegen
+            Expr::New { class_name, args } => {
+                self.emit_object_creation(class_name, args);
+            }
+            Expr::MethodCall { object, method, args } => {
+                self.emit_method_call(object, method, args);
+            }
+            Expr::FieldAccess { object, field } => {
+                self.emit_field_access(object, field);
+            }
+            Expr::This => {
+                self.emit_bytes(&[0x48, 0x89, 0xF8]);
+            }
+            Expr::Super => {
+                self.emit_bytes(&[0x48, 0x8B, 0x7F, 0x08]);
+            }
+            Expr::Lambda { params, body } => {
+                 self.emit_lambda(params, body);
+            }
+            Expr::Ternary { condition, then_expr, else_expr } => {
+                 self.emit_ternary(condition, then_expr, else_expr);
             }
         }
     }
 
+    // Helpers
     fn add_string(&mut self, s: String) -> usize {
-        let idx = self.strings.len();
-        self.strings.push(s.clone());
+        if let Some(&idx) = self.strings.get(&s) {
+            return idx;
+        }
+        let idx = self.string_addresses.len();
+        self.strings.insert(s.clone(), idx);
         
-        // Calcular dirección (data section empieza después del código)
-        let data_offset = self.base_address + 0x1000; // .data empieza en +0x1000
-        let string_addr = data_offset + (idx as u64 * 0x100); // Cada string en offset diferente
-        self.string_addresses.push(string_addr);
+        // Calcular dirección basada en data actual
+        let offset = self.data.len() as u64;
+        self.string_addresses.push(self.base_address + 0x2000 + offset); // 0x2000 es offset arbitrario de data section
+        
+        self.data.extend_from_slice(s.as_bytes());
+        self.data.push(0); // Null terminator
         
         idx
     }
 
-    fn generate_data_section(&self) -> Vec<u8> {
-        let mut data = Vec::new();
-        
-        for s in &self.strings {
-            data.extend_from_slice(s.as_bytes());
-            data.push(0); // Null terminator
-            // Alinear a 16 bytes
-            while data.len() % 16 != 0 {
-                data.push(0);
-            }
+    fn get_variable_offset(&mut self, name: &str) -> usize {
+        if let Some(&offset) = self.variables.get(name) {
+            return offset;
         }
-        
-        data
-    }
-
-    fn emit_bytes(&mut self, bytes: &[u8]) {
-        self.code.extend_from_slice(bytes);
+        self.stack_offset += 8;
+        self.variables.insert(name.to_string(), self.stack_offset);
+        self.stack_offset
     }
 
     fn emit_u32(&mut self, value: u32) {
@@ -195,5 +200,69 @@ impl CodeGenerator {
     fn emit_u64(&mut self, value: u64) {
         self.code.extend_from_slice(&value.to_le_bytes());
     }
-}
+    
+    fn emit_bytes(&mut self, bytes: &[u8]) {
+        self.code.extend_from_slice(bytes);
+    }
 
+    // --- Stubs for missing methods ---
+    
+    fn emit_variable_load(&mut self, name: &str) {
+        // Implementación básica o stub
+         eprintln!("⚠️  emit_variable_load not fully implemented in legacy codegen");
+         let offset = self.get_variable_offset(name);
+         // mov rax, [rbp - offset]
+         self.code.push(0x48);
+         self.code.push(0x8B);
+         self.code.push(0x85);
+         self.emit_u32(-(offset as i32) as u32);
+    }
+
+    fn emit_binary_op(&mut self, _op: &BinOp, _left: &Expr, _right: &Expr) {
+        eprintln!("⚠️  emit_binary_op stub");
+    }
+
+    fn emit_unary_op(&mut self, _op: &UnaryOp, _expr: &Expr) {
+        eprintln!("⚠️  emit_unary_op stub");
+    }
+
+    fn emit_comparison(&mut self, _op: &CmpOp, _left: &Expr, _right: &Expr) {
+        eprintln!("⚠️  emit_comparison stub");
+    }
+
+    fn emit_function_call(&mut self, _name: &str, _args: &[Expr]) {
+        eprintln!("⚠️  emit_function_call stub");
+    }
+    
+    fn emit_array_creation(&mut self, _elements: &[Expr]) {
+        eprintln!("⚠️  emit_array_creation stub");
+    }
+    
+    fn emit_index_access(&mut self, _object: &Expr, _index: &Expr) {
+        eprintln!("⚠️  emit_index_access stub");
+    }
+    
+    fn emit_slice(&mut self, _object: &Expr, _start: &Option<Box<Expr>>, _end: &Option<Box<Expr>>) {
+        eprintln!("⚠️  emit_slice stub");
+    }
+    
+    fn emit_object_creation(&mut self, _class_name: &str, _args: &[Expr]) {
+        eprintln!("⚠️  emit_object_creation stub");
+    }
+    
+    fn emit_method_call(&mut self, _object: &Expr, _method: &str, _args: &[Expr]) {
+        eprintln!("⚠️  emit_method_call stub");
+    }
+    
+    fn emit_field_access(&mut self, _object: &Expr, _field: &str) {
+        eprintln!("⚠️  emit_field_access stub");
+    }
+    
+    fn emit_lambda(&mut self, _params: &[String], _body: &Box<Expr>) {
+        eprintln!("⚠️  emit_lambda stub");
+    }
+    
+    fn emit_ternary(&mut self, _condition: &Expr, _then_expr: &Expr, _else_expr: &Expr) {
+        eprintln!("⚠️  emit_ternary stub");
+    }
+}

@@ -272,33 +272,33 @@ impl CPUFeatures {
 /// Backend de compute disponible
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ComputeBackend {
-    CPU_Scalar,
-    CPU_SSE2,
-    CPU_AVX,
-    CPU_AVX2,
-    CPU_AVX512,
-    GPU_Vulkan,
-    GPU_CUDA,
+    CpuScalar,
+    CpuSse2,
+    CpuAvx,
+    CpuAvx2,
+    CpuAvx512,
+    GpuVulkan,
+    GpuCuda,
 }
 
 impl ComputeBackend {
     /// Selecciona el mejor backend CPU basado en las features
     pub fn best_cpu(features: &CPUFeatures) -> Self {
-        if features.has_avx512f { Self::CPU_AVX512 }
-        else if features.has_avx2 { Self::CPU_AVX2 }
-        else if features.has_avx { Self::CPU_AVX }
-        else if features.has_sse2 { Self::CPU_SSE2 }
-        else { Self::CPU_Scalar }
+        if features.has_avx512f { Self::CpuAvx512 }
+        else if features.has_avx2 { Self::CpuAvx2 }
+        else if features.has_avx { Self::CpuAvx }
+        else if features.has_sse2 { Self::CpuSse2 }
+        else { Self::CpuScalar }
     }
     
     /// Retorna el ancho SIMD del backend
     pub fn simd_width(&self) -> u32 {
         match self {
-            Self::CPU_AVX512 => 512,
-            Self::CPU_AVX2 | Self::CPU_AVX => 256,
-            Self::CPU_SSE2 => 128,
-            Self::CPU_Scalar => 64,
-            Self::GPU_Vulkan | Self::GPU_CUDA => 0, // N/A para GPU
+            Self::CpuAvx512 => 512,
+            Self::CpuAvx2 | Self::CpuAvx => 256,
+            Self::CpuSse2 => 128,
+            Self::CpuScalar => 64,
+            Self::GpuVulkan | Self::GpuCuda => 0, // N/A para GPU
         }
     }
 }

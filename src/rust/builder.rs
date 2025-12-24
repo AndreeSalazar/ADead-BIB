@@ -2,7 +2,6 @@
 // Orquestador principal del compilador
 // Conecta Frontend -> Optimizer -> Backend
 
-use crate::frontend::lexer::Lexer;
 use crate::frontend::parser::Parser;
 use crate::frontend::type_checker::TypeChecker;
 use crate::frontend::ast::Program;
@@ -10,6 +9,7 @@ use crate::optimizer::branch_detector::BranchDetector;
 use crate::optimizer::branchless::BranchlessTransformer;
 use crate::backend::codegen_v2::{CodeGeneratorV2, Target};
 use crate::backend::{pe, elf};
+// use crate::backend::{pe_minimal as pe, elf};
 use std::fs;
 
 #[derive(Clone, Debug)]
@@ -42,10 +42,7 @@ impl Builder {
 
         // 1. Frontend: Lexing & Parsing
         if options.verbose { println!("Step 1: Parsing..."); }
-        let mut lexer = Lexer::new(source);
-        let tokens = lexer.tokenize();
-        let mut parser = Parser::new(tokens);
-        let mut program = parser.parse()?;
+        let mut program = Parser::parse_program(source)?;
 
         // 2. Type Checking (Static Analysis)
         if options.verbose { println!("Step 2: Type Checking..."); }

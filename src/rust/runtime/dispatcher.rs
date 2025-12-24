@@ -62,7 +62,7 @@ impl AutoDispatcher {
     }
     
     /// Selecciona el mejor backend para una operación
-    pub fn select(&self, op: &str, size: usize) -> ComputeBackend {
+    pub fn select(&self, _op: &str, size: usize) -> ComputeBackend {
         // Si hay backend forzado, usarlo
         if let Some(backend) = self.forced_backend {
             return backend;
@@ -74,10 +74,10 @@ impl AutoDispatcher {
                 // Preferir CUDA para NVIDIA, Vulkan para otros
                 match gpu.vendor {
                     GPUVendor::NVIDIA if gpu.cuda_available => {
-                        return ComputeBackend::GPU_CUDA;
+                        return ComputeBackend::GpuCuda;
                     }
                     _ if gpu.vulkan_available => {
-                        return ComputeBackend::GPU_Vulkan;
+                        return ComputeBackend::GpuVulkan;
                     }
                     _ => {}
                 }
@@ -96,23 +96,23 @@ impl AutoDispatcher {
         if flops >= self.gpu_threshold / 2 {
             if let Some(gpu) = &self.gpu {
                 if gpu.cuda_available {
-                    return ComputeBackend::GPU_CUDA;
+                    return ComputeBackend::GpuCuda;
                 }
                 if gpu.vulkan_available {
-                    return ComputeBackend::GPU_Vulkan;
+                    return ComputeBackend::GpuVulkan;
                 }
             }
         }
         
         // CPU con mejor SIMD
         if self.cpu.has_avx512f {
-            ComputeBackend::CPU_AVX512
+            ComputeBackend::CpuAvx512
         } else if self.cpu.has_avx2 && self.cpu.has_fma {
-            ComputeBackend::CPU_AVX2
+            ComputeBackend::CpuAvx2
         } else if self.cpu.has_avx {
-            ComputeBackend::CPU_AVX
+            ComputeBackend::CpuAvx
         } else {
-            ComputeBackend::CPU_SSE2
+            ComputeBackend::CpuSse2
         }
     }
     
@@ -260,11 +260,11 @@ mod tests {
         
         // Debe seleccionar un backend CPU válido
         assert!(matches!(backend, 
-            ComputeBackend::CPU_AVX512 | 
-            ComputeBackend::CPU_AVX2 | 
-            ComputeBackend::CPU_AVX |
-            ComputeBackend::CPU_SSE2 |
-            ComputeBackend::CPU_Scalar
+            ComputeBackend::CpuAvx512 | 
+            ComputeBackend::CpuAvx2 | 
+            ComputeBackend::CpuAvx |
+            ComputeBackend::CpuSse2 |
+            ComputeBackend::CpuScalar
         ));
     }
 }

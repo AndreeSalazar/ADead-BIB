@@ -5,7 +5,7 @@
 // Autor: Eddi Andreé Salazar Matos
 // Email: eddi.salazar.dev@gmail.com
 
-use std::path::Path;
+// use std::path::Path;
 
 /// Vendor de GPU detectado
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

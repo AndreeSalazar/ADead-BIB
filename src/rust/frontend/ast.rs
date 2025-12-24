@@ -214,6 +214,7 @@ pub struct Program {
     pub interfaces: Vec<Interface>,
     pub classes: Vec<Class>,
     pub functions: Vec<Function>,
+    pub statements: Vec<Stmt>, // Top-level statements (scripts)
 }
 
 impl Program {
@@ -223,6 +224,7 @@ impl Program {
             interfaces: Vec::new(),
             classes: Vec::new(),
             functions: Vec::new(),
+            statements: Vec::new(),
         }
     }
     
@@ -240,6 +242,10 @@ impl Program {
     
     pub fn add_interface(&mut self, iface: Interface) {
         self.interfaces.push(iface);
+    }
+
+    pub fn add_statement(&mut self, stmt: Stmt) {
+        self.statements.push(stmt);
     }
 }
 

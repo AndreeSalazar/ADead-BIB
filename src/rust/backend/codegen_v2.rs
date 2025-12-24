@@ -58,7 +58,7 @@ pub struct CodeGeneratorV2 {
 impl CodeGeneratorV2 {
     pub fn new(target: Target) -> Self {
         let (base, data_rva) = match target {
-            Target::Windows => (0x400000, 0x2060),
+            Target::Windows => (0x0000000140000000, 0x2060),
             Target::Linux => (0x400000, 0x1000),
             Target::Raw => (0x0, 0x1000),
         };
@@ -84,16 +84,23 @@ impl CodeGeneratorV2 {
     pub fn generate(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>) {
         // Fase 1: Recolectar strings
         self.collect_all_strings(program);
+        // Incluir strings de nivel superior
+        self.collect_strings_from_stmts(&program.statements);
         
-        // Fase 2: Compilar todas las funciones
+        // Fase 2: Compilar nivel superior como punto de entrada (si existe)
+        if !program.statements.is_empty() {
+            self.compile_top_level(&program.statements);
+        }
+        
+        // Fase 3: Compilar todas las funciones
         for func in &program.functions {
             self.compile_function(func);
         }
         
-        // Fase 3: Resolver llamadas a funciones
+        // Fase 4: Resolver llamadas a funciones
         self.resolve_function_calls();
         
-        // Fase 4: Generar sección de datos
+        // Fase 5: Generar sección de datos
         self.generate_data_section();
         
         (self.code.clone(), self.data.clone())
@@ -111,6 +118,45 @@ impl CodeGeneratorV2 {
             self.string_offsets.insert(s.clone(), offset);
             offset += s.len() as u64 + 1;
         }
+    }
+    
+    /// Compila statements de nivel superior como función de entrada
+    fn compile_top_level(&mut self, stmts: &[Stmt]) {
+        let func_offset = self.code.len();
+        self.current_function = Some("__entry".to_string());
+        self.variables.clear();
+        self.stack_offset = -8;
+        self.max_stack = 0;
+        
+        // Prologue
+        self.emit_bytes(&[0x55]);                    // push rbp
+        self.emit_bytes(&[0x48, 0x89, 0xE5]);        // mov rbp, rsp
+        self.emit_bytes(&[0x48, 0x81, 0xEC, 0x00, 0x00, 0x00, 0x00]);  // sub rsp, imm32
+        let stack_size_offset = self.code.len() - 4;
+        
+        for stmt in stmts {
+            self.emit_statement(stmt);
+        }
+        
+        // Epilogue
+        self.emit_bytes(&[0x31, 0xC0]);              // xor eax, eax
+        self.emit_bytes(&[0x48, 0x89, 0xEC]);        // mov rsp, rbp
+        self.emit_bytes(&[0x5D]);                    // pop rbp
+        self.emit_bytes(&[0xC3]);                    // ret
+        
+        let stack_size = ((-self.stack_offset + 15) & !15) as u32; // 16-byte alignment
+        self.code[stack_size_offset..stack_size_offset + 4]
+            .copy_from_slice(&stack_size.to_le_bytes());
+        
+        self.functions.insert("__entry".to_string(), CompiledFunction {
+            name: "__entry".to_string(),
+            offset: func_offset,
+            size: self.code.len() - func_offset,
+            params: vec![],
+            locals_size: -self.stack_offset,
+        });
+        
+        self.current_function = None;
     }
     
     fn collect_strings_from_stmts(&mut self, stmts: &[Stmt]) {
@@ -162,7 +208,7 @@ impl CodeGeneratorV2 {
         }
         
         // Prologue placeholder (se parchea después)
-        let prologue_start = self.code.len();
+        let _prologue_start = self.code.len();
         self.emit_bytes(&[0x55]);                    // push rbp
         self.emit_bytes(&[0x48, 0x89, 0xE5]);        // mov rbp, rsp
         self.emit_bytes(&[0x48, 0x81, 0xEC, 0x00, 0x00, 0x00, 0x00]);  // sub rsp, imm32
@@ -280,6 +326,36 @@ impl CodeGeneratorV2 {
                     self.emit_bytes(&[0x48, 0xB9]);
                     self.emit_u64(string_addr);
                     self.emit_call_printf();
+                }
+            }
+        } else {
+            // Runtime string printing (Variable or Expression)
+            self.emit_expression(expr); // RAX = string pointer
+
+            match self.target {
+                Target::Windows | Target::Raw => {
+                    // printf("%s\n", rax)
+                    
+                    // 1. Ensure "%s\n" is in data
+                    let fmt = "%s\n".to_string();
+                    if !self.strings.contains(&fmt) {
+                        self.strings.push(fmt.clone());
+                        let offset = self.data.len() as u64;
+                        self.string_offsets.insert(fmt.clone(), offset);
+                    }
+                    let fmt_addr = self.get_string_address("%s\n");
+
+                    // 2. Setup arguments: RCX = format, RDX = value (from RAX)
+                    self.emit_bytes(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+                    self.emit_bytes(&[0x48, 0xB9]);       // mov rcx, fmt_addr
+                    self.emit_u64(fmt_addr);
+                    
+                    // 3. Call printf
+                    self.emit_call_printf();
+                }
+                Target::Linux => {
+                    // TODO: Implement strlen + sys_write for Linux runtime strings
+                    // Placeholder: Just return for now
                 }
             }
         }
