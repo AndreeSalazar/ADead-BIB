@@ -10,6 +10,9 @@ use adead_bib::builder::{Builder, BuildOptions};
 use adead_bib::backend::codegen_v2::Target;
 use adead_bib::backend::pe_tiny;
 use adead_bib::backend::microvm::{self, MicroVM, MicroOp, compile_microvm};
+use adead_bib::backend::gpu::vulkan::VulkanBackend;
+use adead_bib::backend::gpu::gpu_detect::GPUFeatures;
+use adead_bib::backend::gpu::vulkan_runtime;
 use adead_bib::frontend::parser::Parser;
 use adead_bib::frontend::lexer::Lexer;
 use adead_bib::frontend::type_checker::TypeChecker;
@@ -291,6 +294,100 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!();
             println!("   💡 With ADead runtime, this 1 bit executes as:");
             println!("      [Runtime] + [1 bit] → exit({})", if bit_value { 1 } else { 0 });
+        },
+        "gpu" => {
+            // Detectar GPU y mostrar info completa
+            let gpu = GPUFeatures::detect();
+            
+            // Mostrar resumen completo
+            gpu.print_summary();
+            
+            if gpu.available {
+                println!();
+                
+                // Generar shader optimizado
+                let mut backend = VulkanBackend::new();
+                let spirv = backend.generate_optimized_shader(&gpu);
+                
+                let output_path = if args.len() >= 3 {
+                    args[2].clone()
+                } else {
+                    "builds/matmul.spv".to_string()
+                };
+                
+                match backend.save_spirv(&spirv, &output_path) {
+                    Ok(size) => {
+                        println!("✅ SPIR-V Shader generated: {} ({} bytes)", output_path, size);
+                        println!("   Optimized for: {}", gpu.device_name);
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Failed to save shader: {}", e);
+                    }
+                }
+            }
+        },
+        "spirv" => {
+            // Generar SPIR-V para operación específica
+            let op = if args.len() >= 3 { &args[2] } else { "matmul" };
+            let size: u32 = if args.len() >= 4 {
+                args[3].parse().unwrap_or(1024)
+            } else {
+                1024
+            };
+            
+            println!("🔬 SPIR-V Compute Shader Generator");
+            println!("   Operation: {}", op);
+            println!("   Size: {}x{}", size, size);
+            println!();
+            
+            let mut backend = VulkanBackend::new();
+            let spirv = match op {
+                "matmul" => {
+                    backend.set_workgroup_size(16, 16, 1);
+                    backend.generate_matmul_shader(size, size, size)
+                }
+                _ => {
+                    backend.generate_matmul_shader(size, size, size)
+                }
+            };
+            
+            let output_path = format!("builds/{}_{}.spv", op, size);
+            match backend.save_spirv(&spirv, &output_path) {
+                Ok(sz) => {
+                    println!("✅ SPIR-V generated: {} ({} bytes)", output_path, sz);
+                    println!("   Workgroup: {:?}", backend.workgroup_size);
+                    println!("   Ready for Vulkan compute dispatch!");
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed: {}", e);
+                }
+            }
+        },
+        "vulkan" | "vk" => {
+            // Inicializar Vulkan runtime REAL y exprimir GPU
+            println!("🔥 VULKAN RUNTIME - EXPRIMIR GPU");
+            println!();
+            
+            match unsafe { vulkan_runtime::VulkanRuntime::new() } {
+                Ok(runtime) => {
+                    runtime.print_device_info();
+                    println!();
+                    println!("✅ Vulkan runtime initialized successfully!");
+                    println!("   Ready to dispatch compute shaders on your GPU.");
+                    println!();
+                    
+                    // Mostrar capacidades
+                    let props = &runtime.device_props;
+                    println!("🎯 GPU Capabilities:");
+                    println!("   Max workgroup: {:?}", props.max_compute_workgroup_size);
+                    println!("   Max invocations: {}", props.max_compute_workgroup_invocations);
+                    println!("   Shared memory: {} KB", props.max_compute_shared_memory / 1024);
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to initialize Vulkan: {}", e);
+                    eprintln!("   Make sure Vulkan drivers are installed.");
+                }
+            }
         },
         _ => {
             // Legacy behavior: treat first arg as input file if it's not a command
