@@ -1,0 +1,31 @@
+{
+  "name": "adead-bib-js",
+  "version": "1.0.0",
+  "description": "JavaScript/Node.js binding for ADead-BIB compiler - Ultra-fast computation",
+  "main": "src/adead-binding.js",
+  "scripts": {
+    "test": "node tests/adead.test.js",
+    "benchmark": "node examples/benchmark.js",
+    "demo": "node examples/demo.js"
+  },
+  "keywords": [
+    "adead-bib",
+    "compiler",
+    "wasm",
+    "performance",
+    "matrix",
+    "gpu",
+    "native"
+  ],
+  "author": "Eddi Andreé Salazar Matos <eddi.salazar.dev@gmail.com>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/ADead-BIB"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

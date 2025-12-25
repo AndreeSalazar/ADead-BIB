@@ -104,13 +104,48 @@
       "importance": 1.0,
       "access_count": 0,
       "category": "conversations"
+    },
+    {
+      "content": "Usuario: Bien ¿y tu?",
+      "timestamp": 1766689407.497881,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ¿Y que haces?",
+      "timestamp": 1766689415.358896,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ¿Y respuesta?",
+      "timestamp": 1766689419.7044435,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ¿Que es RTX 3060?",
+      "timestamp": 1766689424.0631301,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ¿Que me puedes ayudar?",
+      "timestamp": 1766689464.2140617,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
     }
   ],
   "categories": [
+    "preferences",
     "facts",
-    "conversations",
     "general",
-    "personal",
-    "preferences"
+    "conversations",
+    "personal"
   ]
 }
