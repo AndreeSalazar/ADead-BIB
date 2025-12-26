@@ -1,8 +1,8 @@
-# 🔥 ADead-BIB
+# 🔥 ADead-BIB v0.5.0
 
 **Abstract Dead - Binary In Binary**
 
-> Un lenguaje de programación que combina **Rust + Python + C++** y compila **directamente a código máquina nativo**. Sin VM, sin intérprete, **directo al binario**.
+> Un lenguaje de programación que compila **directamente a código máquina nativo**. Sin VM, sin intérprete, **directo al binario**.
 
 ```
 Código .adB → Lexer → Parser → AST → CodeGen → x86-64 Opcodes → PE/ELF Binario

@@ -96,6 +96,7 @@ pub enum CmpOp {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Print(Expr),
+    Println(Expr),  // println con \n automático
     PrintNum(Expr),
     Assign {
         name: String,

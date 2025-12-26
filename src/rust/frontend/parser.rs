@@ -749,6 +749,13 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 Ok(Stmt::Print(expr))
             }
+            Some(Token::Println) => {
+                self.advance();
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Stmt::Println(expr))
+            }
             Some(Token::Identifier(name)) => {
                 let name = name.clone();
                 self.advance();
@@ -826,7 +833,18 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.advance() {
             Some(Token::Number(n)) => Ok(Expr::Number(n)),
+            Some(Token::Float(f)) => Ok(Expr::Float(f)),
             Some(Token::String(s)) => Ok(Expr::String(s)),
+            Some(Token::True) => Ok(Expr::Bool(true)),
+            Some(Token::False) => Ok(Expr::Bool(false)),
+            Some(Token::Minus) => {
+                // Número negativo: -42
+                match self.advance() {
+                    Some(Token::Number(n)) => Ok(Expr::Number(-n)),
+                    Some(Token::Float(f)) => Ok(Expr::Float(-f)),
+                    _ => Err(ParseError::ExpectedToken("number after minus")),
+                }
+            },
             Some(Token::Identifier(s)) => {
                 if matches!(self.peek(), Some(Token::LParen)) {
                     self.advance();

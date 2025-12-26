@@ -6,6 +6,7 @@ pub enum Token {
     // Keywords - Python style (legacy)
     Def,
     Print,
+    Println,    // println con \n automático
     Return,
     If,
     Elif,
@@ -478,6 +479,7 @@ impl Lexer {
                     // Python style (legacy)
                     "def" => Token::Def,
                     "print" => Token::Print,
+                    "println" => Token::Println,
                     "return" => Token::Return,
                     "if" => Token::If,
                     "elif" => Token::Elif,

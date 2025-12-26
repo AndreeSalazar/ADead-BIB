@@ -108,6 +108,11 @@ impl CodeGeneratorV2 {
     
     /// Recolecta todos los strings del programa
     fn collect_all_strings(&mut self, program: &Program) {
+        // Añadir formatos de printf y \n para println
+        self.strings.push("%d".to_string());
+        self.strings.push("%s".to_string());
+        self.strings.push("\n".to_string());
+        
         for func in &program.functions {
             self.collect_strings_from_stmts(&func.body);
         }
@@ -162,16 +167,11 @@ impl CodeGeneratorV2 {
     fn collect_strings_from_stmts(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             match stmt {
-                Stmt::Print(Expr::String(s)) => {
-                    // Procesar secuencias de escape y añadir \n
+                Stmt::Print(Expr::String(s)) | Stmt::Println(Expr::String(s)) => {
+                    // Procesar secuencias de escape (estilo C++)
                     let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
-                    let with_newline = if processed.ends_with('\n') {
-                        processed
-                    } else {
-                        format!("{}\n", processed)
-                    };
-                    if !self.strings.contains(&with_newline) {
-                        self.strings.push(with_newline);
+                    if !self.strings.contains(&processed) {
+                        self.strings.push(processed);
                     }
                 }
                 Stmt::If { then_body, else_body, .. } => {
@@ -299,6 +299,7 @@ impl CodeGeneratorV2 {
     fn emit_statement(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Print(expr) => self.emit_print(expr),
+            Stmt::Println(expr) => self.emit_println(expr),
             Stmt::PrintNum(expr) => self.emit_print_num(expr),
             Stmt::Assign { name, value } => self.emit_assign(name, value),
             Stmt::If { condition, then_body, else_body } => {
@@ -315,22 +316,16 @@ impl CodeGeneratorV2 {
     
     fn emit_print(&mut self, expr: &Expr) {
         if let Expr::String(s) = expr {
-            // Procesar secuencias de escape como \n
+            // Procesar secuencias de escape como \n, \t, \r (estilo C++)
             let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
             
-            // Añadir \n al final si no lo tiene
-            let with_newline = if processed.ends_with('\n') {
-                processed
-            } else {
-                format!("{}\n", processed)
-            };
-            
+            // NO añadir \n automáticamente - el usuario lo pone manualmente
             // Asegurar que el string procesado esté en la tabla
-            if !self.strings.contains(&with_newline) {
-                self.strings.push(with_newline.clone());
+            if !self.strings.contains(&processed) {
+                self.strings.push(processed.clone());
             }
             
-            let string_addr = self.get_string_address(&with_newline);
+            let string_addr = self.get_string_address(&processed);
             
             match self.target {
                 Target::Linux => {
@@ -340,7 +335,7 @@ impl CodeGeneratorV2 {
                     self.emit_bytes(&[0x48, 0xBE]);                               // mov rsi, addr
                     self.emit_u64(string_addr);
                     self.emit_bytes(&[0x48, 0xC7, 0xC2]);                         // mov rdx, len
-                    self.emit_u32(with_newline.len() as u32);
+                    self.emit_u32(processed.len() as u32);
                     self.emit_bytes(&[0x0F, 0x05]);                               // syscall
                 }
                 Target::Windows | Target::Raw => {
@@ -351,48 +346,71 @@ impl CodeGeneratorV2 {
                 }
             }
         } else {
-            // Runtime string printing (Variable or Expression)
-            self.emit_expression(expr); // RAX = string pointer
+            // Evaluar la expresión y determinar si es numérica
+            self.emit_expression(expr); // RAX = valor
+            
+            // Detectar si es una expresión numérica (variable, número, operación)
+            let is_numeric = matches!(expr, 
+                Expr::Number(_) | 
+                Expr::Variable(_) | 
+                Expr::BinaryOp { .. } |
+                Expr::Bool(_)
+            );
 
             match self.target {
                 Target::Windows | Target::Raw => {
-                    // printf("%s\n", rax)
-                    
-                    // 1. Ensure "%s\n" is in data
-                    let fmt = "%s\n".to_string();
-                    if !self.strings.contains(&fmt) {
-                        self.strings.push(fmt.clone());
-                        let offset = self.data.len() as u64;
-                        self.string_offsets.insert(fmt.clone(), offset);
-                    }
-                    let fmt_addr = self.get_string_address("%s\n");
+                    if is_numeric {
+                        // printf("%d", rax) para números (sin \n - el usuario lo pone)
+                        let fmt_addr = self.get_string_address("%d");
+                        
+                        self.emit_bytes(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+                        self.emit_bytes(&[0x48, 0xB9]);       // mov rcx, fmt_addr
+                        self.emit_u64(fmt_addr);
+                        self.emit_call_printf();
+                    } else {
+                        // printf("%s", rax) para strings (sin \n - el usuario lo pone)
+                        let fmt_addr = self.get_string_address("%s");
 
-                    // 2. Setup arguments: RCX = format, RDX = value (from RAX)
-                    self.emit_bytes(&[0x48, 0x89, 0xC2]); // mov rdx, rax
-                    self.emit_bytes(&[0x48, 0xB9]);       // mov rcx, fmt_addr
-                    self.emit_u64(fmt_addr);
-                    
-                    // 3. Call printf
-                    self.emit_call_printf();
+                        self.emit_bytes(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+                        self.emit_bytes(&[0x48, 0xB9]);       // mov rcx, fmt_addr
+                        self.emit_u64(fmt_addr);
+                        self.emit_call_printf();
+                    }
                 }
                 Target::Linux => {
-                    // TODO: Implement strlen + sys_write for Linux runtime strings
-                    // Placeholder: Just return for now
+                    // TODO: Implement for Linux
                 }
             }
+        }
+    }
+    
+    /// println - igual que print pero añade \n automáticamente
+    fn emit_println(&mut self, expr: &Expr) {
+        // Primero imprimir la expresión
+        self.emit_print(expr);
+        
+        // Luego imprimir \n
+        let newline = "\n".to_string();
+        if !self.strings.contains(&newline) {
+            self.strings.push(newline.clone());
+        }
+        let nl_addr = self.get_string_address("\n");
+        
+        match self.target {
+            Target::Windows | Target::Raw => {
+                self.emit_bytes(&[0x48, 0xB9]);
+                self.emit_u64(nl_addr);
+                self.emit_call_printf();
+            }
+            Target::Linux => {}
         }
     }
     
     fn emit_print_num(&mut self, expr: &Expr) {
         self.emit_expression(expr);
         
-        let fmt = "%d\n".to_string();
-        if !self.strings.contains(&fmt) {
-            self.strings.push(fmt.clone());
-            let offset = self.data.len() as u64;
-            self.string_offsets.insert(fmt.clone(), offset);
-        }
-        let fmt_addr = self.get_string_address("%d\n");
+        // Usar %d sin \n - el usuario pone \n manualmente
+        let fmt_addr = self.get_string_address("%d");
         
         self.emit_bytes(&[0x48, 0x89, 0xC2]);  // mov rdx, rax
         self.emit_bytes(&[0x48, 0xB9]);
