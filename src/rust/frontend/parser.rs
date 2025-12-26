@@ -92,9 +92,33 @@ impl Parser {
         
         while self.peek().is_some() {
             match self.peek() {
+                // Python style: def
                 Some(Token::Def) => {
                     let func = self.parse_function()?;
                     program.add_function(func);
+                    self.skip_newlines();
+                }
+                // Rust style: fn
+                Some(Token::Fn) => {
+                    let func = self.parse_rust_function()?;
+                    program.add_function(func);
+                    self.skip_newlines();
+                }
+                // Rust style: struct
+                Some(Token::Struct) => {
+                    let class = self.parse_struct()?;
+                    program.add_class(class);
+                    self.skip_newlines();
+                }
+                // Rust style: impl
+                Some(Token::Impl) => {
+                    self.parse_impl(&mut program)?;
+                    self.skip_newlines();
+                }
+                // Rust style: trait
+                Some(Token::Trait) => {
+                    let iface = self.parse_trait()?;
+                    program.add_interface(iface);
                     self.skip_newlines();
                 }
                 Some(Token::Class) => {
@@ -105,6 +129,12 @@ impl Parser {
                 Some(Token::Interface) => {
                     let iface = self.parse_interface()?;
                     program.add_interface(iface);
+                    self.skip_newlines();
+                }
+                // Rust style: let / const
+                Some(Token::Let) | Some(Token::Const) => {
+                    let stmt = self.parse_let_statement()?;
+                    program.add_statement(stmt);
                     self.skip_newlines();
                 }
                 _ => {
@@ -254,6 +284,325 @@ impl Parser {
         Ok(Interface { name, methods })
     }
 
+    /// Parse Rust-style function: fn name(params) -> ReturnType { body }
+    fn parse_rust_function(&mut self) -> Result<Function, ParseError> {
+        self.advance(); // consume 'fn'
+        
+        let name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        self.expect(Token::LParen)?;
+        
+        let mut params = Vec::new();
+        if !matches!(self.peek(), Some(Token::RParen)) {
+            loop {
+                let param_name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                
+                let type_name = if matches!(self.peek(), Some(Token::Colon)) {
+                    self.advance();
+                    match self.advance() {
+                        Some(Token::Identifier(t)) => Some(t),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                
+                params.push(Param { name: param_name, type_name });
+                
+                if matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        self.expect(Token::RParen)?;
+        
+        let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
+            self.advance();
+            match self.advance() {
+                Some(Token::Identifier(t)) => Some(t),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        
+        // Rust style: { body }
+        self.expect(Token::LBrace)?;
+        self.skip_newlines();
+        
+        let mut body = Vec::new();
+        while !matches!(self.peek(), Some(Token::RBrace) | None) {
+            let stmt = self.parse_statement()?;
+            body.push(stmt);
+            self.skip_newlines();
+            // Skip optional semicolons
+            while matches!(self.peek(), Some(Token::Semicolon)) {
+                self.advance();
+                self.skip_newlines();
+            }
+        }
+        
+        self.expect(Token::RBrace)?;
+        
+        Ok(Function { name, params, return_type, body })
+    }
+    
+    /// Parse let statement: let [mut] name [: Type] = value;
+    fn parse_let_statement(&mut self) -> Result<Stmt, ParseError> {
+        let is_const = matches!(self.peek(), Some(Token::Const));
+        self.advance(); // consume 'let' or 'const'
+        
+        // Check for 'mut'
+        let _is_mut = if matches!(self.peek(), Some(Token::Mut)) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+        
+        let name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        // Optional type annotation
+        let _type_name = if matches!(self.peek(), Some(Token::Colon)) {
+            self.advance();
+            match self.advance() {
+                Some(Token::Identifier(t)) => Some(t),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        
+        self.expect(Token::Equals)?;
+        let value = self.parse_expression()?;
+        
+        // Optional semicolon
+        if matches!(self.peek(), Some(Token::Semicolon)) {
+            self.advance();
+        }
+        
+        // For const, we could add a different variant, but for now treat as assign
+        let _ = is_const; // TODO: Handle const differently
+        
+        Ok(Stmt::Assign { name, value })
+    }
+    
+    /// Parse Rust-style struct
+    fn parse_struct(&mut self) -> Result<Class, ParseError> {
+        self.advance(); // consume 'struct'
+        
+        let name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        self.expect(Token::LBrace)?;
+        self.skip_newlines();
+        
+        let mut fields = Vec::new();
+        
+        while !matches!(self.peek(), Some(Token::RBrace) | None) {
+            let field_name = match self.advance() {
+                Some(Token::Identifier(n)) => n,
+                Some(Token::RBrace) => break,
+                Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                None => return Err(ParseError::UnexpectedEof),
+            };
+            
+            self.expect(Token::Colon)?;
+            
+            let type_name = match self.advance() {
+                Some(Token::Identifier(t)) => Some(t),
+                _ => None,
+            };
+            
+            fields.push(Field {
+                name: field_name,
+                type_name,
+                default_value: None,
+            });
+            
+            // Skip comma
+            if matches!(self.peek(), Some(Token::Comma)) {
+                self.advance();
+            }
+            self.skip_newlines();
+        }
+        
+        self.expect(Token::RBrace)?;
+        
+        Ok(Class {
+            name,
+            parent: None,
+            implements: Vec::new(),
+            fields,
+            methods: Vec::new(),
+            constructor: None,
+            destructor: None,
+        })
+    }
+    
+    /// Parse Rust-style impl block
+    fn parse_impl(&mut self, program: &mut Program) -> Result<(), ParseError> {
+        self.advance(); // consume 'impl'
+        
+        let struct_name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        self.expect(Token::LBrace)?;
+        self.skip_newlines();
+        
+        // Parse methods and add them as functions with prefixed names
+        while !matches!(self.peek(), Some(Token::RBrace) | None) {
+            if matches!(self.peek(), Some(Token::Fn)) {
+                let mut func = self.parse_rust_function()?;
+                // Prefix method name with struct name
+                func.name = format!("{}::{}", struct_name, func.name);
+                program.add_function(func);
+            } else {
+                self.advance(); // Skip unknown tokens
+            }
+            self.skip_newlines();
+        }
+        
+        self.expect(Token::RBrace)?;
+        
+        Ok(())
+    }
+    
+    /// Parse Rust-style trait
+    fn parse_trait(&mut self) -> Result<Interface, ParseError> {
+        self.advance(); // consume 'trait'
+        
+        let name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        self.expect(Token::LBrace)?;
+        self.skip_newlines();
+        
+        let mut methods = Vec::new();
+        
+        while !matches!(self.peek(), Some(Token::RBrace) | None) {
+            if matches!(self.peek(), Some(Token::Fn)) {
+                self.advance();
+                let method_name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                
+                self.expect(Token::LParen)?;
+                let mut params = Vec::new();
+                
+                if !matches!(self.peek(), Some(Token::RParen)) {
+                    loop {
+                        // Skip &self, &mut self, self
+                        if matches!(self.peek(), Some(Token::Ampersand)) {
+                            self.advance();
+                            if matches!(self.peek(), Some(Token::Mut)) {
+                                self.advance();
+                            }
+                        }
+                        if matches!(self.peek(), Some(Token::This)) {
+                            self.advance();
+                            if matches!(self.peek(), Some(Token::Comma)) {
+                                self.advance();
+                            }
+                            continue;
+                        }
+                        
+                        if matches!(self.peek(), Some(Token::RParen)) {
+                            break;
+                        }
+                        
+                        let param_name = match self.advance() {
+                            Some(Token::Identifier(n)) => n,
+                            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                            None => return Err(ParseError::UnexpectedEof),
+                        };
+                        
+                        let type_name = if matches!(self.peek(), Some(Token::Colon)) {
+                            self.advance();
+                            match self.advance() {
+                                Some(Token::Identifier(t)) => Some(t),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        
+                        params.push(Param { name: param_name, type_name });
+                        
+                        if matches!(self.peek(), Some(Token::Comma)) {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(Token::RParen)?;
+                
+                let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
+                    self.advance();
+                    match self.advance() {
+                        Some(Token::Identifier(t)) => Some(t),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                
+                // Skip semicolon or body
+                if matches!(self.peek(), Some(Token::Semicolon)) {
+                    self.advance();
+                } else if matches!(self.peek(), Some(Token::LBrace)) {
+                    // Skip default implementation
+                    let mut brace_count = 1;
+                    self.advance();
+                    while brace_count > 0 {
+                        match self.advance() {
+                            Some(Token::LBrace) => brace_count += 1,
+                            Some(Token::RBrace) => brace_count -= 1,
+                            None => break,
+                            _ => {}
+                        }
+                    }
+                }
+                
+                methods.push(MethodSignature { name: method_name, params, return_type });
+            } else {
+                self.advance();
+            }
+            self.skip_newlines();
+        }
+        
+        self.expect(Token::RBrace)?;
+        
+        Ok(Interface { name, methods })
+    }
+
     fn parse_function(&mut self) -> Result<Function, ParseError> {
         self.advance(); // consume 'def'
         
@@ -389,6 +738,10 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         match self.peek() {
+            // Rust style: let / const inside functions
+            Some(Token::Let) | Some(Token::Const) => {
+                self.parse_let_statement()
+            }
             Some(Token::Print) => {
                 self.advance();
                 self.expect(Token::LParen)?;

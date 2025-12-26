@@ -73,7 +73,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // 2. Run
             println!("🚀 Running {}...\n", input_file);
-            let status = Command::new(&output_file).status()?;
+            // Usar ruta relativa con ./ para Windows
+            let exe_path = if cfg!(target_os = "windows") {
+                format!(".\\{}", output_file)
+            } else {
+                format!("./{}", output_file)
+            };
+            let status = Command::new(&exe_path).status()?;
             
             if !status.success() {
                 eprintln!("\n⚠️  Program exited with status: {}", status);
@@ -389,6 +395,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         },
+        "play" | "repl" => {
+            // Modo interactivo estilo Rust Playground / Jupyter
+            run_playground()?;
+        },
         _ => {
             // Legacy behavior: treat first arg as input file if it's not a command
             // Or just show usage. Let's support legacy "cargo run file.adB" style if possible, 
@@ -439,19 +449,44 @@ fn get_output_filename(input: &str, args: &[String]) -> String {
 }
 
 fn print_usage(program: &str) {
-    println!("ADead-BIB Compiler CLI");
-    println!("Usage:");
-    println!("  {} build <file.adB> [-o output.exe]  - Standard build", program);
-    println!("  {} run <file.adB>                   - Build and run", program);
-    println!("  {} check <file.adB>                 - Syntax check only", program);
-    println!("  {} tiny <file.adB> [-o output.exe]  - Ultra-compact PE (< 500 bytes)", program);
-    println!("  {} nano [output.exe] [exit_code]    - Smallest possible PE (~1KB)", program);
-    println!("  {} <file.adB>                       - Default: build", program);
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║           🔥 ADead-BIB Compiler v0.2.0 🔥                    ║");
+    println!("║     Un lenguaje parecido a Rust + Python, 100% en Rust      ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
-    println!("🎯 Size targets:");
-    println!("   Standard: ~1.5 KB");
-    println!("   Tiny:     < 500 bytes");
-    println!("   Nano:     ~1 KB (smallest valid x64 PE)");
+    println!("📋 USO BÁSICO:");
+    println!("   {} run <archivo.adB>              - Compilar y ejecutar", program);
+    println!("   {} build <archivo.adB>            - Compilar a ejecutable", program);
+    println!("   {} check <archivo.adB>            - Verificar sintaxis", program);
+    println!("   {} play                           - 🎮 Modo interactivo (REPL)", program);
+    println!();
+    println!("🚀 EJEMPLOS:");
+    println!("   {} run hello.adB                  - Ejecuta hello.adB", program);
+    println!("   {} build main.adB -o app.exe      - Compila a app.exe", program);
+    println!();
+    println!("⚡ MODOS AVANZADOS:");
+    println!("   {} tiny <archivo.adB>             - PE ultra-compacto (< 500 bytes)", program);
+    println!("   {} nano [output.exe] [exit_code]  - PE más pequeño posible", program);
+    println!("   {} micro [output.exe] [exit_code] - PE32 sub-256 bytes", program);
+    println!("   {} vm <output.adb> [exit_code]    - MicroVM bytecode", program);
+    println!();
+    println!("🎮 GPU (Vulkan):");
+    println!("   {} gpu                            - Detectar GPU y generar shader", program);
+    println!("   {} spirv [op] [size]              - Generar SPIR-V compute shader", program);
+    println!("   {} vulkan                         - Inicializar Vulkan runtime", program);
+    println!();
+    println!("📝 SINTAXIS SOPORTADA:");
+    println!("   • Python-style: def, print, if/elif/else, for, while");
+    println!("   • Rust-style:   fn, let, mut, struct, impl, trait, match");
+    println!("   • Scripts:      Código directo sin main() requerido");
+    println!();
+    println!("🎮 MODO PLAY (REPL):");
+    println!("   {} play                           - Inicia playground interactivo", program);
+    println!("   Escribe código ADead-BIB y presiona Enter para ejecutar");
+    println!("   Comandos: :help, :clear, :exit, :run, :ast");
+    println!();
+    println!("🎯 TAMAÑOS DE BINARIO:");
+    println!("   Standard: ~1.5 KB  │  Tiny: < 500 bytes  │  Nano: ~1 KB");
 }
 
 fn check_syntax(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -459,25 +494,292 @@ fn check_syntax(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     
     // 1. Lexing
     let mut lexer = Lexer::new(&source);
-    let _tokens = lexer.tokenize();
+    let tokens = lexer.tokenize();
+    println!("   📝 Tokens: {}", tokens.len());
     
     // 2. Parsing
     let program = Parser::parse_program(&source)?;
+    println!("   📦 Funciones: {}", program.functions.len());
+    println!("   📦 Clases/Structs: {}", program.classes.len());
+    println!("   📦 Statements top-level: {}", program.statements.len());
     
     // 3. Type checking
     let mut type_checker = TypeChecker::new();
     let _types = type_checker.check_program(&program);
     
-    // 4. Basic validation
-    if program.functions.is_empty() {
-        return Err("No functions found in program".into());
+    // 4. Validation - Scripts don't need main!
+    if program.functions.is_empty() && program.statements.is_empty() {
+        return Err("No code found in program".into());
     }
     
-    // Check for main function
+    // Info about main function
     let has_main = program.functions.iter().any(|f| f.name == "main");
-    if !has_main {
-        eprintln!("⚠️  Warning: No 'main' function found");
+    if has_main {
+        println!("   ✅ Función main() encontrada");
+    } else if !program.statements.is_empty() {
+        println!("   ✅ Script mode: {} statements top-level", program.statements.len());
     }
     
     Ok(())
+}
+
+/// Modo Playground interactivo estilo Rust Playground / Jupyter
+/// Permite escribir y ejecutar código ADead-BIB de forma interactiva
+fn run_playground() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::{self, Write};
+    
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║        🎮 ADead-BIB Playground v0.2.0 🎮                     ║");
+    println!("║     Modo interactivo - Escribe código y presiona Enter       ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!();
+    println!("📝 Comandos disponibles:");
+    println!("   :help     - Mostrar ayuda");
+    println!("   :clear    - Limpiar buffer");
+    println!("   :run      - Ejecutar buffer actual");
+    println!("   :ast      - Mostrar AST del buffer");
+    println!("   :tokens   - Mostrar tokens del buffer");
+    println!("   :exit     - Salir del playground");
+    println!("   :example  - Cargar ejemplo");
+    println!();
+    println!("💡 Tip: Escribe código directamente y presiona Enter dos veces para ejecutar");
+    println!();
+    
+    let mut buffer = String::new();
+    let mut line_number = 1;
+    let mut variables: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    
+    loop {
+        // Prompt
+        if buffer.is_empty() {
+            print!("adB[{}]> ", line_number);
+        } else {
+            print!("   ...> ");
+        }
+        io::stdout().flush()?;
+        
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+        
+        // Comandos especiales
+        if input.starts_with(':') {
+            match input {
+                ":help" | ":h" => {
+                    print_playground_help();
+                }
+                ":clear" | ":c" => {
+                    buffer.clear();
+                    println!("🧹 Buffer limpiado");
+                }
+                ":exit" | ":quit" | ":q" => {
+                    println!("👋 ¡Hasta luego!");
+                    break;
+                }
+                ":run" | ":r" => {
+                    if buffer.is_empty() {
+                        println!("⚠️  Buffer vacío. Escribe código primero.");
+                    } else {
+                        execute_playground_code(&buffer, &mut variables);
+                        line_number += 1;
+                    }
+                }
+                ":ast" | ":a" => {
+                    if buffer.is_empty() {
+                        println!("⚠️  Buffer vacío.");
+                    } else {
+                        show_ast(&buffer);
+                    }
+                }
+                ":tokens" | ":t" => {
+                    if buffer.is_empty() {
+                        println!("⚠️  Buffer vacío.");
+                    } else {
+                        show_tokens(&buffer);
+                    }
+                }
+                ":example" | ":e" => {
+                    buffer = r#"// Ejemplo ADead-BIB
+print("Hola desde el Playground!")
+let x = 42
+let y = 10
+print("Calculando...")
+"#.to_string();
+                    println!("📝 Ejemplo cargado. Usa :run para ejecutar o :ast para ver el AST");
+                }
+                ":vars" | ":v" => {
+                    if variables.is_empty() {
+                        println!("📦 No hay variables definidas");
+                    } else {
+                        println!("📦 Variables:");
+                        for (name, value) in &variables {
+                            println!("   {} = {}", name, value);
+                        }
+                    }
+                }
+                _ => {
+                    println!("❓ Comando desconocido: {}. Usa :help para ver comandos.", input);
+                }
+            }
+            continue;
+        }
+        
+        // Si línea vacía y hay buffer, ejecutar
+        if input.is_empty() && !buffer.is_empty() {
+            execute_playground_code(&buffer, &mut variables);
+            buffer.clear();
+            line_number += 1;
+            continue;
+        }
+        
+        // Añadir al buffer
+        if !input.is_empty() {
+            buffer.push_str(input);
+            buffer.push('\n');
+            
+            // Si es una línea simple (print, let, etc.), ejecutar inmediatamente
+            if is_complete_statement(input) && !input.ends_with(':') && !input.ends_with('{') {
+                execute_playground_code(&buffer, &mut variables);
+                buffer.clear();
+                line_number += 1;
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+fn print_playground_help() {
+    println!();
+    println!("🎮 ADead-BIB Playground - Ayuda");
+    println!("═══════════════════════════════════════════════════════════");
+    println!();
+    println!("📝 COMANDOS:");
+    println!("   :help, :h      - Mostrar esta ayuda");
+    println!("   :clear, :c     - Limpiar el buffer de código");
+    println!("   :run, :r       - Ejecutar el código en el buffer");
+    println!("   :ast, :a       - Mostrar el AST del código");
+    println!("   :tokens, :t    - Mostrar los tokens del código");
+    println!("   :vars, :v      - Mostrar variables definidas");
+    println!("   :example, :e   - Cargar código de ejemplo");
+    println!("   :exit, :q      - Salir del playground");
+    println!();
+    println!("💡 SINTAXIS SOPORTADA:");
+    println!("   • print(\"texto\")     - Imprimir texto");
+    println!("   • let x = 42         - Definir variable (Rust-style)");
+    println!("   • x = 42             - Asignar variable (Python-style)");
+    println!("   • fn nombre() {{ }}   - Definir función (Rust-style)");
+    println!("   • def nombre():      - Definir función (Python-style)");
+    println!();
+    println!("🚀 EJEMPLOS:");
+    println!("   print(\"Hola mundo!\")");
+    println!("   let x = 10 + 5");
+    println!("   fn saludar() {{ print(\"Hola\") }}");
+    println!();
+}
+
+fn execute_playground_code(code: &str, _variables: &mut std::collections::HashMap<String, i64>) {
+    println!();
+    println!("▶️  Ejecutando...");
+    println!("───────────────────────────────────────");
+    
+    // Parse y ejecutar
+    match Parser::parse_program(code) {
+        Ok(program) => {
+            // Mostrar qué se parseó
+            if !program.functions.is_empty() {
+                println!("📦 Funciones definidas: {}", program.functions.len());
+                for f in &program.functions {
+                    println!("   • fn {}()", f.name);
+                }
+            }
+            
+            if !program.statements.is_empty() {
+                println!("📝 Statements: {}", program.statements.len());
+                
+                // Simular ejecución de statements
+                for stmt in &program.statements {
+                    match stmt {
+                        adead_bib::frontend::ast::Stmt::Print(expr) => {
+                            match expr {
+                                adead_bib::frontend::ast::Expr::String(s) => {
+                                    println!("   → {}", s);
+                                }
+                                adead_bib::frontend::ast::Expr::Number(n) => {
+                                    println!("   → {}", n);
+                                }
+                                adead_bib::frontend::ast::Expr::Variable(v) => {
+                                    println!("   → [var: {}]", v);
+                                }
+                                _ => {
+                                    println!("   → [expresión]");
+                                }
+                            }
+                        }
+                        adead_bib::frontend::ast::Stmt::Assign { name, value } => {
+                            match value {
+                                adead_bib::frontend::ast::Expr::Number(n) => {
+                                    println!("   {} = {}", name, n);
+                                }
+                                adead_bib::frontend::ast::Expr::String(s) => {
+                                    println!("   {} = \"{}\"", name, s);
+                                }
+                                _ => {
+                                    println!("   {} = [expresión]", name);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            
+            println!("───────────────────────────────────────");
+            println!("✅ Ejecución completada");
+        }
+        Err(e) => {
+            println!("❌ Error de sintaxis: {}", e);
+        }
+    }
+    println!();
+}
+
+fn show_ast(code: &str) {
+    println!();
+    println!("🌳 AST (Abstract Syntax Tree):");
+    println!("───────────────────────────────────────");
+    
+    match Parser::parse_program(code) {
+        Ok(program) => {
+            println!("{:#?}", program);
+        }
+        Err(e) => {
+            println!("❌ Error: {}", e);
+        }
+    }
+    println!();
+}
+
+fn show_tokens(code: &str) {
+    println!();
+    println!("🔤 Tokens:");
+    println!("───────────────────────────────────────");
+    
+    let mut lexer = Lexer::new(code);
+    let tokens = lexer.tokenize();
+    
+    for (i, token) in tokens.iter().enumerate() {
+        println!("   [{}] {:?}", i, token);
+    }
+    println!();
+}
+
+fn is_complete_statement(line: &str) -> bool {
+    let line = line.trim();
+    
+    // Statements simples que se pueden ejecutar inmediatamente
+    line.starts_with("print(") ||
+    line.starts_with("let ") ||
+    line.starts_with("const ") ||
+    (line.contains('=') && !line.contains("==") && !line.starts_with("fn ") && !line.starts_with("def "))
 }

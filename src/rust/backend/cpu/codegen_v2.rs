@@ -163,8 +163,15 @@ impl CodeGeneratorV2 {
         for stmt in stmts {
             match stmt {
                 Stmt::Print(Expr::String(s)) => {
-                    if !self.strings.contains(s) {
-                        self.strings.push(s.clone());
+                    // Procesar secuencias de escape y añadir \n
+                    let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
+                    let with_newline = if processed.ends_with('\n') {
+                        processed
+                    } else {
+                        format!("{}\n", processed)
+                    };
+                    if !self.strings.contains(&with_newline) {
+                        self.strings.push(with_newline);
                     }
                 }
                 Stmt::If { then_body, else_body, .. } => {
@@ -308,7 +315,22 @@ impl CodeGeneratorV2 {
     
     fn emit_print(&mut self, expr: &Expr) {
         if let Expr::String(s) = expr {
-            let string_addr = self.get_string_address(s);
+            // Procesar secuencias de escape como \n
+            let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
+            
+            // Añadir \n al final si no lo tiene
+            let with_newline = if processed.ends_with('\n') {
+                processed
+            } else {
+                format!("{}\n", processed)
+            };
+            
+            // Asegurar que el string procesado esté en la tabla
+            if !self.strings.contains(&with_newline) {
+                self.strings.push(with_newline.clone());
+            }
+            
+            let string_addr = self.get_string_address(&with_newline);
             
             match self.target {
                 Target::Linux => {
@@ -318,7 +340,7 @@ impl CodeGeneratorV2 {
                     self.emit_bytes(&[0x48, 0xBE]);                               // mov rsi, addr
                     self.emit_u64(string_addr);
                     self.emit_bytes(&[0x48, 0xC7, 0xC2]);                         // mov rdx, len
-                    self.emit_u32(s.len() as u32);
+                    self.emit_u32(with_newline.len() as u32);
                     self.emit_bytes(&[0x0F, 0x05]);                               // syscall
                 }
                 Target::Windows | Target::Raw => {

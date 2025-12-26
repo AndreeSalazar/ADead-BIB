@@ -3,7 +3,7 @@
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    // Keywords
+    // Keywords - Python style (legacy)
     Def,
     Print,
     Return,
@@ -21,6 +21,34 @@ pub enum Token {
     Not,
     True,
     False,
+    
+    // Keywords - Rust style (NEW)
+    Fn,         // fn (alias de def)
+    Let,        // let
+    Mut,        // mut
+    Const,      // const
+    Pub,        // pub
+    Mod,        // mod
+    Use,        // use
+    Struct,     // struct
+    Enum,       // enum
+    Impl,       // impl
+    Trait,      // trait
+    Match,      // match
+    Loop,       // loop
+    Ref,        // ref / &
+    Move,       // move
+    Box,        // Box
+    Vec,        // Vec
+    Option,     // Option
+    Result,     // Result
+    Some,       // Some
+    None,       // None
+    Ok,         // Ok
+    Err,        // Err
+    Unsafe,     // unsafe
+    Where,      // where
+    Type,       // type
     
     // OOP Keywords
     Class,
@@ -56,7 +84,9 @@ pub enum Token {
     
     // Literals
     Number(i64),
+    Float(f64),     // NEW: Floating point
     String(String),
+    Char(char),     // NEW: Character literal
     
     // Operators
     Plus,       // +
@@ -72,14 +102,30 @@ pub enum Token {
     Greater,    // >
     GreaterEq,  // >=
     Dot,        // .
+    DoubleDot,  // .. (range)
+    Ampersand,  // &
+    Pipe,       // |
+    Caret,      // ^
+    Tilde,      // ~
+    Bang,       // !
+    Question,   // ?
+    DoubleColon,// ::
+    FatArrow,   // =>
+    PlusEq,     // +=
+    MinusEq,    // -=
+    StarEq,     // *=
+    SlashEq,    // /=
     
     // Punctuation
     LParen,     // (
     RParen,     // )
     LBracket,   // [
     RBracket,   // ]
+    LBrace,     // {
+    RBrace,     // }
     Colon,      // :
     Comma,      // ,
+    Semicolon,  // ;
     Arrow,      // ->
     Newline,    // \n
     
@@ -148,6 +194,40 @@ impl Lexer {
         num_str.parse().unwrap_or(0)
     }
     
+    fn read_number_or_float(&mut self) -> Token {
+        let mut num_str = String::new();
+        let mut is_float = false;
+        
+        // Leer parte entera
+        while let Some(ch) = self.current_char {
+            if ch.is_ascii_digit() {
+                num_str.push(ch);
+                self.advance();
+            } else if ch == '.' {
+                // Verificar si es un punto decimal o el operador ..
+                let next_pos = self.position + 1;
+                if next_pos < self.input.len() && self.input[next_pos] == '.' {
+                    // Es el operador .., no un decimal
+                    break;
+                }
+                is_float = true;
+                num_str.push(ch);
+                self.advance();
+            } else if ch == '_' {
+                // Separador de miles estilo Rust: 1_000_000
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        if is_float {
+            Token::Float(num_str.parse().unwrap_or(0.0))
+        } else {
+            Token::Number(num_str.parse().unwrap_or(0))
+        }
+    }
+    
     fn read_identifier(&mut self) -> String {
         let mut ident = String::new();
         while let Some(ch) = self.current_char {
@@ -191,22 +271,52 @@ impl Lexer {
             
             Some('+') => {
                 self.advance();
-                Token::Plus
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::PlusEq
+                } else {
+                    Token::Plus
+                }
             }
             
             Some('-') => {
                 self.advance();
-                Token::Minus
+                if self.current_char == Some('>') {
+                    self.advance();
+                    Token::Arrow
+                } else if self.current_char == Some('=') {
+                    self.advance();
+                    Token::MinusEq
+                } else {
+                    Token::Minus
+                }
             }
             
             Some('*') => {
                 self.advance();
-                Token::Star
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::StarEq
+                } else {
+                    Token::Star
+                }
             }
             
             Some('/') => {
                 self.advance();
-                Token::Slash
+                if self.current_char == Some('/') {
+                    // Comentario estilo Rust //
+                    while let Some(ch) = self.current_char {
+                        if ch == '\n' { break; }
+                        self.advance();
+                    }
+                    self.next_token()
+                } else if self.current_char == Some('=') {
+                    self.advance();
+                    Token::SlashEq
+                } else {
+                    Token::Slash
+                }
             }
             
             Some('=') => {
@@ -281,7 +391,52 @@ impl Lexer {
             
             Some(':') => {
                 self.advance();
-                Token::Colon
+                if self.current_char == Some(':') {
+                    self.advance();
+                    Token::DoubleColon
+                } else {
+                    Token::Colon
+                }
+            }
+            
+            Some(';') => {
+                self.advance();
+                Token::Semicolon
+            }
+            
+            Some('{') => {
+                self.advance();
+                Token::LBrace
+            }
+            
+            Some('}') => {
+                self.advance();
+                Token::RBrace
+            }
+            
+            Some('&') => {
+                self.advance();
+                if self.current_char == Some('&') {
+                    self.advance();
+                    Token::And
+                } else {
+                    Token::Ampersand
+                }
+            }
+            
+            Some('|') => {
+                self.advance();
+                if self.current_char == Some('|') {
+                    self.advance();
+                    Token::Or
+                } else {
+                    Token::Pipe
+                }
+            }
+            
+            Some('?') => {
+                self.advance();
+                Token::Question
             }
             
             Some('\n') => {
@@ -294,17 +449,33 @@ impl Lexer {
             }
             
             Some(ch) if ch.is_ascii_digit() => {
-                Token::Number(self.read_number())
+                self.read_number_or_float()
+            }
+            
+            Some('\'') => {
+                self.advance(); // Skip opening '
+                let ch = self.current_char.unwrap_or('\0');
+                self.advance();
+                if self.current_char == Some('\'') {
+                    self.advance(); // Skip closing '
+                }
+                Token::Char(ch)
             }
             
             Some('.') => {
                 self.advance();
-                Token::Dot
+                if self.current_char == Some('.') {
+                    self.advance();
+                    Token::DoubleDot
+                } else {
+                    Token::Dot
+                }
             }
             
             Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => {
                 let ident = self.read_identifier();
                 match ident.as_str() {
+                    // Python style (legacy)
                     "def" => Token::Def,
                     "print" => Token::Print,
                     "return" => Token::Return,
@@ -317,11 +488,40 @@ impl Lexer {
                     "range" => Token::Range,
                     "break" => Token::Break,
                     "continue" => Token::Continue,
-                    "and" => Token::And,
-                    "or" => Token::Or,
+                    "and" | "&&" => Token::And,
+                    "or" | "||" => Token::Or,
                     "not" => Token::Not,
                     "true" | "True" => Token::True,
                     "false" | "False" => Token::False,
+                    
+                    // Rust style (NEW)
+                    "fn" => Token::Fn,
+                    "let" => Token::Let,
+                    "mut" => Token::Mut,
+                    "const" => Token::Const,
+                    "pub" => Token::Pub,
+                    "mod" => Token::Mod,
+                    "use" => Token::Use,
+                    "struct" => Token::Struct,
+                    "enum" => Token::Enum,
+                    "impl" => Token::Impl,
+                    "trait" => Token::Trait,
+                    "match" => Token::Match,
+                    "loop" => Token::Loop,
+                    "ref" => Token::Ref,
+                    "move" => Token::Move,
+                    "Box" => Token::Box,
+                    "Vec" => Token::Vec,
+                    "Option" => Token::Option,
+                    "Result" => Token::Result,
+                    "Some" => Token::Some,
+                    "None" => Token::None,
+                    "Ok" => Token::Ok,
+                    "Err" => Token::Err,
+                    "unsafe" => Token::Unsafe,
+                    "where" => Token::Where,
+                    "type" => Token::Type,
+                    
                     // OOP keywords
                     "class" => Token::Class,
                     "new" => Token::New,
@@ -334,11 +534,12 @@ impl Lexer {
                     "abstract" => Token::Abstract,
                     "interface" => Token::Interface,
                     "implements" => Token::Implements,
+                    
                     // Advanced
                     "__init__" => Token::Init,
                     "__del__" => Token::Del,
                     "lambda" => Token::Lambda,
-                    "null" | "None" => Token::Null,
+                    "null" => Token::Null,
                     "import" => Token::Import,
                     "from" => Token::From,
                     "as" => Token::As,

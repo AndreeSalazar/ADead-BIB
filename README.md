@@ -2,1946 +2,544 @@
 
 **Abstract Dead - Binary In Binary**
 
-> A compiler that generates **pure executable binaries** by writing opcodes directly to the CPU, without going through an assembler. **Binary + HEX = ADead-BIB**.
+> Un lenguaje de programación que combina **Rust + Python + C++** y compila **directamente a código máquina nativo**. Sin VM, sin intérprete, **directo al binario**.
+
+```
+Código .adB → Lexer → Parser → AST → CodeGen → x86-64 Opcodes → PE/ELF Binario
+```
 
 ---
 
-## 🇵🇪 Made with ❤️ in Peru
+## 🇵🇪 Hecho con ❤️ en Perú
 
-**Author:** Eddi Andreé Salazar Matos  
+**Autor:** Eddi Andreé Salazar Matos  
 **Email:** eddi.salazar.dev@gmail.com  
-**License:** Apache 2.0
+**Licencia:** Apache 2.0
 
 ---
 
-## ✅ Status: COMPLETE LANGUAGE + AI + GPU + VULKAN + OPTIMIZATIONS
+## 🎯 ¿Qué es ADead-BIB?
 
-| Feature | Status |
-|---------|--------|
-| **70+ built-in functions** | ✅ |
-| **Complete OOP** | ✅ |
-| **Import system** | ✅ |
-| **Python FFI** | ✅ |
-| **Integrated AI (0.19 MB RAM)** | ✅ |
-| **Matrix functions for AI** | ✅ |
-| **Ollama integration** | ✅ |
-| **GPU Support (CUDA)** | ✅ |
-| **Vulkan Support** | ✅ |
-| **Hybrid CPU+GPU Mode** | ✅ |
-| **HEX Opcodes for GPU** | ✅ |
-| **Auto-Dispatch CPU/GPU** | ✅ |
-| **Deterministic Runtime** | ✅ |
-| **Server Load Benchmarks** | ✅ |
-| **Branchless Optimizer** | ✅ NEW |
-| **Syntax Checker (check command)** | ✅ NEW |
-| **Enhanced Type Validation** | ✅ NEW |
-| **AST Transformation System** | ✅ NEW |
-| **Ultra-Compact Binaries** | 🎯 Target: Bytes |
+ADead-BIB es un **lenguaje de programación compilado** que genera código máquina nativo directamente, sin pasar por un ensamblador tradicional. Es como escribir en un lenguaje de alto nivel pero obtener la eficiencia de Assembly.
+
+### Filosofía del Lenguaje
+
+- **Directo al binario**: No hay VM, no hay intérprete, no hay bytecode intermedio
+- **Sintaxis familiar**: Combina lo mejor de Rust, Python y C++
+- **Binarios pequeños**: Los ejecutables son extremadamente compactos (~1.5 KB)
+- **OOP completo**: Clases, herencia, polimorfismo, traits e interfaces
+- **100% Rust**: El compilador está escrito completamente en Rust
 
 ---
 
-## � Quick Start
+## ⚡ Características Principales
 
-### Prerequisites
+| Característica | Estado | Descripción |
+|----------------|--------|-------------|
+| **Sintaxis Rust + Python** | ✅ | `fn`/`def`, `let`/asignación directa |
+| **Compilación directa** | ✅ | Genera opcodes x86-64 directamente |
+| **OOP completo** | ✅ | Clases, herencia, polimorfismo |
+| **Traits e Interfaces** | ✅ | Abstracción de comportamiento |
+| **Scripts sin main()** | ✅ | Código ejecutable directo |
+| **Secuencias de escape** | ✅ | `\n`, `\t`, `\r` en strings |
+| **Modo Playground** | ✅ | REPL interactivo |
+| **Binarios ultra-pequeños** | ✅ | < 2 KB típicamente |
+| **GPU Support** | ✅ | Vulkan + SPIR-V |
+| **100% Rust** | ✅ | Sin dependencias C++ |
+
+---
+
+## 🚀 Instalación
+
+### Requisitos
+- Rust 1.70+ (rustup)
+- Windows 10/11 o Linux
+
+### Instalación Rápida
 
 ```bash
-# 1. Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# 2. Install Python 3.8+
-# Download from https://python.org
-
-# 3. Install Python dependencies
-pip install numpy
-
-# 4. (Optional) Install Ollama for AI demos
-winget install Ollama.Ollama
-ollama pull tinyllama
-```
-
-### Build & Run
-
-```powershell
-# Clone the repository
-git clone https://github.com/yourusername/ADead-BIB.git
+# Clonar repositorio
+git clone https://github.com/tu-usuario/ADead-BIB.git
 cd ADead-BIB
 
-# Build the compiler
-cargo build --release
+# Instalar globalmente
+cargo install --path .
 
-# Check syntax without compiling
-cargo run --release -- check examples/hello_world.adB
-
-# Compile and run Hello World
-cargo run --release -- build examples/hello_world.adB
-.\hello_world.exe
-# Output: Hello, World!
-
-# Or use run command (builds and runs)
-cargo run --release -- run examples/hello_world.adB
+# Verificar instalación
+adeadc --help
 ```
 
 ---
 
-## 📁 Project Structure
+## 📋 Comandos del Compilador
 
-```
-ADead-BIB/
-├── src/rust/                    # Compiler Core
-│   ├── frontend/                # Lexer, Parser, AST, Types
-│   ├── backend/                 # Code Generation (CPU + GPU)
-│   │   ├── cpu/                 # 🔥 CPU Backend (x86-64 directo)
-│   │   │   ├── codegen.rs       # Generador de código legacy
-│   │   │   ├── codegen_v2.rs    # Generador avanzado (multi-función)
-│   │   │   ├── pe*.rs           # Generadores PE (tiny, minimal, full)
-│   │   │   ├── elf.rs           # Generador ELF Linux
-│   │   │   ├── syscalls.rs      # Syscalls directos Win/Linux
-│   │   │   └── microvm.rs       # MicroVM bytecode (4-bit)
-│   │   └── gpu/                 # 🔥 GPU Backend (Vulkan + HEX)
-│   │       ├── gpu_detect.rs    # Detección y análisis GPU
-│   │       ├── vulkan/          # Backend Vulkan (SPIR-V)
-│   │       └── hex/             # Binario HEX directo para GPU
-│   ├── optimizer/               # Branchless & SIMD Optimizer
-│   ├── runtime/                 # Auto-dispatcher CPU/GPU
-│   └── builder.rs               # Orchestrator & Build System
-├── builds/                      # 🆕 Binarios generados
-├── examples/                    # .adB example files
-├── stdlib/                      # Standard library (math, io, string)
-├── python/                      # Python FFI + AI + GPU
-│   ├── adead_ffi.py             # FFI wrapper
-│   ├── ai_complete.py           # Complete AI (0.19 MB RAM)
-│   ├── ai_scalable.py           # Scalable AI with BPE
-│   ├── vocabulary.py      # Vocabulary builder
-│   ├── embeddings.py      # Semantic embeddings
-│   ├── ollama_integration.py   # Ollama integration
-│   ├── ollama_gpu_benchmark.py # Ollama GPU modes benchmark
-│   ├── benchmark_gpu.py        # GPU benchmark
-│   ├── benchmark_server_load.py # Server load simulation
-│   ├── demo_gpu_comparison.py  # CPU vs GPU comparison
-│   ├── demo_full.py            # Full demo
-│   ├── gpu_detect.py           # Hardware detection
-│   └── hybrid_compute.py       # Hybrid CPU+GPU system
-├── hex/                   # GPU Opcodes
-│   ├── gpu_opcodes.py     # GPU opcode generator
-│   ├── cuda_kernels.py    # CUDA kernels
-│   ├── binary_gpu.py      # Hybrid binary generator
-│   └── README.md          # HEX documentation
-├── build/                 # Compiled binaries (.exe)
-├── docs/                  # Documentation
-│   ├── EN/                # English documentation
-│   ├── ES/                # Spanish documentation
-│   └── IDEAS/             # Development roadmaps
-│       ├── ideas-6.md     # Universal Runtime
-│       ├── ideas-7.md     # Compiler improvements
-│       └── ideas-8.md     # Post-processing & optimization
-├── runtime/               # Universal Runtime (C)
-│   ├── core/              # Memory, types, runtime API
-│   ├── backends/          # CPU, GPU, Vulkan backends
-│   └── ffi/               # C++, Python, Rust bindings
-├── TEST-G/                # GPU/Vulkan tests
-│   ├── vulkan_detect/     # Vulkan/CUDA detection
-│   ├── cpu_gpu_dispatch/  # Auto-dispatch tests
-│   └── benchmark/         # CPU vs GPU benchmarks
-├── examples-new/          # Incremental compiler tests
-│   ├── fase1_syscalls/    # Direct syscalls
-│   ├── fase2_stack/       # Dynamic stack
-│   ├── fase3_functions/   # Multi-function support
-│   ├── fase4_targets/     # Multi-target (PE, ELF)
-│   └── fase5_detect/      # CPU detection
-├── GAME/                  # 🎮 Vulkan Bird Game Demo
-│   ├── src/               # Rust game source
-│   │   ├── main.rs        # Entry point
-│   │   ├── game.rs        # Branchless game logic
-│   │   └── renderer.rs    # Vulkan-ready renderer
-│   ├── Cargo.toml         # Dependencies
-│   └── README.md          # Game documentation
-├── Como_usar.md           # Quick start guide (Spanish)
-├── LICENSE                # Apache 2.0 License
-└── README.md              # This file
+```bash
+# Ejecutar programa (compila y ejecuta)
+adeadc run archivo.adB
+
+# Compilar a ejecutable
+adeadc build archivo.adB
+adeadc build archivo.adB -o mi_programa.exe
+
+# Verificar sintaxis
+adeadc check archivo.adB
+
+# Modo interactivo (REPL/Playground)
+adeadc play
+
+# Modos de binario ultra-compacto
+adeadc tiny archivo.adB      # < 500 bytes
+adeadc nano output.exe       # ~1 KB
+adeadc micro output.exe      # < 256 bytes (x86)
+
+# GPU/Vulkan
+adeadc gpu                   # Detectar GPU
+adeadc spirv matmul 1024     # Generar shader SPIR-V
+adeadc vulkan                # Inicializar Vulkan
 ```
 
 ---
 
-## 🎯 What is ADead-BIB?
+## 📝 Sintaxis del Lenguaje
 
-A compiler that transforms Python-style syntax directly into **x86-64 opcodes** and generates **PE executable binaries** without using an assembler.
+### Hello World
 
+```rust
+// La forma más simple - Script directo
+print("Hello, ADead-BIB!")
+
+// Con función main estilo Rust
+fn main() {
+    print("Hola desde Rust-style!")
+}
+
+// Con función main estilo Python
+def main():
+    print("Hola desde Python-style!")
 ```
-hello_world.adB → Lexer → Parser → AST → x86-64 Opcodes → PE → CPU executes
+
+### Variables
+
+```rust
+// Estilo Rust
+let x = 42
+let mut contador = 0
+const PI = 3
+
+// Estilo Python
+x = 42
+nombre = "ADead-BIB"
 ```
 
-**The CPU executes exactly what you write** - no intermediate layers, no runtime, no overhead.
+### Tipos de Datos
+
+```rust
+// Enteros
+let entero = 42
+let negativo = -17
+let grande = 1_000_000    // Separadores de miles
+
+// Strings con secuencias de escape
+let texto = "Hola\nMundo"   // Salto de línea
+let tab = "Col1\tCol2"      // Tabulación
+
+// Booleanos
+let verdadero = true
+let falso = false
+```
+
+### Funciones
+
+```rust
+// Estilo Rust con tipos
+fn sumar(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+// Estilo Python
+def multiplicar(x, y):
+    return x * y
+
+// Llamar funciones
+let resultado = sumar(10, 20)
+print("Resultado:")
+print(resultado)
+```
+
+### Control de Flujo
+
+```rust
+// If-else estilo Rust
+if edad >= 18 {
+    print("Mayor de edad")
+} else {
+    print("Menor de edad")
+}
+
+// If-elif-else estilo Python
+if nota >= 90:
+    print("Excelente")
+elif nota >= 80:
+    print("Muy bien")
+elif nota >= 70:
+    print("Bien")
+else:
+    print("Necesita mejorar")
+
+// While loop
+let i = 0
+while i < 10 {
+    print(i)
+    i = i + 1
+}
+
+// For loop (Python-style)
+for i in range(10):
+    print(i)
+```
 
 ---
 
-## 🧠 Why ADead-BIB? The Philosophy
+## 🏗️ Programación Orientada a Objetos
 
-### El Problema con Assembly (ASM)
+### Structs (Rust-style)
 
-Assembly es poderoso pero **brutalmente difícil**:
+```rust
+struct Punto {
+    x: i32,
+    y: i32,
+}
 
-```asm
-; ASM: Sumar dos números y mostrar resultado
-section .data
-    msg db 'Resultado: ', 0
-    num1 dd 10
-    num2 dd 20
-section .bss
-    result resd 1
-section .text
-    global _start
-_start:
-    mov eax, [num1]
-    add eax, [num2]
-    mov [result], eax
-    ; ... 50+ líneas más para imprimir ...
-    mov eax, 1
-    xor ebx, ebx
-    int 0x80
+impl Punto {
+    fn new(x: i32, y: i32) -> Punto {
+        return Punto { x: x, y: y }
+    }
+    
+    fn distancia(&self) -> i32 {
+        return self.x + self.y
+    }
+    
+    fn mover(&mut self, dx: i32, dy: i32) {
+        self.x = self.x + dx
+        self.y = self.y + dy
+    }
+}
+
+// Uso
+let p = Punto { x: 10, y: 20 }
+let d = p.distancia()
 ```
 
-**Problemas de ASM:**
-- 😵 Sintaxis críptica (`mov eax, [ebx+ecx*4+8]`)
-- 📚 Necesitas memorizar cientos de instrucciones
-- 🔧 Diferentes sintaxis (Intel vs AT&T)
-- 🐛 Errores difíciles de debuggear
-- ⏰ Desarrollo lento (10x más código)
-
-### La Solución: ADead-BIB
+### Clases con Herencia (Python/C++ style)
 
 ```python
-# ADead-BIB: Lo mismo, pero legible
-def main():
-    num1 = 10
-    num2 = 20
-    result = num1 + num2
-    print(result)
+class Animal:
+    nombre = ""
+    edad = 0
+    
+    def __init__(self, nombre, edad):
+        self.nombre = nombre
+        self.edad = edad
+    
+    virtual def hablar(self):
+        print("...")
+    
+    def info(self):
+        print("Nombre:")
+        print(self.nombre)
+
+class Perro extends Animal:
+    raza = ""
+    
+    override def hablar(self):
+        print("Guau guau!")
+    
+    def ladrar(self):
+        print("GUAU!")
+
+class Gato extends Animal:
+    override def hablar(self):
+        print("Miau!")
 ```
 
-**ADead-BIB genera los MISMOS opcodes que ASM, pero con sintaxis Python:**
+### Traits e Interfaces
 
-| Aspecto | ASM | ADead-BIB | Ganancia |
-|---------|-----|-----------|----------|
-| **Líneas de código** | 50+ | 5 | **10x menos** |
-| **Tiempo de desarrollo** | Horas | Minutos | **10x más rápido** |
-| **Curva de aprendizaje** | Meses | Días | **Accesible** |
-| **Errores** | Muchos | Pocos | **Menos bugs** |
-| **Rendimiento** | Óptimo | **Igual** | **0% pérdida** |
-| **Tamaño binario** | Pequeño | **Igual** | **0% overhead** |
+```rust
+// Trait estilo Rust
+trait Dibujable {
+    fn dibujar(&self);
+    fn obtener_color(&self) -> String;
+}
 
-### 🔬 La Magia: Mismo Resultado, Diferente Camino
+// Interface estilo Python/Java
+interface Movible:
+    def mover(self, x: i32, y: i32)
+    def obtener_posicion(self)
 
-```
-ASM:        mov eax, 10  →  B8 0A 00 00 00  →  CPU ejecuta
-ADead-BIB:  x = 10       →  B8 0A 00 00 00  →  CPU ejecuta
-                              ↑
-                    MISMOS BYTES EXACTOS
-```
+// Implementación de trait
+impl Dibujable for Sprite {
+    fn dibujar(&self) {
+        print("Dibujando sprite...")
+    }
+    
+    fn obtener_color(&self) -> String {
+        return "rojo"
+    }
+}
 
-**ADead-BIB no es un "wrapper" de ASM** - genera opcodes directamente, igual que un ensamblador, pero desde sintaxis legible.
-
-### 🎯 Filosofía Central
-
-> **"El cerebro humano piensa en Python, la CPU ejecuta en bytes. ADead-BIB es el traductor perfecto."**
-
-- **Lenguajes de alto nivel** (Python, JS) = Fáciles pero lentos (runtime, GC, overhead)
-- **ASM** = Rápido pero difícil (sintaxis arcana, desarrollo lento)
-- **ADead-BIB** = **Lo mejor de ambos mundos** (fácil Y rápido)
-
----
-
-## 🔥 Why is it Different?
-
-| Approach | Flow | Overhead |
-|----------|------|----------|
-| **C/C++** | Code → Compiler → ASM → Object → Linker → Binary | Medium |
-| **ASM** | ASM → Assembler → Object → Linker → Binary | Low |
-| **ADead-BIB** | Code → **Direct Opcodes** → Binary | **Minimal** |
-
-### Key Advantages
-
-- ✅ **No ASM** - We write bytes directly, not assembler text
-- ✅ **No Linker** - We generate complete PE in one step
-- ✅ **No Runtime** - Standalone binaries, no dependencies
-- ✅ **Total Control** - Every byte of the executable is yours
-- ✅ **Ultra-Compact Binaries** - Current: ~1.5 KB | **Target: < 1 KB (Bytes)**
-- ✅ **Branchless Optimization** - Automatic IF/ELSE → branchless transforms
-- ✅ **Syntax Validation** - Fast syntax checking without compilation
-
----
-
-## 📝 Syntax
-
-ADead-BIB uses Python-style syntax with OOP:
-
-```python
-# Main function
-def main():
-    print("Hello, World!")
-    x = 10
-    y = 20
-    print(x + y)
-
-# Classes with inheritance
-class Entity:
+// Clase con múltiples interfaces
+class Sprite implements Dibujable, Movible:
     x = 0
     y = 0
     
-    virtual def update(self):
-        pass
-
-class Player extends Entity:
-    health = 100
+    def dibujar(self):
+        print("Sprite en pantalla")
     
-    override def update(self):
-        print("Player update")
+    def mover(self, dx, dy):
+        self.x = self.x + dx
+        self.y = self.y + dy
 ```
 
 ---
 
-## 🤖 AI Integration
+## 🎮 Modo Playground (REPL)
 
-ADead-BIB includes a complete AI system with minimal RAM usage:
+El modo playground permite escribir y ejecutar código de forma interactiva:
 
-### Run AI Demo
-
-```powershell
-cd python
-python ai_complete.py      # Basic AI (0.19 MB RAM)
-python ai_scalable.py      # Scalable AI with BPE (0.82 MB RAM)
-python vocabulary.py       # Build vocabulary
-python embeddings.py       # Semantic embeddings
-python ollama_integration.py  # Ollama integration (requires Ollama)
+```bash
+adeadc play
 ```
-
-### AI Features
-
-| Feature | Status | RAM |
-|---------|--------|-----|
-| BPE Tokenizer | ✅ | - |
-| Semantic Embeddings | ✅ | 0.06 MB |
-| Multi-head Attention | ✅ | 0.03 MB |
-| Feed-forward Network | ✅ | 0.06 MB |
-| Text Generation | ✅ | - |
-| Text Analysis | ✅ | - |
-| Similarity Scoring | ✅ | - |
-| **Total** | ✅ | **0.19 MB** |
-
-### Real Performance Results (Tested)
-
-| Component | RAM | Speed | Use Case |
-|-----------|-----|-------|----------|
-| **ADead-BIB Compiler** | ~5 MB | 19 ms | 1.5 KB binaries (target: <1 KB) |
-| **Basic AI** | 0.19 MB | 15 ms/token | Fast analysis |
-| **Scalable AI (BPE)** | 0.82 MB | 34 ms/token | 0% UNK, 93% cache |
-| **Ollama (TinyLlama)** | ~700 MB | 2.2 s/response | Coherent generation |
-
-### Ollama Integration (Real LLM)
-
-```powershell
-# Install Ollama
-winget install Ollama.Ollama
-
-# Download model (637 MB)
-ollama pull tinyllama
-
-# Run full demo
-cd python
-python demo_full.py
-```
-
-**Sample Output:**
-```
-Prompt: 'What is Python in one sentence?'
-Response: Python: A popular and powerful programming language...
-Time: 2.4s
-```
-
-### Matrix Functions (Built-in)
-
-```python
-# In ADead-BIB code:
-dot(2, 3, 4, 5)           # = 26 (dot product)
-sum_sq(3, 4)              # = 25 (sum of squares)
-relu(-3)                  # = 0 (ReLU activation)
-weighted_sum(10, 2, 20, 3) # = 80
-scale(200, 50)            # = 100 (x * factor / 100)
-lerp(0, 100, 50)          # = 50 (linear interpolation)
-```
-
----
-
-## 📊 Implemented Features
-
-| Component | Status | Description |
-|-----------|--------|-------------|
-| **Lexer** | ✅ | Tokenizes .adB code |
-| **Parser** | ✅ | Generates AST from tokens |
-| **Type Checker** | ✅ | Enhanced validation with warnings |
-| **Syntax Checker** | ✅ | `check` command for fast validation |
-| **Codegen** | ✅ | Emits x86-64 opcodes |
-| **PE Generator** | ✅ | Generates Windows binaries |
-| **ELF Generator** | ✅ | Generates Linux binaries |
-| **Variables** | ✅ | Local variables on stack |
-| **Operations** | ✅ | +, -, *, /, % |
-| **Comparisons** | ✅ | ==, !=, <, <=, >, >= |
-| **Conditionals** | ✅ | if/elif/else |
-| **Loops** | ✅ | while, for |
-| **Functions** | ✅ | With parameters |
-| **OOP** | ✅ | Classes, inheritance, polymorphism |
-| **70+ Built-ins** | ✅ | Math, AI, utilities |
-| **Python FFI** | ✅ | Call ADead-BIB from Python |
-| **GPU Support** | ✅ | CUDA kernels, hybrid mode |
-| **HEX Opcodes** | ✅ | GPU opcodes for direct execution |
-| **Branchless Optimizer** | ✅ | Auto-transforms IF/ELSE to branchless |
-| **AST Transformation** | ✅ | Pattern detection & replacement |
-
----
-
-## 🎮 GPU Support (CUDA)
-
-ADead-BIB includes full GPU acceleration for AI and matrix operations.
-
-### Author's Hardware (Benchmark Reference)
-
-| Component | Specification |
-|-----------|---------------|
-| **GPU** | NVIDIA GeForce RTX 3060 |
-| **VRAM** | 12 GB GDDR6 |
-| **CUDA Cores** | 3584 |
-| **SMs** | 28 |
-| **CPU** | AMD Ryzen (6 cores, 12 threads) |
-| **RAM** | 16 GB |
-
-### GPU Benchmark Results
-
-#### Matrix Multiplication (MatMul)
-
-| Size | CPU | GPU | Speedup |
-|------|-----|-----|---------|
-| 512x512 | 1.04 ms | 0.10 ms | **10.1x** |
-| 1024x1024 | 5.75 ms | 0.36 ms | **15.9x** |
-| 2048x2048 | 38.22 ms | 2.38 ms | **16.1x** |
-| 4096x4096 | 317 ms | 19 ms | **16.7x** |
-| 8192x8192 | 2400+ ms | 120 ms | **20x** |
-
-#### Transformer Attention
-
-| Config | CPU | GPU | Speedup |
-|--------|-----|-----|---------|
-| seq=256, dim=64 | 21 ms | 4 ms | **5.4x** |
-| seq=512, dim=128 | 92 ms | 1.3 ms | **73.6x** |
-| seq=1024, dim=256 | 488 ms | 5.7 ms | **86.1x** |
-
-#### Server Load Benchmark
-
-| Level | MatMul | GFLOPS | Throughput |
-|-------|--------|--------|------------|
-| Light (Laptop) | 1024x1024 | 6,887 | 27.8M tok/s |
-| Medium (Desktop) | 2048x2048 | 7,398 | 11.9M tok/s |
-| Heavy (Workstation) | 4096x4096 | 7,551 | 6.8M tok/s |
-| Extreme (Server) | 8192x8192 | **9,038** | 3.7M tok/s |
-| Maximum (Data Center) | 8192x8192 | **9,175** | 1.6M tok/s |
-
-**Peak Performance: 9,175 GFLOPS**
-
-### Ollama GPU Modes
-
-| Mode | CPU | GPU | Time/Response | Tokens/s |
-|------|-----|-----|---------------|----------|
-| **CPU Solo** | 100% | 0% | 5.06s | 6.0 |
-| **GPU Solo** | 10% | 90% | 2.62s | 10.2 |
-| **Balanced** | 50% | 50% | 3.10s | 9.6 |
-| **Hybrid** | 10% | 90% | 2.74s | **12.4** |
-
-**Speedup GPU vs CPU: 1.9x**
-
-### Run GPU Benchmarks
-
-```powershell
-cd python
-
-# GPU vs CPU comparison
-python demo_gpu_comparison.py
-
-# Full GPU benchmark
-python benchmark_gpu.py
-
-# Server load simulation
-python benchmark_server_load.py
-
-# Ollama GPU modes
-python ollama_gpu_benchmark.py
-
-# CUDA kernels
-cd ../hex
-python cuda_kernels.py
-```
-
----
-
-## 🔧 HEX Opcodes for GPU
-
-ADead-BIB includes a custom GPU opcode system in the `hex/` folder:
-
-```
-hex/
-├── gpu_opcodes.py      # GPU opcode generator
-├── cuda_kernels.py     # Pre-compiled CUDA kernels
-├── binary_gpu.py       # Hybrid CPU+GPU binary generator
-└── README.md           # HEX documentation
-```
-
-### GPU Opcodes
-
-| Opcode | Hex | Description |
-|--------|-----|-------------|
-| GPU_INIT | 0xC0DA0001 | Initialize CUDA context |
-| GPU_ALLOC | 0xC0DA0010 | Allocate GPU memory |
-| GPU_MATMUL | 0xC0DA0020 | Matrix multiplication |
-| GPU_ATTENTION | 0xC0DA0040 | Multi-head attention |
-| GPU_SOFTMAX | 0xC0DA0033 | Softmax activation |
-| GPU_SYNC | 0xC0DA00F0 | Synchronize GPU |
-
-### Example GPU Program
-
-```
-; ADead-BIB GPU Program: matmul_1024
-0000: 0100DAC000           ; GPU_INIT
-0005: 1000DAC002...        ; GPU_ALLOC 4MB
-001F: 2000DAC006...        ; GPU_MATMUL 1024x1024
-006B: F000DAC000           ; GPU_SYNC
-009C: FFFFDAC000           ; GPU_END
-; Total: 161 bytes
-```
-
----
-
-## 🔬 Technical Details
-
-### Generated PE Layout
-
-```
-0x0000 - Headers (DOS, PE, COFF, Optional, Sections)
-0x1000 - .text  (executable code - opcodes)
-0x2000 - .rdata (imports + data)
-```
-
-### Example Generated Opcodes
-
-For `print("Hello, World!")`:
-
-```asm
-48 83 EC 28          ; sub rsp, 40 (shadow space)
-48 B9 60 20 40 00... ; mov rcx, string_address
-FF 15 xx xx xx xx    ; call [rip+offset] (printf)
-31 C0                ; xor eax, eax (return 0)
-48 83 C4 28          ; add rsp, 40
-C3                   ; ret
-```
-
-**27 bytes of machine code** - direct to CPU.
-
----
-
-## 📚 Documentation
-
-| Document | Language | Description |
-|----------|----------|-------------|
-| `docs/EN/` | English | English documentation |
-| `docs/ES/` | Spanish | Spanish documentation |
-| `docs/IDEAS/` | Mixed | Development roadmaps |
-
----
-
-## 💡 General Use Cases & Optimization Potential
-
-### 🚀 Why ADead-BIB + Python + Ollama?
-
-| Scenario | Traditional | ADead-BIB Solution | Improvement |
-|----------|-------------|-------------------|-------------|
-| **Tokenization** | Python (slow) | ADead-BIB native | 5x faster |
-| **Small binaries** | C++ (100+ KB) | ADead-BIB (1.5 KB → target: <1 KB) | 66x+ smaller |
-| **AI preprocessing** | NumPy (heavy) | Built-in functions | 50% less RAM |
-| **Text generation** | API calls | Local Ollama | No latency, private |
-
-### 🎯 Recommended Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    YOUR APPLICATION                          │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────┐
-│              PYTHON (Orchestration)                          │
-│  - User interface                                            │
-│  - Data loading                                              │
-│  - Result formatting                                         │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-        ┌─────────────┼─────────────┐
-        ▼             ▼             ▼
-┌───────────┐  ┌───────────┐  ┌───────────┐
-│ ADead-BIB │  │ Local AI  │  │  Ollama   │
-│ (Fast)    │  │ (0.19 MB) │  │ (Quality) │
-│           │  │           │  │           │
-│ • Matrix  │  │ • Tokens  │  │ • Chat    │
-│ • Math    │  │ • Embed   │  │ • Generate│
-│ • Binaries│  │ • Analyze │  │ • Reason  │
-└───────────┘  └───────────┘  └───────────┘
-```
-
-### 📊 Real-World Applications
-
-1. **Chatbots** - Ollama for responses, ADead-BIB for preprocessing
-2. **Data Analysis** - Local AI for fast tokenization, no API costs
-3. **Edge Computing** - 0.19 MB AI runs on any device
-4. **Game Development** - Ultra-compact binaries (<1 KB target), instant compilation
-5. **Embedded Systems** - No runtime dependencies
-6. **Private AI** - All processing local, no data leaves your machine
-
-### 💰 Cost Comparison
-
-| Solution | Monthly Cost | Latency | Privacy |
-|----------|-------------|---------|---------|
-| OpenAI API | $20-100+ | 500ms+ | ❌ |
-| Cloud GPU | $50-500+ | 100ms+ | ❌ |
-| **ADead-BIB + Ollama** | **$0** | **<50ms** | **✅** |
-
----
-
-## 🎯 Philosophy
-
-> **"Code → Opcodes → Binary"**
-
-ADead-BIB eliminates unnecessary layers between your code and the CPU. No assembler, no linker, no runtime. Just bytes that the CPU executes directly.
-
-**Fewer steps = Fewer errors = More control = Better performance**
-
----
-
-## 🎯 Ultra-Compact Binaries: The Byte-Sized Goal ✅ ACHIEVED!
-
-### Current Status
-- **Standard build:** 2 KB (2,048 bytes)
-- **Nano build:** **1 KB (1,024 bytes)** ✅ ACHIEVED!
-- **Micro build:** **256 bytes** ✅ ACHIEVED! (PE32)
-- **Flat binary:** **3 bytes** ✅ ACHIEVED! (pure code)
-- **Ultimate goal:** < 500 bytes PE64 (in progress)
-
-### 🆕 NEW: Ultra-Compact Build Commands
-
-```powershell
-# Standard build (~2 KB)
-cargo run --release -- build examples/hello_world.adB
-
-# Tiny build (< 1.5 KB) - Optimized PE
-cargo run --release -- tiny examples/hello_world.adB
-
-# Nano build (1 KB) - Smallest valid x64 PE
-cargo run --release -- nano output.exe [exit_code]
-
-# Micro build (256 bytes) - PE32 32-bit
-cargo run --release -- micro output.exe [exit_code]
-
-# Flat binary (3 bytes) - Pure machine code
-cargo run --release -- flat output.bin [exit_code]
-
-# MicroVM bytecode (2 bytes) - 4-bit instructions
-cargo run --release -- vm output.adb [exit_code]
-
-# 1-bit program - Ultimate minimal
-cargo run --release -- bit [0|1]
-```
-
-### 🔥 GPU Commands (Vulkan/SPIR-V)
-
-```powershell
-# Detect GPU and generate optimized shader
-cargo run --release -- gpu [output.spv]
-
-# Generate SPIR-V compute shader
-cargo run --release -- spirv matmul [size]
-# Example: cargo run --release -- spirv matmul 1024
-
-# Initialize Vulkan runtime REAL (exprimir GPU)
-cargo run --release -- vk
-```
-
-### Vulkan Runtime Output (RTX 3060)
 
 ```
 ╔══════════════════════════════════════════════════════════════╗
-║                 VULKAN RUNTIME INITIALIZED                    ║
-╠══════════════════════════════════════════════════════════════╣
-║ Device:     NVIDIA GeForce RTX 3060                          ║
-║ Vendor ID:  0x10DE                                          ║
-║ Type:       DISCRETE_GPU                                     ║
-║ API:        1.4.312                                          ║
-╠══════════════════════════════════════════════════════════════╣
-║ Max Workgroup Size:  [1024, 1024, 64]                        ║
-║ Max Invocations:     1024                                    ║
-║ Shared Memory:       48 KB                                   ║
+║        🎮 ADead-BIB Playground v0.2.0 🎮                     ║
+║     Modo interactivo - Escribe código y presiona Enter       ║
 ╚══════════════════════════════════════════════════════════════╝
+
+adB[1]> print("Hola!")
+▶️  Ejecutando...
+   → Hola!
+✅ Ejecución completada
+
+adB[2]> let x = 42
+   x = 42
+
+adB[3]> :help
+🎮 ADead-BIB Playground - Ayuda
+...
+
+adB[4]> :exit
+👋 ¡Hasta luego!
 ```
+
+### Comandos del Playground
+
+| Comando | Atajo | Descripción |
+|---------|-------|-------------|
+| `:help` | `:h` | Mostrar ayuda |
+| `:run` | `:r` | Ejecutar código en buffer |
+| `:clear` | `:c` | Limpiar buffer |
+| `:ast` | `:a` | Mostrar AST del código |
+| `:tokens` | `:t` | Mostrar tokens |
+| `:vars` | `:v` | Mostrar variables |
+| `:example` | `:e` | Cargar ejemplo |
+| `:exit` | `:q` | Salir |
 
 ---
 
----
+## ⚡ Tamaños de Binario
 
-## 🎮 Heredar: Sistema de Herencia
+ADead-BIB genera binarios **extremadamente pequeños** porque escribe opcodes directamente:
 
-**Facilita el uso de ADead-BIB para Game Engines, Graphics Engines y Compute**
+| Modo | Tamaño | Comando | Descripción |
+|------|--------|---------|-------------|
+| Standard | ~1.5 KB | `adeadc build` | Binario completo |
+| Tiny | < 500 bytes | `adeadc tiny` | PE ultra-compacto |
+| Nano | ~1 KB | `adeadc nano` | Mínimo válido x64 |
+| Micro | < 256 bytes | `adeadc micro` | PE32 sub-256 bytes |
 
-```
-Heredar/
-├── GameEngine/       # Templates para Game Engines
-├── GraphicsEngine/   # Templates para Motores Gráficos
-├── ComputeEngine/    # Templates para Cómputo GPU
-├── Templates/        # GPU Context, Benchmarks
-└── TECHNICAL_PAPER.md # Documentación técnica
-```
+### Comparación con otros lenguajes
 
-### Uso Rápido
-
-```rust
-// Game Engine
-let engine = GameEngineBuilder::new()
-    .with_name("Mi Juego")
-    .with_resolution(1920, 1080)
-    .build();
-
-// Graphics Engine
-let renderer = GraphicsEngineBuilder::new()
-    .with_backend(RenderBackend::Vulkan)
-    .with_ray_tracing(true)
-    .build();
-
-// Compute Engine
-let compute = ComputeEngineBuilder::new()
-    .with_workgroup(256, 1, 1)
-    .with_scheduling(SchedulingMode::Deterministic)
-    .build();
-```
-
-### Nivel Militar 🎖️
-
-- **Zero-copy transfers** - Sin copias innecesarias
-- **Deterministic scheduling** - Sin locks, sin colas dinámicas
-- **Direct SPIR-V** - Sin GLSL, sin HLSL
-- **Memory coalescing** - Acceso óptimo a memoria
-- **Workgroup optimization** - Por arquitectura GPU
-
----
-
-## 🏗️ Architecture: Complete GPU System
-
-ADead-BIB implements a **complete GPU architecture** with 4 key pieces:
-
-### 1️⃣ Scheduler CPU→GPU (Deterministic)
-```rust
-// No dynamic queues, no locks, no abstractions
-struct Dispatch {
-    shader_id: u32,
-    workgroups: (u32, u32, u32),
-    buffer_ids: Vec<u32>,
-    dependencies: Vec<u32>,
-}
-```
-
-### 2️⃣ Explicit Memory Management
-```rust
-// Buffers, ring buffers, zero-copy
-let buffer = allocator.create_buffer(size, BufferUsage::StorageReadWrite);
-let staging = StagingBuffer::new(id, size);
-let ring = RingBuffer::new(id, size, frames_in_flight);
-```
-
-### 3️⃣ ADead Bytecode → SPIR-V (Unique!)
-```
-ADead Bytecode (4-bit instructions)
-         ↓
-    SPIR-V IR
-         ↓
-       GPU
-
-// Write logic in bits, execute on GPU
-// No GLSL, no HLSL - direct compilation
-```
-
-### 4️⃣ Real Metrics (No Fake Benchmarks)
-```
-📊 GPU METRICS REPORT
-   CPU → GPU:     10.25 µs
-   Dispatch:      45.30 µs
-   GFLOPS:        8.50
-   Bandwidth:     280.00 GB/s
-   P99 Latency:   120.50 µs
-```
-
-### GPU Backend Structure
-
-```
-src/rust/backend/gpu/
-├── gpu_detect.rs      # GPU detection via nvidia-smi (RTX 30/40 series)
-├── vulkan/            # SPIR-V generation (470+ lines)
-├── hex/               # Direct HEX binary for GPU
-├── scheduler.rs       # Deterministic CPU→GPU scheduler
-├── memory.rs          # Explicit memory (buffers, zero-copy)
-├── bytecode_spirv.rs  # ADead Bytecode → SPIR-V compiler
-└── metrics.rs         # Real performance metrics
-```
-
-### GPU Detection Example (RTX 3060 12GB)
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║                      GPU DETECTION                            ║
-╠══════════════════════════════════════════════════════════════╣
-║ ✅ GPU Available                                             ║
-║ Device:    NVIDIA GeForce RTX 3060                          ║
-║ VRAM:      12288 MB (12.0 GB)                               ║
-║ Compute:   28 SMs                                           ║
-╠══════════════════════════════════════════════════════════════╣
-║ 📊 SPECIFICATIONS                                            ║
-║ CUDA Cores:    3584                                          ║
-║ Boost Clock:   1777 MHz                                     ║
-║ Bandwidth:     360.0 GB/s                                    ║
-║ FP32:          12.74 TFLOPS                                  ║
-║ FP16:          25.48 TFLOPS (Tensor Cores)                   ║
-║ Architecture:  Ampere                                        ║
-╠══════════════════════════════════════════════════════════════╣
-║ 🎯 OPTIMAL SETTINGS                                          ║
-║ Workgroup:     (256, 1, 1)                                   ║
-║ MatMul Tile:   (16, 16, 1)                                   ║
-║ MatMul 1024³:  ~0.34 ms (estimated)                          ║
-╚══════════════════════════════════════════════════════════════╝
-```
-
-### Size Comparison
-
-| Build Mode | Size | Reduction | Use Case |
-|------------|------|-----------|----------|
-| **Standard** | 2,048 bytes | - | Full features, imports |
-| **Tiny** | 1,024 bytes | 50% | Compact, limited code |
-| **Nano** | 1,024 bytes | 50% | Minimal x64, exit only |
-| **Micro** | **256 bytes** | **87.5%** | PE32 32-bit |
-| **Flat** | **3 bytes** | **99.85%** | Pure code, no headers |
-| **MicroVM** | **2 bytes** | **99.9%** | Bytecode 4-bit |
-| **1-bit** | **0.125 bytes** | **99.99%** | Teórico con runtime |
-| **SPIR-V** | **644 bytes** | GPU | Vulkan compute shader |
-
-### Why Bytes Matter
-
-| Size | Use Case | Benefit |
-|------|----------|---------|
-| **< 500 bytes** | Microcontrollers, embedded | Minimal memory footprint |
-| **< 1 KB** | Bootloaders, system tools | Fast loading, minimal storage |
-| **1-2 KB** | Current ADead-BIB | **100x smaller than C++** |
-
-### Optimization Techniques Used
-
-1. **Minimal PE Headers** - Only essential fields
-2. **No Data Directories** - NumberOfRvaAndSizes = 0
-3. **Section/File Alignment** - 0x200 instead of 0x1000
-4. **Direct Opcodes** - No library dependencies for nano
-5. **Header Overlap** - Reuse unused DOS header fields
-
-### Example: Nano PE Structure
-
-```
-Offset  Size   Content
-0x000   64     DOS Header (MZ + e_lfanew)
-0x040   4      PE Signature
-0x044   20     COFF Header
-0x058   240    Optional Header PE32+
-0x148   40     Section Header (.text)
-0x170   144    Padding
-0x200   3-6    Code (xor eax,eax; ret)
-0x203   509    Padding to 0x400
-─────────────────────────────
-Total: 1,024 bytes (1 KB)
-```
-
-**🏆 Achievement Unlocked:** 1 KB Windows x64 executable!
-
----
-
-## 🚀 System Capabilities
-
-Based on the author's hardware (RTX 3060 12GB), ADead-BIB can handle:
-
-| Capability | Specification |
-|------------|---------------|
-| **Matrices** | Up to 8192x8192 (67M elements) |
-| **Batch Size** | Up to 64-128 depending on sequence |
-| **Sequences** | Up to 4096 tokens |
-| **Model Layers** | Up to 12-24 layers |
-| **Vocabulary** | 100K+ tokens |
-| **Peak GFLOPS** | 9,175 |
-| **Max Throughput** | 27.8M tokens/second |
-
-### Production Estimates
-
-| Use Case | Performance |
+| Lenguaje | Hello World |
 |----------|-------------|
-| **Inference** | 10,000-50,000 tokens/second |
-| **Training** | 1,000-5,000 tokens/second |
-| **Attention** | Up to 86x faster than CPU |
-
-### GPU Comparison
-
-| GPU | TFLOPS | Relative |
-|-----|--------|----------|
-| **RTX 3060 12GB** (Author's) | ~9 TFLOPS | 1x |
-| RTX 4090 24GB | ~83 TFLOPS | 9x |
-| A100 40GB | ~156 TFLOPS | 17x |
-| H100 80GB | ~267 TFLOPS | 30x |
+| **ADead-BIB** | **~1.5 KB** |
+| C (MinGW) | ~50 KB |
+| Rust | ~150 KB |
+| Go | ~2 MB |
+| Python (.exe) | ~5 MB |
 
 ---
 
-## 🆕 NEW: Intermediate Runtime - Clean Code for CPU & GPU
-
-ADead-BIB acts as an **intermediate runtime** that cleans and optimizes code before execution, making it trivially simple for both CPU and GPU to process.
-
-### 🧠 The Philosophy: Clean Code = Fast Execution
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    TRADITIONAL APPROACH                          │
-│  Source → Compiler → Messy Code → CPU/GPU struggles             │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│                    ADead-BIB APPROACH                            │
-│  Source → Parser → INTERMEDIATE RUNTIME → Clean Code → Fast!    │
-│                    ↓                                             │
-│           • Remove branches (IF/ELSE)                           │
-│           • Eliminate dead code                                 │
-│           • Vectorize loops (SIMD)                              │
-│           • Coalesce memory access                              │
-│           • Fuse operations                                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 🔧 What the Intermediate Runtime Does
-
-| Stage | Action | Benefit |
-|-------|--------|---------|
-| **1. Parse** | AST generation | Structure analysis |
-| **2. Clean** | Remove dead code, unused vars | Smaller binary |
-| **3. Transform** | IF → Branchless, Loops → SIMD | 8x faster |
-| **4. Optimize** | Fuse ops, align memory | Cache friendly |
-| **5. Dispatch** | Auto-select CPU/GPU | Best hardware |
-| **6. Execute** | Pure opcodes | Zero overhead |
-
-### 🎯 Auto-Detection System
-
-ADead-BIB automatically detects and uses the best hardware:
-
-```
-CPU: AMD Ryzen 5 5600X (12 threads)
-├── SSE2:    ✓ (128-bit SIMD)
-├── AVX:     ✓ (256-bit SIMD)
-├── AVX2:    ✓ (256-bit + FMA)
-├── AVX-512: ✗
-└── FMA:     ✓ (Fused Multiply-Add)
-
-GPU: NVIDIA (detected)
-├── Vulkan:  ✓ (Cross-platform)
-└── CUDA:    ✓ (NVIDIA optimized)
-```
-
-### ⚡ Auto-Dispatch in Action
-
-```
-Small data (< 1M elements)  → CPU AVX2 (low latency)
-Large data (≥ 1M elements)  → GPU CUDA (high throughput)
-
-MatMul 32x32       → CpuAvx2   (0.01 ms)
-MatMul 256x256     → GpuCuda   (0.1 ms)
-MatMul 1024x1024   → GpuCuda   (0.5 ms)
-MatMul 4096x4096   → GpuCuda   (15 ms)
-```
-
-### 📊 Performance Metrics
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Dispatch overhead** | 9.48 ns | Near-zero cost |
-| **Dispatches/second** | 106 M | Real-time capable |
-| **AVX2 speedup** | 1.9x | vs scalar code |
-| **GPU speedup** | 16-86x | vs CPU (large data) |
-| **Determinism** | 100% | Reproducible results |
-| **Memory efficiency** | 90%+ | Coalesced access |
-
-### 🚀 Run GPU Tests
-
-```powershell
-# Vulkan/CUDA Detection
-.\TEST-G\vulkan_detect\test_vulkan.exe
-
-# Auto-Dispatch Test
-.\TEST-G\cpu_gpu_dispatch\test_dispatch.exe
-
-# CPU vs GPU Benchmark
-.\TEST-G\benchmark\test_benchmark.exe
-```
-
----
-
-## 🧹 NEW: Post-Processing & Branchless Optimization
-
-The intermediate runtime includes a **post-processor** that transforms complex code into simple, GPU-friendly operations.
-
-### ❌ The Problem: Branching Kills Performance
-
-```
-GPU with IF/ELSE: ~40% efficiency (warp divergence)
-CPU with IF/ELSE: Branch misprediction penalty (15-20 cycles)
-
-Why? GPU executes thousands of threads in lockstep.
-     If some take IF and others take ELSE, half wait idle.
-```
-
-### ✅ The Solution: Branchless Code
-
-| Pattern | Before (Branching) | After (Branchless) | Speedup |
-|---------|-------------------|-------------------|---------|
-| ReLU | `if x > 0: x else 0` | `max(0, x)` | **8x** |
-| Select | `if cond: a else b` | `blend(a, b, mask)` | **8x** |
-| Clamp | `if x < min...` | `max(min, min(x, max))` | **7x** |
-| Abs | `if x < 0: -x else x` | `x & 0x7FFFFFFF` | **10x** |
-| Sign | `if x > 0: 1 elif...` | `(x >> 31) | ((-x) >> 31)` | **6x** |
-
-### 🔄 Automatic Transformations
-
-The runtime automatically transforms these patterns:
-
-```python
-# BEFORE (your code)
-def relu(x):
-    if x > 0:
-        return x
-    else:
-        return 0
-
-# AFTER (runtime transforms to)
-# Single instruction: VMAXPS (AVX2) or max() (GPU)
-# No branches, no divergence, 8x faster
-```
-
-### 📈 Expected Improvements
-
-| Operation | With Branching | Without | Speedup |
-|-----------|---------------|---------|---------|
-| ReLU (1M elements) | 2.5 ms | 0.3 ms | **8.3x** |
-| Softmax (1M) | 15 ms | 2 ms | **7.5x** |
-| Attention (1K seq) | 5 ms | 0.5 ms | **10x** |
-| GELU (1M) | 8 ms | 1 ms | **8x** |
-| LayerNorm (1M) | 12 ms | 1.5 ms | **8x** |
-
----
-
-## 🗑️ NEW: Garbage Elimination
-
-The runtime removes "garbage" that slows down CPU and GPU:
-
-### CPU Garbage Removed
-
-| Garbage | Problem | Solution | Benefit |
-|---------|---------|----------|---------|
-| Redundant loads | Cache miss | Register reuse | 2x faster |
-| Dead stores | Wasted bandwidth | Elimination | 1.5x faster |
-| Unaligned access | Slow memory | Alignment | 2x faster |
-| Division by constant | 20+ cycles | Multiply by reciprocal | 10x faster |
-| Modulo | Very slow | AND for power of 2 | 20x faster |
-
-### GPU Garbage Removed
-
-| Garbage | Problem | Solution | Benefit |
-|---------|---------|----------|---------|
-| Warp divergence | 50% idle threads | Branchless code | 2x faster |
-| Non-coalesced access | 32x slower memory | Data reorganization | 10x faster |
-| Excessive barriers | Thread stalls | Barrier reduction | 1.5x faster |
-| Register pressure | Low occupancy | Spilling optimization | 1.3x faster |
-| Shared memory conflicts | Bank conflicts | Padding | 2x faster |
-
-### 🧹 Clean Code Example
-
-```
-BEFORE (Dirty):                    AFTER (Clean):
-─────────────────                  ─────────────────
-load x                             load x, y, z (coalesced)
-if x > 0:                          max(0, x)  ← branchless
-  store temp                       fma(x, y, z) ← fused
-  load y                           store result
-  mul temp, y
-  load z
-  add result, z
-  store result
-else:
-  store 0
-
-Instructions: 12                   Instructions: 4
-Branches: 1                        Branches: 0
-Memory ops: 6                      Memory ops: 2
-```
-
----
-
-## 🔥 NEW: Operation Fusion
-
-The runtime fuses multiple operations into single instructions:
-
-### Fused Operations
-
-| Separate | Fused | Instruction | Speedup |
-|----------|-------|-------------|---------|
-| `a * b + c` | FMA | `VFMADD` | **2x** |
-| `load + add` | Load-Add | Memory op | **1.5x** |
-| `relu + add` | Fused activation | Single kernel | **1.8x** |
-| `matmul + bias + relu` | Fused layer | Single kernel | **3x** |
-
-### Example: Neural Network Layer
-
-```
-BEFORE (3 operations):
-1. matmul(x, weights)     → temp1
-2. add(temp1, bias)       → temp2  
-3. relu(temp2)            → output
-
-AFTER (1 fused operation):
-1. fused_linear_relu(x, weights, bias) → output
-
-Memory traffic: 3x less
-Kernel launches: 3x less
-Speed: 3x faster
-```
-
----
-
-## 📦 NEW: Memory Optimization
-
-### Coalesced Memory Access
-
-```
-BEFORE (Scattered):          AFTER (Coalesced):
-Thread 0 → addr 0            Thread 0 → addr 0
-Thread 1 → addr 100          Thread 1 → addr 4
-Thread 2 → addr 200          Thread 2 → addr 8
-Thread 3 → addr 300          Thread 3 → addr 12
-
-Memory transactions: 4        Memory transactions: 1
-Bandwidth used: 25%          Bandwidth used: 100%
-```
-
-### Memory Pool
-
-```rust
-// Pre-allocated memory pool
-// No malloc/free during execution
-// Zero allocation overhead
-let pool = MemoryPool::new(1_GB);
-let tensor_a = pool.alloc(1024 * 1024);  // Instant
-let tensor_b = pool.alloc(1024 * 1024);  // Instant
-```
-
-See `docs/IDEAS/ideas-8.md` for full documentation.
-
----
-
-## 🎮 NEW: Vulkan Bird Game Demo
-
-ADead-BIB includes a complete **Flappy Bird clone** demonstrating all runtime features:
-
-### Game Features
-
-| Feature | Implementation | Benefit |
-|---------|----------------|---------|
-| **Rendering** | Vulkan-ready architecture | GPU accelerated |
-| **Physics** | Branchless collision | 8x faster |
-| **Game loop** | Deterministic | Reproducible |
-| **Memory** | Zero allocations | No GC pauses |
-
-### Run the Game
-
-```powershell
-cd GAME
-cargo build --release
-.\target\release\adead-vulkan-bird.exe
-```
-
-### Game Output
-
-```
-╔════════════════════════════════════════════════════════════╗
-║     🎮 ADead-BIB Vulkan Bird                               ║
-║     Flappy Bird + Vulkan + Branchless Physics              ║
-╚════════════════════════════════════════════════════════════╝
-
-✅ Vulkan detected - GPU rendering available
-
-📊 Game Statistics:
-   Total frames: 173
-   Average FPS: 58.7
-   Final score: 1
-
-🎯 ADead-BIB Features Demonstrated:
-   ✅ Branchless collision detection
-   ✅ Branchless physics (gravity, velocity)
-   ✅ Deterministic game loop
-   ✅ Zero-allocation frame updates
-   ✅ Vulkan-ready architecture
-```
-
-### Branchless Physics Example
-
-```rust
-// Traditional (with branches - SLOW)
-if bird.y < pipe.top || bird.y > pipe.bottom {
-    game_over = true;
-}
-
-// ADead-BIB (branchless - FAST)
-let hit = ((bird.y - pipe.top) as i32) >> 31;  // Bit shift = no branch
-game_over |= hit;                               // OR = no branch
-```
-
-### Controls
-
-| Key | Action |
-|-----|--------|
-| **SPACE** | Flap (jump) |
-| **R** | Restart |
-| **ESC** | Quit |
-
-See `GAME/README.md` for full documentation.
-
----
-
-## 🌐 Multi-Language Integration: ADead-BIB as the "Muscle"
-
-### 🧠 Philosophy: Languages = Brain, ADead-BIB = Muscle
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    YOUR APPLICATION                                     │
-│                                                                      │
-│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  │
-│   │ Python  │  │   JS    │  │  Rust   │  │   Go    │  │   C++   │  │
-│   │ 🧠 Brain│  │ 🧠 Brain│  │ 🧠 Brain│  │ 🧠 Brain│  │ 🧠 Brain│  │
-│   └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  │
-│        │            │            │            │            │        │
-│        └────────────┴─────┬──────┴────────────┴────────────┘        │
-│                           │                                          │
-│                           ▼                                          │
-│              ┌─────────────────────────┐                            │
-│              │      ADead-BIB          │                            │
-│              │   💪 MUSCLE/NERVOUS     │                            │
-│              │                         │                            │
-│              │  • Direct CPU opcodes   │                            │
-│              │  • GPU acceleration     │                            │
-│              │  • Zero runtime         │                            │
-│              │  • Ultra-compact        │                            │
-│              └───────────┬─────────────┘                            │
-│                          │                                           │
-│                          ▼                                           │
-│              ┌─────────────────────────┐                            │
-│              │     CPU / GPU           │                            │
-│              │   ⚡ Pure Performance   │                            │
-│              └─────────────────────────┘                            │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### 🎯 Each Language Brings Its Strength
-
-| Language | Role (Brain) | ADead-BIB (Muscle) | Result |
-|----------|--------------|--------------------|---------|
-| **Python** | Orchestration, ML, Scripts | Heavy compute, binaries | Easy Python + native speed |
-| **JavaScript** | UI, Web, Node.js | WASM, intensive compute | Ultra-fast web apps |
-| **Rust** | Systems, safety | Direct opcodes | Safe Rust + efficient ADead |
-| **Go** | Concurrency, servers | Parallel processing | Simple Go + GPU power |
-| **C++** | Games, engines | Minimal binaries | C++ control + compact ADead |
-| **Java** | Enterprise, Android | JNI acceleration | JVM + native performance |
-| **C#** | .NET, Unity | P/Invoke binding | .NET productivity + speed |
-| **Swift** | iOS, macOS | Metal GPU | Apple ecosystem + power |
-
-### 🔥 JavaScript + ADead-BIB
-
-```javascript
-// Node.js calls ADead-BIB for heavy compute
-const { ADeadEngine } = require('./adead-core');
-const engine = new ADeadEngine();
-
-// JavaScript: business logic (easy)
-async function processData(data) {
-    // Preprocessing in JS
-    const prepared = data.map(x => x * 2);
-    
-    // Heavy compute → ADead-BIB (fast)
-    const result = engine.matmul(prepared, weights);
-    
-    // Postprocessing in JS
-    return result.filter(x => x > threshold);
-}
-
-// Result: Easy JS + Fast ADead-BIB
-```
-
-### 🐍 Python + ADead-BIB (Implemented)
-
-```python
-from adead_ffi import ADeadFFI
-
-# Python: orchestration (easy)
-data = load_data("dataset.csv")
-model = prepare_model()
-
-# Heavy compute → ADead-BIB (fast)
-adead = ADeadFFI()
-result = adead.run_code("""
-    def compute():
-        # Compiles to direct opcodes
-        return dot(a, b) + relu(c)
-""")
-
-# Python: visualization (easy)
-plot_results(result)
-```
-
-### 🦀 Rust + ADead-BIB
-
-```rust
-use adead_bib::Engine;
-
-// Rust: safety and control (robust)
-fn process_secure(data: &[f32]) -> Result<Vec<f32>, Error> {
-    // Validation in Rust
-    validate_input(data)?;
-    
-    // Compute → ADead-BIB (ultra-fast)
-    let engine = Engine::new();
-    let result = engine.matmul(&a, &b);
-    
-    Ok(result)
-}
-```
-
-### 📊 Performance Comparison
-
-| Operation | Python Only | JS Only | With ADead-BIB | Speedup |
-|-----------|-------------|---------|----------------|---------|
-| MatMul 1024² | 850 ms | 1200 ms | **0.5 ms** | **1700x** |
-| Attention | 200 ms | 350 ms | **1.3 ms** | **150x** |
-| Tokenization | 50 ms | 80 ms | **0.1 ms** | **500x** |
-| Binary size | N/A | N/A | **1.5 KB** | ∞ |
-
-### 🎯 When to Use Each Combination
-
-| Use Case | Language + ADead-BIB | Why |
-|----------|---------------------|-----|
-| **Web Apps** | JS + ADead-BIB (WASM) | UI in JS, compute in WASM |
-| **Data Science** | Python + ADead-BIB | Pandas/NumPy + acceleration |
-| **Games** | C++/Rust + ADead-BIB | Full control + minimal binaries |
-| **APIs** | Go/Node + ADead-BIB | Concurrency + processing |
-| **Embedded** | C + ADead-BIB | Minimal resources |
-| **AI/ML** | Python + ADead-BIB + GPU | Accelerated training |
-| **Enterprise** | Java/C# + ADead-BIB | JVM/.NET + native speed |
-| **Mobile** | Swift + ADead-BIB | iOS/macOS + Metal GPU |
-
----
-
-## 🌐 ADead-BIB: The Universal Muscle
-
-### 💪 Why ADead-BIB is the "Muscle" of Any System?
-
-ADead-BIB is **deterministic** - the same input ALWAYS produces the same output. This makes it perfect for:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    ADead-BIB: UNIVERSAL POTENTIAL                            │
-│                                                                              │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐          │
-│  │   🖥️ LOCAL PC     │  │   🌐 INTERNET    │  │   🖧 SERVER      │          │
-│  │                  │  │                  │  │                  │          │
-│  │ • Games          │  │ • Web Apps       │  │ • APIs           │          │
-│  │ • Desktop Apps   │  │ • WASM           │  │ • Microservices  │          │
-│  │ • CLI Tools      │  │ • Edge Computing │  │ • Data Centers   │          │
-│  │ • Local AI       │  │ • CDN Processing │  │ • ML Training    │          │
-│  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘          │
-│           │                     │                     │                     │
-│           └─────────────────────┼─────────────────────┘                     │
-│                                 │                                           │
-│                                 ▼                                           │
-│              ┌─────────────────────────────────────┐                       │
-│              │           ADead-BIB                 │                       │
-│              │      💪 UNIVERSAL MUSCLE           │                       │
-│              │                                     │                       │
-│              │  ✅ Deterministic (reproducible)   │                       │
-│              │  ✅ Zero runtime (standalone)      │                       │
-│              │  ✅ Ultra-compact (<2KB)           │                       │
-│              │  ✅ GPU acceleration                │                       │
-│              │  ✅ Cross-platform                  │                       │
-│              └─────────────────────────────────────┘                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-### 🖥️ Local PC: Native Performance
-
-| Use Case | Without ADead-BIB | With ADead-BIB | Benefit |
-|----------|-------------------|----------------|----------|
-| **Games** | 30 FPS, lag | 60+ FPS, smooth | Branchless physics |
-| **Video Editing** | CPU 100%, slow | GPU accelerated | 10x faster |
-| **Local AI** | 700MB RAM | 0.19MB RAM | 3600x less memory |
-| **CLI Tools** | 5MB binary | 1.5KB binary | 3000x smaller |
-| **Compilation** | Seconds | Milliseconds | 100x faster |
-
-**Example: Local Game Engine**
-```python
-# ADead-BIB: Deterministic physics for games
-def physics_update():
-    # Branchless collision (no IF/ELSE = no lag)
-    hit = max(0, player.y - ground.y)
-    velocity = blend(gravity, bounce, hit)
-    return velocity
-```
-
----
-
-### 🌐 Internet: Ultra-Fast Web Apps
-
-| Use Case | Pure JavaScript | JS + ADead-BIB (WASM) | Speedup |
-|----------|-----------------|----------------------|---------|
-| **Image Processing** | 500ms | 5ms | **100x** |
-| **Data Visualization** | 200ms | 2ms | **100x** |
-| **ML Inference** | 2000ms | 50ms | **40x** |
-| **Crypto Operations** | 100ms | 1ms | **100x** |
-| **Real-time Filters** | 30 FPS | 120 FPS | **4x** |
-
-**Example: React + ADead-BIB**
-```jsx
-// React handles UI, ADead-BIB handles compute
-function ImageEditor() {
-    const { compute } = useADead();
-    
-    const applyFilter = async (filter) => {
-        // UI in React (easy)
-        setLoading(true);
-        
-        // Compute in ADead-BIB (fast)
-        const result = await compute('imageFilter', {
-            pixels: imageData,
-            filter: filter  // blur, sharpen, edge
-        });
-        
-        setImage(result);
-        setLoading(false);
-    };
-}
-```
-
-**Internet Benefits:**
-- ✅ **WASM** - Runs in any browser
-- ✅ **Edge Computing** - Process near the user
-- ✅ **CDN Processing** - Transform content at the edge
-- ✅ **WebGPU** - GPU acceleration in browser
-- ✅ **Offline First** - Works without connection
-
----
-
-### 🖧 Server: Data Center Power
-
-| Metric | Traditional Server | Server + ADead-BIB | Improvement |
-|--------|-------------------|-------------------|-------------|
-| **Requests/sec** | 10,000 | 150,000 | **15x** |
-| **Latency** | 50ms | 1ms | **50x** |
-| **RAM per request** | 50MB | 0.5MB | **100x** |
-| **CPU utilization** | 80% | 20% | **4x less** |
-| **Cost/request** | $0.001 | $0.00001 | **100x less** |
-
-**Example: High-Performance API**
-```go
-// Go handles concurrency, ADead-BIB handles compute
-func handleMLRequest(w http.ResponseWriter, r *http.Request) {
-    // Go: parsing and validation (simple)
-    input := parseRequest(r)
-    
-    // ADead-BIB: inference (ultra-fast)
-    result := adead.Inference(input)  // < 1ms
-    
-    // Go: response (simple)
-    json.NewEncoder(w).Encode(result)
-}
-```
-
-**Server Use Cases:**
-- ✅ **REST/gRPC APIs** - Microsecond responses
-- ✅ **ML Inference** - Production models
-- ✅ **Data Processing** - Massive ETL
-- ✅ **Real-time Analytics** - Data streaming
-- ✅ **Microservices** - Minimal binaries, fast deploy
-
----
-
-### 🔬 Why Determinism Matters?
-
-```
-DETERMINISM = Same Input → Same Output (ALWAYS)
-```
-
-| Benefit | Explanation | Impact |
-|---------|-------------|--------|
-| **Reproducibility** | Tests always pass the same | Reliable CI/CD |
-| **Debugging** | Reproducible errors | Faster fixes |
-| **Caching** | Cacheable results | 1000x faster |
-| **Distribution** | Same result on any machine | Reliable deploy |
-| **Auditing** | Verifiable results | Compliance |
-| **ML Training** | Reproducible experiments | Real science |
-
-**Example: Deterministic Caching**
-```python
-# Because ADead-BIB is deterministic, we can cache
-cache = {}
-
-def compute_with_cache(input):
-    key = hash(input)
-    
-    if key in cache:
-        return cache[key]  # Instant
-    
-    # ADead-BIB always gives the same result
-    result = adead.compute(input)
-    cache[key] = result
-    
-    return result
-```
-
----
-
-### 📊 Summary: ADead-BIB Across All Environments
-
-| Environment | ADead-BIB Role | Main Benefit |
-|-------------|----------------|---------------|
-| **Local PC** | Compute engine | Native performance, no dependencies |
-| **Internet** | WASM/WebGPU | Web apps as fast as native |
-| **Server** | Accelerator | 100x less resources, 100x more throughput |
-| **Embedded** | Minimal runtime | Binaries in bytes, not KB |
-| **Edge** | Local processing | Minimal latency |
-| **Cloud** | Optimizer | Reduces costs 100x |
-
-**ADead-BIB: A muscle that works ANYWHERE** 💪🌐🖥️🖧
-
----
-
-## 📁 Project Structure
+## 📁 Estructura del Proyecto
 
 ```
 ADead-BIB/
-├── src/                        # 🔧 Compiler Core (Rust)
-├── integrations/               # 🌐 Multi-language integrations
-│   ├── javascript/             # Node.js + ADead-BIB
-│   ├── react/                  # React + ADead-BIB + Bun
-│   ├── python/                 # Python FFI + AI + GPU
-│   ├── rust/                   # Rust crate
-│   ├── go/                     # Go package
-│   ├── cpp/                    # C++ header-only
-│   ├── java/                   # Java JNI
-│   ├── csharp/                 # C# P/Invoke
-│   ├── swift/                  # Swift Package
-│   └── README.md               # Integration guide
-├── python/                     # 🐍 Original Python tools
-├── hex/                        # 🔢 GPU Opcodes
-├── examples/                   # 📝 .adB examples
-├── docs/                       # 📚 Documentation
-├── Metal_Dead/                 # 🤖 Advanced AI System
-├── IA_Personal/                # 🧠 Personal AI
-├── GAME/                       # 🎮 Vulkan Bird Demo
-├── builds/                     # 📦 Compiled binaries
-├── stdlib/                     # 📚 Standard Library
-└── README.md                   # 📖 This file
+├── src/rust/                    # Compilador (100% Rust)
+│   ├── frontend/                # Frontend del compilador
+│   │   ├── lexer.rs            # Tokenizador (Rust + Python syntax)
+│   │   ├── parser.rs           # Parser (dual syntax)
+│   │   ├── ast.rs              # Abstract Syntax Tree
+│   │   └── type_checker.rs     # Verificación de tipos
+│   ├── backend/                 # Backend de generación de código
+│   │   ├── cpu/                # x86-64 directo
+│   │   │   ├── codegen_v2.rs   # Generador principal
+│   │   │   ├── pe.rs           # Binarios Windows (PE)
+│   │   │   ├── elf.rs          # Binarios Linux (ELF)
+│   │   │   └── syscalls.rs     # Syscalls directos
+│   │   └── gpu/                # GPU/Vulkan
+│   │       ├── vulkan_runtime.rs
+│   │       └── bytecode_spirv.rs
+│   ├── optimizer/              # Optimizaciones
+│   ├── runtime/                # Runtime mínimo
+│   ├── builder.rs              # Sistema de build
+│   └── main.rs                 # CLI principal
+├── examples/                    # Ejemplos del lenguaje
+│   ├── 01_hello_world.adB
+│   ├── 02_variables.adB
+│   ├── 03_funciones.adB
+│   ├── 04_control_flujo.adB
+│   ├── 05_oop_clases.adB
+│   ├── 06_herencia_polimorfismo.adB
+│   ├── 07_traits_interfaces.adB
+│   ├── 08_game_engine.adB
+│   └── ...
+├── Como se usa.md              # Guía completa del lenguaje
+├── Cargo.toml                  # Configuración Rust
+└── README.md                   # Este archivo
 ```
 
 ---
 
-## 🤝 Contributing
+## 📚 Ejemplos
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+La carpeta `/examples` contiene ejemplos completos:
 
----
+| Archivo | Descripción |
+|---------|-------------|
+| `01_hello_world.adB` | Hello World básico |
+| `02_variables.adB` | Variables y tipos |
+| `03_funciones.adB` | Funciones con tipos |
+| `04_control_flujo.adB` | if/while/for |
+| `05_oop_clases.adB` | Clases y structs |
+| `06_herencia_polimorfismo.adB` | Herencia y override |
+| `07_traits_interfaces.adB` | Traits e interfaces |
+| `08_game_engine.adB` | Game engine demo |
+| `09_async_concurrencia.adB` | Async (futuro) |
+| `10_directo_binario.adB` | Compilación nativa |
 
-## 📖 License
+### Ejecutar un ejemplo
 
-Apache-2.0 License - See LICENSE file for details.
-
----
-
-## 🇵🇪 Credits
-
-**Created by:** Eddi Andreé Salazar Matos  
-**Email:** eddi.salazar.dev@gmail.com  
-**Made with ❤️ in Peru**
-
-### What's Included
-
-**Compiler & Language:**
-- ✅ Complete compiler (Lexer, Parser, Codegen, PE, ELF)
-- ✅ 70+ built-in functions
-- ✅ Full OOP support (classes, inheritance, polymorphism)
-- ✅ Python FFI integration
-- ✅ Multi-target output (Windows PE, Linux ELF, Raw binary)
-
-**AI & Machine Learning:**
-- ✅ AI system (0.19 MB RAM)
-- ✅ Scalable AI with BPE tokenizer (0.82 MB RAM)
-- ✅ Ollama integration (local LLM)
-- ✅ Matrix functions for neural networks
-
-**GPU & Hardware:**
-- ✅ GPU support (CUDA)
-- ✅ **Vulkan support** (NEW)
-- ✅ Hybrid CPU+GPU mode
-- ✅ **Auto-dispatch CPU/GPU** (NEW)
-- ✅ **Auto-detection via CPUID** (NEW)
-- ✅ HEX opcodes for GPU
-
-**Intermediate Runtime & Optimizations:**
-- ✅ **Deterministic execution** - Same input = Same output
-- ✅ **Branchless optimization** - IF/ELSE → max/blend (✅ COMPLETE)
-- ✅ **AST transformation** - Pattern detection & automatic replacement
-- ✅ **Syntax checker** - Fast validation without compilation (`check` command)
-- ✅ **Enhanced type validation** - Robust type checking with warnings
-- ✅ **Garbage elimination** - Remove dead code
-- ✅ **Operation fusion** - FMA, fused layers
-- ✅ **Memory optimization** - Coalesced access, pools
-- ✅ **SIMD vectorization** - Auto-vectorize loops
-
-**Performance:**
-- ✅ Server load benchmarks (9,175 GFLOPS peak)
-- ✅ 8-10x speedup from branchless code
-- ✅ 16-86x GPU speedup vs CPU
-- ✅ 106M dispatches/second
-
-**Documentation:**
-- ✅ Complete documentation (EN/ES)
-- ✅ Ideas roadmap (ideas-6, 7, 8)
-- ✅ TEST-G GPU test suite
-- ✅ Basic test suite for compiler
-
-**Compiler Improvements (NEW):**
-- ✅ **Syntax Check Command** - `adeadc check file.adB` for fast validation
-- ✅ **Branchless Optimizer** - Complete implementation with AST transformation
-- ✅ **Enhanced Error Messages** - Clear, descriptive error messages
-- ✅ **Type Validation** - Robust type checking with compatibility warnings
-- ✅ **AST Pattern Replacement** - Automatic code optimization
-
-**Game Demo (NEW):**
-- ✅ **Vulkan Bird** - Flappy Bird clone
-- ✅ **Branchless physics** - Zero branches in game logic
-- ✅ **Deterministic gameplay** - Same input = same output
-- ✅ **58.7 FPS** - Smooth performance
-
----
-
-## 📈 Summary: Why ADead-BIB?
-
-| Feature | Traditional | ADead-BIB | Improvement |
-|---------|-------------|-----------|-------------|
-| **Binary size** | 100+ KB | 1.5 KB → **<1 KB target** | **66x+ smaller** |
-| **Compilation** | Seconds | Milliseconds | **100x faster** |
-| **Dependencies** | Many | Zero | **Standalone** |
-| **GPU dispatch** | Manual | Automatic | **Zero effort** |
-| **Branching** | Everywhere | Eliminated | **8x faster** |
-| **Memory access** | Scattered | Coalesced | **10x faster** |
-| **Operations** | Separate | Fused | **3x faster** |
-| **Syntax checking** | Full compile | Instant (`check`) | **10x faster** |
-
----
-
-**ADead-BIB: Intermediate Runtime for Clean, Fast Code**
-
-```
-Source Code → ADead-BIB Runtime → Clean Opcodes → CPU/GPU Execute
-                    ↓
-         • No branches (branchless)
-         • No garbage (clean)
-         • No waste (fused ops)
-         • No manual dispatch (auto)
-         • Ultra-compact binaries (target: <1 KB)
-```
-
-**Result: CPU and GPU work at 100% efficiency** 🚀🇵🇪
-
----
-
-## 🎯 Roadmap: From KB to Bytes
-
-### ✅ Completed (2024)
-- ✅ Branchless Optimizer - Complete implementation
-- ✅ Syntax Checker - Fast validation command
-- ✅ Enhanced Type System - Robust validation
-- ✅ AST Transformation - Pattern-based optimization
-- ✅ Current binary size: ~1.5 KB
-- ✅ GPU Support (CUDA + Vulkan)
-- ✅ Python FFI Integration
-- ✅ Ollama Integration
-- ✅ Server Load Benchmarks (9,175 GFLOPS)
-
-### 🎯 2025 Goals: Binary Size
-- 🎯 **Reduce binary size to < 1 KB** (1,000 bytes)
-- 🎯 **Ultimate goal: < 500 bytes** for simple programs
-- 🎯 **Minimal PE/ELF headers** - Only essential data
-- 🎯 **Direct syscalls** - Eliminate library dependencies
-- 🎯 **Advanced dead code elimination** - Remove all unused code
-- 🎯 **String compression** - Compress literals
-- 🎯 **Opcode optimization** - Use shortest instruction forms
-
-### 🌐 2025 Goals: Multi-Language Integration
-- ✅ **JavaScript/Node.js** - Binding completo con benchmarks
-- ✅ **React + Bun** - App demo con datos pesados
-- ✅ **Python** - FFI + AI + GPU
-- 📋 **Rust** - Crate para sistemas embebidos
-- 📋 **Go** - Package para microservicios
-- 📋 **C++** - Header-only library
-- 🎯 **WASM** - Compilar ADead-BIB a WebAssembly
-- 🎯 **WebGPU** - Aceleración GPU en browsers
-
-### 🚀 2025 Goals: Performance
-- 🎯 **10,000+ GFLOPS** en GPU
-- 🎯 **< 0.1ms** latencia para operaciones básicas
-- 🎯 **1M+ requests/sec** en servidor
-- 🎯 **Zero-copy** transfers CPU↔GPU
-- 🎯 **SIMD auto-vectorization** para loops
-
-### 🤖 2025 Goals: AI & ML
-- 🎯 **Transformer completo** en ADead-BIB
-- 🎯 **Quantization** INT8/INT4
-- 🎯 **Flash Attention** nativo
-- 🎯 **Model serving** optimizado
-- 🎯 **Training** con gradientes
-
----
-
-## 🚀 Quick Start: Integraciones
-
-### JavaScript/Node.js
 ```bash
-cd integrations/javascript
-npm install
-node examples/demo.js
-node examples/heavy-benchmark.js
+adeadc run examples/01_hello_world.adB
 ```
 
-### React + Bun
-```bash
-cd integrations/react/react-adead-heavy
-bun install
-bun run dev
-# Abrir http://localhost:5173
+Salida:
 ```
+🚀 Running examples/01_hello_world.adB...
 
-### Python
-```bash
-cd integrations/python
-pip install numpy
-python demo_full.py
-python benchmark_gpu.py
+Hello, ADead-BIB!
+Bienvenido al lenguaje que va directo al binario
+Este es un ejemplo basico
 ```
 
 ---
 
-## 📊 Benchmarks Actuales
+## 🔧 ¿Por qué ADead-BIB?
 
-### Rendimiento por Plataforma
+### 1. **Directo al Binario (como ASM)**
+ADead-BIB escribe opcodes x86-64 directamente al archivo ejecutable. No hay ensamblador intermedio, no hay linker externo.
 
-| Plataforma | Operación | Tiempo | Speedup vs Nativo |
-|------------|-----------|--------|-------------------|
-| **PC Local** | MatMul 256² | 22ms | 1x (baseline) |
-| **Node.js** | MatMul 256² | 23ms | ~1x |
-| **React/Browser** | MatMul 256² | 25ms | ~1x |
-| **Python** | MatMul 256² | 0.36ms (GPU) | **60x** |
+```
+print("Hola")  →  mov rcx, addr  →  48 B9 XX XX XX XX XX XX XX XX
+                  call printf    →  FF 15 XX XX XX XX
+```
 
-### Operaciones Pesadas
+### 2. **Sintaxis Familiar**
+Puedes usar la sintaxis que prefieras - Rust o Python:
 
-| Operación | JavaScript | ADead-BIB | Speedup |
-|-----------|------------|-----------|---------|
-| Sort 1M elementos | 460ms | 115ms | **4x** |
-| Binary Search 10M | 2659ms | 14ms | **190x** |
-| Tokenize 100K chars | 2ms | 1.5ms | **1.3x** |
-| Attention seq=512 | 40ms | 45ms | ~1x |
+```rust
+// Esto es válido
+fn main() {
+    let x = 42
+}
 
-### GPU vs CPU
-
-| Tamaño | CPU | GPU | Speedup |
-|--------|-----|-----|---------|
-| 512x512 | 1.04ms | 0.10ms | **10x** |
-| 1024x1024 | 5.75ms | 0.36ms | **16x** |
-| 2048x2048 | 38ms | 2.38ms | **16x** |
-| 4096x4096 | 317ms | 19ms | **17x** |
-| 8192x8192 | 2400ms | 120ms | **20x** |
-
----
-
-## 🔧 API Reference
-
-### Core Functions
-
-```python
-# ADead-BIB Syntax
+// Y esto también
 def main():
-    # Variables
-    x = 10
-    y = 20
-    
-    # Operaciones matemáticas
-    result = x + y * 2
-    
-    # Funciones de AI
-    dot_product = dot(1, 2, 3, 4)      # = 11
-    activated = relu(-5)                # = 0
-    interpolated = lerp(0, 100, 50)    # = 50
-    
-    # Output
-    print(result)
+    x = 42
 ```
 
-### Built-in Functions (70+)
+### 3. **Binarios Pequeños**
+Los ejecutables son extremadamente pequeños porque no hay runtime pesado.
 
-| Categoría | Funciones |
-|-----------|-----------|
-| **Math** | `abs`, `min`, `max`, `clamp`, `sqrt`, `pow`, `log`, `exp` |
-| **AI/ML** | `dot`, `relu`, `sigmoid`, `softmax`, `tanh`, `gelu` |
-| **Matrix** | `matmul`, `transpose`, `sum`, `mean`, `var` |
-| **String** | `len`, `concat`, `split`, `upper`, `lower` |
-| **I/O** | `print`, `input`, `read_file`, `write_file` |
-| **System** | `exit`, `sleep`, `time`, `random` |
+### 4. **OOP Completo**
+Soporta todo lo que esperas de un lenguaje moderno:
+- Clases y Structs
+- Herencia (`extends`)
+- Polimorfismo (`virtual`/`override`)
+- Traits e Interfaces
+- Métodos estáticos
 
-### JavaScript API
+### 5. **Scripts sin Main**
+No necesitas función `main()`. Escribe código directamente:
 
-```javascript
-const { ADeadBIB } = require('./adead-binding');
-const adead = new ADeadBIB();
-
-// Operaciones
-const result = adead.matmul(a, b);
-const output = adead.attention({ query, key, value, dim: 64 });
-const tokens = adead.tokenize(text);
-
-// Benchmark
-const bench = adead.benchmark('matmul', 256);
-console.log(`Time: ${bench.timeMs}ms`);
-```
-
-### React Hooks
-
-```jsx
-import { useADead, useMatMul, useAttention } from './adead/hooks';
-
-// Hook general
-const { execute, loading, result } = useADead();
-await execute('matmul', a, b, size);
-
-// Hook específico
-const { multiply, result, timeMs } = useMatMul();
-await multiply(a, b, 256);
-```
-
-### Python FFI
-
-```python
-from adead_ffi import ADeadFFI
-
-adead = ADeadFFI()
-
-# Compilar y ejecutar
-result = adead.run_code("""
-    def main():
-        return dot(1, 2, 3, 4) + relu(-5)
-""")
-
-# Operaciones directas
-adead.fast_sum([1, 2, 3, 4, 5])  # = 15
-adead.fast_max([1, 5, 3, 2])     # = 5
+```rust
+print("Esto funciona!")
+let x = 42
+print(x)
 ```
 
 ---
 
-## 🏆 Casos de Éxito
+## 🎮 GPU y Vulkan
 
-### 1. Game Engine (Vulkan Bird)
-- **58.7 FPS** estable
-- **Física branchless** - sin IF/ELSE
-- **Determinista** - mismo input = mismo output
+ADead-BIB soporta computación en GPU:
 
-### 2. AI System (0.19 MB RAM)
-- **Tokenizer BPE** completo
-- **Attention multi-head**
-- **Embeddings semánticos**
-- **3600x menos RAM** que alternativas
+```bash
+# Detectar GPU disponible
+adeadc gpu
 
-### 3. Server Benchmark
-- **9,175 GFLOPS** pico
-- **27.8M tokens/segundo**
-- **106M dispatches/segundo**
+# Generar shader SPIR-V para multiplicación de matrices
+adeadc spirv matmul 1024
 
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### How to Contribute
-
-1. **Fork** the repository
-2. **Clone** your fork: `git clone https://github.com/your-user/ADead-BIB.git`
-3. **Create** a branch: `git checkout -b feature/new-feature`
-4. **Commit** your changes: `git commit -m "Add: new feature"`
-5. **Push** to your fork: `git push origin feature/new-feature`
-6. **Open** a Pull Request
-
-### Contribution Areas
-
-| Area | Description | Difficulty |
-|------|-------------|------------|
-| **Integrations** | New languages (Kotlin, Zig) | Medium |
-| **Optimizations** | Reduce binary size | High |
-| **Documentation** | Tutorials, examples | Low |
-| **Tests** | More test coverage | Medium |
-| **GPU** | New CUDA kernels | High |
-
----
-
-## 📖 License
-
-Apache-2.0 License - See LICENSE file for details.
-
----
-
-## 🇵🇪 Credits
-
-**Created by:** Eddi Andreé Salazar Matos  
-**Email:** eddi.salazar.dev@gmail.com  
-**Made with ❤️ in Peru**
-
----
-
-## 🌟 Star History
-
-If this project is useful to you, give it a ⭐ on GitHub!
-
-```
-     ⭐⭐⭐⭐⭐
-    ⭐        ⭐
-   ⭐  ADead   ⭐
-   ⭐   BIB    ⭐
-    ⭐        ⭐
-     ⭐⭐⭐⭐⭐
+# Inicializar runtime Vulkan
+adeadc vulkan
 ```
 
 ---
 
-**Vision: Binaries so small they're measured in bytes, not kilobytes!** 📦→📝
+## 📖 Documentación Completa
 
-**ADead-BIB: The muscle that powers any language** 💪🌐🖥️🖧🇵🇪
+Para una guía completa del lenguaje, ver:
+- **[Como se usa.md](Como%20se%20usa.md)** - Guía detallada con ejemplos
+
+---
+
+## 🤝 Contribuir
+
+1. Fork el repositorio
+2. Crea una rama: `git checkout -b mi-feature`
+3. Commit: `git commit -m 'Añadir feature'`
+4. Push: `git push origin mi-feature`
+5. Abre un Pull Request
+
+---
+
+## 📄 Licencia
+
+Apache 2.0 - Ver archivo [LICENSE](LICENSE)
+
+---
+
+<div align="center">
+
+## 🔥 ADead-BIB
+
+**El lenguaje que va directo al binario**
+
+*Rust + Python + ASM = ADead-BIB*
+
+[![Made in Peru](https://img.shields.io/badge/Made%20in-Peru-red)](https://github.com/tu-usuario/ADead-BIB)
+[![100% Rust](https://img.shields.io/badge/100%25-Rust-orange)](https://www.rust-lang.org/)
+[![Binary Size](https://img.shields.io/badge/Binary-~1.5KB-green)](https://github.com/tu-usuario/ADead-BIB)
+
+</div>
