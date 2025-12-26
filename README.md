@@ -1222,11 +1222,11 @@ See `GAME/README.md` for full documentation.
 
 ## 🌐 Multi-Language Integration: ADead-BIB as the "Muscle"
 
-### 🧠 Filosofía: Lenguajes = Cerebro, ADead-BIB = Músculo
+### 🧠 Philosophy: Languages = Brain, ADead-BIB = Muscle
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    TU APLICACIÓN                                     │
+│                    YOUR APPLICATION                                     │
 │                                                                      │
 │   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  │
 │   │ Python  │  │   JS    │  │  Rust   │  │   Go    │  │   C++   │  │
@@ -1254,113 +1254,121 @@ See `GAME/README.md` for full documentation.
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 🎯 Cada Lenguaje Aporta su Fortaleza
+### 🎯 Each Language Brings Its Strength
 
-| Lenguaje | Rol (Cerebro) | ADead-BIB (Músculo) | Resultado |
-|----------|---------------|---------------------|-----------|
-| **Python** | Orquestación, ML, Scripts | Cómputo pesado, binarios | Python fácil + velocidad nativa |
-| **JavaScript** | UI, Web, Node.js | WASM, cómputo intensivo | Web apps ultra-rápidas |
-| **Rust** | Sistemas, seguridad | Opcodes directos | Rust seguro + ADead eficiente |
-| **Go** | Concurrencia, servers | Procesamiento paralelo | Go simple + GPU power |
-| **C++** | Games, engines | Binarios mínimos | C++ control + ADead compacto |
+| Language | Role (Brain) | ADead-BIB (Muscle) | Result |
+|----------|--------------|--------------------|---------|
+| **Python** | Orchestration, ML, Scripts | Heavy compute, binaries | Easy Python + native speed |
+| **JavaScript** | UI, Web, Node.js | WASM, intensive compute | Ultra-fast web apps |
+| **Rust** | Systems, safety | Direct opcodes | Safe Rust + efficient ADead |
+| **Go** | Concurrency, servers | Parallel processing | Simple Go + GPU power |
+| **C++** | Games, engines | Minimal binaries | C++ control + compact ADead |
+| **Java** | Enterprise, Android | JNI acceleration | JVM + native performance |
+| **C#** | .NET, Unity | P/Invoke binding | .NET productivity + speed |
+| **Swift** | iOS, macOS | Metal GPU | Apple ecosystem + power |
 
 ### 🔥 JavaScript + ADead-BIB
 
 ```javascript
-// Node.js llama a ADead-BIB para cómputo pesado
-const adead = require('./adead-bib-binding');
+// Node.js calls ADead-BIB for heavy compute
+const { ADeadEngine } = require('./adead-core');
+const engine = new ADeadEngine();
 
-// JavaScript: lógica de negocio (fácil)
+// JavaScript: business logic (easy)
 async function processData(data) {
-    // Preprocesamiento en JS
+    // Preprocessing in JS
     const prepared = data.map(x => x * 2);
     
-    // Cómputo pesado → ADead-BIB (rápido)
-    const result = await adead.matmul(prepared, weights);
+    // Heavy compute → ADead-BIB (fast)
+    const result = engine.matmul(prepared, weights);
     
-    // Postprocesamiento en JS
+    // Postprocessing in JS
     return result.filter(x => x > threshold);
 }
 
-// Resultado: JS fácil + ADead-BIB rápido
+// Result: Easy JS + Fast ADead-BIB
 ```
 
-### 🐍 Python + ADead-BIB (Ya implementado)
+### 🐍 Python + ADead-BIB (Implemented)
 
 ```python
-from python.adead_ffi import ADeadFFI
+from adead_ffi import ADeadFFI
 
-# Python: orquestación (fácil)
+# Python: orchestration (easy)
 data = load_data("dataset.csv")
 model = prepare_model()
 
-# Cómputo pesado → ADead-BIB (rápido)
+# Heavy compute → ADead-BIB (fast)
 adead = ADeadFFI()
 result = adead.run_code("""
     def compute():
-        # Esto se compila a opcodes directos
+        # Compiles to direct opcodes
         return dot(a, b) + relu(c)
 """)
 
-# Python: visualización (fácil)
+# Python: visualization (easy)
 plot_results(result)
 ```
 
 ### 🦀 Rust + ADead-BIB
 
 ```rust
-// Rust: seguridad y control (robusto)
+use adead_bib::Engine;
+
+// Rust: safety and control (robust)
 fn process_secure(data: &[f32]) -> Result<Vec<f32>, Error> {
-    // Validación en Rust
+    // Validation in Rust
     validate_input(data)?;
     
-    // Cómputo → ADead-BIB bytecode (ultra-rápido)
-    let bytecode = adead::compile("matmul_kernel.adB")?;
-    let result = adead::execute(bytecode, data)?;
+    // Compute → ADead-BIB (ultra-fast)
+    let engine = Engine::new();
+    let result = engine.matmul(&a, &b);
     
     Ok(result)
 }
 ```
 
-### 📊 Comparación de Rendimiento
+### 📊 Performance Comparison
 
-| Operación | Solo Python | Solo JS | Con ADead-BIB | Speedup |
-|-----------|-------------|---------|---------------|---------|
+| Operation | Python Only | JS Only | With ADead-BIB | Speedup |
+|-----------|-------------|---------|----------------|---------|
 | MatMul 1024² | 850 ms | 1200 ms | **0.5 ms** | **1700x** |
 | Attention | 200 ms | 350 ms | **1.3 ms** | **150x** |
-| Tokenización | 50 ms | 80 ms | **0.1 ms** | **500x** |
-| Binario size | N/A | N/A | **1.5 KB** | ∞ |
+| Tokenization | 50 ms | 80 ms | **0.1 ms** | **500x** |
+| Binary size | N/A | N/A | **1.5 KB** | ∞ |
 
-### 🎯 Cuándo Usar Cada Combinación
+### 🎯 When to Use Each Combination
 
-| Caso de Uso | Lenguaje + ADead-BIB | Por qué |
-|-------------|---------------------|---------|
-| **Web Apps** | JS + ADead-BIB (WASM) | UI en JS, cómputo en WASM |
-| **Data Science** | Python + ADead-BIB | Pandas/NumPy + aceleración |
-| **Games** | C++/Rust + ADead-BIB | Control total + binarios mínimos |
-| **APIs** | Go/Node + ADead-BIB | Concurrencia + procesamiento |
-| **Embedded** | C + ADead-BIB | Recursos mínimos |
-| **AI/ML** | Python + ADead-BIB + GPU | Entrenamiento acelerado |
+| Use Case | Language + ADead-BIB | Why |
+|----------|---------------------|-----|
+| **Web Apps** | JS + ADead-BIB (WASM) | UI in JS, compute in WASM |
+| **Data Science** | Python + ADead-BIB | Pandas/NumPy + acceleration |
+| **Games** | C++/Rust + ADead-BIB | Full control + minimal binaries |
+| **APIs** | Go/Node + ADead-BIB | Concurrency + processing |
+| **Embedded** | C + ADead-BIB | Minimal resources |
+| **AI/ML** | Python + ADead-BIB + GPU | Accelerated training |
+| **Enterprise** | Java/C# + ADead-BIB | JVM/.NET + native speed |
+| **Mobile** | Swift + ADead-BIB | iOS/macOS + Metal GPU |
 
 ---
 
-## 🌐 ADead-BIB: El Músculo Universal
+## 🌐 ADead-BIB: The Universal Muscle
 
-### 💪 ¿Por Qué ADead-BIB es el "Músculo" de Cualquier Sistema?
+### 💪 Why ADead-BIB is the "Muscle" of Any System?
 
-ADead-BIB es **determinista** - el mismo input SIEMPRE produce el mismo output. Esto lo hace perfecto para:
+ADead-BIB is **deterministic** - the same input ALWAYS produces the same output. This makes it perfect for:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    ADead-BIB: POTENCIAL UNIVERSAL                            │
+│                    ADead-BIB: UNIVERSAL POTENTIAL                            │
 │                                                                              │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐          │
-│  │   🖥️ PC LOCAL    │  │   🌐 INTERNET    │  │   🖧 SERVIDOR    │          │
+│  │   🖥️ LOCAL PC     │  │   🌐 INTERNET    │  │   🖧 SERVER      │          │
 │  │                  │  │                  │  │                  │          │
 │  │ • Games          │  │ • Web Apps       │  │ • APIs           │          │
-│  │ • Desktop Apps   │  │ • WASM           │  │ • Microservicios │          │
+│  │ • Desktop Apps   │  │ • WASM           │  │ • Microservices  │          │
 │  │ • CLI Tools      │  │ • Edge Computing │  │ • Data Centers   │          │
-│  │ • AI Local       │  │ • CDN Processing │  │ • ML Training    │          │
+│  │ • Local AI       │  │ • CDN Processing │  │ • ML Training    │          │
 │  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘          │
 │           │                     │                     │                     │
 │           └─────────────────────┼─────────────────────┘                     │
@@ -1368,11 +1376,11 @@ ADead-BIB es **determinista** - el mismo input SIEMPRE produce el mismo output. 
 │                                 ▼                                           │
 │              ┌─────────────────────────────────────┐                       │
 │              │           ADead-BIB                 │                       │
-│              │      💪 MÚSCULO UNIVERSAL           │                       │
+│              │      💪 UNIVERSAL MUSCLE           │                       │
 │              │                                     │                       │
-│              │  ✅ Determinista (reproducible)     │                       │
-│              │  ✅ Sin runtime (standalone)        │                       │
-│              │  ✅ Ultra-compacto (<2KB)           │                       │
+│              │  ✅ Deterministic (reproducible)   │                       │
+│              │  ✅ Zero runtime (standalone)      │                       │
+│              │  ✅ Ultra-compact (<2KB)           │                       │
 │              │  ✅ GPU acceleration                │                       │
 │              │  ✅ Cross-platform                  │                       │
 │              └─────────────────────────────────────┘                       │
@@ -1381,21 +1389,21 @@ ADead-BIB es **determinista** - el mismo input SIEMPRE produce el mismo output. 
 
 ---
 
-### 🖥️ PC Local: Rendimiento Nativo
+### 🖥️ Local PC: Native Performance
 
-| Caso de Uso | Sin ADead-BIB | Con ADead-BIB | Beneficio |
-|-------------|---------------|---------------|-----------|
-| **Games** | 30 FPS, lag | 60+ FPS, fluido | Física branchless |
-| **Video Editing** | CPU 100%, lento | GPU acelerado | 10x más rápido |
-| **AI Local** | 700MB RAM | 0.19MB RAM | 3600x menos memoria |
-| **CLI Tools** | 5MB binario | 1.5KB binario | 3000x más pequeño |
-| **Compilación** | Segundos | Milisegundos | 100x más rápido |
+| Use Case | Without ADead-BIB | With ADead-BIB | Benefit |
+|----------|-------------------|----------------|----------|
+| **Games** | 30 FPS, lag | 60+ FPS, smooth | Branchless physics |
+| **Video Editing** | CPU 100%, slow | GPU accelerated | 10x faster |
+| **Local AI** | 700MB RAM | 0.19MB RAM | 3600x less memory |
+| **CLI Tools** | 5MB binary | 1.5KB binary | 3000x smaller |
+| **Compilation** | Seconds | Milliseconds | 100x faster |
 
-**Ejemplo: Game Engine Local**
+**Example: Local Game Engine**
 ```python
-# ADead-BIB: Física determinista para games
+# ADead-BIB: Deterministic physics for games
 def physics_update():
-    # Branchless collision (sin IF/ELSE = sin lag)
+    # Branchless collision (no IF/ELSE = no lag)
     hit = max(0, player.y - ground.y)
     velocity = blend(gravity, bounce, hit)
     return velocity
@@ -1403,27 +1411,27 @@ def physics_update():
 
 ---
 
-### 🌐 Internet: Web Apps Ultra-Rápidas
+### 🌐 Internet: Ultra-Fast Web Apps
 
-| Caso de Uso | JavaScript Puro | JS + ADead-BIB (WASM) | Speedup |
-|-------------|-----------------|----------------------|---------|
+| Use Case | Pure JavaScript | JS + ADead-BIB (WASM) | Speedup |
+|----------|-----------------|----------------------|---------|
 | **Image Processing** | 500ms | 5ms | **100x** |
 | **Data Visualization** | 200ms | 2ms | **100x** |
 | **ML Inference** | 2000ms | 50ms | **40x** |
 | **Crypto Operations** | 100ms | 1ms | **100x** |
 | **Real-time Filters** | 30 FPS | 120 FPS | **4x** |
 
-**Ejemplo: React + ADead-BIB**
+**Example: React + ADead-BIB**
 ```jsx
-// React maneja UI, ADead-BIB maneja cómputo
+// React handles UI, ADead-BIB handles compute
 function ImageEditor() {
     const { compute } = useADead();
     
     const applyFilter = async (filter) => {
-        // UI en React (fácil)
+        // UI in React (easy)
         setLoading(true);
         
-        // Cómputo en ADead-BIB (rápido)
+        // Compute in ADead-BIB (fast)
         const result = await compute('imageFilter', {
             pixels: imageData,
             filter: filter  // blur, sharpen, edge
@@ -1435,76 +1443,76 @@ function ImageEditor() {
 }
 ```
 
-**Ventajas para Internet:**
-- ✅ **WASM** - Corre en cualquier browser
-- ✅ **Edge Computing** - Procesa cerca del usuario
-- ✅ **CDN Processing** - Transforma contenido en el edge
-- ✅ **WebGPU** - Aceleración GPU en el browser
-- ✅ **Offline First** - Funciona sin conexión
+**Internet Benefits:**
+- ✅ **WASM** - Runs in any browser
+- ✅ **Edge Computing** - Process near the user
+- ✅ **CDN Processing** - Transform content at the edge
+- ✅ **WebGPU** - GPU acceleration in browser
+- ✅ **Offline First** - Works without connection
 
 ---
 
-### 🖧 Servidor: Potencia para Data Centers
+### 🖧 Server: Data Center Power
 
-| Métrica | Servidor Tradicional | Servidor + ADead-BIB | Mejora |
-|---------|---------------------|---------------------|--------|
+| Metric | Traditional Server | Server + ADead-BIB | Improvement |
+|--------|-------------------|-------------------|-------------|
 | **Requests/sec** | 10,000 | 150,000 | **15x** |
-| **Latencia** | 50ms | 1ms | **50x** |
-| **RAM por request** | 50MB | 0.5MB | **100x** |
-| **CPU utilization** | 80% | 20% | **4x menos** |
-| **Costo/request** | $0.001 | $0.00001 | **100x menos** |
+| **Latency** | 50ms | 1ms | **50x** |
+| **RAM per request** | 50MB | 0.5MB | **100x** |
+| **CPU utilization** | 80% | 20% | **4x less** |
+| **Cost/request** | $0.001 | $0.00001 | **100x less** |
 
-**Ejemplo: API de Alto Rendimiento**
+**Example: High-Performance API**
 ```go
-// Go maneja concurrencia, ADead-BIB maneja cómputo
+// Go handles concurrency, ADead-BIB handles compute
 func handleMLRequest(w http.ResponseWriter, r *http.Request) {
-    // Go: parsing y validación (simple)
+    // Go: parsing and validation (simple)
     input := parseRequest(r)
     
-    // ADead-BIB: inference (ultra-rápido)
+    // ADead-BIB: inference (ultra-fast)
     result := adead.Inference(input)  // < 1ms
     
-    // Go: respuesta (simple)
+    // Go: response (simple)
     json.NewEncoder(w).Encode(result)
 }
 ```
 
-**Casos de Uso en Servidor:**
-- ✅ **APIs REST/gRPC** - Respuestas en microsegundos
-- ✅ **ML Inference** - Modelos en producción
-- ✅ **Data Processing** - ETL masivo
-- ✅ **Real-time Analytics** - Streaming de datos
-- ✅ **Microservicios** - Binarios mínimos, deploy rápido
+**Server Use Cases:**
+- ✅ **REST/gRPC APIs** - Microsecond responses
+- ✅ **ML Inference** - Production models
+- ✅ **Data Processing** - Massive ETL
+- ✅ **Real-time Analytics** - Data streaming
+- ✅ **Microservices** - Minimal binaries, fast deploy
 
 ---
 
-### 🔬 ¿Por Qué el Determinismo Importa?
+### 🔬 Why Determinism Matters?
 
 ```
-DETERMINISMO = Mismo Input → Mismo Output (SIEMPRE)
+DETERMINISM = Same Input → Same Output (ALWAYS)
 ```
 
-| Beneficio | Explicación | Impacto |
-|-----------|-------------|---------|
-| **Reproducibilidad** | Tests siempre pasan igual | CI/CD confiable |
-| **Debugging** | Errores reproducibles | Fix más rápido |
-| **Caching** | Resultados cacheables | 1000x más rápido |
-| **Distribución** | Mismo resultado en cualquier máquina | Deploy confiable |
-| **Auditoría** | Resultados verificables | Compliance |
-| **ML Training** | Experimentos reproducibles | Ciencia real |
+| Benefit | Explanation | Impact |
+|---------|-------------|--------|
+| **Reproducibility** | Tests always pass the same | Reliable CI/CD |
+| **Debugging** | Reproducible errors | Faster fixes |
+| **Caching** | Cacheable results | 1000x faster |
+| **Distribution** | Same result on any machine | Reliable deploy |
+| **Auditing** | Verifiable results | Compliance |
+| **ML Training** | Reproducible experiments | Real science |
 
-**Ejemplo: Caching Determinista**
+**Example: Deterministic Caching**
 ```python
-# Porque ADead-BIB es determinista, podemos cachear
+# Because ADead-BIB is deterministic, we can cache
 cache = {}
 
 def compute_with_cache(input):
     key = hash(input)
     
     if key in cache:
-        return cache[key]  # Instantáneo
+        return cache[key]  # Instant
     
-    # ADead-BIB siempre da el mismo resultado
+    # ADead-BIB always gives the same result
     result = adead.compute(input)
     cache[key] = result
     
@@ -1513,44 +1521,47 @@ def compute_with_cache(input):
 
 ---
 
-### 📊 Resumen: ADead-BIB en Todos los Entornos
+### 📊 Summary: ADead-BIB Across All Environments
 
-| Entorno | Rol de ADead-BIB | Beneficio Principal |
-|---------|------------------|---------------------|
-| **PC Local** | Motor de cómputo | Rendimiento nativo sin dependencias |
-| **Internet** | WASM/WebGPU | Apps web tan rápidas como nativas |
-| **Servidor** | Acelerador | 100x menos recursos, 100x más throughput |
-| **Embebido** | Runtime mínimo | Binarios de bytes, no KB |
-| **Edge** | Procesamiento local | Latencia mínima |
-| **Cloud** | Optimizador | Reduce costos 100x |
+| Environment | ADead-BIB Role | Main Benefit |
+|-------------|----------------|---------------|
+| **Local PC** | Compute engine | Native performance, no dependencies |
+| **Internet** | WASM/WebGPU | Web apps as fast as native |
+| **Server** | Accelerator | 100x less resources, 100x more throughput |
+| **Embedded** | Minimal runtime | Binaries in bytes, not KB |
+| **Edge** | Local processing | Minimal latency |
+| **Cloud** | Optimizer | Reduces costs 100x |
 
-**ADead-BIB: Un músculo que funciona en CUALQUIER lugar** 💪🌐🖥️🖧
+**ADead-BIB: A muscle that works ANYWHERE** 💪🌐🖥️🖧
 
 ---
 
-## 📁 Nueva Estructura del Proyecto
+## 📁 Project Structure
 
 ```
 ADead-BIB/
 ├── src/                        # 🔧 Compiler Core (Rust)
-├── integrations/               # 🌐 Integraciones con otros lenguajes
+├── integrations/               # 🌐 Multi-language integrations
 │   ├── javascript/             # Node.js + ADead-BIB
 │   ├── react/                  # React + ADead-BIB + Bun
 │   ├── python/                 # Python FFI + AI + GPU
-│   ├── rust/                   # Rust + ADead-BIB
-│   ├── go/                     # Go + ADead-BIB
-│   ├── cpp/                    # C++ + ADead-BIB
-│   └── README.md               # Guía de integraciones
-├── python/                     # 🐍 Python tools originales
+│   ├── rust/                   # Rust crate
+│   ├── go/                     # Go package
+│   ├── cpp/                    # C++ header-only
+│   ├── java/                   # Java JNI
+│   ├── csharp/                 # C# P/Invoke
+│   ├── swift/                  # Swift Package
+│   └── README.md               # Integration guide
+├── python/                     # 🐍 Original Python tools
 ├── hex/                        # 🔢 GPU Opcodes
-├── examples/                   # 📝 Ejemplos .adB
-├── docs/                       # 📚 Documentación
-├── Metal_Dead/                 # 🤖 Sistema de IA avanzado
-├── IA_Personal/                # 🧠 IA Personal
+├── examples/                   # 📝 .adB examples
+├── docs/                       # 📚 Documentation
+├── Metal_Dead/                 # 🤖 Advanced AI System
+├── IA_Personal/                # 🧠 Personal AI
 ├── GAME/                       # 🎮 Vulkan Bird Demo
-├── builds/                     # 📦 Binarios compilados
+├── builds/                     # 📦 Compiled binaries
 ├── stdlib/                     # 📚 Standard Library
-└── README.md                   # 📖 Este archivo
+└── README.md                   # 📖 This file
 ```
 
 ---
@@ -1881,24 +1892,24 @@ adead.fast_max([1, 5, 3, 2])     # = 5
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-### Cómo Contribuir
+### How to Contribute
 
-1. **Fork** el repositorio
-2. **Clone** tu fork: `git clone https://github.com/tu-usuario/ADead-BIB.git`
-3. **Crea** una rama: `git checkout -b feature/nueva-funcionalidad`
-4. **Commit** tus cambios: `git commit -m "Add: nueva funcionalidad"`
-5. **Push** a tu fork: `git push origin feature/nueva-funcionalidad`
-6. **Abre** un Pull Request
+1. **Fork** the repository
+2. **Clone** your fork: `git clone https://github.com/your-user/ADead-BIB.git`
+3. **Create** a branch: `git checkout -b feature/new-feature`
+4. **Commit** your changes: `git commit -m "Add: new feature"`
+5. **Push** to your fork: `git push origin feature/new-feature`
+6. **Open** a Pull Request
 
-### Áreas de Contribución
+### Contribution Areas
 
-| Área | Descripción | Dificultad |
+| Area | Description | Difficulty |
 |------|-------------|------------|
-| **Integraciones** | Nuevos lenguajes (Java, C#, Swift) | Media |
-| **Optimizaciones** | Reducir tamaño binario | Alta |
-| **Documentación** | Tutoriales, ejemplos | Baja |
-| **Tests** | Más cobertura de tests | Media |
-| **GPU** | Nuevos kernels CUDA | Alta |
+| **Integrations** | New languages (Kotlin, Zig) | Medium |
+| **Optimizations** | Reduce binary size | High |
+| **Documentation** | Tutorials, examples | Low |
+| **Tests** | More test coverage | Medium |
+| **GPU** | New CUDA kernels | High |
 
 ---
 
@@ -1918,7 +1929,7 @@ Apache-2.0 License - See LICENSE file for details.
 
 ## 🌟 Star History
 
-Si este proyecto te es útil, ¡dale una ⭐ en GitHub!
+If this project is useful to you, give it a ⭐ on GitHub!
 
 ```
      ⭐⭐⭐⭐⭐
@@ -1933,4 +1944,4 @@ Si este proyecto te es útil, ¡dale una ⭐ en GitHub!
 
 **Vision: Binaries so small they're measured in bytes, not kilobytes!** 📦→📝
 
-**ADead-BIB: El músculo que potencia cualquier lenguaje** 💪🌐🖥️🖧🇵🇪
+**ADead-BIB: The muscle that powers any language** 💪🌐🖥️🖧🇵🇪

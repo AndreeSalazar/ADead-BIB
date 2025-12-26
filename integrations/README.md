@@ -1,59 +1,59 @@
-# 🌐 ADead-BIB Integrations
+# 🌐 ADead-BIB Multi-Language Integrations
 
-**Integraciones de ADead-BIB con los lenguajes de programación más importantes del mercado**
+**High-performance computing integrations for all major programming languages**
 
 Author: Eddi Andreé Salazar Matos  
 Made with ❤️ in Peru 🇵🇪
 
 ---
 
-## 🧠 Filosofía: Cerebro + Músculo
+## 🧠 Architecture: Brain + Muscle
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    ARQUITECTURA UNIVERSAL                                │
+│                    UNIVERSAL ARCHITECTURE                                │
 │                                                                          │
 │   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │              🧠 CEREBRO (Lenguajes de Alto Nivel)                │   │
+│   │              🧠 BRAIN (High-Level Languages)                     │   │
 │   │                                                                  │   │
 │   │  JavaScript │ Python │ Rust │ Go │ C++ │ Java │ C# │ Swift     │   │
 │   │                                                                  │   │
-│   │  • Lógica de negocio    • UI/UX           • APIs                │   │
-│   │  • Orquestación         • Frameworks      • Ecosistemas         │   │
+│   │  • Business logic       • UI/UX           • APIs                │   │
+│   │  • Orchestration        • Frameworks      • Ecosystems          │   │
 │   └─────────────────────────────┬───────────────────────────────────┘   │
 │                                 │                                        │
 │                                 ▼                                        │
 │   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │              💪 MÚSCULO (ADead-BIB)                              │   │
+│   │              💪 MUSCLE (ADead-BIB)                               │   │
 │   │                                                                  │   │
-│   │  • Cómputo pesado (MatMul, FFT, Attention)                      │   │
+│   │  • Heavy compute (MatMul, FFT, Attention)                       │   │
 │   │  • GPU acceleration (CUDA, Vulkan, Metal)                       │   │
-│   │  • Binarios ultra-compactos (< 2KB)                             │   │
-│   │  • Opcodes directos sin runtime                                 │   │
-│   │  • Determinismo (mismo input = mismo output)                    │   │
+│   │  • Ultra-compact binaries (< 2KB)                               │   │
+│   │  • Direct opcodes, zero runtime                                 │   │
+│   │  • Deterministic execution                                      │   │
 │   └─────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 📁 Integraciones Disponibles
+## 📁 Available Integrations
 
-| Lenguaje | Carpeta | Estado | Uso Principal | GPU |
-|----------|---------|--------|---------------|-----|
-| **JavaScript** | `javascript/` | ✅ Completo | Web apps, Node.js | WASM |
-| **React** | `react/` | ✅ Completo | SPAs, UI interactiva | WebGPU |
-| **Python** | `python/` | ✅ Completo | ML, Data Science | CUDA |
-| **Rust** | `rust/` | ✅ Completo | Sistemas, CLI | CUDA/Vulkan |
-| **Go** | `go/` | ✅ Completo | Microservicios | CUDA |
-| **C++** | `cpp/` | ✅ Completo | Games, Real-time | CUDA/Vulkan |
-| **Java** | `java/` | ✅ Completo | Enterprise, Android | CUDA |
-| **C#** | `csharp/` | ✅ Completo | .NET, Unity | CUDA |
-| **Swift** | `swift/` | ✅ Completo | iOS, macOS | Metal |
+| Language | Directory | Status | Primary Use | GPU |
+|----------|-----------|--------|-------------|-----|
+| **JavaScript** | `javascript/` | ✅ Complete | Web apps, Node.js | WASM |
+| **React** | `react/` | ✅ Complete | SPAs, Interactive UI | WebGPU |
+| **Python** | `python/` | ✅ Complete | ML, Data Science | CUDA |
+| **Rust** | `rust/` | ✅ Complete | Systems, CLI | CUDA/Vulkan |
+| **Go** | `go/` | ✅ Complete | Microservices | CUDA |
+| **C++** | `cpp/` | ✅ Complete | Games, Real-time | CUDA/Vulkan |
+| **Java** | `java/` | ✅ Complete | Enterprise, Android | CUDA |
+| **C#** | `csharp/` | ✅ Complete | .NET, Unity | CUDA |
+| **Swift** | `swift/` | ✅ Complete | iOS, macOS | Metal |
 
 ---
 
-## 🚀 Inicio Rápido por Lenguaje
+## 🚀 Quick Start by Language
 
 ### JavaScript/Node.js
 ```javascript
@@ -128,12 +128,12 @@ let result = engine.matmul(a, b)
 
 ---
 
-## 📊 Comparación de Rendimiento
+## 📊 Performance Benchmarks
 
 ### MatMul 512x512
 
-| Lenguaje | Sin ADead-BIB | Con ADead-BIB | Speedup |
-|----------|---------------|---------------|---------|
+| Language | Without ADead-BIB | With ADead-BIB | Speedup |
+|----------|-------------------|----------------|---------|
 | JavaScript | 150ms | 0.1ms | **1500x** |
 | Python | 200ms | 0.1ms | **2000x** |
 | Java | 200ms | 0.1ms | **2000x** |
@@ -145,7 +145,7 @@ let result = engine.matmul(a, b)
 
 ### GPU Acceleration
 
-| Operación | CPU | GPU | Speedup |
+| Operation | CPU | GPU | Speedup |
 |-----------|-----|-----|---------|
 | MatMul 2048² | 38ms | 2.38ms | **16x** |
 | MatMul 4096² | 317ms | 19ms | **17x** |
@@ -154,59 +154,56 @@ let result = engine.matmul(a, b)
 
 ---
 
-## 🎯 Cuándo Usar Cada Integración
+## 🎯 Use Cases by Language
 
-| Lenguaje | Casos de Uso | Fortalezas |
-|----------|--------------|------------|
-| **JavaScript** | Web apps, APIs Node.js | Ecosistema npm, async |
-| **React** | SPAs, dashboards | UI declarativa, hooks |
+| Language | Use Cases | Strengths |
+|----------|-----------|-----------|
+| **JavaScript** | Web apps, Node.js APIs | npm ecosystem, async |
+| **React** | SPAs, dashboards | Declarative UI, hooks |
 | **Python** | ML, Data Science | NumPy, PyTorch, Pandas |
-| **Rust** | Sistemas, CLI, embebidos | Memory safety, velocidad |
-| **Go** | Microservicios, DevOps | Goroutines, simplicidad |
-| **C++** | Games, real-time, HFT | Control total, SIMD |
-| **Java** | Enterprise, Android | JVM, Spring, escalabilidad |
-| **C#** | .NET, Unity, Azure | Productividad, gaming |
+| **Rust** | Systems, CLI, embedded | Memory safety, speed |
+| **Go** | Microservices, DevOps | Goroutines, simplicity |
+| **C++** | Games, real-time, HFT | Full control, SIMD |
+| **Java** | Enterprise, Android | JVM, Spring, scalability |
+| **C#** | .NET, Unity, Azure | Productivity, gaming |
 | **Swift** | iOS, macOS, visionOS | Apple ecosystem, Metal |
 
 ---
 
-## 🔧 Estructura del Proyecto
+## 🔧 Project Structure
 
 ```
 integrations/
-├── README.md              # Este archivo
+├── README.md              # This file
 ├── javascript/            # Node.js + ADead-BIB
-│   ├── README.md
-│   ├── package.json
-│   ├── src/adead-binding.js
+│   ├── src/adead-core.js
 │   └── examples/
 ├── react/                 # React + Bun + ADead-BIB
-│   ├── README.md
-│   ├── src/adead/
 │   └── react-adead-heavy/
 ├── python/                # Python FFI + GPU
 │   ├── adead_ffi.py
-│   ├── gpu_detect.py
-│   └── hybrid_compute.py
+│   └── gpu_detect.py
 ├── rust/                  # Rust crate
-│   └── README.md
+│   ├── src/lib.rs
+│   └── Cargo.toml
 ├── go/                    # Go package
-│   └── README.md
+│   ├── adead.go
+│   └── go.mod
 ├── cpp/                   # C++ header-only
-│   └── README.md
+│   └── include/adead.hpp
 ├── java/                  # Java JNI
-│   └── README.md
+│   └── src/main/java/com/adead/
 ├── csharp/                # C# P/Invoke
-│   └── README.md
-└── swift/                 # Swift C interop
-    └── README.md
+│   └── src/ADead/Engine.cs
+└── swift/                 # Swift Package
+    └── Sources/ADead/Engine.swift
 ```
 
 ---
 
-## 🌐 Compatibilidad de Plataformas
+## 🌐 Platform Compatibility
 
-| Lenguaje | Windows | Linux | macOS | iOS | Android | Web |
+| Language | Windows | Linux | macOS | iOS | Android | Web |
 |----------|---------|-------|-------|-----|---------|-----|
 | JavaScript | ✅ | ✅ | ✅ | - | - | ✅ |
 | React | ✅ | ✅ | ✅ | - | - | ✅ |
@@ -220,22 +217,22 @@ integrations/
 
 ---
 
-## 📈 Métricas de Rendimiento
+## 📈 Performance Metrics
 
-### Throughput (requests/segundo)
+### Throughput (requests/second)
 
-| Lenguaje | Sin ADead-BIB | Con ADead-BIB |
-|----------|---------------|---------------|
+| Language | Without ADead-BIB | With ADead-BIB |
+|----------|-------------------|----------------|
 | Node.js | 10K | 50K |
 | Go | 50K | 150K |
 | Rust | 100K | 200K |
 | Java | 30K | 100K |
 | C# | 40K | 120K |
 
-### Latencia (p99)
+### Latency (p99)
 
-| Lenguaje | Sin ADead-BIB | Con ADead-BIB |
-|----------|---------------|---------------|
+| Language | Without ADead-BIB | With ADead-BIB |
+|----------|-------------------|----------------|
 | Node.js | 50ms | 5ms |
 | Go | 10ms | 1ms |
 | Rust | 5ms | 0.5ms |
@@ -244,15 +241,15 @@ integrations/
 
 ---
 
-## 🔌 API Común
+## 🔌 Common API
 
-Todas las integraciones comparten la misma API conceptual:
+All integrations share the same conceptual API:
 
 ```
-// Crear engine
+// Create engine
 engine = new Engine(config)
 
-// Operaciones matemáticas
+// Math operations
 engine.matmul(a, b)
 engine.transpose(a)
 engine.add(a, b)
@@ -264,7 +261,7 @@ engine.relu(x)
 engine.softmax(x)
 engine.tokenize(text)
 
-// Compilador
+// Compiler
 compiler.compile(code)
 binary.execute()
 binary.save(path)
@@ -272,25 +269,25 @@ binary.save(path)
 
 ---
 
-## 🚀 Próximos Pasos
+## 🚀 Getting Started
 
-1. **Elegir tu lenguaje** - Ve a la carpeta correspondiente
-2. **Leer el README** - Cada integración tiene documentación completa
-3. **Instalar dependencias** - Sigue las instrucciones de instalación
-4. **Ejecutar ejemplos** - Prueba los ejemplos incluidos
-5. **Integrar en tu proyecto** - Usa ADead-BIB como músculo
+1. **Choose your language** - Navigate to the corresponding directory
+2. **Read the README** - Each integration has complete documentation
+3. **Install dependencies** - Follow installation instructions
+4. **Run examples** - Test the included examples
+5. **Integrate** - Use ADead-BIB as your compute muscle
 
 ---
 
-**ADead-BIB: El músculo que potencia CUALQUIER lenguaje** 💪🌐
+**ADead-BIB: The muscle that powers ANY language** 💪🌐
 
 ```
-JavaScript + ADead-BIB = Web apps ultra-rápidas
-Python + ADead-BIB = ML sin límites
-Rust + ADead-BIB = Sistemas perfectos
-Go + ADead-BIB = Microservicios potentes
-C++ + ADead-BIB = Rendimiento absoluto
+JavaScript + ADead-BIB = Ultra-fast web apps
+Python + ADead-BIB = ML without limits
+Rust + ADead-BIB = Perfect systems
+Go + ADead-BIB = Powerful microservices
+C++ + ADead-BIB = Absolute performance
 Java + ADead-BIB = Enterprise power
-C# + ADead-BIB = .NET + velocidad
+C# + ADead-BIB = .NET + speed
 Swift + ADead-BIB = Apple + Metal
 ```
