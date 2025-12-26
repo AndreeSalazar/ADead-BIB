@@ -54,6 +54,8 @@ pub enum Expr {
     },
     This,
     Super,
+    // Input del usuario
+    Input,  // input() - lee un número del teclado
     // Funcional
     Lambda {
         params: Vec<String>,
@@ -201,6 +203,26 @@ pub struct Method {
     pub is_static: bool,               // Método estático
 }
 
+// Rust-style struct
+#[derive(Debug, Clone)]
+pub struct Struct {
+    pub name: String,
+    pub fields: Vec<StructField>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructField {
+    pub name: String,
+    pub type_name: Option<String>,
+}
+
+// Rust-style impl block
+#[derive(Debug, Clone)]
+pub struct Impl {
+    pub struct_name: String,
+    pub methods: Vec<Function>,
+}
+
 // Sistema de imports
 #[derive(Debug, Clone)]
 pub struct Import {
@@ -214,6 +236,8 @@ pub struct Program {
     pub imports: Vec<Import>,
     pub interfaces: Vec<Interface>,
     pub classes: Vec<Class>,
+    pub structs: Vec<Struct>,       // Rust-style structs
+    pub impls: Vec<Impl>,           // Rust-style impl blocks
     pub functions: Vec<Function>,
     pub statements: Vec<Stmt>, // Top-level statements (scripts)
 }
@@ -224,9 +248,19 @@ impl Program {
             imports: Vec::new(),
             interfaces: Vec::new(),
             classes: Vec::new(),
+            structs: Vec::new(),
+            impls: Vec::new(),
             functions: Vec::new(),
             statements: Vec::new(),
         }
+    }
+    
+    pub fn add_struct(&mut self, s: Struct) {
+        self.structs.push(s);
+    }
+    
+    pub fn add_impl(&mut self, i: Impl) {
+        self.impls.push(i);
     }
     
     pub fn add_import(&mut self, import: Import) {

@@ -7,6 +7,7 @@ pub enum Token {
     Def,
     Print,
     Println,    // println con \n automático
+    Input,      // input() para leer del teclado
     Return,
     If,
     Elif,
@@ -138,6 +139,8 @@ pub struct Lexer {
     input: Vec<char>,
     position: usize,
     current_char: Option<char>,
+    line: usize,
+    column: usize,
 }
 
 impl Lexer {
@@ -149,10 +152,28 @@ impl Lexer {
             input: chars,
             position: 0,
             current_char: current,
+            line: 1,
+            column: 1,
         }
     }
     
+    pub fn get_line(&self) -> usize {
+        self.line
+    }
+    
+    pub fn get_column(&self) -> usize {
+        self.column
+    }
+    
     fn advance(&mut self) {
+        if let Some(ch) = self.current_char {
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 1;
+            } else {
+                self.column += 1;
+            }
+        }
         self.position += 1;
         if self.position >= self.input.len() {
             self.current_char = None;
@@ -480,6 +501,7 @@ impl Lexer {
                     "def" => Token::Def,
                     "print" => Token::Print,
                     "println" => Token::Println,
+                    "input" => Token::Input,
                     "return" => Token::Return,
                     "if" => Token::If,
                     "elif" => Token::Elif,
@@ -596,6 +618,66 @@ mod tests {
     fn test_string() {
         let mut lexer = Lexer::new(r#""Hello, World!""#);
         assert_eq!(lexer.next_token(), Token::String("Hello, World!".to_string()));
+    }
+    
+    #[test]
+    fn test_rust_style() {
+        let mut lexer = Lexer::new("fn main() { let x = 42; }");
+        assert_eq!(lexer.next_token(), Token::Fn);
+        assert_eq!(lexer.next_token(), Token::Identifier("main".to_string()));
+        assert_eq!(lexer.next_token(), Token::LParen);
+        assert_eq!(lexer.next_token(), Token::RParen);
+        assert_eq!(lexer.next_token(), Token::LBrace);
+        assert_eq!(lexer.next_token(), Token::Let);
+    }
+    
+    #[test]
+    fn test_numbers() {
+        let mut lexer = Lexer::new("42 3.14 -10");
+        assert_eq!(lexer.next_token(), Token::Number(42));
+        assert_eq!(lexer.next_token(), Token::Float(3.14));
+        assert_eq!(lexer.next_token(), Token::Minus);
+        assert_eq!(lexer.next_token(), Token::Number(10));
+    }
+    
+    #[test]
+    fn test_comparisons() {
+        let mut lexer = Lexer::new("== != < > <= >=");
+        assert_eq!(lexer.next_token(), Token::EqEq);
+        assert_eq!(lexer.next_token(), Token::NotEq);
+        assert_eq!(lexer.next_token(), Token::Less);
+        assert_eq!(lexer.next_token(), Token::Greater);
+        assert_eq!(lexer.next_token(), Token::LessEq);
+        assert_eq!(lexer.next_token(), Token::GreaterEq);
+    }
+    
+    #[test]
+    fn test_keywords() {
+        let mut lexer = Lexer::new("if else while for return true false");
+        assert_eq!(lexer.next_token(), Token::If);
+        assert_eq!(lexer.next_token(), Token::Else);
+        assert_eq!(lexer.next_token(), Token::While);
+        assert_eq!(lexer.next_token(), Token::For);
+        assert_eq!(lexer.next_token(), Token::Return);
+        assert_eq!(lexer.next_token(), Token::True);
+        assert_eq!(lexer.next_token(), Token::False);
+    }
+    
+    #[test]
+    fn test_input() {
+        let mut lexer = Lexer::new("input()");
+        assert_eq!(lexer.next_token(), Token::Input);
+        assert_eq!(lexer.next_token(), Token::LParen);
+        assert_eq!(lexer.next_token(), Token::RParen);
+    }
+    
+    #[test]
+    fn test_line_tracking() {
+        let mut lexer = Lexer::new("fn\nmain");
+        assert_eq!(lexer.get_line(), 1);
+        lexer.next_token(); // fn
+        lexer.next_token(); // newline
+        assert_eq!(lexer.get_line(), 2);
     }
 }
 

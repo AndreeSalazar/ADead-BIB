@@ -157,6 +157,10 @@ impl CodeGenerator {
             Expr::Super => {
                 self.emit_bytes(&[0x48, 0x8B, 0x7F, 0x08]);
             }
+            Expr::Input => {
+                // Input no soportado en codegen legacy
+                self.emit_bytes(&[0x31, 0xC0]); // xor eax, eax
+            }
             Expr::Lambda { params, body } => {
                  self.emit_lambda(params, body);
             }

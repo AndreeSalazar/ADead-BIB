@@ -87,20 +87,47 @@ impl CodeGeneratorV2 {
         // Incluir strings de nivel superior
         self.collect_strings_from_stmts(&program.statements);
         
-        // Fase 2: Compilar nivel superior como punto de entrada (si existe)
+        // Fase 2: Emitir salto a main al inicio (se parchea después)
+        let has_main = program.functions.iter().any(|f| f.name == "main");
+        let jmp_to_main_offset = if has_main && program.functions.len() > 1 {
+            self.emit_bytes(&[0xE9]); // jmp rel32
+            let offset = self.code.len();
+            self.emit_i32(0); // placeholder
+            Some(offset)
+        } else {
+            None
+        };
+        
+        // Fase 3: Compilar funciones auxiliares primero (no main)
+        for func in &program.functions {
+            if func.name != "main" {
+                self.compile_function(func);
+            }
+        }
+        
+        // Fase 4: Compilar main o nivel superior
         if !program.statements.is_empty() {
             self.compile_top_level(&program.statements);
         }
         
-        // Fase 3: Compilar todas las funciones
+        // Fase 5: Compilar main si existe
+        let main_offset = self.code.len();
         for func in &program.functions {
-            self.compile_function(func);
+            if func.name == "main" {
+                self.compile_function(func);
+            }
         }
         
-        // Fase 4: Resolver llamadas a funciones
+        // Parchear salto a main
+        if let Some(jmp_offset) = jmp_to_main_offset {
+            let rel = (main_offset as i32) - (jmp_offset as i32 + 4);
+            self.code[jmp_offset..jmp_offset + 4].copy_from_slice(&rel.to_le_bytes());
+        }
+        
+        // Fase 6: Resolver llamadas a funciones
         self.resolve_function_calls();
         
-        // Fase 5: Generar sección de datos
+        // Fase 7: Generar sección de datos
         self.generate_data_section();
         
         (self.code.clone(), self.data.clone())
@@ -111,6 +138,7 @@ impl CodeGeneratorV2 {
         // Añadir formatos de printf y \n para println
         self.strings.push("%d".to_string());
         self.strings.push("%s".to_string());
+        self.strings.push("%.2f".to_string());  // Para flotantes con 2 decimales
         self.strings.push("\n".to_string());
         
         for func in &program.functions {
@@ -346,11 +374,14 @@ impl CodeGeneratorV2 {
                 }
             }
         } else {
-            // Evaluar la expresión y determinar si es numérica
+            // Evaluar la expresión y determinar el tipo
             self.emit_expression(expr); // RAX = valor
             
-            // Detectar si es una expresión numérica (variable, número, operación)
-            let is_numeric = matches!(expr, 
+            // Detectar si es flotante
+            let is_float = matches!(expr, Expr::Float(_));
+            
+            // Detectar si es una expresión numérica entera
+            let is_integer = matches!(expr, 
                 Expr::Number(_) | 
                 Expr::Variable(_) | 
                 Expr::BinaryOp { .. } |
@@ -359,8 +390,21 @@ impl CodeGeneratorV2 {
 
             match self.target {
                 Target::Windows | Target::Raw => {
-                    if is_numeric {
-                        // printf("%d", rax) para números (sin \n - el usuario lo pone)
+                    if is_float {
+                        // printf("%.2f", xmm1) para flotantes
+                        // Windows x64: flotantes van en XMM1 para printf
+                        let fmt_addr = self.get_string_address("%.2f");
+                        
+                        // mov rdx, rax (bits del double)
+                        self.emit_bytes(&[0x48, 0x89, 0xC2]);
+                        // movq xmm1, rdx - mover bits a XMM1
+                        self.emit_bytes(&[0x66, 0x48, 0x0F, 0x6E, 0xCA]);
+                        // mov rcx, fmt_addr
+                        self.emit_bytes(&[0x48, 0xB9]);
+                        self.emit_u64(fmt_addr);
+                        self.emit_call_printf();
+                    } else if is_integer {
+                        // printf("%d", rax) para números enteros
                         let fmt_addr = self.get_string_address("%d");
                         
                         self.emit_bytes(&[0x48, 0x89, 0xC2]); // mov rdx, rax
@@ -368,7 +412,7 @@ impl CodeGeneratorV2 {
                         self.emit_u64(fmt_addr);
                         self.emit_call_printf();
                     } else {
-                        // printf("%s", rax) para strings (sin \n - el usuario lo pone)
+                        // printf("%s", rax) para strings
                         let fmt_addr = self.get_string_address("%s");
 
                         self.emit_bytes(&[0x48, 0x89, 0xC2]); // mov rdx, rax
@@ -600,6 +644,13 @@ impl CodeGeneratorV2 {
                 self.emit_bytes(&[0x48, 0xB8]);
                 self.emit_u64(*n as u64);
             }
+            Expr::Float(f) => {
+                // Cargar flotante como bits en RAX para pasar a printf
+                // printf en Windows x64 espera double en XMM1 para %f
+                let bits = f.to_bits();
+                self.emit_bytes(&[0x48, 0xB8]);  // mov rax, imm64
+                self.emit_u64(bits);
+            }
             Expr::Bool(b) => {
                 let val = if *b { 1u64 } else { 0u64 };
                 self.emit_bytes(&[0x48, 0xB8]);
@@ -651,6 +702,9 @@ impl CodeGeneratorV2 {
             Expr::Call { name, args } => {
                 self.emit_call(name, args);
             }
+            Expr::Input => {
+                self.emit_input();
+            }
             Expr::Comparison { .. } => self.emit_condition(expr),
             _ => {}
         }
@@ -682,6 +736,14 @@ impl CodeGeneratorV2 {
         self.emit_bytes(&[0x48, 0x83, 0xC4, 0x20]);
     }
     
+    fn emit_input(&mut self) {
+        // input() - por ahora retorna 0 (placeholder)
+        // TODO: Implementar lectura real con scanf cuando se añada al PE
+        // Por ahora, devolvemos 42 como valor de demostración
+        self.emit_bytes(&[0x48, 0xB8]);  // mov rax, 42
+        self.emit_u64(42);
+    }
+    
     // ========================================
     // Helpers
     // ========================================
@@ -710,12 +772,13 @@ mod tests {
     #[test]
     fn test_codegen_v2_creation() {
         let cg = CodeGeneratorV2::new(Target::Windows);
-        assert_eq!(cg.base_address, 0x400000);
+        assert_eq!(cg.base_address, 0x0000000140000000);
     }
     
     #[test]
     fn test_codegen_v2_linux() {
         let cg = CodeGeneratorV2::new(Target::Linux);
         assert_eq!(cg.target, Target::Linux);
+        assert_eq!(cg.base_address, 0x400000);
     }
 }

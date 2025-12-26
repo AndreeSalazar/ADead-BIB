@@ -1,4 +1,4 @@
-# ADead-BIB v0.5.0 - Guía en Español
+# ADead-BIB v1.2.0 - Guía en Español
 
 ## ¿Qué es ADead-BIB?
 
@@ -104,6 +104,82 @@ Ver la carpeta `examples/`:
 | `println.adB` | Uso de println |
 | `binario.adB` | Código nativo |
 
+## Control de Flujo (v0.6.0)
+
+### If / Else
+
+```rust
+let x = 10
+if x > 5 {
+    println("x es mayor que 5")
+} else {
+    println("x es menor o igual a 5")
+}
+```
+
+### While
+
+```rust
+let i = 0
+while i < 5 {
+    println(i)
+    i = i + 1
+}
+```
+
+### For
+
+```rust
+for i in 0..5 {
+    println(i)
+}
+```
+
+### Comparaciones
+
+| Operador | Significado |
+|----------|-------------|
+| `==` | Igual |
+| `!=` | Diferente |
+| `<` | Menor que |
+| `>` | Mayor que |
+| `<=` | Menor o igual |
+| `>=` | Mayor o igual |
+
+## Funciones Propias (v0.7.0)
+
+### Definir Funciones
+
+```rust
+fn suma(a, b) {
+    return a + b
+}
+
+fn cuadrado(x) {
+    return x * x
+}
+```
+
+### Llamar Funciones
+
+```rust
+let resultado = suma(10, 5)
+println(resultado)  // 15
+```
+
+### Recursión
+
+```rust
+fn factorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+let f5 = factorial(5)  // 120
+```
+
 ## Características
 
 - ✅ Sintaxis estilo Rust (`fn`, `let`, `const`)
@@ -113,6 +189,10 @@ Ver la carpeta `examples/`:
 - ✅ `print()` y `println()` para salida
 - ✅ Operaciones aritméticas (+, -, *, /)
 - ✅ Secuencias de escape (\n, \t, \r)
+- ✅ Control de flujo (if/else, while, for)
+- ✅ Comparaciones (==, !=, <, >, <=, >=)
+- ✅ Funciones propias con parámetros
+- ✅ Recursión
 
 ## Tamaño de Binarios
 

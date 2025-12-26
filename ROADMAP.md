@@ -1,6 +1,6 @@
 # ADead-BIB - Roadmap de Mejoras Futuras
 
-## v0.5.0 (Actual) ✅
+## v0.5.0 ✅
 
 ### Completado
 - [x] Sintaxis estilo Rust (`fn`, `let`, `const`)
@@ -15,69 +15,79 @@
 
 ---
 
-## v0.6.0 (Próxima)
+## v0.6.0 ✅
 
 ### Control de Flujo
-- [ ] `if` / `else` condicionales
-- [ ] `while` loops
-- [ ] `for` loops
-- [ ] `break` y `continue`
+- [x] `if` / `else` condicionales
+- [x] `while` loops
+- [x] `for` loops (for i in 0..10)
+- [x] `break` y `continue`
 
 ### Comparaciones
-- [ ] `==` igual
-- [ ] `!=` diferente
-- [ ] `<` menor que
-- [ ] `>` mayor que
-- [ ] `<=` menor o igual
-- [ ] `>=` mayor o igual
+- [x] `==` igual
+- [x] `!=` diferente
+- [x] `<` menor que
+- [x] `>` mayor que
+- [x] `<=` menor o igual
+- [x] `>=` mayor o igual
 
 ---
 
-## v0.7.0
+## v0.7.0 ✅
 
 ### Funciones Avanzadas
-- [ ] Definir funciones propias
-- [ ] Llamar funciones
-- [ ] Parámetros de funciones
-- [ ] Valores de retorno (`return`)
-- [ ] Recursión
+- [x] Definir funciones propias
+- [x] Llamar funciones
+- [x] Parámetros de funciones
+- [x] Valores de retorno (`return`)
+- [x] Recursión
 
 ---
 
-## v0.8.0
+## v0.8.0 ✅
 
 ### Tipos de Datos
-- [ ] Strings con operaciones
-- [ ] Arrays/listas
-- [ ] Booleanos (`true`, `false`)
-- [ ] Números flotantes
+- [x] Booleanos (`true`, `false`)
+- [x] Números flotantes con decimales reales (%.2f)
+- [ ] Strings con operaciones (futuro)
+- [ ] Arrays/listas (futuro)
 
 ---
 
-## v0.9.0
+## v0.9.0 ✅
 
 ### Entrada de Usuario
-- [ ] `input()` para leer del teclado
-- [ ] Conversión de tipos
+- [x] `input()` para leer del teclado (placeholder: retorna 42)
+- [ ] Conversión de tipos (futuro)
 
 ---
 
-## v1.0.0
+## v1.0.0 ✅
 
 ### Estabilidad
-- [ ] Manejo de errores mejorado
-- [ ] Mensajes de error claros
-- [ ] Documentación completa
-- [ ] Tests automatizados
+- [x] Manejo de errores mejorado
+- [x] Mensajes de error claros
+- [x] Tracking de líneas en lexer
+- [x] Tests automatizados (50+ tests)
+- [x] Documentación completa
 
 ---
 
-## Futuro (v1.x+)
+## v1.1.0 ✅
+
+### Flotantes Reales
+- [x] Números flotantes con decimales (%.2f)
+- [x] PI = 3.14, E = 2.72
+
+---
+
+## v1.2.0 (Actual) ✅
 
 ### OOP Completo
-- [ ] `struct` con campos
-- [ ] `impl` para métodos
-- [ ] `trait` para interfaces
+- [x] `struct` con campos
+- [x] `impl` para métodos
+- [x] Sintaxis `Struct::method()`
+- [ ] `trait` para interfaces (futuro)
 
 ### Módulos
 - [ ] `import` para importar código

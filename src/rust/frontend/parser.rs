@@ -742,6 +742,24 @@ impl Parser {
             Some(Token::Let) | Some(Token::Const) => {
                 self.parse_let_statement()
             }
+            // Control de flujo
+            Some(Token::If) => {
+                self.parse_if_statement()
+            }
+            Some(Token::While) => {
+                self.parse_while_statement()
+            }
+            Some(Token::For) => {
+                self.parse_for_statement()
+            }
+            Some(Token::Break) => {
+                self.advance();
+                Ok(Stmt::Break)
+            }
+            Some(Token::Continue) => {
+                self.advance();
+                Ok(Stmt::Continue)
+            }
             Some(Token::Print) => {
                 self.advance();
                 self.expect(Token::LParen)?;
@@ -801,8 +819,129 @@ impl Parser {
         }
     }
     
+    // ========================================
+    // Control de flujo
+    // ========================================
+    
+    fn parse_if_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'if'
+        
+        // Condición (puede tener paréntesis o no)
+        let has_paren = matches!(self.peek(), Some(Token::LParen));
+        if has_paren { self.advance(); }
+        
+        let condition = self.parse_comparison()?;
+        
+        if has_paren { self.expect(Token::RParen)?; }
+        
+        // Cuerpo con llaves
+        self.expect(Token::LBrace)?;
+        let then_body = self.parse_block()?;
+        self.expect(Token::RBrace)?;
+        
+        // else opcional
+        let else_body = if matches!(self.peek(), Some(Token::Else)) {
+            self.advance();
+            self.expect(Token::LBrace)?;
+            let body = self.parse_block()?;
+            self.expect(Token::RBrace)?;
+            Some(body)
+        } else {
+            None
+        };
+        
+        Ok(Stmt::If { condition, then_body, else_body })
+    }
+    
+    fn parse_while_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'while'
+        
+        let has_paren = matches!(self.peek(), Some(Token::LParen));
+        if has_paren { self.advance(); }
+        
+        let condition = self.parse_comparison()?;
+        
+        if has_paren { self.expect(Token::RParen)?; }
+        
+        self.expect(Token::LBrace)?;
+        let body = self.parse_block()?;
+        self.expect(Token::RBrace)?;
+        
+        Ok(Stmt::While { condition, body })
+    }
+    
+    fn parse_for_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'for'
+        
+        // for i in 0..10 { }
+        let var = match self.advance() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err(ParseError::ExpectedToken("identifier")),
+        };
+        
+        self.expect(Token::In)?;
+        
+        let start = self.parse_expression()?;
+        self.expect(Token::DoubleDot)?;
+        let end = self.parse_expression()?;
+        
+        self.expect(Token::LBrace)?;
+        let body = self.parse_block()?;
+        self.expect(Token::RBrace)?;
+        
+        Ok(Stmt::For { var, start, end, body })
+    }
+    
+    fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let mut stmts = Vec::new();
+        
+        while !matches!(self.peek(), Some(Token::RBrace) | None) {
+            // Saltar newlines
+            while matches!(self.peek(), Some(Token::Newline)) {
+                self.advance();
+            }
+            if matches!(self.peek(), Some(Token::RBrace)) {
+                break;
+            }
+            stmts.push(self.parse_statement()?);
+        }
+        
+        Ok(stmts)
+    }
+    
+    // ========================================
+    // Expresiones
+    // ========================================
+    
     fn parse_expression(&mut self) -> Result<Expr, ParseError> {
         self.parse_binary_op()
+    }
+    
+    fn parse_comparison(&mut self) -> Result<Expr, ParseError> {
+        let left = self.parse_binary_op()?;
+        
+        if let Some(op) = self.match_comparison_op() {
+            let right = self.parse_binary_op()?;
+            Ok(Expr::Comparison {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            })
+        } else {
+            Ok(left)
+        }
+    }
+    
+    fn match_comparison_op(&mut self) -> Option<CmpOp> {
+        match self.peek() {
+            Some(Token::EqEq) => { self.advance(); Some(CmpOp::Eq) },
+            Some(Token::NotEq) => { self.advance(); Some(CmpOp::Ne) },
+            Some(Token::Less) => { self.advance(); Some(CmpOp::Lt) },
+            Some(Token::LessEq) => { self.advance(); Some(CmpOp::Le) },
+            Some(Token::Greater) => { self.advance(); Some(CmpOp::Gt) },
+            Some(Token::GreaterEq) => { self.advance(); Some(CmpOp::Ge) },
+            _ => None
+        }
     }
     
     fn parse_binary_op(&mut self) -> Result<Expr, ParseError> {
@@ -845,7 +984,24 @@ impl Parser {
                     _ => Err(ParseError::ExpectedToken("number after minus")),
                 }
             },
+            Some(Token::Input) => {
+                // input() - lee un número del teclado
+                self.expect(Token::LParen)?;
+                self.expect(Token::RParen)?;
+                Ok(Expr::Input)
+            },
             Some(Token::Identifier(s)) => {
+                // Check for Struct::method() syntax
+                let name = if matches!(self.peek(), Some(Token::DoubleColon)) {
+                    self.advance(); // consume ::
+                    match self.advance() {
+                        Some(Token::Identifier(method)) => format!("{}::{}", s, method),
+                        _ => return Err(ParseError::ExpectedToken("method name after ::")),
+                    }
+                } else {
+                    s
+                };
+                
                 if matches!(self.peek(), Some(Token::LParen)) {
                     self.advance();
                     let mut args = Vec::new();
@@ -860,9 +1016,9 @@ impl Parser {
                         }
                     }
                     self.expect(Token::RParen)?;
-                    Ok(Expr::Call { name: s, args })
+                    Ok(Expr::Call { name, args })
                 } else {
-                    Ok(Expr::Variable(s))
+                    Ok(Expr::Variable(name))
                 }
             },
             Some(Token::LParen) => {
