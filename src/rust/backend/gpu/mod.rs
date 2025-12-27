@@ -27,6 +27,7 @@ pub mod memory;
 pub mod bytecode_spirv;
 pub mod metrics;
 pub mod vulkan_runtime;
+pub mod cuda;
 
 // Re-exports principales
 pub use gpu_detect::*;

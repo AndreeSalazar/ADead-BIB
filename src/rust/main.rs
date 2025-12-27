@@ -395,6 +395,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         },
+        "cuda" => {
+            // Generar código CUDA desde ADead-BIB
+            use adead_bib::backend::gpu::cuda;
+            
+            let op = if args.len() >= 3 { &args[2] } else { "vectoradd" };
+            let size: usize = if args.len() >= 4 {
+                args[3].parse().unwrap_or(1024)
+            } else {
+                1024
+            };
+            
+            println!("🔥 ADead-BIB + CUDA Code Generator");
+            println!("   Operation: {}", op);
+            println!("   Size: {}", size);
+            println!();
+            
+            let code = match op {
+                "matmul" => {
+                    println!("   Generating MatMul kernel {}x{}...", size, size);
+                    cuda::generate_matmul_benchmark(size)
+                }
+                "benchmark" | "bench" => {
+                    println!("   Generating Full Benchmark Suite (CPU vs GPU)...");
+                    cuda::generate_full_benchmark()
+                }
+                "vectoradd" | _ => {
+                    println!("   Generating VectorAdd kernel ({} elements)...", size);
+                    cuda::generate_adead_cuda_test(size)
+                }
+            };
+            
+            // Guardar en CUDA/ADead_Generated/
+            let output_path = format!("CUDA/ADead_Generated/adead_{}.cu", op);
+            match fs::write(&output_path, &code) {
+                Ok(_) => {
+                    println!("✅ CUDA code generated: {}", output_path);
+                    println!("   Lines: {}", code.lines().count());
+                    println!();
+                    println!("📋 To compile (requires CUDA Toolkit):");
+                    println!("   nvcc {} -o {}.exe", output_path, op);
+                    println!();
+                    println!("🚀 To run:");
+                    println!("   ./{}.exe", op);
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to write CUDA code: {}", e);
+                }
+            }
+        },
         "play" | "repl" => {
             // Modo interactivo estilo Rust Playground / Jupyter
             run_playground()?;
@@ -470,10 +519,11 @@ fn print_usage(program: &str) {
     println!("   {} micro [output.exe] [exit_code] - PE32 sub-256 bytes", program);
     println!("   {} vm <output.adb> [exit_code]    - MicroVM bytecode", program);
     println!();
-    println!("🎮 GPU (Vulkan):");
+    println!("🎮 GPU (Vulkan/CUDA):");
     println!("   {} gpu                            - Detectar GPU y generar shader", program);
     println!("   {} spirv [op] [size]              - Generar SPIR-V compute shader", program);
     println!("   {} vulkan                         - Inicializar Vulkan runtime", program);
+    println!("   {} cuda [op] [size]               - Generar código CUDA (.cu)", program);
     println!();
     println!("📝 SINTAXIS SOPORTADA:");
     println!("   • Python-style: def, print, if/elif/else, for, while");
