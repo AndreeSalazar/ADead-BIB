@@ -57,8 +57,9 @@ pub struct CodeGeneratorV2 {
 
 impl CodeGeneratorV2 {
     pub fn new(target: Target) -> Self {
+        // v1.4.0: data_rva actualizado a 0x2078 (después de printf+scanf en IAT)
         let (base, data_rva) = match target {
-            Target::Windows => (0x0000000140000000, 0x2060),
+            Target::Windows => (0x0000000140000000, 0x2078),
             Target::Linux => (0x400000, 0x1000),
             Target::Raw => (0x0, 0x1000),
         };
@@ -467,10 +468,24 @@ impl CodeGeneratorV2 {
         // Windows x64 calling convention
         self.emit_bytes(&[0x48, 0x83, 0xEC, 0x20]);  // sub rsp, 32
         
-        // call [rip+offset] - IAT printf at 0x2038
+        // call [rip+offset] - IAT printf at 0x2040 (v1.4.0)
         let call_end_rva = 0x1000 + self.code.len() as u64 + 6;
-        let iat_printf_rva = 0x2038u64;
+        let iat_printf_rva = 0x2040u64;
         let offset = iat_printf_rva as i64 - call_end_rva as i64;
+        self.emit_bytes(&[0xFF, 0x15]);
+        self.emit_i32(offset as i32);
+        
+        self.emit_bytes(&[0x48, 0x83, 0xC4, 0x20]);  // add rsp, 32
+    }
+    
+    fn emit_call_scanf(&mut self) {
+        // Windows x64 calling convention
+        self.emit_bytes(&[0x48, 0x83, 0xEC, 0x20]);  // sub rsp, 32
+        
+        // call [rip+offset] - IAT scanf at 0x2048 (v1.4.0)
+        let call_end_rva = 0x1000 + self.code.len() as u64 + 6;
+        let iat_scanf_rva = 0x2048u64;
+        let offset = iat_scanf_rva as i64 - call_end_rva as i64;
         self.emit_bytes(&[0xFF, 0x15]);
         self.emit_i32(offset as i32);
         
@@ -916,10 +931,35 @@ impl CodeGeneratorV2 {
     }
     
     fn emit_input(&mut self) {
-        // input() - placeholder que retorna 0
-        // TODO v1.4.0: Implementar lectura real de stdin cuando se agregue scanf al PE
-        // Por ahora retornamos 0 para indicar que se necesita input
-        self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax (retorna 0)
+        // input() - v1.4.0: Lee un entero de stdin usando scanf("%d", &var)
+        // Windows x64 calling convention:
+        // rcx = primer arg (formato "%d")
+        // rdx = segundo arg (puntero a variable)
+        
+        // Reservar espacio en stack para el resultado (8 bytes)
+        let input_var_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        
+        // Inicializar variable a 0
+        self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+        self.emit_bytes(&[0x48, 0x89, 0x85]); // mov [rbp + offset], rax
+        self.emit_i32(input_var_offset);
+        
+        // rcx = formato "%d"
+        let fmt_addr = self.get_string_address("%d");
+        self.emit_bytes(&[0x48, 0xB9]); // mov rcx, imm64
+        self.emit_u64(fmt_addr);
+        
+        // rdx = &variable (lea rdx, [rbp + offset])
+        self.emit_bytes(&[0x48, 0x8D, 0x95]); // lea rdx, [rbp + disp32]
+        self.emit_i32(input_var_offset);
+        
+        // Llamar scanf
+        self.emit_call_scanf();
+        
+        // Cargar resultado en rax
+        self.emit_bytes(&[0x48, 0x8B, 0x85]); // mov rax, [rbp + offset]
+        self.emit_i32(input_var_offset);
     }
     
     // ========================================

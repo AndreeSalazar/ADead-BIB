@@ -17,48 +17,68 @@ pub fn generate_pe(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<()
     // Virtual size is actual size
     let code_virtual_size = opcodes.len() as u32;
     
-    // .idata content generation
+    // .idata content generation (v1.4.0 - con printf y scanf)
     // RVA Base for .idata: 0x2000 (assuming .text < 0x1000)
     let idata_rva: u32 = 0x2000;
     
-    // Layout offsets within .idata:
-    // 0x00: IDT (Import Directory Table) - 1 entry (msvcrt) + null (2 * 20 bytes = 40 bytes)
-    // 0x28: ILT (Import Lookup Table) - 1 entry (printf) + null (2 * 8 bytes = 16 bytes, PE32+ uses 64-bit thunks)
-    // 0x38: IAT (Import Address Table) - 1 entry (printf) + null (2 * 8 bytes = 16 bytes). RVA: 0x2038
-    // 0x48: Strings area
+    // Layout offsets within .idata (v1.4.0):
+    // 0x00-0x27: IDT (Import Directory Table) - 1 entry (msvcrt) + null (2 * 20 bytes = 40 bytes)
+    // 0x28-0x3F: ILT (Import Lookup Table) - 2 entries (printf, scanf) + null (3 * 8 = 24 bytes)
+    // 0x40-0x57: IAT (Import Address Table) - 2 entries (printf, scanf) + null (3 * 8 = 24 bytes)
+    //            IAT[0] printf @ RVA 0x2040
+    //            IAT[1] scanf  @ RVA 0x2048
+    // 0x58+: Strings area
     
-    // Reserve enough space for IDT+ILT+IAT+strings ("msvcrt.dll", "printf", program strings)
+    // Reserve enough space for IDT+ILT+IAT+strings
     let mut idata = vec![0u8; file_align]; // initial capacity
     
     // IDT[0] for msvcrt.dll
     // OriginalFirstThunk (RVA of ILT) = 0x2028
     idata[0..4].copy_from_slice(&(idata_rva + 0x28).to_le_bytes());
-    // Name (RVA of DLL name) = 0x2048
-    idata[12..16].copy_from_slice(&(idata_rva + 0x48).to_le_bytes());
-    // FirstThunk (RVA of IAT) = 0x2038
-    idata[16..20].copy_from_slice(&(idata_rva + 0x38).to_le_bytes());
+    // Name (RVA of DLL name) = 0x2058
+    idata[12..16].copy_from_slice(&(idata_rva + 0x58).to_le_bytes());
+    // FirstThunk (RVA of IAT) = 0x2040
+    idata[16..20].copy_from_slice(&(idata_rva + 0x40).to_le_bytes());
     
-    // ILT[0] points to Hint/Name table. RVA = 0x2054
-    // 0x48 + "msvcrt.dll\0".len() = 0x48 + 11 = 0x53 => next even boundary 0x54.
-    // PE32+ requires 64-bit entries for ILT/IAT (IMAGE_THUNK_DATA64)
-    let import_by_name_rva: u32 = idata_rva + 0x54;
-    idata[0x28..0x30].copy_from_slice(&(import_by_name_rva as u64).to_le_bytes());
+    // ILT entries (PE32+ uses 64-bit thunks)
+    // printf Hint/Name @ 0x2064 (after DLL name)
+    let printf_hint_rva: u32 = idata_rva + 0x64;
+    // scanf Hint/Name @ 0x206E (after printf name, aligned)
+    let scanf_hint_rva: u32 = idata_rva + 0x6E;
     
-    // IAT[0] same as ILT[0] initially (loader overwrites with resolved address)
-    idata[0x38..0x40].copy_from_slice(&(import_by_name_rva as u64).to_le_bytes());
+    // ILT[0] -> printf
+    idata[0x28..0x30].copy_from_slice(&(printf_hint_rva as u64).to_le_bytes());
+    // ILT[1] -> scanf
+    idata[0x30..0x38].copy_from_slice(&(scanf_hint_rva as u64).to_le_bytes());
+    // ILT[2] = null (already 0)
+    
+    // IAT entries (same as ILT initially, loader overwrites with resolved addresses)
+    // IAT[0] printf @ 0x2040
+    idata[0x40..0x48].copy_from_slice(&(printf_hint_rva as u64).to_le_bytes());
+    // IAT[1] scanf @ 0x2048
+    idata[0x48..0x50].copy_from_slice(&(scanf_hint_rva as u64).to_le_bytes());
+    // IAT[2] = null (already 0)
     
     // Strings
+    // DLL name @ 0x58: "msvcrt.dll\0" (11 bytes)
     let dll_name = b"msvcrt.dll\0";
-    idata[0x48..0x48+dll_name.len()].copy_from_slice(dll_name);
+    idata[0x58..0x58+dll_name.len()].copy_from_slice(dll_name);
+    // 0x58 + 11 = 0x63, next even = 0x64
     
-    // Hint/Name at 0x54
-    // Hint (2 bytes) = 0
-    let func_name = b"printf\0";
-    idata[0x56..0x56+func_name.len()].copy_from_slice(func_name);
+    // Hint/Name for printf @ 0x64: hint(2) + "printf\0"(7) = 9 bytes
+    idata[0x64] = 0; idata[0x65] = 0; // Hint = 0
+    let printf_name = b"printf\0";
+    idata[0x66..0x66+printf_name.len()].copy_from_slice(printf_name);
+    // 0x66 + 7 = 0x6D, next even = 0x6E
     
-    // Append program strings to .idata after 0x60
-    // Ensure we have enough capacity
-    let program_strings_offset = 0x60usize;
+    // Hint/Name for scanf @ 0x6E: hint(2) + "scanf\0"(6) = 8 bytes
+    idata[0x6E] = 0; idata[0x6F] = 0; // Hint = 0
+    let scanf_name = b"scanf\0";
+    idata[0x70..0x70+scanf_name.len()].copy_from_slice(scanf_name);
+    // 0x70 + 6 = 0x76, next even = 0x76
+    
+    // Append program strings to .idata after 0x78
+    let program_strings_offset = 0x78usize;
     // Grow idata to fit appended data
     if program_strings_offset + _data.len() > idata.len() {
         let needed = program_strings_offset + _data.len();

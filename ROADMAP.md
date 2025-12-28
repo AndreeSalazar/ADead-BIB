@@ -110,25 +110,33 @@
 
 ---
 
-## 🔮 v1.4.0 - Input Real y I/O (Pendiente)
+## ✅ v1.4.0 - Input Real y I/O (COMPLETADO)
 
-### Entrada de Usuario Real
-- [ ] `input()` lee de stdin (requiere agregar scanf al PE)
-- [ ] `input("prompt")` con mensaje
-- [ ] Parsing automático de números
+### Entrada de Usuario Real ✅
+- [x] `input()` lee de stdin usando scanf - **FUNCIONA**
+- [ ] `input("prompt")` con mensaje (futuro)
+- [x] Parsing automático de números enteros
 
-**Nota técnica**: Para implementar `input()` real se necesita:
-1. Agregar `scanf` a las importaciones del PE (IAT)
-2. Modificar la estructura de la Import Directory Table
-3. Actualizar las direcciones en el codegen
+**Implementación técnica (completada)**:
+1. ✅ Agregado `scanf` a las importaciones del PE (IAT en 0x2048)
+2. ✅ Modificada la estructura de la Import Directory Table
+3. ✅ Actualizado codegen con nuevas direcciones (printf@0x2040, scanf@0x2048)
+4. ✅ data_rva actualizado a 0x2078
 
-### Archivos (Futuro)
+### Test de input() ✅
+```
+echo 25 | test_input.exe
+Ingresa un numero: Ingresaste: 25
+El doble es: 50
+```
+
+### Archivos (Futuro v1.6.0)
 - [ ] `open(path, mode)` - Abrir archivo
 - [ ] `file.read()` - Leer contenido
 - [ ] `file.write(data)` - Escribir contenido
 - [ ] `file.close()` - Cerrar archivo
 
-### Salida Formateada
+### Salida Formateada (Futuro)
 - [ ] `printf(format, args...)` - Formato estilo C
 - [ ] `format!()` - Formato estilo Rust
 
