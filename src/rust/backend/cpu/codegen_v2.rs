@@ -335,6 +335,7 @@ impl CodeGeneratorV2 {
             }
             Stmt::While { condition, body } => self.emit_while(condition, body),
             Stmt::For { var, start, end, body } => self.emit_for(var, start, end, body),
+            Stmt::ForEach { var, iterable, body } => self.emit_foreach(var, iterable, body),
             Stmt::Return(expr) => self.emit_return(expr.as_ref()),
             Stmt::Expr(expr) => { self.emit_expression(expr); }
             Stmt::Pass => {}
@@ -466,7 +467,7 @@ impl CodeGeneratorV2 {
         // Windows x64 calling convention
         self.emit_bytes(&[0x48, 0x83, 0xEC, 0x20]);  // sub rsp, 32
         
-        // call [rip+offset] - placeholder para IAT
+        // call [rip+offset] - IAT printf at 0x2038
         let call_end_rva = 0x1000 + self.code.len() as u64 + 6;
         let iat_printf_rva = 0x2038u64;
         let offset = iat_printf_rva as i64 - call_end_rva as i64;
@@ -597,6 +598,88 @@ impl CodeGeneratorV2 {
         self.code[jge_offset_pos..jge_offset_pos + 4].copy_from_slice(&jge_offset.to_le_bytes());
     }
     
+    fn emit_foreach(&mut self, var: &str, iterable: &Expr, body: &[Stmt]) {
+        // for x in arr { } - iterar sobre un array
+        // 1. Evaluar el iterable (obtener dirección base del array)
+        self.emit_expression(iterable);
+        let arr_base_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        self.emit_bytes(&[0x48, 0x89, 0x85]); // mov [rbp + offset], rax
+        self.emit_i32(arr_base_offset);
+        
+        // 2. Leer longitud del array (está en [rax])
+        self.emit_bytes(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
+        let len_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        self.emit_bytes(&[0x48, 0x89, 0x85]); // mov [rbp + offset], rax
+        self.emit_i32(len_offset);
+        
+        // 3. Inicializar índice a 0
+        self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+        let idx_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        self.emit_bytes(&[0x48, 0x89, 0x85]); // mov [rbp + offset], rax
+        self.emit_i32(idx_offset);
+        
+        // 4. Variable del loop
+        let var_offset = self.stack_offset;
+        self.variables.insert(var.to_string(), var_offset);
+        self.stack_offset -= 8;
+        
+        let loop_start = self.code.len();
+        
+        // 5. Comparar índice con longitud
+        self.emit_bytes(&[0x48, 0x8B, 0x85]); // mov rax, [rbp + idx_offset]
+        self.emit_i32(idx_offset);
+        self.emit_bytes(&[0x48, 0x3B, 0x85]); // cmp rax, [rbp + len_offset]
+        self.emit_i32(len_offset);
+        
+        // jge end (salir si idx >= len)
+        self.emit_bytes(&[0x0F, 0x8D]);
+        let jge_offset_pos = self.code.len();
+        self.emit_i32(0);
+        
+        // 6. Cargar elemento actual: arr[idx]
+        // Calcular offset: (idx + 1) * 8
+        self.emit_bytes(&[0x48, 0x8B, 0x85]); // mov rax, [rbp + idx_offset]
+        self.emit_i32(idx_offset);
+        self.emit_bytes(&[0x48, 0xFF, 0xC0]); // inc rax
+        self.emit_bytes(&[0x48, 0xC1, 0xE0, 0x03]); // shl rax, 3
+        
+        // rbx = arr_base
+        self.emit_bytes(&[0x48, 0x8B, 0x9D]); // mov rbx, [rbp + arr_base_offset]
+        self.emit_i32(arr_base_offset);
+        
+        // rbx = rbx - rax (porque stack crece hacia abajo)
+        self.emit_bytes(&[0x48, 0x29, 0xC3]); // sub rbx, rax
+        
+        // rax = [rbx] (valor del elemento)
+        self.emit_bytes(&[0x48, 0x8B, 0x03]); // mov rax, [rbx]
+        
+        // Guardar en variable del loop
+        self.emit_bytes(&[0x48, 0x89, 0x85]); // mov [rbp + var_offset], rax
+        self.emit_i32(var_offset);
+        
+        // 7. Ejecutar cuerpo del loop
+        for stmt in body {
+            self.emit_statement(stmt);
+        }
+        
+        // 8. Incrementar índice
+        self.emit_bytes(&[0x48, 0xFF, 0x85]); // inc [rbp + idx_offset]
+        self.emit_i32(idx_offset);
+        
+        // 9. Saltar al inicio del loop
+        self.emit_bytes(&[0xE9]);
+        let jmp_back = (loop_start as i64 - self.code.len() as i64 - 4) as i32;
+        self.emit_i32(jmp_back);
+        
+        // 10. Parchear salto de salida
+        let end_label = self.code.len();
+        let jge_offset = (end_label - jge_offset_pos - 4) as i32;
+        self.code[jge_offset_pos..jge_offset_pos + 4].copy_from_slice(&jge_offset.to_le_bytes());
+    }
+    
     fn emit_return(&mut self, expr: Option<&Expr>) {
         if let Some(e) = expr {
             self.emit_expression(e);
@@ -708,37 +791,59 @@ impl CodeGeneratorV2 {
             Expr::Comparison { .. } => self.emit_condition(expr),
             // Built-in functions v1.3.0
             Expr::Array(elements) => {
-                // Crear array en stack: primero longitud, luego elementos
+                // Almacenar elementos del array en variables locales consecutivas
+                // Primero guardamos la longitud, luego cada elemento
                 let len = elements.len() as i64;
-                // Guardar longitud
+                
+                // Reservar espacio para longitud + elementos
+                let array_base = self.stack_offset;
+                
+                // Guardar longitud en primera posición
                 self.emit_bytes(&[0x48, 0xB8]); // mov rax, len
                 self.emit_u64(len as u64);
-                self.emit_bytes(&[0x50]); // push rax (longitud)
-                // Guardar elementos en orden inverso
-                for elem in elements.iter().rev() {
+                self.emit_bytes(&[0x48, 0x89, 0x85]); // mov [rbp + offset], rax
+                self.emit_i32(array_base);
+                self.stack_offset -= 8;
+                
+                // Guardar cada elemento
+                for elem in elements.iter() {
                     self.emit_expression(elem);
-                    self.emit_bytes(&[0x50]); // push rax
+                    self.emit_bytes(&[0x48, 0x89, 0x85]); // mov [rbp + offset], rax
+                    self.emit_i32(self.stack_offset);
+                    self.stack_offset -= 8;
                 }
-                // RAX = puntero al inicio del array (rsp)
-                self.emit_bytes(&[0x48, 0x89, 0xE0]); // mov rax, rsp
+                
+                // RAX = dirección base del array (donde está la longitud)
+                self.emit_bytes(&[0x48, 0x8D, 0x85]); // lea rax, [rbp + offset]
+                self.emit_i32(array_base);
             }
             Expr::Index { object, index } => {
+                // Para indexación, primero evaluamos el objeto (dirección base)
+                // luego el índice, y calculamos la dirección del elemento
+                
+                // Evaluar objeto primero (obtener dirección base)
+                self.emit_expression(object);
+                self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (guardar base)
+                
                 // Evaluar índice
                 self.emit_expression(index);
-                self.emit_bytes(&[0x50]); // push rax (índice)
-                // Evaluar objeto (puntero al array)
-                self.emit_expression(object);
-                self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (puntero)
-                self.emit_bytes(&[0x58]); // pop rax (índice)
-                // rax = [rbx + rax*8]
-                self.emit_bytes(&[0x48, 0x8B, 0x04, 0xC3]); // mov rax, [rbx + rax*8]
+                
+                // Calcular offset: (índice + 1) * 8 (saltamos la longitud)
+                self.emit_bytes(&[0x48, 0xFF, 0xC0]); // inc rax
+                self.emit_bytes(&[0x48, 0xC1, 0xE0, 0x03]); // shl rax, 3 (multiplicar por 8)
+                
+                // Restar del base (porque stack crece hacia abajo)
+                self.emit_bytes(&[0x48, 0x29, 0xC3]); // sub rbx, rax
+                
+                // Cargar valor: rax = [rbx]
+                self.emit_bytes(&[0x48, 0x8B, 0x03]); // mov rax, [rbx]
             }
             Expr::Len(inner) => {
+                // Para len(), evaluamos la expresión y leemos la longitud
+                // que está en la primera posición del array
                 self.emit_expression(inner);
-                // Si es un array, la longitud está en [rax - 8] (antes del primer elemento)
-                // Por ahora, asumimos que el valor ya es la longitud para strings
-                // Para arrays, necesitamos leer la longitud almacenada
-                // Simplificación: retornar el valor directamente si es número
+                // rax ya tiene la dirección base, la longitud está en [rax]
+                self.emit_bytes(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
             }
             Expr::IntCast(inner) => {
                 self.emit_expression(inner);
@@ -811,11 +916,10 @@ impl CodeGeneratorV2 {
     }
     
     fn emit_input(&mut self) {
-        // input() - por ahora retorna 0 (placeholder)
-        // TODO: Implementar lectura real con scanf cuando se añada al PE
-        // Por ahora, devolvemos 42 como valor de demostración
-        self.emit_bytes(&[0x48, 0xB8]);  // mov rax, 42
-        self.emit_u64(42);
+        // input() - placeholder que retorna 0
+        // TODO v1.4.0: Implementar lectura real de stdin cuando se agregue scanf al PE
+        // Por ahora retornamos 0 para indicar que se necesita input
+        self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax (retorna 0)
     }
     
     // ========================================

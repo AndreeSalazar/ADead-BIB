@@ -78,50 +78,55 @@
 
 ## 🚧 v1.3.0 - Arrays y Strings (En Desarrollo)
 
-### Arrays/Listas
+### Arrays/Listas ✅
 - [x] Declaración: `let arr = [1, 2, 3]` ✅
-- [x] Indexación: `arr[0]` ✅ (sintaxis implementada)
-- [x] Longitud: `len(arr)` ✅ (sintaxis implementada)
-- [ ] Push/Pop: `arr.push(4)`, `arr.pop()` (placeholder)
-- [ ] Iteración: `for x in arr { }`
-- [ ] Slicing: `arr[1..3]`
+- [x] Indexación: `arr[0]` ✅
+- [x] Longitud: `len(arr)` ✅ **FUNCIONA**
+- [x] Iteración: `for x in arr { }` ✅ **FUNCIONA**
+- [ ] Push/Pop: `arr.push(4)`, `arr.pop()` (futuro)
+- [ ] Slicing: `arr[1..3]` (futuro)
 
 ### Operaciones de String
-- [ ] Concatenación: `"Hello" + " World"` (placeholder)
-- [ ] Longitud: `len(str)`
-- [ ] Indexación: `str[0]`
-- [ ] Métodos: `str.upper()`, `str.lower()`, `str.trim()`
-- [ ] Interpolación: `f"Valor: {x}"`
-- [ ] Split/Join: `str.split(",")`, `arr.join("-")`
+- [ ] Concatenación: `"Hello" + " World"` (futuro)
+- [ ] Longitud: `len(str)` (futuro)
+- [ ] Indexación: `str[0]` (futuro)
+- [ ] Métodos: `str.upper()`, `str.lower()`, `str.trim()` (futuro)
+- [ ] Interpolación: `f"Valor: {x}"` (futuro)
+- [ ] Split/Join: `str.split(",")`, `arr.join("-")` (futuro)
 
-### Conversión de Tipos
+### Conversión de Tipos ✅
 - [x] `int(valor)` - Convertir a entero ✅
 - [x] `float(valor)` - Convertir a flotante ✅
-- [ ] `str(valor)` - Convertir a string (placeholder)
-- [x] `bool(valor)` - Convertir a booleano ✅
+- [ ] `str(valor)` - Convertir a string (futuro)
+- [x] `bool(valor)` - Convertir a booleano ✅ **FUNCIONA**
 
 ### Carpeta TESTEO ✅
 - [x] Estructura de tests creada
 - [x] `TESTEO/arrays/` - Tests de arrays
+- [x] `TESTEO/arrays/test_foreach.adB` - ✅ for x in arr funciona
 - [x] `TESTEO/conversiones/` - Tests de conversión de tipos
-- [x] `TESTEO/len/` - Tests de función len()
-- [x] `TESTEO/integrados/` - Tests completos
+- [x] `TESTEO/len/test_len_array.adB` - ✅ len() funciona
+- [x] `TESTEO/integrados/test_v1_3_0_completo.adB` - ✅ Test completo
 
 ---
 
-## 🔮 v1.4.0 - Input Real y I/O
+## 🔮 v1.4.0 - Input Real y I/O (Pendiente)
 
 ### Entrada de Usuario Real
-- [ ] `input()` lee de stdin (reemplazar placeholder)
+- [ ] `input()` lee de stdin (requiere agregar scanf al PE)
 - [ ] `input("prompt")` con mensaje
 - [ ] Parsing automático de números
 
-### Archivos
+**Nota técnica**: Para implementar `input()` real se necesita:
+1. Agregar `scanf` a las importaciones del PE (IAT)
+2. Modificar la estructura de la Import Directory Table
+3. Actualizar las direcciones en el codegen
+
+### Archivos (Futuro)
 - [ ] `open(path, mode)` - Abrir archivo
 - [ ] `file.read()` - Leer contenido
 - [ ] `file.write(data)` - Escribir contenido
 - [ ] `file.close()` - Cerrar archivo
-- [ ] `with open(...) as f:` - Context manager
 
 ### Salida Formateada
 - [ ] `printf(format, args...)` - Formato estilo C

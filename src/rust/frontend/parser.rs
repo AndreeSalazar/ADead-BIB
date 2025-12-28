@@ -873,7 +873,7 @@ impl Parser {
     fn parse_for_statement(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'for'
         
-        // for i in 0..10 { }
+        // for i in 0..10 { } OR for x in arr { }
         let var = match self.advance() {
             Some(Token::Identifier(name)) => name,
             _ => return Err(ParseError::ExpectedToken("identifier")),
@@ -881,15 +881,27 @@ impl Parser {
         
         self.expect(Token::In)?;
         
-        let start = self.parse_expression()?;
-        self.expect(Token::DoubleDot)?;
-        let end = self.parse_expression()?;
+        let first_expr = self.parse_expression()?;
         
-        self.expect(Token::LBrace)?;
-        let body = self.parse_block()?;
-        self.expect(Token::RBrace)?;
-        
-        Ok(Stmt::For { var, start, end, body })
+        // Verificar si es un rango (0..10) o un iterable (arr)
+        if matches!(self.peek(), Some(Token::DoubleDot)) {
+            // Es un rango: for i in 0..10
+            self.advance(); // consume ..
+            let end = self.parse_expression()?;
+            
+            self.expect(Token::LBrace)?;
+            let body = self.parse_block()?;
+            self.expect(Token::RBrace)?;
+            
+            Ok(Stmt::For { var, start: first_expr, end, body })
+        } else {
+            // Es un iterable: for x in arr
+            self.expect(Token::LBrace)?;
+            let body = self.parse_block()?;
+            self.expect(Token::RBrace)?;
+            
+            Ok(Stmt::ForEach { var, iterable: first_expr, body })
+        }
     }
     
     fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
