@@ -444,6 +444,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         },
+        "unified" | "uni" => {
+            // Pipeline unificado: decisión automática CPU/GPU, elimina ruido
+            use adead_bib::backend::gpu::unified_pipeline::{UnifiedPipeline, MathOperation, PipelineMode};
+            
+            let op = if args.len() >= 3 { &args[2] } else { "vectoradd" };
+            let size: usize = if args.len() >= 4 {
+                args[3].parse().unwrap_or(1000000)
+            } else {
+                1000000
+            };
+            
+            println!("🔥 ADead-BIB Unified Pipeline");
+            println!("   Decisión automática CPU↔GPU | Elimina ruido");
+            println!();
+            
+            let mode = if args.iter().any(|a| a == "--force-gpu") {
+                PipelineMode::ForceGpu
+            } else if args.iter().any(|a| a == "--cpu") {
+                PipelineMode::CpuOnly
+            } else {
+                PipelineMode::Hybrid
+            };
+            
+            let mut pipeline = UnifiedPipeline::with_mode(mode);
+            
+            let math_op = match op {
+                "matmul" => {
+                    let n = (size as f64).sqrt() as usize;
+                    println!("   Operation: MatMul {}x{}", n, n);
+                    MathOperation::MatMul { m: n, n, k: n }
+                }
+                "saxpy" => {
+                    println!("   Operation: SAXPY ({} elements)", size);
+                    MathOperation::Saxpy { size, alpha: 2.5 }
+                }
+                "reduce" | "reduction" => {
+                    println!("   Operation: Reduction ({} elements)", size);
+                    MathOperation::Reduction { size }
+                }
+                "vectoradd" | _ => {
+                    println!("   Operation: VectorAdd ({} elements)", size);
+                    MathOperation::VectorAdd { size }
+                }
+            };
+            
+            let result = pipeline.compile_math_op(math_op);
+            
+            println!();
+            println!("📊 Compilation Result:");
+            println!("   Target:  {:?}", result.target);
+            println!("   Format:  {:?}", result.format);
+            println!("   Size:    {} bytes", result.binary.len());
+            println!();
+            
+            pipeline.print_summary();
+        },
         "play" | "repl" => {
             // Modo interactivo estilo Rust Playground / Jupyter
             run_playground()?;
@@ -524,6 +580,12 @@ fn print_usage(program: &str) {
     println!("   {} spirv [op] [size]              - Generar SPIR-V compute shader", program);
     println!("   {} vulkan                         - Inicializar Vulkan runtime", program);
     println!("   {} cuda [op] [size]               - Generar código CUDA (.cu)", program);
+    println!();
+    println!("🚀 PIPELINE UNIFICADO (HEX + CUDA):");
+    println!("   {} unified [op] [size]            - Decisión auto CPU↔GPU", program);
+    println!("   {} unified matmul 1000000         - MatMul 1000x1000", program);
+    println!("   {} unified vectoradd 10000000     - VectorAdd 10M elementos", program);
+    println!("   Flags: --cpu (forzar CPU), --force-gpu (forzar GPU)");
     println!();
     println!("📝 SINTAXIS SOPORTADA:");
     println!("   • Python-style: def, print, if/elif/else, for, while");

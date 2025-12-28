@@ -66,6 +66,22 @@ pub enum Expr {
         then_expr: Box<Expr>,
         else_expr: Box<Expr>,
     },
+    // Built-in functions v1.3.0
+    Len(Box<Expr>),           // len(expr) - longitud de array/string
+    Push {                     // arr.push(val) o push(arr, val)
+        array: Box<Expr>,
+        value: Box<Expr>,
+    },
+    Pop(Box<Expr>),           // arr.pop() o pop(arr)
+    IntCast(Box<Expr>),       // int(expr) - convertir a entero
+    FloatCast(Box<Expr>),     // float(expr) - convertir a flotante
+    StrCast(Box<Expr>),       // str(expr) - convertir a string
+    BoolCast(Box<Expr>),      // bool(expr) - convertir a booleano
+    // String operations
+    StringConcat {             // "a" + "b"
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

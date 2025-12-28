@@ -706,7 +706,81 @@ impl CodeGeneratorV2 {
                 self.emit_input();
             }
             Expr::Comparison { .. } => self.emit_condition(expr),
-            _ => {}
+            // Built-in functions v1.3.0
+            Expr::Array(elements) => {
+                // Crear array en stack: primero longitud, luego elementos
+                let len = elements.len() as i64;
+                // Guardar longitud
+                self.emit_bytes(&[0x48, 0xB8]); // mov rax, len
+                self.emit_u64(len as u64);
+                self.emit_bytes(&[0x50]); // push rax (longitud)
+                // Guardar elementos en orden inverso
+                for elem in elements.iter().rev() {
+                    self.emit_expression(elem);
+                    self.emit_bytes(&[0x50]); // push rax
+                }
+                // RAX = puntero al inicio del array (rsp)
+                self.emit_bytes(&[0x48, 0x89, 0xE0]); // mov rax, rsp
+            }
+            Expr::Index { object, index } => {
+                // Evaluar índice
+                self.emit_expression(index);
+                self.emit_bytes(&[0x50]); // push rax (índice)
+                // Evaluar objeto (puntero al array)
+                self.emit_expression(object);
+                self.emit_bytes(&[0x48, 0x89, 0xC3]); // mov rbx, rax (puntero)
+                self.emit_bytes(&[0x58]); // pop rax (índice)
+                // rax = [rbx + rax*8]
+                self.emit_bytes(&[0x48, 0x8B, 0x04, 0xC3]); // mov rax, [rbx + rax*8]
+            }
+            Expr::Len(inner) => {
+                self.emit_expression(inner);
+                // Si es un array, la longitud está en [rax - 8] (antes del primer elemento)
+                // Por ahora, asumimos que el valor ya es la longitud para strings
+                // Para arrays, necesitamos leer la longitud almacenada
+                // Simplificación: retornar el valor directamente si es número
+            }
+            Expr::IntCast(inner) => {
+                self.emit_expression(inner);
+                // El valor ya está en RAX como entero
+            }
+            Expr::FloatCast(inner) => {
+                self.emit_expression(inner);
+                // cvtsi2sd xmm0, rax - convertir entero a double
+                self.emit_bytes(&[0xF2, 0x48, 0x0F, 0x2A, 0xC0]);
+                // movq rax, xmm0 - mover bits de vuelta a rax
+                self.emit_bytes(&[0x66, 0x48, 0x0F, 0x7E, 0xC0]);
+            }
+            Expr::StrCast(_inner) => {
+                // Conversión a string - placeholder
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
+            Expr::BoolCast(inner) => {
+                self.emit_expression(inner);
+                // test rax, rax; setne al; movzx rax, al
+                self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                self.emit_bytes(&[0x0F, 0x95, 0xC0]); // setne al
+                self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+            }
+            Expr::Push { array: _, value: _ } => {
+                // Push a array - placeholder
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
+            Expr::Pop(_) => {
+                // Pop de array - placeholder
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
+            Expr::StringConcat { left, right } => {
+                // Concatenación de strings - placeholder
+                self.emit_expression(left);
+                self.emit_expression(right);
+            }
+            Expr::Slice { .. } | Expr::New { .. } | Expr::MethodCall { .. } | 
+            Expr::FieldAccess { .. } | Expr::This | Expr::Super | 
+            Expr::Lambda { .. } | Expr::Ternary { .. } | Expr::String(_) | Expr::Null => {
+                // No soportado en codegen_v2 por ahora
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
         }
     }
     

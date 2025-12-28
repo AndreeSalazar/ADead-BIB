@@ -860,13 +860,55 @@
       "importance": 1.0,
       "access_count": 0,
       "category": "general"
+    },
+    {
+      "content": "Usuario: ¿como estas?",
+      "timestamp": 1766841848.0006063,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: bien",
+      "timestamp": 1766841852.9426649,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ella",
+      "timestamp": 1766841858.557581,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: no",
+      "timestamp": 1766841861.478449,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: gaa",
+      "timestamp": 1766841863.5427196,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: ¿que es gráfica?",
+      "timestamp": 1766841867.6623697,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
     }
   ],
   "categories": [
-    "preferences",
     "personal",
-    "facts",
+    "general",
     "conversations",
-    "general"
+    "preferences",
+    "facts"
   ]
 }

@@ -81,6 +81,15 @@ pub enum Token {
     Async,
     Await,
     
+    // Built-in functions v1.3.0
+    Len,        // len() - longitud de arrays/strings
+    Push,       // push() - agregar a array
+    Pop,        // pop() - remover de array
+    Int,        // int() - convertir a entero
+    FloatCast,  // float() - convertir a flotante
+    Str,        // str() - convertir a string
+    BoolCast,   // bool() - convertir a booleano
+    
     // Identifiers
     Identifier(String),
     
@@ -574,6 +583,16 @@ impl Lexer {
                     "assert" => Token::Assert,
                     "async" => Token::Async,
                     "await" => Token::Await,
+                    
+                    // Built-in functions v1.3.0
+                    "len" => Token::Len,
+                    "push" => Token::Push,
+                    "pop" => Token::Pop,
+                    "int" => Token::Int,
+                    "float" => Token::FloatCast,
+                    "str" => Token::Str,
+                    "bool" => Token::BoolCast,
+                    
                     _ => Token::Identifier(ident),
                 }
             }

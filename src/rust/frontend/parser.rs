@@ -990,6 +990,58 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 Ok(Expr::Input)
             },
+            // Built-in functions v1.3.0
+            Some(Token::Len) => {
+                // len(expr) - longitud de array/string
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expr::Len(Box::new(expr)))
+            },
+            Some(Token::Int) => {
+                // int(expr) - convertir a entero
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expr::IntCast(Box::new(expr)))
+            },
+            Some(Token::FloatCast) => {
+                // float(expr) - convertir a flotante
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expr::FloatCast(Box::new(expr)))
+            },
+            Some(Token::Str) => {
+                // str(expr) - convertir a string
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expr::StrCast(Box::new(expr)))
+            },
+            Some(Token::BoolCast) => {
+                // bool(expr) - convertir a booleano
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expr::BoolCast(Box::new(expr)))
+            },
+            Some(Token::LBracket) => {
+                // Array literal: [1, 2, 3]
+                let mut elements = Vec::new();
+                if !matches!(self.peek(), Some(Token::RBracket)) {
+                    loop {
+                        elements.push(self.parse_expression()?);
+                        if matches!(self.peek(), Some(Token::Comma)) {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(Token::RBracket)?;
+                Ok(Expr::Array(elements))
+            },
             Some(Token::Identifier(s)) => {
                 // Check for Struct::method() syntax
                 let name = if matches!(self.peek(), Some(Token::DoubleColon)) {

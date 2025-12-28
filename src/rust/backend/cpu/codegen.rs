@@ -167,6 +167,46 @@ impl CodeGenerator {
             Expr::Ternary { condition, then_expr, else_expr } => {
                  self.emit_ternary(condition, then_expr, else_expr);
             }
+            // Built-in functions v1.3.0
+            Expr::Len(expr) => {
+                self.emit_expression(expr);
+                // Por ahora, retorna 0 - implementación pendiente
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
+            Expr::Push { array: _, value: _ } => {
+                // Push no soportado en codegen legacy
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
+            Expr::Pop(_) => {
+                // Pop no soportado en codegen legacy
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
+            Expr::IntCast(expr) => {
+                self.emit_expression(expr);
+                // Truncar a entero (ya está en rax)
+            }
+            Expr::FloatCast(expr) => {
+                self.emit_expression(expr);
+                // cvtsi2sd xmm0, rax
+                self.emit_bytes(&[0xF2, 0x48, 0x0F, 0x2A, 0xC0]);
+            }
+            Expr::StrCast(_expr) => {
+                // Conversión a string no soportada en codegen legacy
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
+            Expr::BoolCast(expr) => {
+                self.emit_expression(expr);
+                // test rax, rax; setne al; movzx rax, al
+                self.emit_bytes(&[0x48, 0x85, 0xC0]); // test rax, rax
+                self.emit_bytes(&[0x0F, 0x95, 0xC0]); // setne al
+                self.emit_bytes(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+            }
+            Expr::StringConcat { left, right } => {
+                // Concatenación no soportada en codegen legacy
+                self.emit_expression(left);
+                self.emit_expression(right);
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
         }
     }
 
