@@ -115,10 +115,10 @@ impl Parser {
                     self.parse_impl(&mut program)?;
                     self.skip_newlines();
                 }
-                // Rust style: trait
+                // Rust style: trait (v1.6.0)
                 Some(Token::Trait) => {
-                    let iface = self.parse_trait()?;
-                    program.add_interface(iface);
+                    let trait_def = self.parse_trait_def()?;
+                    program.add_trait(trait_def);
                     self.skip_newlines();
                 }
                 Some(Token::Class) => {
@@ -149,15 +149,34 @@ impl Parser {
         Ok(program)
     }
     
+    /// Parse module path like "std::math" or "mymodule"
+    fn parse_module_path(&mut self) -> Result<String, ParseError> {
+        let mut path = match self.advance() {
+            Some(Token::Identifier(m)) => m,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        // Handle :: separators for nested modules (e.g., std::math)
+        while matches!(self.peek(), Some(Token::DoubleColon)) {
+            self.advance(); // consume ::
+            path.push_str("::");
+            match self.advance() {
+                Some(Token::Identifier(part)) => path.push_str(&part),
+                Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                None => return Err(ParseError::UnexpectedEof),
+            }
+        }
+        
+        Ok(path)
+    }
+    
     fn parse_import(&mut self) -> Result<Import, ParseError> {
         if matches!(self.peek(), Some(Token::From)) {
             // from module import item1, item2
+            // from std::math import abs, max
             self.advance();
-            let module = match self.advance() {
-                Some(Token::Identifier(m)) => m,
-                Some(token) => return Err(ParseError::UnexpectedToken(token)),
-                None => return Err(ParseError::UnexpectedEof),
-            };
+            let module = self.parse_module_path()?;
             
             self.expect(Token::Import)?;
             
@@ -285,6 +304,7 @@ impl Parser {
     }
 
     /// Parse Rust-style function: fn name(params) -> ReturnType { body }
+    /// Supports &self, &mut self, self as first parameter for methods
     fn parse_rust_function(&mut self) -> Result<Function, ParseError> {
         self.advance(); // consume 'fn'
         
@@ -299,6 +319,42 @@ impl Parser {
         let mut params = Vec::new();
         if !matches!(self.peek(), Some(Token::RParen)) {
             loop {
+                // Handle &self, &mut self, or self as first parameter
+                if matches!(self.peek(), Some(Token::Ampersand)) {
+                    self.advance(); // consume &
+                    if matches!(self.peek(), Some(Token::Mut)) {
+                        self.advance(); // consume mut
+                    }
+                    // Expect 'self' after & or &mut
+                    if matches!(self.peek(), Some(Token::This)) {
+                        self.advance(); // consume self
+                        // Add self as implicit first parameter
+                        params.push(Param { name: "self".to_string(), type_name: Some("Self".to_string()) });
+                        if matches!(self.peek(), Some(Token::Comma)) {
+                            self.advance();
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                
+                // Handle bare 'self'
+                if matches!(self.peek(), Some(Token::This)) {
+                    self.advance();
+                    params.push(Param { name: "self".to_string(), type_name: Some("Self".to_string()) });
+                    if matches!(self.peek(), Some(Token::Comma)) {
+                        self.advance();
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if matches!(self.peek(), Some(Token::RParen)) {
+                    break;
+                }
+                
                 let param_name = match self.advance() {
                     Some(Token::Identifier(n)) => n,
                     Some(token) => return Err(ParseError::UnexpectedToken(token)),
@@ -459,13 +515,27 @@ impl Parser {
     }
     
     /// Parse Rust-style impl block
+    /// Supports: `impl Struct { }` and `impl Trait for Struct { }`
     fn parse_impl(&mut self, program: &mut Program) -> Result<(), ParseError> {
         self.advance(); // consume 'impl'
         
-        let struct_name = match self.advance() {
+        let first_name = match self.advance() {
             Some(Token::Identifier(n)) => n,
             Some(token) => return Err(ParseError::UnexpectedToken(token)),
             None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        // Check if this is `impl Trait for Struct` or just `impl Struct`
+        let (trait_name, struct_name) = if matches!(self.peek(), Some(Token::For)) {
+            self.advance(); // consume 'for'
+            let sname = match self.advance() {
+                Some(Token::Identifier(n)) => n,
+                Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                None => return Err(ParseError::UnexpectedEof),
+            };
+            (Some(first_name), sname)
+        } else {
+            (None, first_name)
         };
         
         self.expect(Token::LBrace)?;
@@ -475,8 +545,12 @@ impl Parser {
         while !matches!(self.peek(), Some(Token::RBrace) | None) {
             if matches!(self.peek(), Some(Token::Fn)) {
                 let mut func = self.parse_rust_function()?;
-                // Prefix method name with struct name
-                func.name = format!("{}::{}", struct_name, func.name);
+                // Prefix method name with struct name (and trait if present)
+                if let Some(ref tname) = trait_name {
+                    func.name = format!("{}::{}::{}", struct_name, tname, func.name);
+                } else {
+                    func.name = format!("{}::{}", struct_name, func.name);
+                }
                 program.add_function(func);
             } else {
                 self.advance(); // Skip unknown tokens
@@ -486,11 +560,18 @@ impl Parser {
         
         self.expect(Token::RBrace)?;
         
+        // Store the impl block for trait verification
+        program.add_impl(Impl {
+            struct_name: struct_name.clone(),
+            trait_name,
+            methods: Vec::new(), // Methods are added as functions above
+        });
+        
         Ok(())
     }
     
-    /// Parse Rust-style trait
-    fn parse_trait(&mut self) -> Result<Interface, ParseError> {
+    /// Parse Rust-style trait (v1.6.0)
+    fn parse_trait_def(&mut self) -> Result<Trait, ParseError> {
         self.advance(); // consume 'trait'
         
         let name = match self.advance() {
@@ -574,24 +655,30 @@ impl Parser {
                     None
                 };
                 
-                // Skip semicolon or body
-                if matches!(self.peek(), Some(Token::Semicolon)) {
+                // Check for default implementation or semicolon
+                let default_body = if matches!(self.peek(), Some(Token::Semicolon)) {
                     self.advance();
+                    None
                 } else if matches!(self.peek(), Some(Token::LBrace)) {
-                    // Skip default implementation
-                    let mut brace_count = 1;
-                    self.advance();
-                    while brace_count > 0 {
-                        match self.advance() {
-                            Some(Token::LBrace) => brace_count += 1,
-                            Some(Token::RBrace) => brace_count -= 1,
-                            None => break,
-                            _ => {}
-                        }
+                    // Parse default implementation body
+                    self.advance(); // consume {
+                    let mut body = Vec::new();
+                    while !matches!(self.peek(), Some(Token::RBrace) | None) {
+                        body.push(self.parse_statement()?);
+                        self.skip_newlines();
                     }
-                }
+                    self.expect(Token::RBrace)?;
+                    Some(body)
+                } else {
+                    None
+                };
                 
-                methods.push(MethodSignature { name: method_name, params, return_type });
+                methods.push(TraitMethod { 
+                    name: method_name, 
+                    params, 
+                    return_type,
+                    default_body,
+                });
             } else {
                 self.advance();
             }
@@ -600,7 +687,7 @@ impl Parser {
         
         self.expect(Token::RBrace)?;
         
-        Ok(Interface { name, methods })
+        Ok(Trait { name, methods })
     }
 
     fn parse_function(&mut self) -> Result<Function, ParseError> {
@@ -695,6 +782,7 @@ impl Parser {
         Ok(Function { name, params, return_type, body })
     }
     
+    /// Parse Python-style class: class Name: or class Name(Parent):
     fn parse_class(&mut self) -> Result<Class, ParseError> {
         self.advance(); // consume 'class'
         let name = match self.advance() {
@@ -702,37 +790,190 @@ impl Parser {
             _ => return Err(ParseError::UnexpectedEof),
         };
         
-        // TODO: Inheritance and Interfaces
+        // Check for inheritance: class Child(Parent):
+        let parent = if matches!(self.peek(), Some(Token::LParen)) {
+            self.advance(); // consume (
+            let parent_name = match self.advance() {
+                Some(Token::Identifier(n)) => Some(n),
+                _ => None,
+            };
+            if matches!(self.peek(), Some(Token::RParen)) {
+                self.advance(); // consume )
+            }
+            parent_name
+        } else {
+            None
+        };
+        
         self.expect(Token::Colon)?;
         self.skip_newlines();
         
-        let methods = Vec::new();
-        let fields = Vec::new();
+        let mut methods = Vec::new();
+        let mut fields = Vec::new();
+        let mut constructor = None;
         
+        // Parse class body - methods and fields
         while self.peek().is_some() {
-             match self.peek() {
-                 Some(Token::Def) => {
-                     // Parse method (similar to function but inside class)
-                     // For now reuse parse_function but convert to Method
-                     // Note: this is a simplification.
-                     // methods.push(...);
-                     self.advance(); // skip def for now to avoid infinite loop
-                 }
-                 Some(Token::Class) | Some(Token::Interface) => break,
-                 _ => {
-                     self.advance(); // Skip unknown content in class body
-                 }
-             }
+            match self.peek() {
+                Some(Token::Def) => {
+                    // Parse method
+                    let method = self.parse_class_method(&name)?;
+                    if method.name == "__init__" {
+                        constructor = Some(method);
+                    } else {
+                        methods.push(method);
+                    }
+                    self.skip_newlines();
+                }
+                Some(Token::Identifier(_)) => {
+                    // Parse field: field_name = default_value
+                    let field = self.parse_class_field()?;
+                    fields.push(field);
+                    self.skip_newlines();
+                }
+                Some(Token::Class) | Some(Token::Interface) | Some(Token::Fn) | Some(Token::Impl) | Some(Token::Trait) => break,
+                Some(Token::Newline) => {
+                    self.advance();
+                }
+                _ => break,
+            }
         }
         
         Ok(Class { 
             name, 
-            parent: None, 
+            parent, 
             implements: Vec::new(), 
             fields, 
             methods, 
-            constructor: None, 
+            constructor, 
             destructor: None 
+        })
+    }
+    
+    /// Parse a method inside a Python-style class
+    fn parse_class_method(&mut self, _class_name: &str) -> Result<Method, ParseError> {
+        self.advance(); // consume 'def'
+        
+        let method_name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(Token::Init) => "__init__".to_string(),
+            _ => return Err(ParseError::UnexpectedEof),
+        };
+        
+        self.expect(Token::LParen)?;
+        
+        let mut params = Vec::new();
+        let mut is_static = true;
+        
+        if !matches!(self.peek(), Some(Token::RParen)) {
+            loop {
+                // Handle 'self' as first parameter
+                if matches!(self.peek(), Some(Token::This)) {
+                    self.advance();
+                    is_static = false;
+                    if matches!(self.peek(), Some(Token::Comma)) {
+                        self.advance();
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if matches!(self.peek(), Some(Token::RParen)) {
+                    break;
+                }
+                
+                let param_name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    _ => break,
+                };
+                
+                let type_name = if matches!(self.peek(), Some(Token::Colon)) {
+                    self.advance();
+                    match self.advance() {
+                        Some(Token::Identifier(t)) => Some(t),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                
+                params.push(Param { name: param_name, type_name });
+                
+                if matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        self.expect(Token::RParen)?;
+        
+        // Optional return type
+        let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
+            self.advance();
+            match self.advance() {
+                Some(Token::Identifier(t)) => Some(t),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        
+        self.expect(Token::Colon)?;
+        self.skip_newlines();
+        
+        // Parse method body
+        let mut body = Vec::new();
+        while self.peek().is_some() {
+            match self.peek() {
+                Some(Token::Def) | Some(Token::Class) | Some(Token::Interface) | 
+                Some(Token::Fn) | Some(Token::Impl) | Some(Token::Trait) => break,
+                Some(Token::Return) => {
+                    self.advance();
+                    let expr = self.parse_expression()?;
+                    body.push(Stmt::Return(Some(expr)));
+                    self.skip_newlines();
+                    break;
+                }
+                _ => {
+                    let stmt = self.parse_statement()?;
+                    body.push(stmt);
+                    self.skip_newlines();
+                }
+            }
+        }
+        
+        Ok(Method {
+            name: method_name,
+            params,
+            return_type,
+            body,
+            is_virtual: false,
+            is_override: false,
+            is_static,
+        })
+    }
+    
+    /// Parse a field inside a Python-style class
+    fn parse_class_field(&mut self) -> Result<Field, ParseError> {
+        let name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            _ => return Err(ParseError::UnexpectedEof),
+        };
+        
+        let default_value = if matches!(self.peek(), Some(Token::Equals)) {
+            self.advance();
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+        
+        Ok(Field {
+            name,
+            type_name: None,
+            default_value,
         })
     }
 
@@ -1055,16 +1296,17 @@ impl Parser {
                 Ok(Expr::Array(elements))
             },
             Some(Token::Identifier(s)) => {
-                // Check for Struct::method() syntax
-                let name = if matches!(self.peek(), Some(Token::DoubleColon)) {
+                // Check for Struct::method() or Struct::Trait::method() syntax
+                let mut name = s;
+                while matches!(self.peek(), Some(Token::DoubleColon)) {
                     self.advance(); // consume ::
                     match self.advance() {
-                        Some(Token::Identifier(method)) => format!("{}::{}", s, method),
-                        _ => return Err(ParseError::ExpectedToken("method name after ::")),
+                        Some(Token::Identifier(part)) => {
+                            name = format!("{}::{}", name, part);
+                        },
+                        _ => return Err(ParseError::ExpectedToken("identifier after ::")),
                     }
-                } else {
-                    s
-                };
+                }
                 
                 if matches!(self.peek(), Some(Token::LParen)) {
                     self.advance();

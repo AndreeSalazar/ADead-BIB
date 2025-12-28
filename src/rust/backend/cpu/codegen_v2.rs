@@ -300,6 +300,8 @@ impl CodeGeneratorV2 {
                 let rel_offset = func.offset as i32 - (*call_offset as i32 + 4);
                 self.code[*call_offset..*call_offset + 4]
                     .copy_from_slice(&rel_offset.to_le_bytes());
+            } else {
+                eprintln!("⚠️  Warning: Function '{}' not found during linking", func_name);
             }
         }
     }
@@ -383,11 +385,15 @@ impl CodeGeneratorV2 {
             let is_float = matches!(expr, Expr::Float(_));
             
             // Detectar si es una expresión numérica entera
+            // Incluir Call porque las funciones típicamente retornan enteros
             let is_integer = matches!(expr, 
                 Expr::Number(_) | 
                 Expr::Variable(_) | 
                 Expr::BinaryOp { .. } |
-                Expr::Bool(_)
+                Expr::Bool(_) |
+                Expr::Call { .. } |
+                Expr::IntCast(_) |
+                Expr::Len(_)
             );
 
             match self.target {

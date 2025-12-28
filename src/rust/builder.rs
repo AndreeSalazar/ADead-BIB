@@ -1,16 +1,18 @@
 // ADead-BIB Builder
 // Orquestador principal del compilador
 // Conecta Frontend -> Optimizer -> Backend
+// v1.5.0: Module system support
 
 use crate::frontend::parser::Parser;
 use crate::frontend::type_checker::TypeChecker;
-use crate::frontend::ast::Program;
+use crate::frontend::ast::{Program, Function};
 use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
 use crate::backend::codegen_v2::{CodeGeneratorV2, Target};
 use crate::backend::{pe, elf};
-// use crate::backend::{pe_minimal as pe, elf};
 use std::fs;
+use std::path::Path;
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 pub struct BuildOptions {
@@ -36,6 +38,11 @@ pub struct Builder;
 impl Builder {
     /// Compila código fuente ADead-BIB a un binario ejecutable
     pub fn build(source: &str, options: BuildOptions) -> Result<(), Box<dyn std::error::Error>> {
+        Self::build_with_base_path(source, options, None)
+    }
+    
+    /// Compila con path base para resolver imports
+    pub fn build_with_base_path(source: &str, options: BuildOptions, base_path: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
         if options.verbose {
             println!("Starting build for target: {:?}", options.target);
         }
@@ -43,6 +50,17 @@ impl Builder {
         // 1. Frontend: Lexing & Parsing
         if options.verbose { println!("Step 1: Parsing..."); }
         let mut program = Parser::parse_program(source)?;
+        
+        // 1.5: Resolve imports (v1.5.0)
+        if !program.imports.is_empty() {
+            if options.verbose { println!("Step 1.5: Resolving imports..."); }
+            Self::resolve_imports(&mut program, base_path, options.verbose)?;
+        }
+        
+        // 1.6: Convert Python-style classes to functions (v1.6.0)
+        if !program.classes.is_empty() {
+            Self::convert_classes_to_functions(&mut program);
+        }
 
         // 2. Type Checking (Static Analysis)
         if options.verbose { println!("Step 2: Type Checking..."); }
@@ -76,9 +94,129 @@ impl Builder {
     /// Construye desde un archivo
     pub fn build_file(path: &str, options: BuildOptions) -> Result<(), Box<dyn std::error::Error>> {
         let source = fs::read_to_string(path)?;
-        Self::build(&source, options)
+        let base_path = Path::new(path).parent();
+        Self::build_with_base_path(&source, options, base_path)
+    }
+    
+    /// Resuelve imports y agrega funciones de módulos al programa (v1.5.0)
+    fn resolve_imports(program: &mut Program, base_path: Option<&Path>, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+        let mut resolved_modules: HashSet<String> = HashSet::new();
+        let mut imported_functions: Vec<Function> = Vec::new();
+        
+        for import in &program.imports {
+            let module_name = &import.module;
+            
+            // Skip if already resolved
+            if resolved_modules.contains(module_name) {
+                continue;
+            }
+            
+            // Find module file
+            let module_path = Self::find_module(module_name, base_path)?;
+            
+            if verbose {
+                println!("  Importing module: {} from {:?}", module_name, module_path);
+            }
+            
+            // Parse module
+            let module_source = fs::read_to_string(&module_path)?;
+            let module_program = Parser::parse_program(&module_source)?;
+            
+            // Import specific items or all
+            if import.items.is_empty() {
+                // import module - import all public functions
+                for func in module_program.functions {
+                    imported_functions.push(func);
+                }
+            } else {
+                // from module import item1, item2
+                for item in &import.items {
+                    if let Some(func) = module_program.functions.iter().find(|f| &f.name == item) {
+                        imported_functions.push(func.clone());
+                    } else {
+                        eprintln!("Warning: '{}' not found in module '{}'", item, module_name);
+                    }
+                }
+            }
+            
+            resolved_modules.insert(module_name.clone());
+        }
+        
+        // Add imported functions to program (at the beginning)
+        let mut all_functions = imported_functions;
+        all_functions.extend(program.functions.drain(..));
+        program.functions = all_functions;
+        
+        Ok(())
+    }
+    
+    /// Encuentra el archivo de un módulo
+    fn find_module(module_name: &str, base_path: Option<&Path>) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+        // Module name can be:
+        // - "math" -> look for math.adB
+        // - "std::math" -> look for std/math.adB
+        // - "./mymodule" -> look for mymodule.adB relative to current file
+        
+        let module_file = if module_name.contains("::") {
+            // std::math -> std/math.adB
+            module_name.replace("::", "/") + ".adB"
+        } else if module_name.starts_with("./") {
+            // Relative path
+            module_name[2..].to_string() + ".adB"
+        } else {
+            // Simple name
+            module_name.to_string() + ".adB"
+        };
+        
+        // Search paths:
+        // 1. Relative to current file
+        // 2. In std/ directory (for standard library)
+        // 3. In current working directory
+        
+        let search_paths = [
+            base_path.map(|p| p.join(&module_file)),
+            Some(std::path::PathBuf::from(&module_file)),
+            Some(std::path::PathBuf::from(format!("std/{}", module_file.trim_start_matches("std/")))),
+        ];
+        
+        for path_opt in search_paths.iter().flatten() {
+            if path_opt.exists() {
+                return Ok(path_opt.clone());
+            }
+        }
+        
+        Err(format!("Module '{}' not found. Searched for: {}", module_name, module_file).into())
     }
 
+    /// Convierte clases Python-style a funciones (v1.6.0)
+    fn convert_classes_to_functions(program: &mut Program) {
+        for class in &program.classes {
+            // Convert each method to a function with Class::method name
+            for method in &class.methods {
+                let func_name = format!("{}::{}", class.name, method.name);
+                let func = Function {
+                    name: func_name,
+                    params: method.params.clone(),
+                    return_type: method.return_type.clone(),
+                    body: method.body.clone(),
+                };
+                program.functions.push(func);
+            }
+            
+            // Convert constructor if present
+            if let Some(ref constructor) = class.constructor {
+                let func_name = format!("{}::__init__", class.name);
+                let func = Function {
+                    name: func_name,
+                    params: constructor.params.clone(),
+                    return_type: constructor.return_type.clone(),
+                    body: constructor.body.clone(),
+                };
+                program.functions.push(func);
+            }
+        }
+    }
+    
     /// Aplica optimizaciones al AST
     fn apply_optimizations(program: &mut Program) {
         let detector = BranchDetector::new();

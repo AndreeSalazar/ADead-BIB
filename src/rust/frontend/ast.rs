@@ -236,7 +236,23 @@ pub struct StructField {
 #[derive(Debug, Clone)]
 pub struct Impl {
     pub struct_name: String,
+    pub trait_name: Option<String>,  // Some("TraitName") for `impl Trait for Struct`
     pub methods: Vec<Function>,
+}
+
+// Trait definition (v1.6.0)
+#[derive(Debug, Clone)]
+pub struct Trait {
+    pub name: String,
+    pub methods: Vec<TraitMethod>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TraitMethod {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<String>,
+    pub default_body: Option<Vec<Stmt>>,  // Default implementation (optional)
 }
 
 // Sistema de imports
@@ -251,6 +267,7 @@ pub struct Import {
 pub struct Program {
     pub imports: Vec<Import>,
     pub interfaces: Vec<Interface>,
+    pub traits: Vec<Trait>,         // Rust-style traits (v1.6.0)
     pub classes: Vec<Class>,
     pub structs: Vec<Struct>,       // Rust-style structs
     pub impls: Vec<Impl>,           // Rust-style impl blocks
@@ -263,12 +280,17 @@ impl Program {
         Self {
             imports: Vec::new(),
             interfaces: Vec::new(),
+            traits: Vec::new(),
             classes: Vec::new(),
             structs: Vec::new(),
             impls: Vec::new(),
             functions: Vec::new(),
             statements: Vec::new(),
         }
+    }
+    
+    pub fn add_trait(&mut self, t: Trait) {
+        self.traits.push(t);
     }
     
     pub fn add_struct(&mut self, s: Struct) {

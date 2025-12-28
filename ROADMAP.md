@@ -142,43 +142,93 @@ El doble es: 50
 
 ---
 
-## 🔮 v1.5.0 - Sistema de Módulos
+## ✅ v1.5.0 - Sistema de Módulos (COMPLETADO)
 
-### Imports
-- [ ] `import modulo` - Importar módulo completo
-- [ ] `from modulo import func` - Importar específico
-- [ ] `import modulo as alias` - Alias
-- [ ] Resolución de paths relativos
-- [ ] Biblioteca estándar básica
+### Imports ✅
+- [x] `import modulo` - Importar módulo completo
+- [x] `from modulo import func` - Importar específico
+- [x] `import modulo as alias` - Alias
+- [x] Resolución de paths relativos
+- [x] Biblioteca estándar básica
 
-### Organización
-- [ ] Un archivo = un módulo
-- [ ] Carpetas como paquetes
-- [ ] `mod.adB` como índice de paquete
-- [ ] Visibilidad: `pub` para exportar
+### Organización ✅
+- [x] Un archivo = un módulo
+- [x] Carpetas como paquetes
+- [x] `mod.adB` como índice de paquete
+- [x] Visibilidad: `pub` para exportar
 
-### Biblioteca Estándar (std)
-- [ ] `std::io` - Entrada/Salida
-- [ ] `std::math` - Funciones matemáticas
-- [ ] `std::string` - Operaciones de string
-- [ ] `std::collections` - Estructuras de datos
-- [ ] `std::fs` - Sistema de archivos
+### Biblioteca Estándar (std) ✅
+- [x] `std::io` - Entrada/Salida
+- [x] `std::math` - Funciones matemáticas
+- [x] `std::string` - Operaciones de string
+- [ ] `std::collections` - Estructuras de datos (futuro)
+- [ ] `std::fs` - Sistema de archivos (futuro)
 
 ---
 
-## 🔮 v1.6.0 - Traits e Interfaces
+## ✅ v1.6.0 - Traits e Interfaces (COMPLETADO)
 
-### Traits
-- [ ] `trait Nombre { fn metodo(&self); }`
-- [ ] `impl Trait for Struct { }`
+### Traits Básicos ✅
+- [x] `trait Nombre { fn metodo(); }` - Definición de traits
+- [x] `impl Trait for Struct { }` - Implementación de traits
+- [x] `impl Struct { }` - Métodos estáticos para structs
+- [x] Llamadas con `Struct::method()` y `Struct::Trait::method()`
+- [x] Métodos con `&self` (parsing completo)
+- [x] Múltiples traits por struct
+
+### OOP Avanzado para Sistemas ✅
+- [x] Patrón Entity-Component (ECS simplificado)
+- [x] Composición sobre herencia
+- [x] Traits como comportamientos (Renderable, Updatable, Collidable)
+- [x] Métodos estáticos como constructores (`::create()`)
+
+### Polimorfismo ✅
+- [x] Dispatch estático (monomorphization)
+- [x] Múltiples implementaciones de trait
+
+### Traits Avanzados (Futuro v1.7.0+)
 - [ ] Traits como bounds: `fn foo<T: Trait>(x: T)`
-- [ ] Default implementations
 - [ ] Traits derivables: `#[derive(Debug, Clone)]`
-
-### Polimorfismo
+- [ ] Associated types
 - [ ] Dispatch dinámico con `dyn Trait`
-- [ ] Dispatch estático con generics
 - [ ] Trait objects
+
+### Sintaxis Dual: Rust-style y Python-style ✅
+
+**Rust-style (impl + trait):**
+```rust
+trait Renderable { fn render(id: i32) -> i32; }
+impl Renderable for Player { fn render(id: i32) -> i32 { ... } }
+Player::Renderable::render(1)
+```
+
+**Python-style (class + def):**
+```python
+class Player:
+    def attack(self, damage):
+        return damage * 2
+
+Player::attack(30)  // Resultado: 60
+```
+
+### Ejemplos de Uso para Videojuegos
+```python
+class Entity:
+    def move(self, dx, dy):
+        return dx + dy
+
+class Player:
+    def attack(self, damage):
+        return damage * 2
+
+class Enemy:
+    def strike(self, power):
+        return power * 3
+
+class Renderer:
+    def init(self, w, h):
+        return w * h
+```
 
 ---
 
