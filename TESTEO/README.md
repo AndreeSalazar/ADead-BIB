@@ -1,26 +1,28 @@
-# TESTEO - Tests de ADead-BIB v1.4.0
+# TESTEO - Tests de ADead-BIB
 
-Esta carpeta contiene tests para las funcionalidades de ADead-BIB.
+> **Binary Is Binary** - Tests organizados por versión
+
+Esta carpeta contiene tests para todas las funcionalidades de ADead-BIB.
 
 ## Estructura
 
 ```
 TESTEO/
-├── arrays/
-│   ├── test_array_basico.adB    - Declaracion de arrays
-│   └── test_foreach.adB         - for x in arr
-├── input/
-│   └── test_input.adB           - input() real
-├── conversiones/
-│   ├── test_int.adB
-│   ├── test_float.adB
-│   └── test_bool.adB
-├── len/
-│   ├── test_len.adB
-│   └── test_len_array.adB
-└── integrados/
-    ├── test_v1_3_0_completo.adB - Test v1.3.0
-    └── test_v1_4_0_input.adB    - Test v1.4.0 input()
+├── arrays/                 # v1.3.0 - Arrays y colecciones
+├── conversiones/           # v1.3.0 - int(), float(), bool()
+├── input/                  # v1.4.0 - input() real
+├── len/                    # v1.3.0 - len() function
+├── modules/                # v1.5.0 - Sistema de módulos
+├── traits/                 # v1.6.0 - Traits e interfaces
+├── integrados/             # Tests completos por versión
+│
+└── v2/                     # v2.0.0+ HEX-First Architecture
+    ├── hex/                # Literales HEX y binarios
+    ├── raw/                # Modo raw binary
+    ├── cpu/                # Instrucciones CPU directas
+    ├── gpu/                # GPU HEX
+    ├── clean/              # Post-procesamiento
+    └── integrados/         # Tests completos v2.x
 ```
 
 ## Como ejecutar tests

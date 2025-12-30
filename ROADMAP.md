@@ -339,6 +339,157 @@ src/rust/
 
 ---
 
+## 🧹 v2.3.0 - Post-Procesamiento (Eliminar Ruido)
+
+### Filosofía: Binario Limpio
+El post-procesamiento es **OBLIGATORIO** para eliminar todo el ruido del binario final.
+
+```
+ANTES del post-procesamiento:
+  [headers][padding][código][padding][datos][padding][metadatos]
+  
+DESPUÉS del post-procesamiento:
+  [headers mínimos][código optimizado][datos compactos]
+```
+
+### Optimizaciones de Limpieza
+| Optimización | Descripción | Ahorro |
+|--------------|-------------|--------|
+| **Strip padding** | Eliminar bytes de relleno innecesarios | ~20% |
+| **Dead code removal** | Eliminar código no alcanzable | ~10% |
+| **Constant folding** | `2 + 3` → `5` en tiempo de compilación | ~5% |
+| **String dedup** | Strings duplicados → una sola copia | ~5% |
+| **NOP elimination** | Eliminar NOPs de alineación innecesarios | ~3% |
+
+### Modos de Limpieza
+```rust
+// Modo normal (default)
+#![clean(normal)]
+
+// Modo agresivo (binario más pequeño)
+#![clean(aggressive)]
+
+// Modo debug (sin limpieza, para debugging)
+#![clean(none)]
+```
+
+### Resultado Esperado
+| Programa | Sin limpiar | Limpio | Reducción |
+|----------|-------------|--------|-----------|
+| Hello World | 2048 bytes | 512 bytes | **75%** |
+| Loop simple | 2560 bytes | 768 bytes | **70%** |
+| Con funciones | 3072 bytes | 1024 bytes | **67%** |
+
+---
+
+## 📝 Sintaxis Humana (Principio Core)
+
+### Filosofía: Simple para Humanos, Directo a Bytes
+La sintaxis de ADead-BIB está diseñada para ser **legible por humanos** mientras compila **directamente a bytes**.
+
+### Sintaxis Básica (Mantenida Simple)
+```rust
+// Variables - como escribirías en papel
+let x = 42
+let nombre = "Hola"
+let activo = true
+
+// Funciones - clara y directa
+fn saludar(nombre) {
+    println("Hola, " + nombre)
+}
+
+// Control de flujo - sin sorpresas
+if x > 10 {
+    println("Grande")
+} else {
+    println("Pequeño")
+}
+
+// Loops - intuitivos
+for i in 0..10 {
+    println(i)
+}
+
+while activo {
+    // hacer algo
+}
+```
+
+### Mapeo Sintaxis → Bytes
+| Sintaxis Humana | Bytes Generados | Descripción |
+|-----------------|-----------------|-------------|
+| `let x = 42` | `48 C7 45 F8 2A 00 00 00` | mov [rbp-8], 42 |
+| `x + y` | `48 03 C1` | add rax, rcx |
+| `if x > 0` | `48 83 F8 00` `7E xx` | cmp rax, 0; jle |
+| `fn foo()` | `55 48 89 E5` | push rbp; mov rbp, rsp |
+| `return` | `5D C3` | pop rbp; ret |
+| `println(x)` | `E8 xx xx xx xx` | call printf |
+
+### Principios de Diseño
+1. **Legibilidad** - El código debe leerse como pseudocódigo
+2. **Predictibilidad** - Cada construcción genera bytes predecibles
+3. **Sin magia** - No hay transformaciones ocultas
+4. **Directo** - Mínimas capas entre código y binario
+
+---
+
+## 🧪 Estructura de Tests
+
+### Carpeta TESTEO/ (Organización)
+```
+TESTEO/
+├── v1/                     # Tests de versiones 1.x
+│   ├── arrays/             # Arrays y colecciones
+│   ├── conversiones/       # int(), float(), bool()
+│   ├── input/              # input() real
+│   ├── len/                # len() function
+│   ├── modules/            # Sistema de módulos
+│   ├── traits/             # Traits e interfaces
+│   └── integrados/         # Tests completos por versión
+│
+├── v2/                     # Tests de versiones 2.x (NUEVO)
+│   ├── hex/                # Literales HEX
+│   │   ├── test_hex_literal.adB
+│   │   ├── test_binary_literal.adB
+│   │   └── test_emit_macro.adB
+│   ├── raw/                # Modo raw binary
+│   │   ├── test_raw_mode.adB
+│   │   └── test_base_address.adB
+│   ├── cpu/                # Instrucciones CPU directas
+│   │   ├── test_cpu_mov.adB
+│   │   ├── test_cpu_loop.adB
+│   │   └── test_registers.adB
+│   ├── gpu/                # GPU HEX
+│   │   ├── test_gpu_init.adB
+│   │   ├── test_gpu_matmul.adB
+│   │   └── test_ahyb_format.adB
+│   ├── clean/              # Post-procesamiento
+│   │   ├── test_strip_padding.adB
+│   │   ├── test_dead_code.adB
+│   │   └── test_size_comparison.adB
+│   └── integrados/         # Tests completos v2.x
+│       ├── test_v2_0_0_hex_first.adB
+│       ├── test_v2_1_0_cpu_direct.adB
+│       └── test_v2_2_0_gpu_hex.adB
+│
+└── README.md               # Documentación de tests
+```
+
+### Comandos de Test
+```bash
+# Ejecutar todos los tests
+cargo test
+
+# Test específico v2.0
+cargo run --bin adeadc -- run TESTEO/v2/hex/test_hex_literal.adB
+
+# Test de tamaño (post-procesamiento)
+cargo run --bin adeadc -- build TESTEO/v2/clean/test_size_comparison.adB --clean aggressive
+```
+
+---
+
 ## 🐛 Bugs Conocidos
 
 | Prioridad | Bug | Estado |
