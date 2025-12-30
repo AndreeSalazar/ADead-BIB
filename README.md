@@ -31,7 +31,7 @@
 
 **Author:** Eddi Andreé Salazar Matos  
 **Email:** eddi.salazar.dev@gmail.com  
-**License:** Apache 2.0
+**License:** GPLv2
 
 ---
 
