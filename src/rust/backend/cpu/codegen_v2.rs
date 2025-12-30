@@ -499,6 +499,38 @@ impl CodeGeneratorV2 {
     }
     
     fn emit_assign(&mut self, name: &str, value: &Expr) {
+        // Optimización: detectar patrones comunes para generar código más eficiente
+        // Patrón: x = x + 1 -> inc [rbp + offset]
+        // Patrón: x = x - 1 -> dec [rbp + offset]
+        if let Some(&offset) = self.variables.get(name) {
+            if let Expr::BinaryOp { op, left, right } = value {
+                if let Expr::Variable(var_name) = left.as_ref() {
+                    if var_name == name {
+                        if let Expr::Number(n) = right.as_ref() {
+                            if *n == 1 {
+                                match op {
+                                    BinOp::Add => {
+                                        // x = x + 1 -> inc qword [rbp + offset]
+                                        self.emit_bytes(&[0x48, 0xFF, 0x85]);
+                                        self.emit_i32(offset);
+                                        return;
+                                    }
+                                    BinOp::Sub => {
+                                        // x = x - 1 -> dec qword [rbp + offset]
+                                        self.emit_bytes(&[0x48, 0xFF, 0x8D]);
+                                        self.emit_i32(offset);
+                                        return;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Código normal para otros casos
         self.emit_expression(value);
         
         let offset = if let Some(&off) = self.variables.get(name) {
@@ -550,6 +582,102 @@ impl CodeGeneratorV2 {
     }
     
     fn emit_while(&mut self, condition: &Expr, body: &[Stmt]) {
+        // OPTIMIZACIÓN BRUTAL: Detectar patrón while counter < CONST { counter += 1 }
+        // y usar registros para todo el loop
+        if let Expr::Comparison { op: CmpOp::Lt, left, right } = condition {
+            if let (Expr::Variable(var_name), Expr::Number(limit)) = (left.as_ref(), right.as_ref()) {
+                if let Some(&var_offset) = self.variables.get(var_name) {
+                    // Verificar si el body es solo counter += 1
+                    let is_simple_increment = body.len() == 1 && 
+                        if let Stmt::Assign { name, value } = &body[0] {
+                            name == var_name && 
+                            if let Expr::BinaryOp { op: BinOp::Add, left: l, right: r } = value {
+                                if let (Expr::Variable(v), Expr::Number(n)) = (l.as_ref(), r.as_ref()) {
+                                    v == var_name && *n == 1
+                                } else { false }
+                            } else { false }
+                        } else { false };
+                    
+                    if is_simple_increment {
+                        // LOOP ULTRA-OPTIMIZADO: Todo en registros
+                        // RCX = counter, R8 = limit
+                        
+                        // mov rcx, [rbp+offset] (cargar counter inicial)
+                        self.emit_bytes(&[0x48, 0x8B, 0x8D]);
+                        self.emit_i32(var_offset);
+                        
+                        // mov r8, limit (cargar límite)
+                        self.emit_bytes(&[0x49, 0xB8]);
+                        self.emit_u64(*limit as u64);
+                        
+                        let loop_start = self.code.len();
+                        
+                        // cmp rcx, r8
+                        self.emit_bytes(&[0x4C, 0x39, 0xC1]);
+                        
+                        // jge loop_end
+                        self.emit_bytes(&[0x0F, 0x8D]);
+                        let jge_offset_pos = self.code.len();
+                        self.emit_i32(0);
+                        
+                        // inc rcx (1 sola instrucción!)
+                        self.emit_bytes(&[0x48, 0xFF, 0xC1]);
+                        
+                        // jmp loop_start
+                        self.emit_bytes(&[0xE9]);
+                        let jmp_back = (loop_start as i64 - self.code.len() as i64 - 4) as i32;
+                        self.emit_i32(jmp_back);
+                        
+                        // Parchear salto de salida
+                        let loop_end = self.code.len();
+                        let jge_offset = (loop_end - jge_offset_pos - 4) as i32;
+                        self.code[jge_offset_pos..jge_offset_pos + 4].copy_from_slice(&jge_offset.to_le_bytes());
+                        
+                        // Guardar resultado de vuelta en memoria
+                        // mov [rbp+offset], rcx
+                        self.emit_bytes(&[0x48, 0x89, 0x8D]);
+                        self.emit_i32(var_offset);
+                        
+                        return;
+                    }
+                    
+                    // Loop optimizado pero con body genérico
+                    // Cargar límite en R8 FUERA del loop
+                    self.emit_bytes(&[0x49, 0xB8]); // mov r8, limit
+                    self.emit_u64(*limit as u64);
+                    
+                    let loop_start = self.code.len();
+                    
+                    // cmp [rbp+offset], r8
+                    self.emit_bytes(&[0x4C, 0x39, 0x85]);
+                    self.emit_i32(var_offset);
+                    
+                    // jge loop_end
+                    self.emit_bytes(&[0x0F, 0x8D]);
+                    let jge_offset_pos = self.code.len();
+                    self.emit_i32(0);
+                    
+                    // Body del loop
+                    for stmt in body {
+                        self.emit_statement(stmt);
+                    }
+                    
+                    // jmp loop_start
+                    self.emit_bytes(&[0xE9]);
+                    let jmp_back = (loop_start as i64 - self.code.len() as i64 - 4) as i32;
+                    self.emit_i32(jmp_back);
+                    
+                    // Parchear salto de salida
+                    let loop_end = self.code.len();
+                    let jge_offset = (loop_end - jge_offset_pos - 4) as i32;
+                    self.code[jge_offset_pos..jge_offset_pos + 4].copy_from_slice(&jge_offset.to_le_bytes());
+                    
+                    return;
+                }
+            }
+        }
+        
+        // Loop genérico para otros casos
         let loop_start = self.code.len();
         
         self.emit_condition(condition);
@@ -572,42 +700,155 @@ impl CodeGeneratorV2 {
         self.code[je_offset_pos..je_offset_pos + 4].copy_from_slice(&je_offset.to_le_bytes());
     }
     
-    fn emit_for(&mut self, var: &str, start: &Expr, end: &Expr, body: &[Stmt]) {
-        // var = start
-        self.emit_expression(start);
-        let var_offset = self.stack_offset;
-        self.variables.insert(var.to_string(), var_offset);
-        self.stack_offset -= 8;
-        self.emit_bytes(&[0x48, 0x89, 0x85]);
-        self.emit_i32(var_offset);
+    /// Detecta patrón: while var < CONST { var += 1 }
+    fn detect_simple_counter_loop(&self, condition: &Expr, body: &[Stmt]) -> Option<(String, i64)> {
+        // Verificar que la condición sea: var < NUMBER
+        if let Expr::Comparison { op: CmpOp::Lt, left, right } = condition {
+            if let Expr::Variable(var_name) = left.as_ref() {
+                if let Expr::Number(limit) = right.as_ref() {
+                    // Verificar que el body sea solo: var += 1 o var = var + 1
+                    if body.len() == 1 {
+                        if let Stmt::Assign { name, value } = &body[0] {
+                            if name == var_name {
+                                // Detectar: var = var + 1 o var += 1 (ambos generan BinaryOp)
+                                if let Expr::BinaryOp { op: BinOp::Add, left: l, right: r } = value {
+                                    if let Expr::Variable(v) = l.as_ref() {
+                                        if v == var_name {
+                                            // Verificar que sea +1
+                                            if let Expr::Number(n) = r.as_ref() {
+                                                if *n == 1 {
+                                                    return Some((var_name.clone(), *limit));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+    
+    /// Emite loop de contador ultra-optimizado usando registros
+    fn emit_optimized_counter_loop(&mut self, counter_var: &str, limit: i64, _body: &[Stmt]) {
+        // Cargar valor inicial del contador en RCX
+        if let Some(&offset) = self.variables.get(counter_var) {
+            // mov rcx, [rbp + offset]
+            self.emit_bytes(&[0x48, 0x8B, 0x8D]);
+            self.emit_i32(offset);
+        } else {
+            // xor ecx, ecx (counter = 0, más eficiente)
+            self.emit_bytes(&[0x31, 0xC9]);
+        }
         
-        // end en stack
-        self.emit_expression(end);
-        let end_offset = self.stack_offset;
-        self.stack_offset -= 8;
-        self.emit_bytes(&[0x48, 0x89, 0x85]);
-        self.emit_i32(end_offset);
+        // Cargar límite en R8 (fuera del loop - loop invariant)
+        // mov r8, limit
+        self.emit_bytes(&[0x49, 0xB8]);
+        self.emit_u64(limit as u64);
+        
+        // Loop optimizado:
+        // loop_start:
+        //   cmp rcx, r8
+        //   jge loop_end
+        //   inc rcx
+        //   jmp loop_start
+        // loop_end:
         
         let loop_start = self.code.len();
         
-        // cmp var, end
-        self.emit_bytes(&[0x48, 0x8B, 0x85]);
-        self.emit_i32(var_offset);
-        self.emit_bytes(&[0x48, 0x3B, 0x85]);
-        self.emit_i32(end_offset);
+        // cmp rcx, r8
+        self.emit_bytes(&[0x4C, 0x39, 0xC1]);
+        
+        // jge loop_end (saltar si rcx >= r8)
+        self.emit_bytes(&[0x0F, 0x8D]);
+        let jge_offset_pos = self.code.len();
+        self.emit_i32(0);
+        
+        // inc rcx (1 sola instrucción!)
+        self.emit_bytes(&[0x48, 0xFF, 0xC1]);
+        
+        // jmp loop_start
+        self.emit_bytes(&[0xE9]);
+        let jmp_back = (loop_start as i64 - self.code.len() as i64 - 4) as i32;
+        self.emit_i32(jmp_back);
+        
+        // Parchear salto de salida
+        let loop_end = self.code.len();
+        let jge_offset = (loop_end - jge_offset_pos - 4) as i32;
+        self.code[jge_offset_pos..jge_offset_pos + 4].copy_from_slice(&jge_offset.to_le_bytes());
+        
+        // Guardar resultado de vuelta en memoria
+        if let Some(&offset) = self.variables.get(counter_var) {
+            // mov [rbp + offset], rcx
+            self.emit_bytes(&[0x48, 0x89, 0x8D]);
+            self.emit_i32(offset);
+        } else {
+            // Nueva variable
+            let offset = self.stack_offset;
+            self.variables.insert(counter_var.to_string(), offset);
+            self.stack_offset -= 8;
+            self.emit_bytes(&[0x48, 0x89, 0x8D]);
+            self.emit_i32(offset);
+        }
+    }
+    
+    fn emit_for(&mut self, var: &str, start: &Expr, end: &Expr, body: &[Stmt]) {
+        // OPTIMIZACIÓN: Si el body está vacío, usar loop ultra-rápido en registros
+        if body.is_empty() {
+            // Loop vacío optimizado: solo contar
+            if let (Expr::Number(start_val), Expr::Number(end_val)) = (start, end) {
+                self.emit_optimized_empty_for(*start_val, *end_val, var);
+                return;
+            }
+        }
+        
+        // Loop normal con registros para contador
+        // RCX = contador, R8 = límite
+        
+        // Evaluar start en RAX, mover a RCX
+        self.emit_expression(start);
+        self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+        
+        // Evaluar end en RAX, mover a R8
+        self.emit_expression(end);
+        self.emit_bytes(&[0x49, 0x89, 0xC0]); // mov r8, rax
+        
+        // Registrar variable (para acceso dentro del body)
+        let var_offset = self.stack_offset;
+        self.variables.insert(var.to_string(), var_offset);
+        self.stack_offset -= 8;
+        
+        let loop_start = self.code.len();
+        
+        // cmp rcx, r8
+        self.emit_bytes(&[0x4C, 0x39, 0xC1]);
         
         // jge end
         self.emit_bytes(&[0x0F, 0x8D]);
         let jge_offset_pos = self.code.len();
         self.emit_i32(0);
         
+        // Guardar RCX en variable para uso en body
+        self.emit_bytes(&[0x48, 0x89, 0x8D]); // mov [rbp + offset], rcx
+        self.emit_i32(var_offset);
+        
+        // Guardar RCX y R8 antes del body (pueden ser modificados)
+        self.emit_bytes(&[0x51]); // push rcx
+        self.emit_bytes(&[0x41, 0x50]); // push r8
+        
         for stmt in body {
             self.emit_statement(stmt);
         }
         
-        // var++
-        self.emit_bytes(&[0x48, 0xFF, 0x85]);
-        self.emit_i32(var_offset);
+        // Restaurar R8 y RCX
+        self.emit_bytes(&[0x41, 0x58]); // pop r8
+        self.emit_bytes(&[0x59]); // pop rcx
+        
+        // inc rcx
+        self.emit_bytes(&[0x48, 0xFF, 0xC1]);
         
         // jmp loop_start
         self.emit_bytes(&[0xE9]);
@@ -617,6 +858,26 @@ impl CodeGeneratorV2 {
         let end_label = self.code.len();
         let jge_offset = (end_label - jge_offset_pos - 4) as i32;
         self.code[jge_offset_pos..jge_offset_pos + 4].copy_from_slice(&jge_offset.to_le_bytes());
+        
+        // Guardar valor final en variable
+        self.emit_bytes(&[0x48, 0x89, 0x8D]); // mov [rbp + offset], rcx
+        self.emit_i32(var_offset);
+    }
+    
+    /// Loop for vacío ultra-optimizado
+    fn emit_optimized_empty_for(&mut self, start: i64, end: i64, var: &str) {
+        // Simplemente asignar el valor final
+        // mov rax, end
+        self.emit_bytes(&[0x48, 0xB8]);
+        self.emit_u64(end as u64);
+        
+        let var_offset = self.stack_offset;
+        self.variables.insert(var.to_string(), var_offset);
+        self.stack_offset -= 8;
+        self.emit_bytes(&[0x48, 0x89, 0x85]);
+        self.emit_i32(var_offset);
+        
+        let _ = start; // Evitar warning
     }
     
     fn emit_foreach(&mut self, var: &str, iterable: &Expr, body: &[Stmt]) {

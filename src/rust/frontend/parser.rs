@@ -1022,6 +1022,46 @@ impl Parser {
                     self.advance();
                     let value = self.parse_expression()?;
                     Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::PlusEq)) {
+                    // counter += 1 -> counter = counter + 1
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BinaryOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BinOp::Add,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::MinusEq)) {
+                    // counter -= 1 -> counter = counter - 1
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BinaryOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BinOp::Sub,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::StarEq)) {
+                    // counter *= 2 -> counter = counter * 2
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BinaryOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BinOp::Mul,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::SlashEq)) {
+                    // counter /= 2 -> counter = counter / 2
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BinaryOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BinOp::Div,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
                 } else if matches!(self.peek(), Some(Token::LParen)) {
                      // Function call as statement
                      self.advance(); // (
