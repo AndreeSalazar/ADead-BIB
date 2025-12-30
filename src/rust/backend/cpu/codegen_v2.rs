@@ -599,7 +599,17 @@ impl CodeGeneratorV2 {
                         } else { false };
                     
                     if is_simple_increment {
-                        // LOOP ULTRA-OPTIMIZADO: Todo en registros
+                        // ============================================================
+                        // LOOP ULTRA-OPTIMIZADO v4.0 - MINIMALISTA
+                        // ============================================================
+                        // Solo 3 instrucciones en el hot loop:
+                        //   cmp rcx, r8    ; comparar (3 bytes)
+                        //   jge end        ; salir si >= (6 bytes, near jump)
+                        //   inc rcx        ; incrementar (3 bytes)
+                        //   jmp loop       ; repetir (5 bytes, near jump)
+                        //
+                        // Total: 17 bytes por iteración
+                        // ============================================================
                         // RCX = counter, R8 = limit
                         
                         // mov rcx, [rbp+offset] (cargar counter inicial)
@@ -615,15 +625,15 @@ impl CodeGeneratorV2 {
                         // cmp rcx, r8
                         self.emit_bytes(&[0x4C, 0x39, 0xC1]);
                         
-                        // jge loop_end
+                        // jge loop_end (near jump)
                         self.emit_bytes(&[0x0F, 0x8D]);
                         let jge_offset_pos = self.code.len();
                         self.emit_i32(0);
                         
-                        // inc rcx (1 sola instrucción!)
+                        // inc rcx
                         self.emit_bytes(&[0x48, 0xFF, 0xC1]);
                         
-                        // jmp loop_start
+                        // jmp loop_start (near jump)
                         self.emit_bytes(&[0xE9]);
                         let jmp_back = (loop_start as i64 - self.code.len() as i64 - 4) as i32;
                         self.emit_i32(jmp_back);

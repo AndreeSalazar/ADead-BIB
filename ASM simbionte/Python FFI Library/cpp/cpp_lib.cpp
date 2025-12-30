@@ -1,7 +1,11 @@
 // C++ Library for Python FFI
-// Compila con: g++ -shared -o cpp_lib.dll -fPIC cpp_lib.cpp
+// Compila con: cl /LD /O2 cpp_lib.cpp (MSVC)
+//          o: g++ -shared -O3 -o cpp_lib.dll cpp_lib.cpp (MinGW)
 
 #include <cstdint>
+
+// Prevenir optimización de dead code
+volatile int64_t sink;
 
 extern "C" {
 
@@ -10,6 +14,7 @@ __declspec(dllexport) int64_t count_to(int64_t limit) {
     while (counter < limit) {
         counter++;
     }
+    sink = counter;  // Prevenir optimización
     return counter;
 }
 
