@@ -1,6 +1,13 @@
+// ============================================================
 // ADead-BIB - Main Library
-// Ruta 2: Directo AST → Opcodes → Binario
-// Runtime determinista para exprimir CPU y GPU
+// ============================================================
+// ADead = ASM Dead | BIB = Binary Is Binary
+//
+// Filosofía: Código → AST → BYTES DIRECTOS → Binario/HEX
+// Sin ASM intermedio. Sin LLVM. Sin linker externo.
+//
+// El compilador emite bytes x86-64/GPU directamente.
+// ============================================================
 
 pub mod frontend;
 pub mod backend;

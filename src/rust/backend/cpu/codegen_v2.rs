@@ -600,15 +600,21 @@ impl CodeGeneratorV2 {
                     
                     if is_simple_increment {
                         // ============================================================
-                        // LOOP ULTRA-OPTIMIZADO v4.0 - MINIMALISTA
+                        // 🔥 LOOP BRUTAL v5.0 - HEX CRUDO AL METAL 🔥
                         // ============================================================
-                        // Solo 3 instrucciones en el hot loop:
-                        //   cmp rcx, r8    ; comparar (3 bytes)
-                        //   jge end        ; salir si >= (6 bytes, near jump)
-                        //   inc rcx        ; incrementar (3 bytes)
-                        //   jmp loop       ; repetir (5 bytes, near jump)
+                        // Técnica: Loop con salto condicional hacia atrás
+                        // 
+                        // Estructura (SOLO 8 bytes en el hot path!):
+                        //   .loop:
+                        //     inc rcx         ; 48 FF C1 (3 bytes)
+                        //     cmp rcx, r8     ; 4C 39 C1 (3 bytes)  
+                        //     jl .loop        ; 7C F8    (2 bytes) - SHORT JUMP!
                         //
-                        // Total: 17 bytes por iteración
+                        // Ventajas:
+                        // - Solo 8 bytes por iteración (vs 17 bytes antes)
+                        // - Short jump (2 bytes) vs near jump (5 bytes)
+                        // - Mejor predicción de branch (backward jump)
+                        // - Sin jmp incondicional - el jl hace todo
                         // ============================================================
                         // RCX = counter, R8 = limit
                         
@@ -616,32 +622,36 @@ impl CodeGeneratorV2 {
                         self.emit_bytes(&[0x48, 0x8B, 0x8D]);
                         self.emit_i32(var_offset);
                         
-                        // mov r8, limit (cargar límite)
+                        // mov r8, limit (cargar límite en registro)
                         self.emit_bytes(&[0x49, 0xB8]);
                         self.emit_u64(*limit as u64);
                         
-                        let loop_start = self.code.len();
-                        
+                        // Verificar si counter >= limit (skip loop si ya terminamos)
                         // cmp rcx, r8
                         self.emit_bytes(&[0x4C, 0x39, 0xC1]);
+                        // jge skip (short jump, 2 bytes)
+                        self.emit_bytes(&[0x7D]);
+                        let skip_pos = self.code.len();
+                        self.emit_bytes(&[0x00]); // placeholder
                         
-                        // jge loop_end (near jump)
-                        self.emit_bytes(&[0x0F, 0x8D]);
-                        let jge_offset_pos = self.code.len();
-                        self.emit_i32(0);
+                        // ============ HOT LOOP - 8 BYTES TOTAL! ============
+                        let _loop_start = self.code.len(); // Para referencia
                         
-                        // inc rcx
+                        // inc rcx (3 bytes) - incrementar PRIMERO
                         self.emit_bytes(&[0x48, 0xFF, 0xC1]);
                         
-                        // jmp loop_start (near jump)
-                        self.emit_bytes(&[0xE9]);
-                        let jmp_back = (loop_start as i64 - self.code.len() as i64 - 4) as i32;
-                        self.emit_i32(jmp_back);
+                        // cmp rcx, r8 (3 bytes) - comparar
+                        self.emit_bytes(&[0x4C, 0x39, 0xC1]);
                         
-                        // Parchear salto de salida
-                        let loop_end = self.code.len();
-                        let jge_offset = (loop_end - jge_offset_pos - 4) as i32;
-                        self.code[jge_offset_pos..jge_offset_pos + 4].copy_from_slice(&jge_offset.to_le_bytes());
+                        // jl loop_start (2 bytes) - SHORT JUMP hacia atrás!
+                        // Offset = -(tamaño del loop) = -8
+                        self.emit_bytes(&[0x7C, 0xF8]); // jl -8
+                        
+                        // ============ FIN DEL LOOP ============
+                        
+                        // Parchear skip jump
+                        let skip_offset = (self.code.len() - skip_pos - 1) as u8;
+                        self.code[skip_pos] = skip_offset;
                         
                         // Guardar resultado de vuelta en memoria
                         // mov [rbp+offset], rcx

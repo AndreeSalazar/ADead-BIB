@@ -1,10 +1,14 @@
+// ============================================================
 // ADead-BIB - HEX Binary Backend para GPU
-// Genera código binario directo para GPU sin capas intermedias
-// Elimina: if, where, loops innecesarios → código GPU puro
+// ============================================================
+// BINARY IS BINARY - Opcodes GPU como bytes directos
+// Sin GLSL. Sin HLSL. Sin shaders textuales.
 //
-// Integrado desde: hex/binary_gpu.py, hex/gpu_opcodes.py, hex/cuda_kernels.py
+// Formato de instrucción: [opcode:8][dst:8][src1:8][src2:8] = 4 bytes
+// Opcodes GPU: 0xC0DA0001 (INIT), 0xC0DA0020 (MATMUL), etc.
 //
-// Filosofía: "Detectar GPU → Analizar → Respetar → Limpiar basura"
+// Filosofía: "Bytes directos a la GPU. Sin intermediarios."
+// ============================================================
 
 use std::fs::File;
 use std::io::Write;

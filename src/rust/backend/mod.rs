@@ -1,10 +1,14 @@
-// ADead-BIB Backend - Organizado por Target
+// ============================================================
+// ADead-BIB Backend - Binary Is Binary
+// ============================================================
+// Emitimos BYTES directamente, sin ASM intermedio.
 //
 // Estructura:
-// - cpu/     : Generación de código x86-64, PE, ELF, syscalls
-// - gpu/     : Detección GPU, Vulkan, HEX binario
+// - cpu/     : Bytes x86-64 directos → PE/ELF/RAW
+// - gpu/     : Bytes GPU directos → SPIR-V/CUDA/HEX
 //
-// Filosofía: "Buildeas, optimizas y programas: Las 3 combinadas"
+// Filosofía: "Código → Bytes → Binario. Sin intermediarios."
+// ============================================================
 
 pub mod cpu;
 pub mod gpu;

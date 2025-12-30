@@ -1,21 +1,44 @@
-# ADead-BIB - Roadmap de Mejoras Futuras
+# ADead-BIB - Roadmap v2.0
 
-> **ADead-BIB**: Lenguaje de programación que compila directo a binario nativo x86-64.
-> Parte de la familia ASM pero con sintaxis moderna estilo Rust/Python.
-> 100% escrito en Rust, sin dependencias de C/C++.
+> **ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
+> 
+> Lenguaje que compila **DIRECTO a BINARIO y HEX** sin pasar por ensamblador.
+> Sin ASM intermedio. Sin LLVM. Sin GCC. **Código → Bytes → Ejecutable.**
+> 
+> 100% Rust. Cero dependencias externas.
+
+---
+
+## 🎯 Filosofía Core: Binary Is Binary
+
+```
+COMPILADORES TRADICIONALES (7+ capas):
+  Código → Tokens → AST → IR → Optimizer → ASM → Assembler → Linker → Binario
+
+ADead-BIB (2-3 capas):
+  Código → AST → BYTES DIRECTOS → Binario/HEX
+```
+
+**Principios:**
+1. **No ASM intermedio** - Emitimos bytes x86-64 directamente
+2. **No linker externo** - Generamos PE/ELF completos en memoria
+3. **No runtime pesado** - El binario es autosuficiente
+4. **HEX es ciudadano de primera clase** - Puedes escribir bytes literales
 
 ---
 
 ## 📊 Estado del Proyecto
 
-| Componente | Estado | Tests |
-|------------|--------|-------|
-| Lexer | ✅ Completo | 8 tests |
-| Parser | ✅ Funcional | Rust + Python style |
-| Type Checker | ⚠️ Básico | Inferencia limitada |
-| CodeGen x86-64 | ✅ Funcional | Windows PE + Linux ELF |
-| GPU Backend | ✅ Vulkan + CUDA | SPIR-V generation |
-| **Total Tests** | **61 pasando** | ✅ |
+| Componente | Estado | Descripción |
+|------------|--------|-------------|
+| **Lexer** | ✅ Completo | Tokenización con tracking de líneas |
+| **Parser** | ✅ Funcional | Sintaxis Rust-style + Python-style |
+| **Type Checker** | ⚠️ Básico | Inferencia limitada |
+| **Binary CodeGen** | ✅ Funcional | Emite bytes x86-64 directamente |
+| **PE Generator** | ✅ Funcional | Windows executables sin linker |
+| **ELF Generator** | ✅ Funcional | Linux executables sin linker |
+| **GPU HEX** | ✅ Funcional | Opcodes GPU directos (Vulkan/CUDA) |
+| **Tests** | 61 pasando | ✅ |
 
 ---
 
@@ -23,421 +46,349 @@
 
 ### v0.5.0 ✅ - Fundamentos
 - [x] Sintaxis estilo Rust (`fn`, `let`, `const`)
-- [x] `print()` sin salto de línea automático
-- [x] `println()` con salto de línea automático
+- [x] `print()` y `println()`
 - [x] Secuencias de escape (`\n`, `\t`, `\r`)
 - [x] Operaciones aritméticas (+, -, *, /, %)
-- [x] Compilación directa a binario x86-64
-- [x] Soporte para Windows PE
-- [x] Ejemplos organizados y simplificados
-- [x] Guías en español e inglés
+- [x] **Compilación directa a bytes x86-64**
+- [x] Generador PE integrado (sin linker)
 
 ### v0.6.0 ✅ - Control de Flujo
-- [x] `if` / `else` condicionales
-- [x] `while` loops
-- [x] `for` loops (for i in 0..10)
+- [x] `if` / `else` → bytes de salto condicional directos
+- [x] `while` / `for` loops → bytes de loop directos
 - [x] `break` y `continue`
-- [x] Operadores de comparación: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- [x] Comparaciones: `==`, `!=`, `<`, `>`, `<=`, `>=`
 
 ### v0.7.0 ✅ - Funciones
-- [x] Definir funciones propias con `fn`
-- [x] Llamar funciones
-- [x] Parámetros de funciones
-- [x] Valores de retorno (`return`)
+- [x] `fn nombre() { }` → prólogo/epílogo en bytes
+- [x] Parámetros y retorno
 - [x] Recursión
+- [x] Calling convention Windows x64
 
 ### v0.8.0 ✅ - Tipos de Datos
 - [x] Booleanos (`true`, `false`)
-- [x] Números enteros (i64)
-- [x] Números flotantes con decimales reales (%.2f)
-- [x] Strings básicos
+- [x] Enteros i64
+- [x] Flotantes f64 (IEEE 754 directo)
+- [x] Strings (punteros a data section)
 
 ### v0.9.0 ✅ - Entrada de Usuario
-- [x] `input()` para leer del teclado (placeholder: retorna 42)
+- [x] `input()` → llamada a scanf via IAT
 
 ### v1.0.0 ✅ - Estabilidad
-- [x] Manejo de errores mejorado
-- [x] Mensajes de error claros con línea y columna
-- [x] Tracking de líneas en lexer
-- [x] Tests automatizados (61 tests)
-- [x] Documentación completa
+- [x] Errores con línea y columna
+- [x] 61 tests automatizados
+- [x] Documentación ES/EN
 
 ### v1.1.0 ✅ - Flotantes Reales
-- [x] Números flotantes con decimales (%.2f)
-- [x] Constantes matemáticas: PI = 3.14, E = 2.72
+- [x] Decimales con precisión (%.2f)
+- [x] PI, E como constantes
 
-### v1.2.0 ✅ (Actual) - OOP Básico
-- [x] `struct` con campos tipados
-- [x] `impl` para métodos
-- [x] Sintaxis `Struct::method()`
-- [x] GPU Backend con Vulkan/CUDA
-- [x] SPIR-V shader generation
-- [x] Pipeline unificado CPU↔GPU
+### v1.2.0 ✅ - OOP y GPU
+- [x] `struct` y `impl`
+- [x] GPU Backend (Vulkan SPIR-V + CUDA)
+- [x] Pipeline CPU↔GPU unificado
 
----
-
-## 🚧 v1.3.0 - Arrays y Strings (En Desarrollo)
-
-### Arrays/Listas ✅
-- [x] Declaración: `let arr = [1, 2, 3]` ✅
-- [x] Indexación: `arr[0]` ✅
-- [x] Longitud: `len(arr)` ✅ **FUNCIONA**
-- [x] Iteración: `for x in arr { }` ✅ **FUNCIONA**
-- [ ] Push/Pop: `arr.push(4)`, `arr.pop()` (futuro)
-- [ ] Slicing: `arr[1..3]` (futuro)
-
-### Operaciones de String
-- [ ] Concatenación: `"Hello" + " World"` (futuro)
-- [ ] Longitud: `len(str)` (futuro)
-- [ ] Indexación: `str[0]` (futuro)
-- [ ] Métodos: `str.upper()`, `str.lower()`, `str.trim()` (futuro)
-- [ ] Interpolación: `f"Valor: {x}"` (futuro)
-- [ ] Split/Join: `str.split(",")`, `arr.join("-")` (futuro)
-
-### Conversión de Tipos ✅
-- [x] `int(valor)` - Convertir a entero ✅
-- [x] `float(valor)` - Convertir a flotante ✅
-- [ ] `str(valor)` - Convertir a string (futuro)
-- [x] `bool(valor)` - Convertir a booleano ✅ **FUNCIONA**
-
-### Carpeta TESTEO ✅
-- [x] Estructura de tests creada
-- [x] `TESTEO/arrays/` - Tests de arrays
-- [x] `TESTEO/arrays/test_foreach.adB` - ✅ for x in arr funciona
-- [x] `TESTEO/conversiones/` - Tests de conversión de tipos
-- [x] `TESTEO/len/test_len_array.adB` - ✅ len() funciona
-- [x] `TESTEO/integrados/test_v1_3_0_completo.adB` - ✅ Test completo
+### v1.3.0 - v1.6.0 ✅ - Features Avanzados
+- [x] Arrays: `[1, 2, 3]`, indexación, `len()`, iteración
+- [x] Conversiones: `int()`, `float()`, `bool()`
+- [x] Módulos: `import`, `from X import Y`
+- [x] Traits: `trait`, `impl Trait for Struct`
+- [x] Clases Python-style: `class`, `def`
 
 ---
 
-## ✅ v1.4.0 - Input Real y I/O (COMPLETADO)
+## 🔥 v2.0.0 - HEX-First Architecture (NUEVA VISIÓN)
 
-### Entrada de Usuario Real ✅
-- [x] `input()` lee de stdin usando scanf - **FUNCIONA**
-- [ ] `input("prompt")` con mensaje (futuro)
-- [x] Parsing automático de números enteros
-
-**Implementación técnica (completada)**:
-1. ✅ Agregado `scanf` a las importaciones del PE (IAT en 0x2048)
-2. ✅ Modificada la estructura de la Import Directory Table
-3. ✅ Actualizado codegen con nuevas direcciones (printf@0x2040, scanf@0x2048)
-4. ✅ data_rva actualizado a 0x2078
-
-### Test de input() ✅
-```
-echo 25 | test_input.exe
-Ingresa un numero: Ingresaste: 25
-El doble es: 50
-```
-
-### Archivos (Futuro v1.6.0)
-- [ ] `open(path, mode)` - Abrir archivo
-- [ ] `file.read()` - Leer contenido
-- [ ] `file.write(data)` - Escribir contenido
-- [ ] `file.close()` - Cerrar archivo
-
-### Salida Formateada (Futuro)
-- [ ] `printf(format, args...)` - Formato estilo C
-- [ ] `format!()` - Formato estilo Rust
-
----
-
-## ✅ v1.5.0 - Sistema de Módulos (COMPLETADO)
-
-### Imports ✅
-- [x] `import modulo` - Importar módulo completo
-- [x] `from modulo import func` - Importar específico
-- [x] `import modulo as alias` - Alias
-- [x] Resolución de paths relativos
-- [x] Biblioteca estándar básica
-
-### Organización ✅
-- [x] Un archivo = un módulo
-- [x] Carpetas como paquetes
-- [x] `mod.adB` como índice de paquete
-- [x] Visibilidad: `pub` para exportar
-
-### Biblioteca Estándar (std) ✅
-- [x] `std::io` - Entrada/Salida
-- [x] `std::math` - Funciones matemáticas
-- [x] `std::string` - Operaciones de string
-- [ ] `std::collections` - Estructuras de datos (futuro)
-- [ ] `std::fs` - Sistema de archivos (futuro)
-
----
-
-## ✅ v1.6.0 - Traits e Interfaces (COMPLETADO)
-
-### Traits Básicos ✅
-- [x] `trait Nombre { fn metodo(); }` - Definición de traits
-- [x] `impl Trait for Struct { }` - Implementación de traits
-- [x] `impl Struct { }` - Métodos estáticos para structs
-- [x] Llamadas con `Struct::method()` y `Struct::Trait::method()`
-- [x] Métodos con `&self` (parsing completo)
-- [x] Múltiples traits por struct
-
-### OOP Avanzado para Sistemas ✅
-- [x] Patrón Entity-Component (ECS simplificado)
-- [x] Composición sobre herencia
-- [x] Traits como comportamientos (Renderable, Updatable, Collidable)
-- [x] Métodos estáticos como constructores (`::create()`)
-
-### Polimorfismo ✅
-- [x] Dispatch estático (monomorphization)
-- [x] Múltiples implementaciones de trait
-
-### Traits Avanzados (Futuro v1.7.0+)
-- [ ] Traits como bounds: `fn foo<T: Trait>(x: T)`
-- [ ] Traits derivables: `#[derive(Debug, Clone)]`
-- [ ] Associated types
-- [ ] Dispatch dinámico con `dyn Trait`
-- [ ] Trait objects
-
-### Sintaxis Dual: Rust-style y Python-style ✅
-
-**Rust-style (impl + trait):**
+### 2.1 Literales Binarios Nativos
 ```rust
-trait Renderable { fn render(id: i32) -> i32; }
-impl Renderable for Player { fn render(id: i32) -> i32 { ... } }
-Player::Renderable::render(1)
+// Literales HEX directos en el código
+let opcode = 0x48_89_E5      // mov rbp, rsp
+let mask = 0b1111_0000       // Binario literal
+let byte = 0xC3              // ret
+
+// Bytes como array
+let code: [u8] = [0x55, 0x48, 0x89, 0xE5, 0xC3]
 ```
 
-**Python-style (class + def):**
-```python
-class Player:
-    def attack(self, damage):
-        return damage * 2
+### 2.2 Modo Raw Binary
+```rust
+// Archivo que compila a bytes puros (sin headers PE/ELF)
+#![mode(raw)]
+#![base(0x1000)]
 
-Player::attack(30)  // Resultado: 60
+fn _start() {
+    // Genera solo los bytes de código
+}
+// Output: archivo .bin con bytes puros
 ```
 
-### Ejemplos de Uso para Videojuegos
-```python
-class Entity:
-    def move(self, dx, dy):
-        return dx + dy
+### 2.3 Inline HEX (Nuevo)
+```rust
+fn fast_function() {
+    // Insertar bytes directamente en el flujo de código
+    emit![0x48, 0x31, 0xC0]  // xor rax, rax
+    emit![0xC3]              // ret
+}
+```
 
-class Player:
-    def attack(self, damage):
-        return damage * 2
+### 2.4 Formatos de Salida
+| Formato | Extensión | Descripción |
+|---------|-----------|-------------|
+| PE | `.exe` | Windows executable con headers |
+| ELF | (sin ext) | Linux executable con headers |
+| Raw | `.bin` | Bytes puros sin headers |
+| Intel HEX | `.hex` | Formato Intel HEX |
+| ADead Hybrid | `.ahyb` | Binario CPU+GPU combinado |
 
-class Enemy:
-    def strike(self, power):
-        return power * 3
-
-class Renderer:
-    def init(self, w, h):
-        return w * h
+### 2.5 Operaciones Bit-Level
+```rust
+let x: u8 = 0b1010_1100
+let shifted = x << 4         // Shift left
+let masked = x & 0xF0        // AND mask
+let bit3 = x.bit(3)          // Extraer bit individual
+let packed = pack(a, b, c)   // Empaquetar bytes
 ```
 
 ---
 
-## 🔮 v1.7.0 - Manejo de Errores
+## 🔥 v2.1.0 - CPU Direct Instructions
 
-### Option y Result
-- [ ] `Option<T>` - Some(valor) | None
-- [ ] `Result<T, E>` - Ok(valor) | Err(error)
-- [ ] Operador `?` para propagación
-- [ ] `unwrap()`, `expect()`, `unwrap_or()`
-- [ ] Pattern matching con `match`
+### Instrucciones x86-64 como Funciones
+```rust
+// Mapeo 1:1 a instrucciones de CPU
+// NO es ASM textual - son funciones que emiten bytes
 
-### Excepciones (Opcional)
-- [ ] `try { } catch { }` estilo tradicional
-- [ ] `panic!()` para errores irrecuperables
+fn optimized_loop() {
+    cpu::mov(rcx, 1000000)   // Emite: 48 B9 [imm64]
+    cpu::xor(rax, rax)       // Emite: 48 31 C0
+    
+    loop {
+        cpu::inc(rax)        // Emite: 48 FF C0
+        cpu::dec(rcx)        // Emite: 48 FF C9
+        if rcx == 0 { break }
+    }
+}
+```
 
----
+### Registros como Valores
+```rust
+// Registros disponibles como constantes tipadas
+let result = cpu::rax       // Leer registro
+cpu::rax = 42               // Escribir registro (emite mov)
 
-## 🔮 v1.8.0 - Generics y Tipos Avanzados
-
-### Generics
-- [ ] Funciones genéricas: `fn foo<T>(x: T)`
-- [ ] Structs genéricos: `struct Vec<T>`
-- [ ] Traits bounds: `<T: Clone + Debug>`
-- [ ] Where clauses
-
-### Tipos Avanzados
-- [ ] Enums con datos: `enum Result<T, E> { Ok(T), Err(E) }`
-- [ ] Type aliases: `type Punto = (i32, i32)`
-- [ ] Tuples: `let t = (1, "hello", 3.14)`
-- [ ] Destructuring: `let (x, y) = punto`
-
----
-
-## 🔮 v1.9.0 - Optimizaciones
-
-### Compilador
-- [ ] Constant folding: `2 + 3` → `5`
-- [ ] Dead code elimination
-- [ ] Inlining de funciones pequeñas
-- [ ] Loop unrolling
-- [ ] Tail call optimization
-
-### Binarios
-- [ ] Binarios más pequeños (< 1KB para hello world)
-- [ ] Strip de símbolos
-- [ ] Compresión de secciones
-- [ ] Link-time optimization (LTO)
-
-### SIMD Automático
-- [ ] Vectorización automática de loops
-- [ ] Detección de patrones SIMD
-- [ ] SSE/AVX/AVX-512 según CPU
+// Registros: rax, rbx, rcx, rdx, rsi, rdi, r8-r15
+// XMM: xmm0-xmm15 (para SIMD)
+```
 
 ---
 
-## 🔮 v2.0.0 - Características Avanzadas
+## 🔥 v2.2.0 - GPU HEX Unificado
 
-### Async/Await
-- [ ] `async fn` - Funciones asíncronas
-- [ ] `await` - Esperar resultado
-- [ ] Runtime async básico
-- [ ] Futures y Promises
+### Opcodes GPU Directos
+```rust
+// Código GPU como bytes directos
+gpu::init()                          // 0xC0DA0001
+gpu::alloc(4096, reg0)               // 0xC0DA0010
+gpu::matmul(reg0, reg1, reg2)        // 0xC0DA0020
+gpu::sync()                          // 0xC0DA00FF
+```
 
-### Manejo de Memoria
-- [ ] Ownership básico (sin borrow checker completo)
-- [ ] `Box<T>` - Heap allocation
-- [ ] `Rc<T>` - Reference counting
-- [ ] `Arc<T>` - Atomic reference counting
-- [ ] Drop automático
-
-### FFI (Foreign Function Interface)
-- [ ] `extern "C"` - Llamar funciones C
-- [ ] Cargar DLLs/SOs dinámicamente
-- [ ] Exportar funciones para C
-- [ ] Bindings automáticos
-
-### Multi-plataforma
-- [ ] Windows PE (x86-64) ✅
-- [ ] Linux ELF (x86-64)
-- [ ] macOS Mach-O (x86-64 + ARM64)
-- [ ] WebAssembly (WASM)
-- [ ] ARM64 nativo
-
----
-
-## 🎮 GPU Computing (Ya Implementado)
-
-### Vulkan Backend ✅
-- [x] Detección de GPU
-- [x] SPIR-V shader generation
-- [x] Compute shaders
-- [x] MatMul optimizado
-
-### CUDA Backend ✅
-- [x] Generación de código CUDA (.cu)
-- [x] VectorAdd, MatMul kernels
-- [x] Benchmarks CPU vs GPU
-
-### Pipeline Unificado ✅
-- [x] Decisión automática CPU↔GPU
-- [x] Threshold basado en tamaño de datos
-- [x] HEX optimization layer
+### Formato AHYB (ADead Hybrid Binary)
+```
+┌─────────────────────────────────┐
+│ Header AHYB (8 bytes)           │
+│   Magic: "AHYB"                 │
+│   Version: u8                   │
+│   Flags: u8                     │
+│   CPU_size: u16                 │
+│   GPU_size: u16                 │
+├─────────────────────────────────┤
+│ CPU Section (bytes x86-64)      │
+├─────────────────────────────────┤
+│ GPU Section (opcodes GPU)       │
+└─────────────────────────────────┘
+```
 
 ---
 
-## 🐛 Bugs Conocidos y Fixes Pendientes
+## 🛠️ Arquitectura del Compilador (Nueva)
 
-### Alta Prioridad
-- [ ] Type Checker no infiere tipos de retorno de funciones
-- [ ] `input()` es placeholder (siempre retorna 42)
-- [ ] Parser Python-style no soporta indentación real
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    ADead-BIB Compiler v2.0                        │
+│                    "Binary Is Binary"                             │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Source (.adB)                                                    │
+│       │                                                           │
+│       ▼                                                           │
+│  ┌─────────┐     ┌────────┐     ┌─────────────┐                  │
+│  │  Lexer  │ ──▶ │ Parser │ ──▶ │ Type Check  │                  │
+│  └─────────┘     └────────┘     └─────────────┘                  │
+│                                        │                          │
+│                                        ▼                          │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │              BINARY EMITTER (No ASM!)                       │  │
+│  │                                                             │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │  │
+│  │  │ CPU x86-64   │  │ GPU Vulkan   │  │ GPU CUDA     │      │  │
+│  │  │ Bytes Direct │  │ SPIR-V Direct│  │ PTX Direct   │      │  │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘      │  │
+│  │         │                  │                 │              │  │
+│  │         ▼                  ▼                 ▼              │  │
+│  │  ┌──────────────────────────────────────────────────┐      │  │
+│  │  │              BYTE STREAM                          │      │  │
+│  │  │  [0x55, 0x48, 0x89, 0xE5, ...]                   │      │  │
+│  │  └──────────────────────────────────────────────────┘      │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                        │                          │
+│                                        ▼                          │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │              FORMAT GENERATOR                               │  │
+│  │                                                             │  │
+│  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌──────┐ │  │
+│  │  │  PE    │  │  ELF   │  │  RAW   │  │  HEX   │  │ AHYB │ │  │
+│  │  │ .exe   │  │ binary │  │  .bin  │  │  .hex  │  │.ahyb │ │  │
+│  │  └────────┘  └────────┘  └────────┘  └────────┘  └──────┘ │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-### Media Prioridad
-- [ ] Warnings de variables no usadas en código interno
-- [ ] Algunos campos de structs internos no se usan
+---
 
-### Baja Prioridad
-- [ ] Mensajes de error podrían ser más descriptivos
-- [ ] Documentación de API interna incompleta
+## 📁 Estructura del Código Fuente
+
+```
+src/rust/
+├── frontend/           # Análisis de código fuente
+│   ├── lexer.rs       # Tokenización
+│   ├── parser.rs      # Parsing a AST
+│   ├── ast.rs         # Definición del AST
+│   └── type_checker.rs
+│
+├── backend/
+│   ├── cpu/           # Generación de bytes CPU
+│   │   ├── binary_emitter.rs   # 🔥 Core: emite bytes x86-64
+│   │   ├── x86_opcodes.rs      # Tabla de opcodes x86-64
+│   │   ├── pe_generator.rs     # Genera PE sin linker
+│   │   ├── elf_generator.rs    # Genera ELF sin linker
+│   │   └── raw_binary.rs       # Output bytes puros
+│   │
+│   └── gpu/           # Generación de bytes GPU
+│       ├── hex_emitter.rs      # 🔥 Core: emite opcodes GPU
+│       ├── spirv_direct.rs     # SPIR-V sin GLSL
+│       ├── cuda_direct.rs      # PTX directo
+│       └── ahyb_format.rs      # Formato híbrido
+│
+├── optimizer/         # Optimizaciones a nivel de bytes
+│   ├── peephole.rs    # Optimización de secuencias de bytes
+│   └── simd.rs        # Auto-vectorización
+│
+└── main.rs            # CLI
+```
+
+---
+
+## 🔢 Tabla de Bytes x86-64 (Referencia Interna)
+
+| Instrucción | Bytes | Descripción |
+|-------------|-------|-------------|
+| `push rbp` | `55` | Guardar base pointer |
+| `mov rbp, rsp` | `48 89 E5` | Setup stack frame |
+| `pop rbp` | `5D` | Restaurar base pointer |
+| `ret` | `C3` | Retornar |
+| `xor rax, rax` | `48 31 C0` | Limpiar rax (return 0) |
+| `mov rax, imm64` | `48 B8 [8 bytes]` | Cargar inmediato 64-bit |
+| `inc rcx` | `48 FF C1` | Incrementar rcx |
+| `dec rcx` | `48 FF C9` | Decrementar rcx |
+| `jmp rel8` | `EB [1 byte]` | Salto corto |
+| `jmp rel32` | `E9 [4 bytes]` | Salto largo |
+| `call rel32` | `E8 [4 bytes]` | Llamar función |
+
+---
+
+## 🎮 Opcodes GPU (Referencia Interna)
+
+| Opcode | HEX | Descripción |
+|--------|-----|-------------|
+| GPU_INIT | `0xC0DA0001` | Inicializar contexto |
+| GPU_ALLOC | `0xC0DA0010` | Reservar memoria |
+| GPU_FREE | `0xC0DA0011` | Liberar memoria |
+| GPU_COPY_H2D | `0xC0DA0012` | Host → Device |
+| GPU_COPY_D2H | `0xC0DA0013` | Device → Host |
+| GPU_MATMUL | `0xC0DA0020` | Multiplicación matrices |
+| GPU_ADD | `0xC0DA0021` | Suma tensores |
+| GPU_RELU | `0xC0DA0030` | Activación ReLU |
+| GPU_SOFTMAX | `0xC0DA0033` | Softmax |
+| GPU_SYNC | `0xC0DA00F0` | Sincronizar |
+| GPU_END | `0xC0DAFFFF` | Fin programa |
 
 ---
 
 ## 📋 Prioridades de Desarrollo
 
-| Prioridad | Feature | Versión Target |
-|-----------|---------|----------------|
-| 🔴 Alta | Arrays y Strings | v1.3.0 |
-| 🔴 Alta | Input() real | v1.4.0 |
-| 🔴 Alta | Type Checker mejorado | v1.3.0 |
-| 🟡 Media | Sistema de módulos | v1.5.0 |
-| 🟡 Media | Traits | v1.6.0 |
-| 🟡 Media | Manejo de errores | v1.7.0 |
-| 🟢 Baja | Generics | v1.8.0 |
-| 🟢 Baja | Async/await | v2.0.0 |
-| 🟢 Baja | FFI | v2.0.0 |
+| Prioridad | Feature | Versión |
+|-----------|---------|---------|
+| 🔴 **CRÍTICO** | `emit![]` macro para inline HEX | v2.0.0 |
+| 🔴 **CRÍTICO** | Modo `#![mode(raw)]` | v2.0.0 |
+| 🔴 **CRÍTICO** | Output `.bin` y `.hex` | v2.0.0 |
+| 🟡 **ALTO** | Funciones `cpu::*` | v2.1.0 |
+| 🟡 **ALTO** | GPU HEX unificado | v2.2.0 |
+| 🟢 **MEDIO** | Formato AHYB | v2.2.0 |
+| 🟢 **MEDIO** | Optimizador peephole | v2.3.0 |
 
 ---
 
-## 🛠️ Arquitectura del Compilador
+## 🐛 Bugs Conocidos
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    ADead-BIB Compiler                       │
-├─────────────────────────────────────────────────────────────┤
-│  Source (.adB)                                              │
-│       ↓                                                     │
-│  ┌─────────┐  ┌────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │  Lexer  │→ │ Parser │→ │ Type Checker│→ │  Optimizer  │ │
-│  └─────────┘  └────────┘  └─────────────┘  └─────────────┘ │
-│       ↓                                                     │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                    CodeGen                           │   │
-│  │  ┌───────────┐  ┌───────────┐  ┌───────────────┐    │   │
-│  │  │ CPU x86-64│  │ GPU Vulkan│  │ GPU CUDA      │    │   │
-│  │  └───────────┘  └───────────┘  └───────────────┘    │   │
-│  └─────────────────────────────────────────────────────┘   │
-│       ↓                                                     │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                  Binary Output                       │   │
-│  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌──────────┐   │   │
-│  │  │ PE/EXE │  │  ELF   │  │ SPIR-V │  │ CUDA .cu │   │   │
-│  │  └────────┘  └────────┘  └────────┘  └──────────┘   │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🤝 Cómo Contribuir
-
-1. Fork el repositorio
-2. Crea una rama para tu feature: `git checkout -b feature/nueva-funcionalidad`
-3. Haz tus cambios
-4. Ejecuta los tests: `cargo test`
-5. Envía un Pull Request
-
-### Áreas donde se necesita ayuda
-- Implementación de arrays y strings
-- Mejoras al type checker
-- Documentación y ejemplos
-- Testing en Linux/macOS
-- Optimizaciones de código generado
-
----
-
-## 📚 Recursos
-
-- **Documentación**: `GUIA_ES.md`, `GUIDE_EN.md`
-- **Ejemplos**: `/examples/*.adB`
-- **Tests**: `cargo test`
-- **Issues**: GitHub Issues
+| Prioridad | Bug | Estado |
+|-----------|-----|--------|
+| 🔴 Alta | Type Checker no infiere retornos | Pendiente |
+| 🟡 Media | Parser Python-style sin indentación real | Pendiente |
+| 🟢 Baja | Warnings de variables no usadas | Pendiente |
 
 ---
 
 ## 📜 Historial de Cambios
 
-| Versión | Fecha | Cambios Principales |
-|---------|-------|---------------------|
-| v1.2.0 | 2024-12 | Structs, impl, GPU backends |
+| Versión | Fecha | Cambios |
+|---------|-------|---------|
+| v2.0.0 | 2025-01 | 🔥 HEX-First Architecture |
+| v1.6.0 | 2024-12 | Traits e interfaces |
+| v1.5.0 | 2024-12 | Sistema de módulos |
+| v1.4.0 | 2024-12 | Input real (scanf) |
+| v1.3.0 | 2024-12 | Arrays y conversiones |
+| v1.2.0 | 2024-12 | Structs, impl, GPU |
 | v1.1.0 | 2024-12 | Flotantes reales |
-| v1.0.0 | 2024-12 | Estabilidad, 50+ tests |
-| v0.9.0 | 2024-12 | Input placeholder |
-| v0.8.0 | 2024-12 | Booleanos, flotantes |
-| v0.7.0 | 2024-12 | Funciones propias |
-| v0.6.0 | 2024-12 | Control de flujo |
-| v0.5.0 | 2024-12 | Fundamentos |
+| v1.0.0 | 2024-12 | Estabilidad |
 
 ---
 
-*Este roadmap se actualiza conforme avanza el desarrollo del proyecto.*
-*Última actualización: Diciembre 2024*
+## 🤝 Contribuir
+
+1. Fork el repositorio
+2. `git checkout -b feature/mi-feature`
+3. `cargo test`
+4. Pull Request
+
+### Áreas de ayuda
+- Implementar `emit![]` macro
+- Más opcodes x86-64 en tabla
+- Testing Linux ELF
+- Documentación de bytes
+
+---
+
+## 📚 Recursos
+
+- **Docs**: `GUIA_ES.md`, `GUIDE_EN.md`
+- **Ejemplos**: `/examples/*.adB`
+- **Tests**: `cargo test`
+- **Intel x86-64 Manual**: Referencia de opcodes
+
+---
+
+*ADead-BIB: Donde el código se convierte en bytes, sin intermediarios.*
+
+*Creado por Eddi Andreé Salazar Matos* 🇵🇪
+*Última actualización: Enero 2025*

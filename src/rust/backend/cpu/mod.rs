@@ -1,15 +1,22 @@
+// ============================================================
 // ADead-BIB - CPU Backend
-// Generación directa de código máquina x86-64
-// Sin assembler, sin linker, sin runtime
+// ============================================================
+// BINARY IS BINARY - Emitimos bytes x86-64 DIRECTAMENTE
+// Sin ASM textual. Sin assembler externo. Sin linker.
 //
 // Estructura:
-// - codegen.rs      : Generador de código legacy
-// - codegen_v2.rs   : Generador de código avanzado (multi-función, syscalls)
-// - syscalls.rs     : Syscalls directos Windows/Linux
-// - microvm.rs      : MicroVM bytecode ultra-compacto
-// - pe*.rs          : Generadores PE Windows (tiny, minimal, full)
-// - elf.rs          : Generador ELF Linux
-// - win32_resolver.rs: Resolución de imports Windows
+// - binary_emitter.rs : 🔥 CORE - Emite bytes x86-64 directos
+// - binary_raw.rs     : Generador de binario crudo (técnica prohibida)
+// - codegen.rs        : Generador legacy (usa binary_emitter)
+// - codegen_v2.rs     : Generador avanzado (multi-función)
+// - syscalls.rs       : Syscalls directos Windows/Linux
+// - microvm.rs        : MicroVM bytecode ultra-compacto
+// - pe*.rs            : Generadores PE Windows (sin linker)
+// - elf.rs            : Generador ELF Linux (sin linker)
+// - win32_resolver.rs : Resolución de imports Windows
+//
+// Flujo: AST → binary_emitter → bytes → PE/ELF/RAW
+// ============================================================
 
 pub mod codegen;
 pub mod codegen_v2;
@@ -22,3 +29,4 @@ pub mod pe_tiny;
 pub mod pe_valid;
 pub mod elf;
 pub mod win32_resolver;
+pub mod binary_raw;  // 🔥 Generador de binario CRUDO - bytes directos
