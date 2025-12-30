@@ -229,7 +229,72 @@ impl Lexer {
         let mut num_str = String::new();
         let mut is_float = false;
         
-        // Leer parte entera
+        // Verificar si es literal HEX (0x...) o binario (0b...)
+        if self.current_char == Some('0') {
+            num_str.push('0');
+            self.advance();
+            
+            // Literal HEX: 0x...
+            if self.current_char == Some('x') || self.current_char == Some('X') {
+                self.advance(); // Skip 'x'
+                let mut hex_str = String::new();
+                while let Some(ch) = self.current_char {
+                    if ch.is_ascii_hexdigit() {
+                        hex_str.push(ch);
+                        self.advance();
+                    } else if ch == '_' {
+                        // Separador estilo Rust: 0xFF_FF
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                let value = i64::from_str_radix(&hex_str, 16).unwrap_or(0);
+                return Token::Number(value);
+            }
+            
+            // Literal Binario: 0b...
+            if self.current_char == Some('b') || self.current_char == Some('B') {
+                self.advance(); // Skip 'b'
+                let mut bin_str = String::new();
+                while let Some(ch) = self.current_char {
+                    if ch == '0' || ch == '1' {
+                        bin_str.push(ch);
+                        self.advance();
+                    } else if ch == '_' {
+                        // Separador estilo Rust: 0b1111_0000
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                let value = i64::from_str_radix(&bin_str, 2).unwrap_or(0);
+                return Token::Number(value);
+            }
+            
+            // Literal Octal: 0o... (opcional, para completitud)
+            if self.current_char == Some('o') || self.current_char == Some('O') {
+                self.advance(); // Skip 'o'
+                let mut oct_str = String::new();
+                while let Some(ch) = self.current_char {
+                    if ch >= '0' && ch <= '7' {
+                        oct_str.push(ch);
+                        self.advance();
+                    } else if ch == '_' {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                let value = i64::from_str_radix(&oct_str, 8).unwrap_or(0);
+                return Token::Number(value);
+            }
+            
+            // Es solo un 0 o un número que empieza con 0
+            // Continuar leyendo como número normal
+        }
+        
+        // Leer parte entera (número decimal normal)
         while let Some(ch) = self.current_char {
             if ch.is_ascii_digit() {
                 num_str.push(ch);

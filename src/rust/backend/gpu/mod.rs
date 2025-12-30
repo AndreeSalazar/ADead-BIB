@@ -2,35 +2,56 @@
 // ADead-BIB - GPU Backend
 // ============================================================
 // BINARY IS BINARY - Emitimos bytes GPU DIRECTAMENTE
-// Sin GLSL. Sin HLSL. Código → SPIR-V/CUDA bytes → GPU
+// Sin GLSL. Sin HLSL. Código → Opcodes HEX → Backend → GPU
+//
+// Arquitectura de dos niveles:
+// ┌─────────────────────────────────────────────────────────┐
+// │ Nivel 1: Opcodes ADead-BIB (0xC0DA...)                  │
+// │   - Tu contrato                                         │
+// │   - Tu formato                                          │
+// │   - Portable                                            │
+// │   - Documentado                                         │
+// ├─────────────────────────────────────────────────────────┤
+// │ Nivel 2: Backend por target                             │
+// │   - spirv/   → Vulkan/OpenCL (TODAS las GPUs)           │
+// │   - cuda/    → NVIDIA (PTX directo)                     │
+// │   - vulkan/  → Runtime Vulkan                           │
+// └─────────────────────────────────────────────────────────┘
 //
 // Estructura:
-// - hex/             : 🔥 CORE - Opcodes GPU directos (0xC0DA...)
-// - bytecode_spirv.rs: ADead Bytecode → SPIR-V bytes
-// - vulkan/          : Backend Vulkan (SPIR-V directo)
-// - cuda.rs          : Backend CUDA (PTX directo)
-// - gpu_detect.rs    : Detección de GPU
-// - scheduler.rs     : Scheduler CPU↔GPU
-// - memory.rs        : Memoria explícita (buffers)
-// - metrics.rs       : Métricas reales
+// - hex/           : 🔥 CORE - Opcodes GPU directos (0xC0DA...)
+// - spirv/         : Backend SPIR-V (Vulkan/OpenCL)
+// - cuda/          : Backend CUDA (NVIDIA PTX)
+// - vulkan/        : Runtime Vulkan
+// - detect.rs      : Detección de GPU
+// - scheduler.rs   : Scheduler CPU↔GPU
+// - memory.rs      : Memoria explícita (buffers)
+// - metrics.rs     : Métricas reales
 //
 // Filosofía: "Bytes directos a la GPU. Sin shaders textuales."
 // ============================================================
 
-pub mod gpu_detect;
-pub mod vulkan;
+// === CORE: Opcodes HEX directos ===
 pub mod hex;
+
+// === Backends por target ===
+pub mod spirv;           // SPIR-V (Vulkan/OpenCL) - Todas las GPUs
+pub mod cuda;            // CUDA/PTX - Solo NVIDIA
+pub mod vulkan;          // Runtime Vulkan
+
+// === Legacy (mantener compatibilidad) ===
+pub mod vulkan_runtime;  // TODO: migrar a vulkan/
+
+// === Infraestructura ===
+pub mod gpu_detect;
 pub mod scheduler;
 pub mod memory;
-pub mod bytecode_spirv;
 pub mod metrics;
-pub mod vulkan_runtime;
-pub mod cuda;
 pub mod unified_pipeline;
 
 // Re-exports principales
 pub use gpu_detect::*;
 pub use scheduler::{GpuScheduler, Dispatch, CommandBuffer};
 pub use memory::{GpuAllocator, BufferUsage, MemoryType};
-pub use bytecode_spirv::{BytecodeToSpirV, ADeadGpuOp};
+pub use spirv::bytecode::{BytecodeToSpirV, ADeadGpuOp};
 pub use metrics::{GpuProfiler, GpuMetrics, PerformanceEstimator};

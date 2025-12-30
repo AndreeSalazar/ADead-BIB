@@ -2,7 +2,7 @@
 
 > **ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
 > 
-> Lenguaje que compila **DIRECTO a BINARIO y HEX** sin pasar por ensamblador.
+> Lenguaje que compila **DIRECTO a BINARIO (CPU) y HEX (GPU)**.
 > Sin ASM intermedio. Sin LLVM. Sin GCC. **Código → Bytes → Ejecutable.**
 > 
 > 100% Rust. Cero dependencias externas.
@@ -19,11 +19,136 @@ ADead-BIB (2-3 capas):
   Código → AST → BYTES DIRECTOS → Binario/HEX
 ```
 
-**Principios:**
-1. **No ASM intermedio** - Emitimos bytes x86-64 directamente
-2. **No linker externo** - Generamos PE/ELF completos en memoria
-3. **No runtime pesado** - El binario es autosuficiente
-4. **HEX es ciudadano de primera clase** - Puedes escribir bytes literales
+### Principios Fundamentales
+
+1. **No ASM intermedio** — Emitimos bytes x86-64 directamente
+2. **No linker externo** — Generamos PE/ELF completos en memoria
+3. **No runtime pesado** — El binario es autosuficiente
+4. **HEX es ciudadano de primera clase** — Puedes escribir bytes literales
+5. **CPU y GPU trabajan por separado** — Contratos directos para cada uno
+
+---
+
+## 🔵 CPU Backend (Binario) - Contratos Directos
+
+### Arquitectura CPU
+```
+┌────────────────────────────────────────────────────────────┐
+│                    CPU Backend                             │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│  Código ADead-BIB                                          │
+│       ↓                                                    │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              BINARY EMITTER                         │   │
+│  │                                                     │   │
+│  │  codegen_v2.rs  →  Genera bytes x86-64              │   │
+│  │  binary_raw.rs  →  Emisor de bytes directos         │   │
+│  │  pe_tiny.rs     →  PE ultra-compacto (<500 bytes)   │   │
+│  │  pe.rs          →  Windows PE estándar              │   │
+│  │  elf.rs         →  Linux ELF                        │   │
+│  └─────────────────────────────────────────────────────┘   │
+│       ↓                                                    │
+│  .exe / .elf (Binario Nativo)                              │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Literales Binarios Implementados ✅
+```rust
+// Literales binarios (0b...)
+let mask = 0b11110000          // 240
+let bits = 0b1010_1010         // 170 (con separadores)
+
+// Literales HEX para opcodes CPU
+let push_rbp = 0x55            // push rbp
+let ret = 0xC3                 // ret
+let call = 0xE8                // call rel32
+
+// Literales octales (bonus)
+let perms = 0o755              // 493
+```
+
+### Tabla de Opcodes x86-64
+| Instrucción | Bytes | Descripción |
+|-------------|-------|-------------|
+| `push rbp` | `0x55` | Guardar base pointer |
+| `mov rbp, rsp` | `0x48 0x89 0xE5` | Setup stack frame |
+| `pop rbp` | `0x5D` | Restaurar base pointer |
+| `ret` | `0xC3` | Retornar |
+| `xor rax, rax` | `0x48 0x31 0xC0` | Limpiar rax |
+| `call rel32` | `0xE8 [4 bytes]` | Llamar función |
+| `jmp rel32` | `0xE9 [4 bytes]` | Salto incondicional |
+
+### Calling Convention Windows x64
+```
+Parámetros: RCX, RDX, R8, R9 (primeros 4)
+            Stack (resto)
+Retorno:    RAX
+Preservar:  RBX, RBP, RDI, RSI, R12-R15
+Alineación: Stack a 16 bytes antes de call
+```
+
+---
+
+## 🟢 GPU Backend (HEX) - Contratos Directos
+
+### Arquitectura GPU (Dos Niveles)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    GPU Backend                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Nivel 1: Opcodes ADead-BIB (0xC0DA...)                     │
+│    - Tu contrato                                            │
+│    - Tu formato                                             │
+│    - Portable                                               │
+│    - Documentado                                            │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Nivel 2: Backend por target                                │
+│    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│    │    SPIR-V    │  │     CUDA     │  │    Vulkan    │     │
+│    │  (Todas GPU) │  │   (NVIDIA)   │  │   (Runtime)  │     │
+│    └──────────────┘  └──────────────┘  └──────────────┘     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Tabla de Opcodes GPU
+| Opcode | HEX | Descripción |
+|--------|-----|-------------|
+| `GPU_INIT` | `0xC0DA0001` | Inicializar contexto |
+| `GPU_SHUTDOWN` | `0xC0DA0002` | Cerrar contexto |
+| `GPU_ALLOC` | `0xC0DA0010` | Reservar memoria |
+| `GPU_FREE` | `0xC0DA0011` | Liberar memoria |
+| `GPU_COPY_H2D` | `0xC0DA0012` | Host → Device |
+| `GPU_COPY_D2H` | `0xC0DA0013` | Device → Host |
+| `GPU_MATMUL` | `0xC0DA0020` | Multiplicación matrices |
+| `GPU_ADD` | `0xC0DA0021` | Suma tensores |
+| `GPU_MUL` | `0xC0DA0023` | Multiplicación elemento |
+| `GPU_SYNC` | `0xC0DA00F0` | Sincronizar |
+| `GPU_END` | `0xC0DAFFFF` | Fin programa |
+
+### Relación CPU ↔ GPU
+```
+CPU prepara → GPU ejecuta → CPU recibe
+
+CPU:
+  1. Escribe datos en memoria
+  2. Escribe comandos GPU
+  3. Dispara ejecución
+  4. Se aparta
+
+GPU:
+  1. Lee comandos
+  2. Ejecuta kernels
+  3. Escribe resultados
+  4. Sin volver a preguntar
+```
+
+**La CPU NO mira cada iteración.**
+**La GPU NO pide permiso.**
 
 ---
 
@@ -31,133 +156,52 @@ ADead-BIB (2-3 capas):
 
 | Componente | Estado | Descripción |
 |------------|--------|-------------|
-| **Lexer** | ✅ Completo | Tokenización con tracking de líneas |
-| **Parser** | ✅ Funcional | Sintaxis Rust-style + Python-style |
+| **Lexer** | ✅ Completo | HEX/BIN/OCT literals |
+| **Parser** | ✅ Funcional | Sintaxis Rust + Python |
 | **Type Checker** | ⚠️ Básico | Inferencia limitada |
-| **Binary CodeGen** | ✅ Funcional | Emite bytes x86-64 directamente |
-| **PE Generator** | ✅ Funcional | Windows executables sin linker |
-| **ELF Generator** | ✅ Funcional | Linux executables sin linker |
-| **GPU HEX** | ✅ Funcional | Opcodes GPU directos (Vulkan/CUDA) |
-| **Tests** | 61 pasando | ✅ |
+| **CPU Binary** | ✅ Funcional | Bytes x86-64 directos |
+| **GPU HEX** | ✅ Funcional | Opcodes 0xC0DA... |
+| **SPIR-V Backend** | ✅ Funcional | Todas las GPUs Vulkan |
+| **CUDA Backend** | ✅ Funcional | NVIDIA PTX |
+| **PE Generator** | ✅ Funcional | Windows sin linker |
+| **ELF Generator** | ✅ Funcional | Linux sin linker |
+| **Tests** | ✅ Pasando | CPU + GPU + v2.0 |
 
 ---
 
 ## ✅ Versiones Completadas
 
-### v0.5.0 ✅ - Fundamentos
-- [x] Sintaxis estilo Rust (`fn`, `let`, `const`)
-- [x] `print()` y `println()`
-- [x] Secuencias de escape (`\n`, `\t`, `\r`)
-- [x] Operaciones aritméticas (+, -, *, /, %)
-- [x] **Compilación directa a bytes x86-64**
-- [x] Generador PE integrado (sin linker)
+### v0.5.0 - v1.6.0 ✅ (Fundamentos)
+- [x] Sintaxis Rust/Python
+- [x] Compilación directa a bytes x86-64
+- [x] Control de flujo (if, while, for)
+- [x] Funciones con calling convention
+- [x] OOP (structs, classes, traits)
+- [x] Arrays, módulos, input()
+- [x] GPU básico (Vulkan/CUDA)
 
-### v0.6.0 ✅ - Control de Flujo
-- [x] `if` / `else` → bytes de salto condicional directos
-- [x] `while` / `for` loops → bytes de loop directos
-- [x] `break` y `continue`
-- [x] Comparaciones: `==`, `!=`, `<`, `>`, `<=`, `>=`
-
-### v0.7.0 ✅ - Funciones
-- [x] `fn nombre() { }` → prólogo/epílogo en bytes
-- [x] Parámetros y retorno
-- [x] Recursión
-- [x] Calling convention Windows x64
-
-### v0.8.0 ✅ - Tipos de Datos
-- [x] Booleanos (`true`, `false`)
-- [x] Enteros i64
-- [x] Flotantes f64 (IEEE 754 directo)
-- [x] Strings (punteros a data section)
-
-### v0.9.0 ✅ - Entrada de Usuario
-- [x] `input()` → llamada a scanf via IAT
-
-### v1.0.0 ✅ - Estabilidad
-- [x] Errores con línea y columna
-- [x] 61 tests automatizados
-- [x] Documentación ES/EN
-
-### v1.1.0 ✅ - Flotantes Reales
-- [x] Decimales con precisión (%.2f)
-- [x] PI, E como constantes
-
-### v1.2.0 ✅ - OOP y GPU
-- [x] `struct` y `impl`
-- [x] GPU Backend (Vulkan SPIR-V + CUDA)
-- [x] Pipeline CPU↔GPU unificado
-
-### v1.3.0 - v1.6.0 ✅ - Features Avanzados
-- [x] Arrays: `[1, 2, 3]`, indexación, `len()`, iteración
-- [x] Conversiones: `int()`, `float()`, `bool()`
-- [x] Módulos: `import`, `from X import Y`
-- [x] Traits: `trait`, `impl Trait for Struct`
-- [x] Clases Python-style: `class`, `def`
+### v2.0.0 ✅ (HEX-First Architecture)
+- [x] **Literales HEX**: `0xFF`, `0x1234`, `0xFF_FF`
+- [x] **Literales Binarios**: `0b11110000`, `0b1111_0000`
+- [x] **Literales Octales**: `0o755`, `0o777`
+- [x] **Separadores estilo Rust**: `0xFF_FF`, `0b1111_0000`
+- [x] **Tests CPU organizados**: binario/, opcodes/, contratos/
+- [x] **Tests GPU organizados**: hex/, opcodes/, contratos/
+- [x] **Documentación de estructura**: docs/ESTRUCTURA.md
 
 ---
 
-## 🔥 v2.0.0 - HEX-First Architecture (NUEVA VISIÓN)
+## 🔥 v2.1.0 - CPU Direct Instructions (PRÓXIMO)
 
-### 2.1 Literales Binarios Nativos
+### Objetivo
+Funciones que emiten instrucciones x86-64 directamente.
+
+### Sintaxis Propuesta
 ```rust
-// Literales HEX directos en el código
-let opcode = 0x48_89_E5      // mov rbp, rsp
-let mask = 0b1111_0000       // Binario literal
-let byte = 0xC3              // ret
-
-// Bytes como array
-let code: [u8] = [0x55, 0x48, 0x89, 0xE5, 0xC3]
-```
-
-### 2.2 Modo Raw Binary
-```rust
-// Archivo que compila a bytes puros (sin headers PE/ELF)
-#![mode(raw)]
-#![base(0x1000)]
-
-fn _start() {
-    // Genera solo los bytes de código
-}
-// Output: archivo .bin con bytes puros
-```
-
-### 2.3 Inline HEX (Nuevo)
-```rust
-fn fast_function() {
-    // Insertar bytes directamente en el flujo de código
-    emit![0x48, 0x31, 0xC0]  // xor rax, rax
-    emit![0xC3]              // ret
-}
-```
-
-### 2.4 Formatos de Salida
-| Formato | Extensión | Descripción |
-|---------|-----------|-------------|
-| PE | `.exe` | Windows executable con headers |
-| ELF | (sin ext) | Linux executable con headers |
-| Raw | `.bin` | Bytes puros sin headers |
-| Intel HEX | `.hex` | Formato Intel HEX |
-| ADead Hybrid | `.ahyb` | Binario CPU+GPU combinado |
-
-### 2.5 Operaciones Bit-Level
-```rust
-let x: u8 = 0b1010_1100
-let shifted = x << 4         // Shift left
-let masked = x & 0xF0        // AND mask
-let bit3 = x.bit(3)          // Extraer bit individual
-let packed = pack(a, b, c)   // Empaquetar bytes
-```
-
----
-
-## 🔥 v2.1.0 - CPU Direct Instructions
-
-### Instrucciones x86-64 como Funciones
-```rust
-// Mapeo 1:1 a instrucciones de CPU
-// NO es ASM textual - son funciones que emiten bytes
-
 fn optimized_loop() {
+    // Mapeo 1:1 a instrucciones de CPU
+    // NO es ASM textual - son funciones que emiten bytes
+    
     cpu::mov(rcx, 1000000)   // Emite: 48 B9 [imm64]
     cpu::xor(rax, rax)       // Emite: 48 31 C0
     
@@ -169,30 +213,89 @@ fn optimized_loop() {
 }
 ```
 
-### Registros como Valores
-```rust
-// Registros disponibles como constantes tipadas
-let result = cpu::rax       // Leer registro
-cpu::rax = 42               // Escribir registro (emite mov)
-
-// Registros: rax, rbx, rcx, rdx, rsi, rdi, r8-r15
-// XMM: xmm0-xmm15 (para SIMD)
-```
+### Tareas
+- [ ] Implementar módulo `cpu::` con funciones de instrucciones
+- [ ] Registros como constantes tipadas (rax, rbx, rcx, etc.)
+- [ ] Validación de operandos en tiempo de compilación
+- [ ] Tests para cada instrucción
 
 ---
 
-## 🔥 v2.2.0 - GPU HEX Unificado
+## 🔥 v2.2.0 - GPU Direct Functions
 
-### Opcodes GPU Directos
+### Objetivo
+Funciones que emiten opcodes GPU directamente.
+
+### Sintaxis Propuesta
 ```rust
-// Código GPU como bytes directos
-gpu::init()                          // 0xC0DA0001
-gpu::alloc(4096, reg0)               // 0xC0DA0010
-gpu::matmul(reg0, reg1, reg2)        // 0xC0DA0020
-gpu::sync()                          // 0xC0DA00FF
+fn gpu_matmul() {
+    gpu::init()                          // 0xC0DA0001
+    gpu::alloc(4096, reg0)               // 0xC0DA0010
+    gpu::matmul(reg0, reg1, reg2)        // 0xC0DA0020
+    gpu::sync()                          // 0xC0DA00F0
+}
 ```
 
-### Formato AHYB (ADead Hybrid Binary)
+### Tareas
+- [ ] Implementar módulo `gpu::` con funciones de opcodes
+- [ ] Registros GPU como constantes
+- [ ] Generación automática de command buffer
+- [ ] Tests para cada opcode
+
+---
+
+## 🔥 v2.3.0 - emit![] Macro
+
+### Objetivo
+Insertar bytes directamente en el flujo de código.
+
+### Sintaxis Propuesta
+```rust
+fn fast_function() {
+    // Insertar bytes directamente
+    emit![0x48, 0x31, 0xC0]  // xor rax, rax
+    emit![0xC3]              // ret
+}
+```
+
+### Tareas
+- [ ] Implementar macro `emit![]` en el parser
+- [ ] Validación de bytes en tiempo de compilación
+- [ ] Integración con el flujo de código existente
+- [ ] Tests
+
+---
+
+## 🔥 v2.4.0 - Modo Raw Binary
+
+### Objetivo
+Compilar a bytes puros sin headers PE/ELF.
+
+### Sintaxis Propuesta
+```rust
+#![mode(raw)]
+#![base(0x1000)]
+
+fn _start() {
+    // Genera solo los bytes de código
+}
+// Output: archivo .bin con bytes puros
+```
+
+### Tareas
+- [ ] Implementar atributo `#![mode(raw)]`
+- [ ] Implementar atributo `#![base(addr)]`
+- [ ] Generador de .bin sin headers
+- [ ] Tests
+
+---
+
+## 🔥 v2.5.0 - Formato AHYB (ADead Hybrid Binary)
+
+### Objetivo
+Binario que contiene código CPU + GPU en un solo archivo.
+
+### Formato
 ```
 ┌─────────────────────────────────┐
 │ Header AHYB (8 bytes)           │
@@ -204,342 +307,150 @@ gpu::sync()                          // 0xC0DA00FF
 ├─────────────────────────────────┤
 │ CPU Section (bytes x86-64)      │
 ├─────────────────────────────────┤
-│ GPU Section (opcodes GPU)       │
+│ GPU Section (opcodes HEX)       │
 └─────────────────────────────────┘
 ```
 
----
-
-## 🛠️ Arquitectura del Compilador (Nueva)
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    ADead-BIB Compiler v2.0                        │
-│                    "Binary Is Binary"                             │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  Source (.adB)                                                    │
-│       │                                                           │
-│       ▼                                                           │
-│  ┌─────────┐     ┌────────┐     ┌─────────────┐                  │
-│  │  Lexer  │ ──▶ │ Parser │ ──▶ │ Type Check  │                  │
-│  └─────────┘     └────────┘     └─────────────┘                  │
-│                                        │                          │
-│                                        ▼                          │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │              BINARY EMITTER (No ASM!)                       │  │
-│  │                                                             │  │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │  │
-│  │  │ CPU x86-64   │  │ GPU Vulkan   │  │ GPU CUDA     │      │  │
-│  │  │ Bytes Direct │  │ SPIR-V Direct│  │ PTX Direct   │      │  │
-│  │  └──────────────┘  └──────────────┘  └──────────────┘      │  │
-│  │         │                  │                 │              │  │
-│  │         ▼                  ▼                 ▼              │  │
-│  │  ┌──────────────────────────────────────────────────┐      │  │
-│  │  │              BYTE STREAM                          │      │  │
-│  │  │  [0x55, 0x48, 0x89, 0xE5, ...]                   │      │  │
-│  │  └──────────────────────────────────────────────────┘      │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                        │                          │
-│                                        ▼                          │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │              FORMAT GENERATOR                               │  │
-│  │                                                             │  │
-│  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌──────┐ │  │
-│  │  │  PE    │  │  ELF   │  │  RAW   │  │  HEX   │  │ AHYB │ │  │
-│  │  │ .exe   │  │ binary │  │  .bin  │  │  .hex  │  │.ahyb │ │  │
-│  │  └────────┘  └────────┘  └────────┘  └────────┘  └──────┘ │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                   │
-└──────────────────────────────────────────────────────────────────┘
-```
+### Tareas
+- [ ] Definir especificación AHYB
+- [ ] Generador de archivos .ahyb
+- [ ] Loader de archivos .ahyb
+- [ ] Tests
 
 ---
 
-## 📁 Estructura del Código Fuente
+## 🧹 v2.6.0 - Post-Procesamiento
 
-```
-src/rust/
-├── frontend/           # Análisis de código fuente
-│   ├── lexer.rs       # Tokenización
-│   ├── parser.rs      # Parsing a AST
-│   ├── ast.rs         # Definición del AST
-│   └── type_checker.rs
-│
-├── backend/
-│   ├── cpu/           # Generación de bytes CPU
-│   │   ├── binary_emitter.rs   # 🔥 Core: emite bytes x86-64
-│   │   ├── x86_opcodes.rs      # Tabla de opcodes x86-64
-│   │   ├── pe_generator.rs     # Genera PE sin linker
-│   │   ├── elf_generator.rs    # Genera ELF sin linker
-│   │   └── raw_binary.rs       # Output bytes puros
-│   │
-│   └── gpu/           # Generación de bytes GPU
-│       ├── hex_emitter.rs      # 🔥 Core: emite opcodes GPU
-│       ├── spirv_direct.rs     # SPIR-V sin GLSL
-│       ├── cuda_direct.rs      # PTX directo
-│       └── ahyb_format.rs      # Formato híbrido
-│
-├── optimizer/         # Optimizaciones a nivel de bytes
-│   ├── peephole.rs    # Optimización de secuencias de bytes
-│   └── simd.rs        # Auto-vectorización
-│
-└── main.rs            # CLI
-```
+### Objetivo
+Eliminar ruido del binario final.
 
----
-
-## 🔢 Tabla de Bytes x86-64 (Referencia Interna)
-
-| Instrucción | Bytes | Descripción |
-|-------------|-------|-------------|
-| `push rbp` | `55` | Guardar base pointer |
-| `mov rbp, rsp` | `48 89 E5` | Setup stack frame |
-| `pop rbp` | `5D` | Restaurar base pointer |
-| `ret` | `C3` | Retornar |
-| `xor rax, rax` | `48 31 C0` | Limpiar rax (return 0) |
-| `mov rax, imm64` | `48 B8 [8 bytes]` | Cargar inmediato 64-bit |
-| `inc rcx` | `48 FF C1` | Incrementar rcx |
-| `dec rcx` | `48 FF C9` | Decrementar rcx |
-| `jmp rel8` | `EB [1 byte]` | Salto corto |
-| `jmp rel32` | `E9 [4 bytes]` | Salto largo |
-| `call rel32` | `E8 [4 bytes]` | Llamar función |
-
----
-
-## 🎮 Opcodes GPU (Referencia Interna)
-
-| Opcode | HEX | Descripción |
-|--------|-----|-------------|
-| GPU_INIT | `0xC0DA0001` | Inicializar contexto |
-| GPU_ALLOC | `0xC0DA0010` | Reservar memoria |
-| GPU_FREE | `0xC0DA0011` | Liberar memoria |
-| GPU_COPY_H2D | `0xC0DA0012` | Host → Device |
-| GPU_COPY_D2H | `0xC0DA0013` | Device → Host |
-| GPU_MATMUL | `0xC0DA0020` | Multiplicación matrices |
-| GPU_ADD | `0xC0DA0021` | Suma tensores |
-| GPU_RELU | `0xC0DA0030` | Activación ReLU |
-| GPU_SOFTMAX | `0xC0DA0033` | Softmax |
-| GPU_SYNC | `0xC0DA00F0` | Sincronizar |
-| GPU_END | `0xC0DAFFFF` | Fin programa |
-
----
-
-## 📋 Prioridades de Desarrollo
-
-| Prioridad | Feature | Versión |
-|-----------|---------|---------|
-| 🔴 **CRÍTICO** | `emit![]` macro para inline HEX | v2.0.0 |
-| 🔴 **CRÍTICO** | Modo `#![mode(raw)]` | v2.0.0 |
-| 🔴 **CRÍTICO** | Output `.bin` y `.hex` | v2.0.0 |
-| 🟡 **ALTO** | Funciones `cpu::*` | v2.1.0 |
-| 🟡 **ALTO** | GPU HEX unificado | v2.2.0 |
-| 🟢 **MEDIO** | Formato AHYB | v2.2.0 |
-| 🟢 **MEDIO** | Optimizador peephole | v2.3.0 |
-
----
-
-## 🧹 v2.3.0 - Post-Procesamiento (Eliminar Ruido)
-
-### Filosofía: Binario Limpio
-El post-procesamiento es **OBLIGATORIO** para eliminar todo el ruido del binario final.
-
-```
-ANTES del post-procesamiento:
-  [headers][padding][código][padding][datos][padding][metadatos]
-  
-DESPUÉS del post-procesamiento:
-  [headers mínimos][código optimizado][datos compactos]
-```
-
-### Optimizaciones de Limpieza
+### Optimizaciones
 | Optimización | Descripción | Ahorro |
 |--------------|-------------|--------|
-| **Strip padding** | Eliminar bytes de relleno innecesarios | ~20% |
+| **Strip padding** | Eliminar bytes de relleno | ~20% |
 | **Dead code removal** | Eliminar código no alcanzable | ~10% |
-| **Constant folding** | `2 + 3` → `5` en tiempo de compilación | ~5% |
-| **String dedup** | Strings duplicados → una sola copia | ~5% |
-| **NOP elimination** | Eliminar NOPs de alineación innecesarios | ~3% |
+| **Constant folding** | `2 + 3` → `5` en compilación | ~5% |
+| **String dedup** | Strings duplicados → una copia | ~5% |
+| **NOP elimination** | Eliminar NOPs innecesarios | ~3% |
 
-### Modos de Limpieza
+### Modos
 ```rust
-// Modo normal (default)
-#![clean(normal)]
-
-// Modo agresivo (binario más pequeño)
-#![clean(aggressive)]
-
-// Modo debug (sin limpieza, para debugging)
-#![clean(none)]
+#![clean(normal)]      // Default
+#![clean(aggressive)]  // Binario más pequeño
+#![clean(none)]        // Sin limpieza (debug)
 ```
-
-### Resultado Esperado
-| Programa | Sin limpiar | Limpio | Reducción |
-|----------|-------------|--------|-----------|
-| Hello World | 2048 bytes | 512 bytes | **75%** |
-| Loop simple | 2560 bytes | 768 bytes | **70%** |
-| Con funciones | 3072 bytes | 1024 bytes | **67%** |
 
 ---
 
 ## 📝 Sintaxis Humana (Principio Core)
 
-### Filosofía: Simple para Humanos, Directo a Bytes
-La sintaxis de ADead-BIB está diseñada para ser **legible por humanos** mientras compila **directamente a bytes**.
+### Filosofía
+**Simple para humanos, directo a bytes.**
 
-### Sintaxis Básica (Mantenida Simple)
 ```rust
-// Variables - como escribirías en papel
+// Lo que escribes (humano)
+let x = 0xFF
+let y = 0b11110000
+let sum = x + y
+
+// Lo que genera (bytes)
+48 C7 C0 FF 00 00 00    ; mov rax, 255
+48 C7 C1 F0 00 00 00    ; mov rcx, 240
+48 01 C8                ; add rax, rcx
+```
+
+### Sintaxis Soportada
+```rust
+// Variables
 let x = 42
-let nombre = "Hola"
-let activo = true
+let hex = 0xFF
+let bin = 0b1010
 
-// Funciones - clara y directa
-fn saludar(nombre) {
-    println("Hola, " + nombre)
+// Funciones
+fn add(a, b) {
+    return a + b
 }
 
-// Control de flujo - sin sorpresas
-if x > 10 {
-    println("Grande")
-} else {
-    println("Pequeño")
+// Control de flujo
+if x == 0xFF {
+    println("Max byte!")
 }
 
-// Loops - intuitivos
 for i in 0..10 {
     println(i)
 }
 
-while activo {
-    // hacer algo
+// OOP
+struct Point { x, y }
+impl Point {
+    fn new(x, y) { return Point { x, y } }
 }
 ```
 
-### Mapeo Sintaxis → Bytes
-| Sintaxis Humana | Bytes Generados | Descripción |
-|-----------------|-----------------|-------------|
-| `let x = 42` | `48 C7 45 F8 2A 00 00 00` | mov [rbp-8], 42 |
-| `x + y` | `48 03 C1` | add rax, rcx |
-| `if x > 0` | `48 83 F8 00` `7E xx` | cmp rax, 0; jle |
-| `fn foo()` | `55 48 89 E5` | push rbp; mov rbp, rsp |
-| `return` | `5D C3` | pop rbp; ret |
-| `println(x)` | `E8 xx xx xx xx` | call printf |
-
-### Principios de Diseño
-1. **Legibilidad** - El código debe leerse como pseudocódigo
-2. **Predictibilidad** - Cada construcción genera bytes predecibles
-3. **Sin magia** - No hay transformaciones ocultas
-4. **Directo** - Mínimas capas entre código y binario
-
 ---
 
-## 🧪 Estructura de Tests
+## 🧪 Tests Organizados
 
-### Carpeta TESTEO/ (Organización)
+### Estructura
 ```
 TESTEO/
-├── v1/                     # Tests de versiones 1.x
-│   ├── arrays/             # Arrays y colecciones
-│   ├── conversiones/       # int(), float(), bool()
-│   ├── input/              # input() real
-│   ├── len/                # len() function
-│   ├── modules/            # Sistema de módulos
-│   ├── traits/             # Traits e interfaces
-│   └── integrados/         # Tests completos por versión
+├── CPU/                     # Tests CPU (Binario)
+│   ├── binario/             # Literales 0b...
+│   ├── opcodes/             # Opcodes x86-64
+│   └── contratos/           # Calling conventions
 │
-├── v2/                     # Tests de versiones 2.x (NUEVO)
-│   ├── hex/                # Literales HEX
-│   │   ├── test_hex_literal.adB
-│   │   ├── test_binary_literal.adB
-│   │   └── test_emit_macro.adB
-│   ├── raw/                # Modo raw binary
-│   │   ├── test_raw_mode.adB
-│   │   └── test_base_address.adB
-│   ├── cpu/                # Instrucciones CPU directas
-│   │   ├── test_cpu_mov.adB
-│   │   ├── test_cpu_loop.adB
-│   │   └── test_registers.adB
-│   ├── gpu/                # GPU HEX
-│   │   ├── test_gpu_init.adB
-│   │   ├── test_gpu_matmul.adB
-│   │   └── test_ahyb_format.adB
-│   ├── clean/              # Post-procesamiento
-│   │   ├── test_strip_padding.adB
-│   │   ├── test_dead_code.adB
-│   │   └── test_size_comparison.adB
-│   └── integrados/         # Tests completos v2.x
-│       ├── test_v2_0_0_hex_first.adB
-│       ├── test_v2_1_0_cpu_direct.adB
-│       └── test_v2_2_0_gpu_hex.adB
+├── GPU/                     # Tests GPU (HEX)
+│   ├── hex/                 # Literales 0x...
+│   ├── opcodes/             # Opcodes GPU
+│   └── contratos/           # Command buffers
 │
-└── README.md               # Documentación de tests
+└── v2/                      # Tests v2.0.0
+    ├── hex/
+    ├── raw/
+    ├── cpu/
+    ├── gpu/
+    └── integrados/
 ```
 
-### Comandos de Test
+### Comandos
 ```bash
-# Ejecutar todos los tests
-cargo test
+# Tests CPU
+cargo run --bin adeadc -- run TESTEO/CPU/binario/test_binary_literals.adB
+cargo run --bin adeadc -- run TESTEO/CPU/opcodes/test_x86_opcodes.adB
 
-# Test específico v2.0
-cargo run --bin adeadc -- run TESTEO/v2/hex/test_hex_literal.adB
+# Tests GPU
+cargo run --bin adeadc -- run TESTEO/GPU/hex/test_hex_literals.adB
+cargo run --bin adeadc -- run TESTEO/GPU/opcodes/test_gpu_opcodes.adB
 
-# Test de tamaño (post-procesamiento)
-cargo run --bin adeadc -- build TESTEO/v2/clean/test_size_comparison.adB --clean aggressive
+# Test integrado v2.0
+cargo run --bin adeadc -- run TESTEO/v2/integrados/test_v2_0_0_hex_first.adB
 ```
 
 ---
 
-## 🐛 Bugs Conocidos
+## 📅 Timeline Estimado
 
-| Prioridad | Bug | Estado |
-|-----------|-----|--------|
-| 🔴 Alta | Type Checker no infiere retornos | Pendiente |
-| 🟡 Media | Parser Python-style sin indentación real | Pendiente |
-| 🟢 Baja | Warnings de variables no usadas | Pendiente |
-
----
-
-## 📜 Historial de Cambios
-
-| Versión | Fecha | Cambios |
-|---------|-------|---------|
-| v2.0.0 | 2025-01 | 🔥 HEX-First Architecture |
-| v1.6.0 | 2024-12 | Traits e interfaces |
-| v1.5.0 | 2024-12 | Sistema de módulos |
-| v1.4.0 | 2024-12 | Input real (scanf) |
-| v1.3.0 | 2024-12 | Arrays y conversiones |
-| v1.2.0 | 2024-12 | Structs, impl, GPU |
-| v1.1.0 | 2024-12 | Flotantes reales |
-| v1.0.0 | 2024-12 | Estabilidad |
+| Versión | Objetivo | Estimado |
+|---------|----------|----------|
+| v2.0.0 | HEX-First Architecture | ✅ Completado |
+| v2.1.0 | CPU Direct Instructions | Q1 2025 |
+| v2.2.0 | GPU Direct Functions | Q1 2025 |
+| v2.3.0 | emit![] Macro | Q2 2025 |
+| v2.4.0 | Modo Raw Binary | Q2 2025 |
+| v2.5.0 | Formato AHYB | Q3 2025 |
+| v2.6.0 | Post-Procesamiento | Q3 2025 |
 
 ---
 
-## 🤝 Contribuir
+## 🔗 Documentación
 
-1. Fork el repositorio
-2. `git checkout -b feature/mi-feature`
-3. `cargo test`
-4. Pull Request
-
-### Áreas de ayuda
-- Implementar `emit![]` macro
-- Más opcodes x86-64 en tabla
-- Testing Linux ELF
-- Documentación de bytes
+- [README.md](README.md) — Documentación principal (inglés)
+- [GUIA_ES.md](GUIA_ES.md) — Guía en español
+- [docs/ESTRUCTURA.md](docs/ESTRUCTURA.md) — Estructura del proyecto
+- [TESTEO/README.md](TESTEO/README.md) — Guía de tests
 
 ---
 
-## 📚 Recursos
-
-- **Docs**: `GUIA_ES.md`, `GUIDE_EN.md`
-- **Ejemplos**: `/examples/*.adB`
-- **Tests**: `cargo test`
-- **Intel x86-64 Manual**: Referencia de opcodes
-
----
-
-*ADead-BIB: Donde el código se convierte en bytes, sin intermediarios.*
-
-*Creado por Eddi Andreé Salazar Matos* 🇵🇪
-*Última actualización: Enero 2025*
+**ADead-BIB: Código → Bytes → Binario**
+**CPU (Binario) + GPU (HEX) = Contratos Directos**
+**Sin ASM. Sin LLVM. Sin mentiras.**

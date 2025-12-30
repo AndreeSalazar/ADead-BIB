@@ -1,59 +1,62 @@
-// ADead-BIB v2.0.0 - Test de Valores Binarios
-// Demuestra el concepto de Binary Is Binary
-// NOTA: Literales 0b... son v2.0.0 (pendiente implementar en lexer)
-// Por ahora usamos valores decimales equivalentes
+// ADead-BIB v2.0.0 - Test de Literales Binarios
+// Prueba que los literales binarios (0b...) funcionan
+// IMPLEMENTADO en lexer v2.0.0
 
 fn main() {
     println("+========================================+")
-    println("|  ADead-BIB v2.0.0 - Test Binary Values|")
+    println("|  ADead-BIB v2.0.0 - Test Binary Literal|")
     println("|  Binary Is Binary                     |")
     println("+========================================+")
     
-    // Test 1: Valores equivalentes a binario
-    // 0b11110000 = 240, 0b11111111 = 255, 0b00000000 = 0
-    let bit_pattern = 240
-    let all_ones = 255
-    let all_zeros = 0
+    // Test 1: Literales binarios reales
+    let bit_pattern = 0b11110000
+    let all_ones = 0b11111111
+    let all_zeros = 0b00000000
     
     println("")
-    println("[1] Valores equivalentes a binario")
-    print("    240 (0b11110000) = ")
+    println("[1] Literales binarios reales")
+    print("    0b11110000 = ")
     println(bit_pattern)
-    print("    255 (0b11111111) = ")
+    print("    0b11111111 = ")
     println(all_ones)
-    print("    0 (0b00000000) = ")
+    print("    0b00000000 = ")
     println(all_zeros)
     
-    // Test 2: Aritmetica
-    // 0b00001000 = 8, 0b00000010 = 2
-    let a = 8
-    let b = 2
+    // Test 2: Aritmetica con binarios
+    let a = 0b00001000
+    let b = 0b00000010
     let suma = a + b
     let mult = a * 2
     
     println("")
-    println("[2] Aritmetica (valores binarios)")
-    print("    8 (0b00001000) + 2 (0b00000010) = ")
+    println("[2] Aritmetica con binarios")
+    print("    0b00001000 + 0b00000010 = ")
     println(suma)
-    print("    8 (0b00001000) * 2 = ")
+    print("    0b00001000 * 2 = ")
     println(mult)
     
     // Test 3: Verificacion de valores
     println("")
     println("[3] Verificacion de valores")
     if bit_pattern == 240 {
-        println("    240 == 0b11110000: OK")
+        println("    0b11110000 == 240: OK")
     }
     if all_ones == 255 {
-        println("    255 == 0b11111111: OK")
+        println("    0b11111111 == 255: OK")
     }
     if all_zeros == 0 {
-        println("    0 == 0b00000000: OK")
+        println("    0b00000000 == 0: OK")
     }
+    
+    // Test 4: Binario con separadores estilo Rust
+    let separated = 0b1111_0000
+    println("")
+    println("[4] Binario con separadores")
+    print("    0b1111_0000 = ")
+    println(separated)
     
     println("")
     println("+========================================+")
-    println("|   OK - Concepto binario verificado!   |")
-    println("|   Literales 0b... pendiente v2.0     |")
+    println("|   OK - Literales binarios funcionan!  |")
     println("+========================================+")
 }

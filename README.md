@@ -1,49 +1,29 @@
-# 🔥 ADead-BIB v1.5.0
+# 🔥 ADead-BIB v2.0
 
-**Abstract Dead - Binary In Binary**
+**Binary Is Binary** — Direct compilation to CPU (Binary) + GPU (HEX)
 
-> **An Assembly-family language** with high-level syntax. Write like Rust/Python, execute as pure ASM.
-
-```
-.adB Code → Lexer → Parser → AST → CodeGen → x86-64 Opcodes → PE/ELF Binary
-                                                    ↑
-                                          NO external assembler
-                                          NO linker
-                                          DIRECT to .exe/.elf
-```
-
----
-
-## 🧬 ADead-BIB = Modern Assembly
-
-**ADead-BIB belongs to the Assembly language family**, but with a crucial difference:
-
-| Aspect | Traditional Assembly | ADead-BIB |
-|--------|---------------------|-----------|
-| **Syntax** | `mov rax, 42` | `let x = 42` |
-| **Readability** | Low | High (Rust/Python) |
-| **Productivity** | Slow | Fast |
-| **Control** | Total | Total |
-| **Binary** | Direct | **Direct** |
-| **Size** | Minimal | **Minimal (~1.5 KB)** |
-
-### Why is it ASM family?
+> Write human-friendly code. Get raw bytes. No ASM. No LLVM. No lies.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  print("Hello")                                             │
-│       ↓                                                     │
-│  mov rcx, 0x140003000    ; string address                   │
-│  sub rsp, 40             ; shadow space                     │
-│  call printf             ; direct syscall                   │
-│       ↓                                                     │
-│  48 B9 00 30 00 40 01 00 00 00  ; REAL x86-64 opcodes      │
-│  48 83 EC 28                                                │
-│  FF 15 XX XX XX XX                                          │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│  Your Code (.adB)                                          │
+│       ↓                                                    │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              ADead-BIB Compiler                     │   │
+│  │                                                     │   │
+│  │  ┌──────────────┐      ┌──────────────────────────┐ │   │
+│  │  │     CPU      │      │          GPU             │ │   │
+│  │  │  (Binary)    │      │         (HEX)            │ │   │
+│  │  │              │      │                          │ │   │
+│  │  │ x86-64 bytes │      │ SPIR-V (All GPUs)        │ │   │
+│  │  │ direct emit  │      │ CUDA (NVIDIA)            │ │   │
+│  │  └──────────────┘      └──────────────────────────┘ │   │
+│  └─────────────────────────────────────────────────────┘   │
+│       ↓                           ↓                        │
+│  .exe / .elf                 .spv / .ptx                   │
+│  (Native Binary)             (GPU Bytecode)                │
+└────────────────────────────────────────────────────────────┘
 ```
-
-**No intermediate layers.** Your code converts directly to CPU instructions.
 
 ---
 
@@ -57,108 +37,134 @@
 
 ## 🎯 What is ADead-BIB?
 
-ADead-BIB is an **Assembly-family programming language** that generates native machine code directly. It combines:
+**ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
 
-- **Assembly efficiency** → Total control, minimal binaries
-- **Rust/Python syntax** → Productivity, readability
-- **No intermediaries** → No VM, bytecode, or external assembler
+A programming language that compiles **directly to binary and hexadecimal** without intermediate assembly.
 
-### Language Philosophy
+| Traditional Compilers | ADead-BIB |
+|----------------------|-----------|
+| Code → Tokens → AST → IR → Optimizer → ASM → Assembler → Linker → Binary | Code → AST → **BYTES DIRECT** → Binary/HEX |
+| 7+ layers of translation | 2-3 layers, no intermediaries |
 
-- **ASM Family**: Generates x86-64 opcodes directly, like writing ASM
-- **Modern syntax**: Write `let x = 42` instead of `mov rax, 42`
-- **Ultra-small binaries**: ~1.5 KB (vs 150 KB in Rust, 2 MB in Go)
-- **Full OOP**: Classes, inheritance, polymorphism, traits
-- **100% Rust**: Compiler written entirely in Rust
+### Core Philosophy
 
----
-
-## 🌍 Advantages by Use Case
-
-### 🖥️ Servers and Backend
-
-| Advantage | Impact |
-|-----------|--------|
-| **1.5 KB binaries** | Instant deployment, less storage |
-| **No runtime** | Lower RAM consumption |
-| **Instant startup** | Cold start in microseconds (ideal for serverless) |
-| **Memory control** | No garbage collector, predictable latency |
-
-```
-Use case: Ultra-light microservices, Lambda functions, high-frequency APIs
-```
-
-### 💻 PC and Desktop Applications
-
-| Advantage | Impact |
-|-----------|--------|
-| **Small executables** | Easy distribution, no heavy installers |
-| **Native performance** | C/ASM speed with modern syntax |
-| **No dependencies** | No runtime installation needed |
-| **Instant launch** | App opens immediately |
-
-```
-Use case: CLI tools, system utilities, portable applications
-```
-
-### 🔧 Embedded Systems and IoT
-
-| Advantage | Impact |
-|-----------|--------|
-| **< 2 KB code** | Fits in small microcontrollers |
-| **Hardware control** | Direct access to registers and memory |
-| **No overhead** | Every byte counts in limited systems |
-| **Deterministic** | Predictable execution time |
-
-```
-Use case: Firmware, drivers, IoT devices with limited memory
-```
-
-### 🎮 Game Development
-
-| Advantage | Impact |
-|-----------|--------|
-| **GPU Support (Vulkan)** | Native SPIR-V shaders |
-| **Low latency** | No GC pauses |
-| **Compact binaries** | Games that weigh kilobytes |
-
-```
-Use case: Minimalist game engines, demoscene, retro games
-```
-
-### 📊 Ecosystem Comparison
-
-| Language | Family | Hello World Binary | Runtime | Ideal for |
-|----------|--------|-------------------|---------|-----------|
-| **ADead-BIB** | **ASM** | **~1.5 KB** | **None** | **All of the above** |
-| Assembly | ASM | ~500 bytes | None | Pure low-level |
-| C | Compiled | ~50 KB | libc | Systems, embedded |
-| Rust | Compiled | ~150 KB | std | Safe systems |
-| Go | Compiled | ~2 MB | Go Runtime | Servers |
-| Python | Interpreted | ~5 MB (.exe) | Python VM | Scripts, ML |
-| Java | Bytecode | ~5 MB | JVM | Enterprise |
-
-**ADead-BIB combines the best**: ASM size + modern language productivity.
+1. **No intermediate ASM** — We emit x86-64 bytes directly
+2. **No external linker** — We generate complete PE/ELF in memory
+3. **No heavy runtime** — The binary is self-sufficient
+4. **HEX is first-class** — You can write literal bytes in your code
 
 ---
 
-## ⚡ Main Features
+## 🔵 CPU Backend (Binary)
+
+The CPU backend generates **x86-64 machine code directly** as byte sequences.
+
+### Binary Literals
+```rust
+// Binary literals (0b...)
+let mask = 0b11110000          // 240
+let bits = 0b1010_1010         // 170 (with separators)
+
+// HEX literals for opcodes
+let push_rbp = 0x55            // push rbp
+let ret = 0xC3                 // ret
+let call = 0xE8                // call rel32
+```
+
+### What ADead-BIB Generates
+```
+Your code:
+  fn main() {
+      let x = 42
+      println(x)
+  }
+
+Generated bytes:
+  55                    ; push rbp
+  48 89 E5              ; mov rbp, rsp
+  48 C7 C0 2A 00 00 00  ; mov rax, 42
+  ...
+  5D                    ; pop rbp
+  C3                    ; ret
+```
+
+### CPU Contracts
+- **Calling Convention**: Windows x64 (RCX, RDX, R8, R9)
+- **Stack Alignment**: 16 bytes before `call`
+- **Return Value**: RAX
+
+---
+
+## 🟢 GPU Backend (HEX)
+
+The GPU backend generates **HEX opcodes** that translate to SPIR-V (all GPUs) or CUDA (NVIDIA).
+
+### Two-Level Architecture
+```
+Level 1: ADead-BIB Opcodes (0xC0DA...)
+  - Your contract
+  - Your format
+  - Portable
+  - Documented
+
+Level 2: Backend per target
+  - spirv/   → Vulkan/OpenCL (ALL GPUs)
+  - cuda/    → NVIDIA (PTX direct)
+```
+
+### GPU Opcodes
+```rust
+// HEX literals for GPU
+let GPU_INIT = 0xC0DA0001      // Initialize context
+let GPU_ALLOC = 0xC0DA0010     // Allocate memory
+let GPU_MATMUL = 0xC0DA0020    // Matrix multiplication
+let GPU_SYNC = 0xC0DA00F0      // Synchronize
+let GPU_END = 0xC0DAFFFF       // End program
+```
+
+### GPU Contracts
+- **Command Buffer**: CPU writes commands, GPU executes
+- **Synchronization**: GPU_SYNC for barriers
+- **Memory**: Host (CPU RAM) ↔ Device (GPU VRAM)
+
+### CPU ↔ GPU Relationship
+```
+CPU prepares → GPU executes → CPU receives
+
+CPU:
+  1. Writes data to memory
+  2. Writes GPU commands
+  3. Triggers execution
+  4. Steps aside
+
+GPU:
+  1. Reads commands
+  2. Executes kernels
+  3. Writes results
+  4. Without asking again
+```
+
+**The CPU does NOT watch each iteration.**
+**The GPU does NOT ask for permission.**
+
+---
+
+## ⚡ Features
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **Rust + Python syntax** | ✅ | `fn`/`def`, `let`/direct assignment |
-| **Direct compilation** | ✅ | Generates x86-64 opcodes directly |
-| **Full OOP** | ✅ | Classes, inheritance, polymorphism |
-| **Traits & Interfaces** | ✅ | Behavior abstraction |
-| **Scripts without main()** | ✅ | Direct executable code |
-| **Escape sequences** | ✅ | `\n`, `\t`, `\r` in strings |
-| **Playground mode** | ✅ | Interactive REPL |
+| **HEX Literals (0x...)** | ✅ | `0xFF`, `0x1234`, `0xFF_FF` |
+| **Binary Literals (0b...)** | ✅ | `0b11110000`, `0b1111_0000` |
+| **Octal Literals (0o...)** | ✅ | `0o755`, `0o777` |
+| **Direct CPU Bytes** | ✅ | x86-64 opcodes as bytes |
+| **GPU HEX Opcodes** | ✅ | 0xC0DA... format |
+| **SPIR-V Backend** | ✅ | All Vulkan GPUs |
+| **CUDA Backend** | ✅ | NVIDIA GPUs |
+| **PE Generator** | ✅ | Windows .exe without linker |
+| **ELF Generator** | ✅ | Linux binaries without linker |
 | **Ultra-small binaries** | ✅ | < 2 KB typically |
-| **GPU Support** | ✅ | Vulkan + SPIR-V |
-| **Module System** | ✅ | `import`, `from`, `as` (v1.5.0) |
-| **Real input()** | ✅ | Read from stdin (v1.4.0) |
-| **Arrays** | ✅ | `[1,2,3]`, `len()`, `for x in arr` (v1.3.0) |
-| **100% Rust** | ✅ | No C++ dependencies |
+| **Rust/Python syntax** | ✅ | Human-friendly |
+| **Full OOP** | ✅ | Classes, traits, inheritance |
 
 ---
 
@@ -175,16 +181,19 @@ Use case: Minimalist game engines, demoscene, retro games
 git clone https://github.com/your-user/ADead-BIB.git
 cd ADead-BIB
 
+# Build
+cargo build --release
+
 # Install globally
 cargo install --path .
 
-# Verify installation
+# Verify
 adeadc --help
 ```
 
 ---
 
-## 📋 Compiler Commands
+## 📋 CLI Commands
 
 ```bash
 # Run program (compile and execute)
@@ -197,318 +206,64 @@ adeadc build file.adB -o my_program.exe
 # Check syntax
 adeadc check file.adB
 
-# Interactive mode (REPL/Playground)
-adeadc play
-
 # Ultra-compact binary modes
 adeadc tiny file.adB         # < 500 bytes
-adeadc nano output.exe       # ~1 KB
-adeadc micro output.exe      # < 256 bytes (x86)
 
-# GPU/Vulkan
+# GPU commands
 adeadc gpu                   # Detect GPU
 adeadc spirv matmul 1024     # Generate SPIR-V shader
-adeadc vulkan                # Initialize Vulkan
 ```
 
 ---
 
-## 📝 Language Syntax
+## 📝 Syntax
 
 ### Hello World
-
 ```rust
-// Simplest form - Direct script
-print("Hello, ADead-BIB!")
-
-// With Rust-style main function
 fn main() {
-    print("Hello from Rust-style!")
+    println("Hello, ADead-BIB!")
 }
-
-// With Python-style main function
-def main():
-    print("Hello from Python-style!")
 ```
 
-### Variables
-
+### Variables with Literals
 ```rust
-// Rust style
+// Decimal
 let x = 42
-let mut counter = 0
-const PI = 3
 
-// Python style
-x = 42
-name = "ADead-BIB"
-```
+// HEX
+let byte = 0xFF
+let word = 0x1234
 
-### Data Types
+// Binary
+let mask = 0b11110000
+let bits = 0b1010_1010
 
-```rust
-// Integers
-let integer = 42
-let negative = -17
-let big = 1_000_000    // Thousands separators
-
-// Strings with escape sequences
-let text = "Hello\nWorld"   // Line break
-let tab = "Col1\tCol2"      // Tab
-
-// Booleans
-let is_true = true
-let is_false = false
+// Octal
+let perms = 0o755
 ```
 
 ### Functions
-
 ```rust
-// Rust style with types
-fn add(a: i32, b: i32) -> i32 {
+fn add(a, b) {
     return a + b
 }
 
-// Python style
-def multiply(x, y):
-    return x * y
-
-// Call functions
-let result = add(10, 20)
-print("Result:")
-print(result)
+fn main() {
+    let result = add(0x10, 0x20)
+    println(result)  // 48
+}
 ```
 
 ### Control Flow
-
 ```rust
-// If-else Rust style
-if age >= 18 {
-    print("Adult")
-} else {
-    print("Minor")
+if value == 0xFF {
+    println("Max byte!")
 }
 
-// If-elif-else Python style
-if grade >= 90:
-    print("Excellent")
-elif grade >= 80:
-    print("Very good")
-elif grade >= 70:
-    print("Good")
-else:
-    print("Needs improvement")
-
-// While loop
-let i = 0
-while i < 10 {
-    print(i)
-    i = i + 1
-}
-
-// For loop (Python-style)
-for i in range(10):
-    print(i)
-```
-
-### Arrays (v1.3.0)
-
-```rust
-// Array declaration
-let numbers = [10, 20, 30, 40, 50]
-
-// Length
-let length = len(numbers)
-
-// Iteration
-for x in numbers {
-    println(x)
+for i in 0..10 {
+    println(i)
 }
 ```
-
-### Modules (v1.5.0)
-
-```rust
-// Import from local module
-from mymath import double, triple
-
-// Import from standard library
-from std::math import abs, max
-
-fn main() {
-    println(double(5))  // 10
-}
-```
-
----
-
-## 🏗️ Object-Oriented Programming
-
-### Structs (Rust-style)
-
-```rust
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-impl Point {
-    fn new(x: i32, y: i32) -> Point {
-        return Point { x: x, y: y }
-    }
-    
-    fn distance(&self) -> i32 {
-        return self.x + self.y
-    }
-    
-    fn move_by(&mut self, dx: i32, dy: i32) {
-        self.x = self.x + dx
-        self.y = self.y + dy
-    }
-}
-
-// Usage
-let p = Point { x: 10, y: 20 }
-let d = p.distance()
-```
-
-### Classes with Inheritance (Python/C++ style)
-
-```python
-class Animal:
-    name = ""
-    age = 0
-    
-    def __init__(self, name, age):
-        self.name = name
-        self.age = age
-    
-    virtual def speak(self):
-        print("...")
-    
-    def info(self):
-        print("Name:")
-        print(self.name)
-
-class Dog extends Animal:
-    breed = ""
-    
-    override def speak(self):
-        print("Woof woof!")
-    
-    def bark(self):
-        print("WOOF!")
-
-class Cat extends Animal:
-    override def speak(self):
-        print("Meow!")
-```
-
-### Traits and Interfaces
-
-```rust
-// Rust-style trait
-trait Drawable {
-    fn draw(&self);
-    fn get_color(&self) -> String;
-}
-
-// Python/Java-style interface
-interface Movable:
-    def move(self, x: i32, y: i32)
-    def get_position(self)
-
-// Trait implementation
-impl Drawable for Sprite {
-    fn draw(&self) {
-        print("Drawing sprite...")
-    }
-    
-    fn get_color(&self) -> String {
-        return "red"
-    }
-}
-
-// Class with multiple interfaces
-class Sprite implements Drawable, Movable:
-    x = 0
-    y = 0
-    
-    def draw(self):
-        print("Sprite on screen")
-    
-    def move(self, dx, dy):
-        self.x = self.x + dx
-        self.y = self.y + dy
-```
-
----
-
-## 🎮 Playground Mode (REPL)
-
-The playground mode allows you to write and execute code interactively:
-
-```bash
-adeadc play
-```
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║        🎮 ADead-BIB Playground v0.2.0 🎮                     ║
-║     Interactive mode - Write code and press Enter            ║
-╚══════════════════════════════════════════════════════════════╝
-
-adB[1]> print("Hello!")
-▶️  Executing...
-   → Hello!
-✅ Execution completed
-
-adB[2]> let x = 42
-   x = 42
-
-adB[3]> :help
-🎮 ADead-BIB Playground - Help
-...
-
-adB[4]> :exit
-👋 Goodbye!
-```
-
-### Playground Commands
-
-| Command | Shortcut | Description |
-|---------|----------|-------------|
-| `:help` | `:h` | Show help |
-| `:run` | `:r` | Execute code in buffer |
-| `:clear` | `:c` | Clear buffer |
-| `:ast` | `:a` | Show code AST |
-| `:tokens` | `:t` | Show tokens |
-| `:vars` | `:v` | Show variables |
-| `:example` | `:e` | Load example |
-| `:exit` | `:q` | Exit |
-
----
-
-## ⚡ Binary Sizes
-
-ADead-BIB generates **extremely small** binaries because it writes opcodes directly:
-
-| Mode | Size | Command | Description |
-|------|------|---------|-------------|
-| Standard | ~1.5 KB | `adeadc build` | Complete binary |
-| Tiny | < 500 bytes | `adeadc tiny` | Ultra-compact PE |
-| Nano | ~1 KB | `adeadc nano` | Minimum valid x64 |
-| Micro | < 256 bytes | `adeadc micro` | Sub-256 bytes PE32 |
-
-### Comparison with other languages
-
-| Language | Hello World |
-|----------|-------------|
-| **ADead-BIB** | **~1.5 KB** |
-| C (MinGW) | ~50 KB |
-| Rust | ~150 KB |
-| Go | ~2 MB |
-| Python (.exe) | ~5 MB |
 
 ---
 
@@ -516,181 +271,78 @@ ADead-BIB generates **extremely small** binaries because it writes opcodes direc
 
 ```
 ADead-BIB/
-├── src/rust/                    # Compiler (100% Rust)
-│   ├── frontend/                # Compiler frontend
-│   │   ├── lexer.rs            # Tokenizer (Rust + Python syntax)
-│   │   ├── parser.rs           # Parser (dual syntax)
-│   │   ├── ast.rs              # Abstract Syntax Tree
-│   │   └── type_checker.rs     # Type checking
-│   ├── backend/                 # Code generation backend
-│   │   ├── cpu/                # Direct x86-64
-│   │   │   ├── codegen_v2.rs   # Main generator
-│   │   │   ├── pe.rs           # Windows binaries (PE)
-│   │   │   ├── elf.rs          # Linux binaries (ELF)
-│   │   │   └── syscalls.rs     # Direct syscalls
-│   │   └── gpu/                # GPU/Vulkan
-│   │       ├── vulkan_runtime.rs
-│   │       └── bytecode_spirv.rs
-│   ├── optimizer/              # Optimizations
-│   ├── runtime/                # Minimal runtime
-│   ├── builder.rs              # Build system
-│   └── main.rs                 # Main CLI
-├── std/                         # Standard library (v1.5.0)
-│   ├── math.adB                # Math functions
-│   ├── io.adB                  # I/O functions
-│   └── string.adB              # String utilities
-├── examples/                    # Language examples
-│   ├── 01_hello_world.adB
-│   ├── 02_variables.adB
-│   └── ...
-├── TESTEO/                      # Test suite
-│   ├── arrays/                 # Array tests
-│   ├── modules/                # Module tests
-│   └── integrados/             # Integration tests
-├── Cargo.toml                  # Rust configuration
-└── README.md                   # This file
+├── src/rust/                # Main compiler
+│   ├── frontend/            # Lexer, Parser, AST
+│   ├── backend/
+│   │   ├── cpu/             # Binary x86-64
+│   │   └── gpu/             # HEX/SPIR-V/CUDA
+│   │       ├── hex/         # Core opcodes (0xC0DA...)
+│   │       ├── spirv/       # SPIR-V backend
+│   │       └── cuda/        # CUDA backend
+│   ├── optimizer/
+│   └── runtime/
+│
+├── TESTEO/
+│   ├── CPU/                 # CPU tests (Binary)
+│   ├── GPU/                 # GPU tests (HEX)
+│   └── v2/                  # v2.0.0 tests
+│
+├── examples/                # Code examples
+├── docs/                    # Documentation
+└── Metal_Dead/              # Personal AI project
 ```
 
 ---
 
-## 📚 Examples
-
-The `/examples` folder contains complete examples:
-
-| File | Description |
-|------|-------------|
-| `01_hello_world.adB` | Basic Hello World |
-| `02_variables.adB` | Variables and types |
-| `03_funciones.adB` | Functions with types |
-| `04_control_flujo.adB` | if/while/for |
-| `05_oop_clases.adB` | Classes and structs |
-| `06_herencia_polimorfismo.adB` | Inheritance and override |
-| `07_traits_interfaces.adB` | Traits and interfaces |
-| `08_game_engine.adB` | Game engine demo |
-
-### Run an example
+## 🧪 Running Tests
 
 ```bash
-adeadc run examples/01_hello_world.adB
-```
+# CPU Tests (Binary)
+cargo run --bin adeadc -- run TESTEO/CPU/binario/test_binary_literals.adB
+cargo run --bin adeadc -- run TESTEO/CPU/opcodes/test_x86_opcodes.adB
 
-Output:
-```
-🚀 Running examples/01_hello_world.adB...
+# GPU Tests (HEX)
+cargo run --bin adeadc -- run TESTEO/GPU/hex/test_hex_literals.adB
+cargo run --bin adeadc -- run TESTEO/GPU/opcodes/test_gpu_opcodes.adB
 
-Hello, ADead-BIB!
-Welcome to the language that goes direct to binary
-This is a basic example
-```
-
----
-
-## 🔧 Why ADead-BIB?
-
-### 1. **Direct to Binary (like ASM)**
-ADead-BIB writes x86-64 opcodes directly to the executable file. No intermediate assembler, no external linker.
-
-```
-print("Hello")  →  mov rcx, addr  →  48 B9 XX XX XX XX XX XX XX XX
-                   call printf    →  FF 15 XX XX XX XX
-```
-
-### 2. **Familiar Syntax**
-You can use the syntax you prefer - Rust or Python:
-
-```rust
-// This is valid
-fn main() {
-    let x = 42
-}
-
-// And this too
-def main():
-    x = 42
-```
-
-### 3. **Small Binaries**
-Executables are extremely small because there's no heavy runtime.
-
-### 4. **Full OOP**
-Supports everything you expect from a modern language:
-- Classes and Structs
-- Inheritance (`extends`)
-- Polymorphism (`virtual`/`override`)
-- Traits and Interfaces
-- Static methods
-
-### 5. **Scripts without Main**
-You don't need a `main()` function. Write code directly:
-
-```rust
-print("This works!")
-let x = 42
-print(x)
+# Integrated v2.0 Test
+cargo run --bin adeadc -- run TESTEO/v2/integrados/test_v2_0_0_hex_first.adB
 ```
 
 ---
 
-## 🎮 GPU and Vulkan
+## 📊 Binary Sizes
 
-ADead-BIB supports GPU computing:
+| Mode | Size | Command | Description |
+|------|------|---------|-------------|
+| Standard | ~1.5 KB | `adeadc build` | Complete binary |
+| Tiny | < 500 bytes | `adeadc tiny` | Ultra-compact PE |
 
-```bash
-# Detect available GPU
-adeadc gpu
+### Comparison
 
-# Generate SPIR-V shader for matrix multiplication
-adeadc spirv matmul 1024
-
-# Initialize Vulkan runtime
-adeadc vulkan
-```
-
----
-
-## 📖 Complete Documentation
-
-For a complete language guide, see:
-- **[ROADMAP.md](ROADMAP.md)** - Future improvements and roadmap
+| Language | Hello World Binary | Runtime |
+|----------|-------------------|---------|
+| **ADead-BIB** | **~1.5 KB** | **None** |
+| Assembly | ~500 bytes | None |
+| C | ~50 KB | libc |
+| Rust | ~150 KB | std |
+| Go | ~2 MB | Go Runtime |
 
 ---
 
-## 🤝 Contributing
+## 🔗 Documentation
 
-1. Fork the repository
-2. Create a branch: `git checkout -b my-feature`
-3. Commit: `git commit -m 'Add feature'`
-4. Push: `git push origin my-feature`
-5. Open a Pull Request
+- [ROADMAP.md](ROADMAP.md) — Development roadmap (Spanish)
+- [GUIA_ES.md](GUIA_ES.md) — Spanish guide
+- [docs/ESTRUCTURA.md](docs/ESTRUCTURA.md) — Project structure
 
 ---
 
-## 📄 License
+## 📜 License
 
-Apache 2.0 - See [LICENSE](LICENSE) file
+GPLv2 — See [LICENSE](LICENSE)
 
 ---
 
-<div align="center">
-
-## 🔥 ADead-BIB
-
-**Modern Assembly: ASM power with Rust/Python productivity**
-
-```
-┌────────────────────────────────────────────────────────────┐
-│  ASM Family → 1.5 KB Binaries → No Runtime                │
-│  Modern Syntax → Full OOP → GPU Vulkan                    │
-│  Servers ✓ PC ✓ Embedded ✓ Games ✓                        │
-└────────────────────────────────────────────────────────────┘
-```
-
-*The only language that combines: ASM size + Rust syntax + Python flexibility*
-
-[![Made in Peru](https://img.shields.io/badge/Made%20in-Peru-red)](https://github.com/your-user/ADead-BIB)
-[![Family ASM](https://img.shields.io/badge/Family-ASM-blue)](https://github.com/your-user/ADead-BIB)
-[![100% Rust](https://img.shields.io/badge/Compiler-100%25%20Rust-orange)](https://www.rust-lang.org/)
-[![Binary Size](https://img.shields.io/badge/Binary-~1.5KB-green)](https://github.com/your-user/ADead-BIB)
-[![No Runtime](https://img.shields.io/badge/Runtime-None-purple)](https://github.com/your-user/ADead-BIB)
-
-</div>
+**ADead-BIB: Code → Bytes → Binary**
+**No ASM. No LLVM. No lies.**

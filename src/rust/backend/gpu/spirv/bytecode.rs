@@ -7,7 +7,7 @@
 //
 // Autor: Eddi Andreé Salazar Matos
 
-use super::vulkan::{SpirVOp, VulkanCapability, ExecutionModel};
+use super::super::vulkan::{SpirVOp, VulkanCapability, ExecutionModel};
 
 /// Opcodes ADead para GPU (4 bits = 16 instrucciones)
 #[repr(u8)]

@@ -1,61 +1,64 @@
-// ADead-BIB v2.0.0 - Test de Valores HEX
-// Demuestra el concepto de Binary Is Binary
-// NOTA: Literales 0x... son v2.0.0 (pendiente implementar en lexer)
-// Por ahora usamos valores decimales equivalentes
+// ADead-BIB v2.0.0 - Test de Literales HEX
+// Prueba que los literales hexadecimales (0x...) funcionan
+// IMPLEMENTADO en lexer v2.0.0
 
 fn main() {
     println("+========================================+")
-    println("|   ADead-BIB v2.0.0 - Test HEX Values  |")
+    println("|   ADead-BIB v2.0.0 - Test HEX Literal |")
     println("|   Binary Is Binary                    |")
     println("+========================================+")
     
-    // Test 1: Valores equivalentes a HEX
-    // 0xFF = 255, 0x00 = 0, 0x1234 = 4660
-    let byte1 = 255
-    let byte2 = 0
-    let word = 4660
+    // Test 1: Literales HEX reales
+    let byte1 = 0xFF
+    let byte2 = 0x00
+    let word = 0x1234
     
     println("")
-    println("[1] Valores equivalentes a HEX")
-    print("    255 (0xFF) = ")
+    println("[1] Literales HEX reales")
+    print("    0xFF = ")
     println(byte1)
-    print("    0 (0x00) = ")
+    print("    0x00 = ")
     println(byte2)
-    print("    4660 (0x1234) = ")
+    print("    0x1234 = ")
     println(word)
     
-    // Test 2: Aritmetica
-    // 0x10 = 16, 0x20 = 32
-    let a = 16
-    let b = 32
+    // Test 2: Aritmetica con HEX
+    let a = 0x10
+    let b = 0x20
     let suma = a + b
     
     println("")
-    println("[2] Aritmetica (valores HEX)")
-    print("    16 (0x10) + 32 (0x20) = ")
+    println("[2] Aritmetica con HEX")
+    print("    0x10 + 0x20 = ")
     println(suma)
     
-    // Test 3: Verificacion
+    // Test 3: Verificacion de valores
     println("")
     println("[3] Verificacion de valores")
     if byte1 == 255 {
-        println("    255 == 0xFF: OK")
+        println("    0xFF == 255: OK")
     }
     
     if word == 4660 {
-        println("    4660 == 0x1234: OK")
+        println("    0x1234 == 4660: OK")
     }
     
-    // Test 4: Multiplicacion
-    let mult = 16 * 2
+    // Test 4: HEX con separadores estilo Rust
+    let big_hex = 0xFF_FF
     println("")
-    println("[4] Operaciones")
-    print("    16 (0x10) * 2 = ")
+    println("[4] HEX con separadores")
+    print("    0xFF_FF = ")
+    println(big_hex)
+    
+    // Test 5: Multiplicacion
+    let mult = 0x10 * 2
+    println("")
+    println("[5] Operaciones")
+    print("    0x10 * 2 = ")
     println(mult)
     
     println("")
     println("+========================================+")
-    println("|     OK - Concepto HEX verificado!     |")
-    println("|     Literales 0x... pendiente v2.0   |")
+    println("|     OK - Literales HEX funcionan!     |")
     println("+========================================+")
 }
