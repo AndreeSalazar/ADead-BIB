@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: adead-core-media
+
+  datasource:
+    url: jdbc:h2:mem:mediadb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8080
+
+# ADead-BIB Configuration
+adead:
+  enabled: true
+  path: adeadc
+  scripts:
+    transcoder: native/transcoder.adB
+    audio: native/audio_processor.adB
+    gpu: native/gpu_accelerate.adB
+
+# Media Configuration
+media:
+  upload:
+    path: ./uploads
+    max-size: 5GB
+  output:
+    path: ./processed
+  formats:
+    video:
+      - 2160p
+      - 1080p
+      - 720p
+      - 480p
+      - 360p
+    audio:
+      - 320kbps
+      - 256kbps
+      - 128kbps
+
+logging:
+  level:
+    com.adead: DEBUG
+    org.springframework: INFO
