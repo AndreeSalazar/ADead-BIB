@@ -1,155 +1,132 @@
-# FastOS — GPU-First / Binary-First Operating System
+# FastOS
 
-> **FastOS** = El primer **GPU-First / Binary-First Operating System**
-> 
+**GPU-First / Binary-First Operating System (64-bit)**
+
 > Stack: **ADead-BIB + Rust + wgpu**
-> 
-> Virgen. Directo. Sin legacy. GPU desde el día uno.
 
 ---
 
-## 🎯 Nueva Categoría: GPU-First / Binary-First OS
+## 🎯 Características
 
-FastOS introduce una nueva categoría de sistemas operativos:
-
-| Característica | OS Tradicional | FastOS |
-|----------------|----------------|--------|
-| **Prioridad** | CPU-first | **GPU-first** |
-| **Compilación** | ASM → Linker → Binary | **Binary-first (directo)** |
-| **Graphics** | Driver separado | **GPU integrado en kernel** |
-| **Rendering** | Software fallback | **Hardware acelerado siempre** |
-| **Boot** | BIOS → DOS → Windows | **UEFI → GPU → FastOS** |
+| Módulo | Estado | Descripción |
+|--------|--------|-------------|
+| **GPU Driver** | ✅ | Acceso directo al framebuffer |
+| **ADead-BIB Loader** | ✅ | Carga y ejecuta binarios .adB |
+| **Syscall API** | ✅ | API para programas ADead-BIB |
+| **Framebuffer** | ✅ | 1280x720 gráficos |
 
 ---
 
-## 🎯 Filosofía
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    FastOS — Arquitectura                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   APLICACIONES                             │  │
-│  │   • Juegos (ADead-BIB)                                     │  │
-│  │   • Utilidades                                             │  │
-│  │   • Shell                                                  │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   FastOS API (Syscalls)                    │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   FastOS KERNEL                            │  │
-│  │                                                            │  │
-│  │   ┌────────────┐  ┌────────────┐  ┌────────────┐          │  │
-│  │   │  Scheduler │  │   Memory   │  │  Drivers   │          │  │
-│  │   │   (Rust)   │  │   (Rust)   │  │(Rust/wgpu) │          │  │
-│  │   └────────────┘  └────────────┘  └────────────┘          │  │
-│  │                                                            │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   HARDWARE (x86-64)                        │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🚀 Stack Tecnológico
-
-| Componente | Tecnología | Descripción |
-|------------|------------|-------------|
-| **Bootloader** | Rust + ADead-BIB | UEFI/BIOS boot |
-| **Kernel** | Rust (no_std) | Kernel mínimo |
-| **Drivers** | Rust + wgpu | GPU, teclado, disco |
-| **Filesystem** | Rust | FAT32 + FastFS |
-| **Graphics** | wgpu/Vulkan | GPU directo |
-| **Apps** | ADead-BIB | Aplicaciones nativas |
-
----
-
-## 📁 Estructura del Proyecto
+## 📁 Estructura
 
 ```
 FastOS/
-├── boot/
-│   └── bootloader.rs       # Bootloader UEFI
-│
 ├── kernel/
-│   ├── main.rs             # Entry point
-│   ├── memory.rs           # Gestión de memoria
-│   ├── scheduler.rs        # Planificador
-│   ├── syscalls.rs         # Llamadas al sistema
-│   └── interrupts.rs       # IDT
-│
-├── drivers/
-│   ├── keyboard.rs         # Driver teclado
-│   ├── display.rs          # Framebuffer
-│   ├── gpu.rs              # GPU (wgpu)
-│   └── disk.rs             # Disco
-│
-├── fs/
-│   ├── vfs.rs              # Virtual File System
-│   └── fat32.rs            # FAT32
-│
-├── userspace/
-│   ├── shell.rs            # Shell
-│   └── apps/               # Aplicaciones
-│
-└── src/
-    └── lib.rs              # Librería común
+│   ├── main.rs        # Entry point
+│   ├── gpu.rs         # Driver GPU (framebuffer)
+│   ├── loader.rs      # Cargador de binarios ADead-BIB
+│   ├── syscall.rs     # API de sistema (syscalls)
+│   └── adead_bib.rs   # Definiciones ADead-BIB
+├── Cargo.toml
+├── make_boot.ps1      # Crear imagen booteable
+└── target/
+    └── fastos-bios.img
 ```
 
 ---
 
-## 🛠️ Compilar y Ejecutar
+## 🚀 Compilar y Ejecutar
 
-```bash
-# Compilar kernel
-cargo build --release
+```powershell
+cd "Sistema operativo\FastOS"
 
-# Crear imagen booteable
-cargo run --bin mkimage
+# Compilar y crear imagen
+.\make_boot.ps1
 
 # Ejecutar en QEMU
-qemu-system-x86_64 -drive format=raw,file=fastos.img
+& "C:\Program Files\qemu\qemu-system-x86_64.exe" -drive format=raw,file=target\fastos-bios.img -m 128M
 ```
 
 ---
 
-## 📋 Requisitos
+## 🔧 Módulos Implementados
 
-- Rust nightly (para `#![no_std]`)
-- QEMU (para testing)
-- wgpu (para GPU)
+### 1. GPU Driver (`gpu.rs`)
+```rust
+// Acceso directo al framebuffer
+GpuDriver::init(buffer, width, height, pitch, bpp);
+gpu.put_pixel(x, y, color);
+gpu.draw_rect(x, y, w, h, color);
+gpu.clear(color);
+```
+
+### 2. ADead-BIB Loader (`loader.rs`)
+```rust
+// Cargar y ejecutar binarios .adB
+let loader = ADeadLoader::new(syscall_table);
+let program = loader.load(binary_data)?;
+loader.execute(&program)?;
+```
+
+### 3. Syscall API (`syscall.rs`)
+```rust
+// API para programas ADead-BIB
+pub struct SyscallTable {
+    pub gpu_clear: fn(color: u32),
+    pub gpu_put_pixel: fn(x: u32, y: u32, color: u32),
+    pub gpu_draw_rect: fn(x: u32, y: u32, w: u32, h: u32, color: u32),
+    pub gpu_get_width: fn() -> u32,
+    pub gpu_get_height: fn() -> u32,
+    pub sys_exit: fn(code: i32) -> !,
+}
+```
 
 ---
 
-## 🎯 Objetivos v1.0
+## 📝 Formato Binario ADead-BIB
 
-- [x] Estructura del proyecto
-- [ ] Bootloader UEFI básico
-- [ ] Kernel mínimo (print)
-- [ ] Gestión de memoria
-- [ ] Driver de teclado
-- [ ] Framebuffer básico
-- [ ] Shell simple
+```
++0x00: Magic (4 bytes)     = 0xADB1B000
++0x04: Version (2 bytes)
++0x06: Flags (2 bytes)     = CPU(0x01) | GPU(0x02) | HYBRID(0x03)
++0x08: Entry Point (8 bytes)
++0x10: Code Size (8 bytes)
++0x18: Data Size (8 bytes)
++0x20: Code...
++0x20+code_size: Data...
+```
+
+---
+
+## 🎨 Ejemplo Programa ADead-BIB
+
+```adB
+// programa.adB - Para FastOS
+#![target(fastos)]
+
+fn main(sys: *SyscallTable) -> i32 {
+    // Limpiar pantalla
+    sys.gpu_clear(0x000000);
+    
+    // Dibujar rectángulo rojo
+    sys.gpu_draw_rect(100, 100, 200, 150, 0xFF0000);
+    
+    // Pixel verde en el centro
+    let w = sys.gpu_get_width();
+    let h = sys.gpu_get_height();
+    sys.gpu_put_pixel(w/2, h/2, 0x00FF00);
+    
+    return 0;
+}
+```
 
 ---
 
 ## 👤 Autor
 
-**Eddi Andreé Salazar Matos**  
-📧 eddi.salazar.dev@gmail.com  
-🇵🇪 Hecho con ❤️ en Perú
+**Eddi Andreé Salazar Matos** 🇵🇪  
+📧 eddi.salazar.dev@gmail.com
 
 ---
 
-**FastOS: Rápido. Directo. Sin mentiras.**
+**FastOS: GPU-First. Binary-First. Sin mentiras.**

@@ -10,82 +10,80 @@
 #![no_std]
 #![no_main]
 
+mod adead_bib;
+mod gpu;
+mod syscall;
+mod loader;
+mod mouse;
+mod desktop;
+
 use bootloader_api::{entry_point, BootInfo};
 use core::panic::PanicInfo;
 use core::arch::asm;
-use core::ptr;
-
-// Colores RGB
-const RED: u32 = 0xCD212A;      // Rojo peruano
-const WHITE: u32 = 0xFFFFFF;
-const BLACK: u32 = 0x000000;
-const GREEN: u32 = 0x00FF00;
-const YELLOW: u32 = 0xFFFF00;
-const CYAN: u32 = 0x00FFFF;
+use gpu::GpuDriver;
+use desktop::Desktop;
 
 entry_point!(kernel_main);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
-    // Obtener framebuffer
     if let Some(fb) = boot_info.framebuffer.as_mut() {
         let info = fb.info();
         let buffer = fb.buffer_mut();
-        let width = info.width;
-        let height = info.height;
-        let stride = info.stride;
+        let w = info.width;
+        let h = info.height;
+        let pitch = info.stride * info.bytes_per_pixel;
         let bpp = info.bytes_per_pixel;
         
-        // Limpiar pantalla (negro)
-        for y in 0..height {
-            for x in 0..width {
-                put_pixel(buffer, stride, bpp, x, y, BLACK);
-            }
-        }
+        // Inicializar driver GPU
+        GpuDriver::init(buffer.as_mut_ptr(), w, h, pitch, bpp);
         
-        // Dibujar bandera de Perú
-        let flag_w = width / 2;
-        let flag_h = height / 4;
-        let flag_x = (width - flag_w) / 2;
-        let flag_y = 30;
-        let stripe = flag_h / 3;
+        // Inicializar mouse
+        mouse::init(w as i32, h as i32);
         
-        // Franja roja superior
-        for y in flag_y..(flag_y + stripe) {
-            for x in flag_x..(flag_x + flag_w) {
-                put_pixel(buffer, stride, bpp, x, y, RED);
-            }
-        }
-        // Franja blanca
-        for y in (flag_y + stripe)..(flag_y + stripe * 2) {
-            for x in flag_x..(flag_x + flag_w) {
-                put_pixel(buffer, stride, bpp, x, y, WHITE);
-            }
-        }
-        // Franja roja inferior
-        for y in (flag_y + stripe * 2)..(flag_y + flag_h) {
-            for x in flag_x..(flag_x + flag_w) {
-                put_pixel(buffer, stride, bpp, x, y, RED);
-            }
-        }
+        // Crear escritorio
+        let mut desktop = Desktop::new(w as i32, h as i32);
         
-        // Texto
-        let text_y = flag_y + flag_h + 30;
-        draw_text(buffer, stride, bpp, width, "FastOS v0.1.0", text_y, GREEN);
-        draw_text(buffer, stride, bpp, width, "GPU-First / Binary-First OS (64-bit)", text_y + 20, WHITE);
-        draw_text(buffer, stride, bpp, width, "Stack: ADead-BIB + Rust + wgpu", text_y + 50, CYAN);
-        draw_text(buffer, stride, bpp, width, "Author: Eddi Andree Salazar Matos", text_y + 80, YELLOW);
-        draw_text(buffer, stride, bpp, width, "Email: eddi.salazar.dev@gmail.com", text_y + 100, WHITE);
-        draw_text(buffer, stride, bpp, width, "Pais: Peru", text_y + 120, WHITE);
-        draw_text(buffer, stride, bpp, width, "[OK] Kernel cargado!", text_y + 160, GREEN);
-        draw_text(buffer, stride, bpp, width, "[OK] FastOS listo!", text_y + 180, GREEN);
+        // Loop principal del escritorio
+        loop {
+            // Leer datos del mouse (polling)
+            poll_mouse();
+            
+            // Actualizar lógica
+            desktop.update();
+            
+            // Dibujar
+            if let Some(gpu) = GpuDriver::get() {
+                desktop.draw(gpu);
+            }
+            
+            // Pequeña pausa
+            for _ in 0..50000 {
+                unsafe { asm!("nop"); }
+            }
+        }
     }
     
     loop { unsafe { asm!("hlt"); } }
 }
 
+/// Polling del mouse PS/2
+fn poll_mouse() {
+    unsafe {
+        // Verificar si hay datos disponibles
+        let status: u8;
+        asm!("in al, dx", out("al") status, in("dx") 0x64u16, options(nomem, nostack));
+        
+        if status & 0x21 == 0x21 {  // Datos del mouse disponibles
+            let data: u8;
+            asm!("in al, dx", out("al") data, in("dx") 0x60u16, options(nomem, nostack));
+            mouse::handle_byte(data);
+        }
+    }
+}
+
 #[inline]
-fn put_pixel(buf: &mut [u8], stride: usize, bpp: usize, x: usize, y: usize, color: u32) {
-    let off = y * stride * bpp + x * bpp;
+fn put_pixel(buf: &mut [u8], pitch: usize, bpp: usize, x: usize, y: usize, color: u32) {
+    let off = y * pitch + x * bpp;
     if off + 2 < buf.len() {
         buf[off] = (color & 0xFF) as u8;
         buf[off + 1] = ((color >> 8) & 0xFF) as u8;
@@ -93,11 +91,19 @@ fn put_pixel(buf: &mut [u8], stride: usize, bpp: usize, x: usize, y: usize, colo
     }
 }
 
-fn draw_text(buf: &mut [u8], stride: usize, bpp: usize, width: usize, text: &str, y: usize, color: u32) {
-    let x = (width - text.len() * 8) / 2;
+fn draw_rect(buf: &mut [u8], pitch: usize, bpp: usize, x: usize, y: usize, w: usize, h: usize, color: u32) {
+    for dy in 0..h {
+        for dx in 0..w {
+            put_pixel(buf, pitch, bpp, x + dx, y + dy, color);
+        }
+    }
+}
+
+fn draw_centered_text(buf: &mut [u8], pitch: usize, bpp: usize, width: usize, text: &str, y: usize, color: u32) {
+    let x = (width.saturating_sub(text.len() * 9)) / 2;
     let mut cx = x;
     for c in text.bytes() {
-        draw_char(buf, stride, bpp, cx, y, c, color);
+        draw_char(buf, pitch, bpp, cx, y, c, color);
         cx += 9;
     }
 }
