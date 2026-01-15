@@ -8,6 +8,7 @@ use crate::frontend::type_checker::TypeChecker;
 use crate::frontend::ast::{Program, Function};
 use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
+use crate::optimizer::binary_optimizer::{BinaryOptimizer, OptLevel};
 use crate::backend::codegen_v2::{CodeGeneratorV2, Target};
 use crate::backend::{pe, elf};
 use std::fs;
@@ -20,6 +21,8 @@ pub struct BuildOptions {
     pub optimize: bool,
     pub output_path: String,
     pub verbose: bool,
+    pub opt_level: OptLevel,
+    pub size_optimize: bool,
 }
 
 impl Default for BuildOptions {
@@ -29,6 +32,8 @@ impl Default for BuildOptions {
             optimize: true,
             output_path: "output.exe".to_string(),
             verbose: false,
+            opt_level: OptLevel::Basic,
+            size_optimize: false,
         }
     }
 }
@@ -79,12 +84,29 @@ impl Builder {
         let mut codegen = CodeGeneratorV2::new(options.target);
         let (opcodes, data) = codegen.generate(&program);
 
+        // 4.5. Binary Optimization (new!)
+        let final_opcodes = if options.size_optimize {
+            if options.verbose { println!("Step 4.5: Binary Optimization (level: {:?})...", options.opt_level); }
+            let mut binary_opt = BinaryOptimizer::new(options.opt_level);
+            let optimized = binary_opt.optimize(&opcodes);
+            if options.verbose {
+                let stats = binary_opt.get_stats();
+                println!("   Original: {} bytes, Optimized: {} bytes, Saved: {} bytes ({:.1}%)",
+                    stats.original_size, stats.optimized_size, stats.bytes_saved,
+                    if stats.original_size > 0 { (stats.bytes_saved as f64 / stats.original_size as f64) * 100.0 } else { 0.0 }
+                );
+            }
+            optimized
+        } else {
+            opcodes
+        };
+
         // 5. Linking / Binary Generation
         if options.verbose { println!("Step 5: Writing Binary to {}...", options.output_path); }
         match options.target {
-            Target::Windows => pe::generate_pe(&opcodes, &data, &options.output_path)?,
-            Target::Linux => elf::generate_elf(&opcodes, &data, &options.output_path)?,
-            Target::Raw => fs::write(&options.output_path, &opcodes)?,
+            Target::Windows => pe::generate_pe(&final_opcodes, &data, &options.output_path)?,
+            Target::Linux => elf::generate_elf(&final_opcodes, &data, &options.output_path)?,
+            Target::Raw => fs::write(&options.output_path, &final_opcodes)?,
         }
 
         if options.verbose { println!("Build successful!"); }

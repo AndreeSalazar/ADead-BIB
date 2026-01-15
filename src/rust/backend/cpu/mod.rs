@@ -25,6 +25,7 @@ pub mod microvm;
 pub mod pe;
 pub mod pe_minimal;
 pub mod pe_tiny;
+pub mod pe_ultra;  // 🔥 PE Ultra-Compacto v2.0 - Más pequeño que ASM
 // pub mod pe_simple; // Deshabilitado: tiene errores de API
 pub mod pe_valid;
 pub mod elf;

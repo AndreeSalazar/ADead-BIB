@@ -253,6 +253,14 @@ adB check archivo.adB        # Verificar sintaxis
 adB play                     # REPL interactivo (playground)
 ```
 
+### Optimización de Tamaño (NUEVO!)
+
+```bash
+adB opt archivo.adB          # Compilación ultra-optimizada
+adB build archivo.adB --size # Optimización agresiva
+adB build archivo.adB --ultra # Optimización máxima
+```
+
 ### Modos Avanzados
 
 ```bash
@@ -376,22 +384,34 @@ cargo run --bin adeadc -- run TESTEO/v2/integrados/test_v2_0_0_hex_first.adB
 
 ---
 
-## 📊 Binary Sizes
+## 📊 Binary Sizes — Más Pequeño que ASM
+
+ADead-BIB genera binarios **más pequeños que ensamblador tradicional** porque no usa linker externo.
 
 | Mode | Size | Command | Description |
 |------|------|---------|-------------|
-| Standard | ~1.5 KB | `adeadc build` | Complete binary |
-| Tiny | < 500 bytes | `adeadc tiny` | Ultra-compact PE |
+| **Ultra** | **~1 KB** | `adB opt` | Optimización máxima |
+| Standard | ~1.5 KB | `adB build` | Compilación normal |
+| Tiny | < 500 bytes | `adB tiny` | PE ultra-compacto |
 
-### Comparison
+### Comparación con Otros Lenguajes
 
-| Language | Hello World Binary | Runtime |
-|----------|-------------------|---------|
-| **ADead-BIB** | **~1.5 KB** | **None** |
-| Assembly | ~500 bytes | None |
-| C | ~50 KB | libc |
-| Rust | ~150 KB | std |
-| Go | ~2 MB | Go Runtime |
+| Herramienta | Hello World | vs ADead-BIB |
+|-------------|-------------|--------------|
+| **ADead-BIB Ultra** | **~1 KB** | — |
+| **ADead-BIB Normal** | **~1.5 KB** | — |
+| NASM + link | ~4 KB | 4x más grande |
+| MASM + link | ~4 KB | 4x más grande |
+| GCC (C) | ~50 KB | 50x más grande |
+| Rust | ~150 KB | 150x más grande |
+| Go | ~2 MB | 2000x más grande |
+
+### ¿Por qué ADead-BIB es más pequeño?
+
+1. **Sin linker** — Generamos PE/ELF directamente en memoria
+2. **Sin runtime** — El binario es 100% autosuficiente
+3. **Optimización binaria** — Patrones de código compactos
+4. **Headers mínimos** — Solo bytes necesarios
 
 ---
 

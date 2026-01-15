@@ -37,17 +37,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let input_file = &args[2];
             let output_file = get_output_filename(input_file, &args);
             
+            // Check for optimization flags
+            let size_opt = args.iter().any(|a| a == "--size" || a == "-s");
+            let ultra_opt = args.iter().any(|a| a == "--ultra" || a == "-u");
+            
+            let opt_level = if ultra_opt {
+                adead_bib::optimizer::OptLevel::Ultra
+            } else if size_opt {
+                adead_bib::optimizer::OptLevel::Aggressive
+            } else {
+                adead_bib::optimizer::OptLevel::Basic
+            };
+            
             println!("🔨 Building {}...", input_file);
+            if size_opt || ultra_opt {
+                println!("   Optimization: {:?}", opt_level);
+            }
             
             let options = BuildOptions {
                 target: determine_target(),
                 optimize: true,
                 output_path: output_file.clone(),
                 verbose: true,
+                opt_level,
+                size_optimize: size_opt || ultra_opt,
             };
             
             Builder::build_file(input_file, options)?;
             println!("✅ Build complete: {}", output_file);
+        },
+        "opt" | "optimize" => {
+            // Compilación con optimización máxima de tamaño
+            if args.len() < 3 {
+                eprintln!("❌ Error: Missing input file");
+                eprintln!("   Uso: adB opt <archivo.adB>");
+                std::process::exit(1);
+            }
+            let input_file = &args[2];
+            let output_file = get_output_filename(input_file, &args);
+            
+            println!("🔧 Building with ULTRA optimization: {}...", input_file);
+            println!("   Target: Smallest possible binary");
+            
+            let options = BuildOptions {
+                target: determine_target(),
+                optimize: true,
+                output_path: output_file.clone(),
+                verbose: true,
+                opt_level: adead_bib::optimizer::OptLevel::Ultra,
+                size_optimize: true,
+            };
+            
+            Builder::build_file(input_file, options)?;
+            
+            // Show file size
+            if let Ok(metadata) = std::fs::metadata(&output_file) {
+                println!("✅ Optimized build complete: {} ({} bytes)", output_file, metadata.len());
+            } else {
+                println!("✅ Optimized build complete: {}", output_file);
+            }
         },
         "run" => {
             if args.len() < 3 {
@@ -64,6 +112,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 optimize: true,
                 output_path: output_file.clone(),
                 verbose: false, // Quiet for run
+                opt_level: adead_bib::optimizer::OptLevel::Basic,
+                size_optimize: false,
             };
             
             if let Err(e) = Builder::build_file(input_file, options) {
@@ -544,6 +594,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 optimize: true,
                 output_path: output_file.clone(),
                 verbose: true,
+                opt_level: adead_bib::optimizer::OptLevel::Basic,
+                size_optimize: false,
             };
             
             Builder::build_file(input_file, options)?;
