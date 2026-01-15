@@ -345,4 +345,7 @@ GPLv2 — See [LICENSE](LICENSE)
 ---
 
 **ADead-BIB: Code → Bytes → Binary**
+**Binary-Oriented Object Language (BOOL)**
+**O**
+**Object-Centric Assembly Language (OCAL)**
 **No ASM. No LLVM. No lies.**
