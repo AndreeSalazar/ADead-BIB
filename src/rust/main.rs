@@ -142,16 +142,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
             let input_file = &args[2];
+            let json_output = args.iter().any(|a| a == "--json" || a == "-j");
             
-            println!("🔍 Checking syntax of {}...", input_file);
-            
-            match check_syntax(input_file) {
-                Ok(()) => {
-                    println!("✅ Syntax check passed!");
+            if json_output {
+                // Salida JSON para extensión VS Code
+                match check_syntax_json(input_file) {
+                    Ok(json) => println!("{}", json),
+                    Err(e) => {
+                        let error_json = format!(r#"{{"file":"{}","status":"error","errors":[{{"line":1,"column":1,"message":"{}"}}],"warnings":[]}}"#, 
+                            input_file, e.to_string().replace('"', "\\\""));
+                        println!("{}", error_json);
+                        std::process::exit(1);
+                    }
                 }
-                Err(e) => {
-                    eprintln!("❌ Syntax error: {}", e);
-                    std::process::exit(1);
+            } else {
+                println!("🔍 Checking syntax of {}...", input_file);
+                
+                match check_syntax(input_file) {
+                    Ok(()) => {
+                        println!("✅ Syntax check passed!");
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Syntax error: {}", e);
+                        std::process::exit(1);
+                    }
                 }
             }
         },
@@ -717,6 +731,89 @@ fn check_syntax(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
     
     Ok(())
+}
+
+/// Check syntax y devuelve JSON para VS Code Extension
+fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let source = fs::read_to_string(file_path)?;
+    
+    // 1. Lexing
+    let mut lexer = Lexer::new(&source);
+    let tokens = lexer.tokenize();
+    
+    // 2. Parsing
+    let program = Parser::parse_program(&source)?;
+    
+    // 3. Type checking
+    let mut type_checker = TypeChecker::new();
+    let _types = type_checker.check_program(&program);
+    
+    // 4. Detectar warnings y características
+    let mut warnings: Vec<String> = Vec::new();
+    let mut cpu_blocks = 0;
+    let mut gpu_blocks = 0;
+    let mut emit_calls = 0;
+    let mut variables = 0;
+    
+    // Analizar código fuente para detectar patrones
+    for (line_num, line) in source.lines().enumerate() {
+        let line_num = line_num + 1;
+        let trimmed = line.trim();
+        
+        // Detectar emit![]
+        if trimmed.contains("emit!") || trimmed.contains("emit![") {
+            emit_calls += 1;
+            warnings.push(format!(
+                r#"{{"line":{},"column":1,"type":"raw_binary","severity":"warning","message":"emit![] usado - código binario directo"}}"#,
+                line_num
+            ));
+        }
+        
+        // Detectar cpu::
+        if trimmed.contains("cpu::") {
+            cpu_blocks += 1;
+            warnings.push(format!(
+                r#"{{"line":{},"column":1,"type":"cpu_block","severity":"info","message":"Bloque cpu:: detectado"}}"#,
+                line_num
+            ));
+        }
+        
+        // Detectar gpu::
+        if trimmed.contains("gpu::") {
+            gpu_blocks += 1;
+            warnings.push(format!(
+                r#"{{"line":{},"column":1,"type":"gpu_block","severity":"info","message":"Bloque gpu:: detectado"}}"#,
+                line_num
+            ));
+        }
+        
+        // Detectar HEX literals
+        if trimmed.contains("0x") && !trimmed.starts_with("//") {
+            warnings.push(format!(
+                r#"{{"line":{},"column":1,"type":"hex_literal","severity":"info","message":"Literal HEX detectado"}}"#,
+                line_num
+            ));
+        }
+        
+        // Contar variables
+        if trimmed.starts_with("let ") || trimmed.starts_with("const ") {
+            variables += 1;
+        }
+    }
+    
+    // Construir JSON
+    let json = format!(
+        r#"{{"file":"{}","status":"ok","errors":[],"warnings":[{}],"diagnostics":{{"functions":{},"variables":{},"cpu_blocks":{},"gpu_blocks":{},"emit_calls":{}}}}}"#,
+        file_path,
+        warnings.join(","),
+        program.functions.len(),
+        variables,
+        cpu_blocks,
+        gpu_blocks,
+        emit_calls
+    );
+    
+    Ok(json)
 }
 
 /// Modo Playground interactivo estilo Rust Playground / Jupyter

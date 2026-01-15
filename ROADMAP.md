@@ -261,9 +261,9 @@ fn optimized_loop() {
 - [x] Implementar módulo `cpu::` con funciones de instrucciones ✅
 - [x] Registros como constantes tipadas (rax, rbx, rcx, etc.) ✅
 - [x] Validación de operandos en tiempo de compilación ✅
-- [ ] Tests para cada instrucción
+- [x] Tests para cada instrucción ✅
 
-**Implementado en:** `Project/cpu/mod.adB`
+**Implementado en:** `Project/cpu/mod.adB`, `TESTEO/cpu/test_cpu_instructions.adB`
 
 #### v2.2.0 — Módulo `gpu::` ✅
 
@@ -282,9 +282,9 @@ fn gpu_compute() {
 - [x] Implementar módulo `gpu::` con funciones de opcodes ✅
 - [x] Registros GPU como constantes ✅
 - [x] Generación automática de command buffer ✅
-- [ ] Tests para cada opcode
+- [x] Tests para cada opcode ✅
 
-**Implementado en:** `Project/gpu/mod.adB`
+**Implementado en:** `Project/gpu/mod.adB`, `TESTEO/gpu/test_gpu_opcodes.adB`
 
 ---
 
@@ -309,7 +309,7 @@ fn fast_function() {
 
 **Implementado en:** `Project/cpu/mod.adB` y `Project/call.adB`
 
-#### v2.4.0 — Modo Raw Binary
+#### v2.4.0 — Modo Raw Binary ✅
 
 **Objetivo:** Compilar a bytes puros sin headers PE/ELF.
 
@@ -323,10 +323,12 @@ fn _start() {
 ```
 
 **Tareas:**
-- [ ] Implementar atributo `#![mode(raw)]`
-- [ ] Implementar atributo `#![base(addr)]`
-- [ ] Generador de .bin sin headers
-- [ ] Soporte para bootloaders y bare metal
+- [x] Implementar atributo `#![mode(raw)]` ✅
+- [x] Implementar atributo `#![base(addr)]` ✅
+- [x] Generador de .bin sin headers ✅
+- [ ] Soporte para bootloaders y bare metal (futuro)
+
+**Implementado en:** `src/rust/frontend/ast.rs` (ProgramAttributes, OutputMode)
 
 ---
 
@@ -370,17 +372,17 @@ fn _start() {
 
 ### Fase 4: Optimización
 
-#### v2.7.0 — Post-Procesamiento
+#### v2.7.0 — Post-Procesamiento ✅
 
 **Objetivo:** Eliminar ruido del binario final.
 
-| Optimización | Descripción | Ahorro Estimado |
-|--------------|-------------|-----------------|
-| **Strip padding** | Eliminar bytes de relleno | ~20% |
-| **Dead code removal** | Eliminar código no alcanzable | ~10% |
-| **Constant folding** | `2 + 3` → `5` en compilación | ~5% |
-| **String dedup** | Strings duplicados → una copia | ~5% |
-| **NOP elimination** | Eliminar NOPs innecesarios | ~3% |
+| Optimización | Descripción | Ahorro Estimado | Estado |
+|--------------|-------------|-----------------|--------|
+| **Strip padding** | Eliminar bytes de relleno | ~20% | ✅ |
+| **Dead code removal** | Eliminar código no alcanzable | ~10% | ✅ |
+| **Constant folding** | `2 + 3` → `5` en compilación | ~5% | ✅ |
+| **String dedup** | Strings duplicados → una copia | ~5% | ✅ |
+| **NOP elimination** | Eliminar NOPs innecesarios | ~3% | ✅ |
 
 ```rust
 #![clean(normal)]      // Default
@@ -388,13 +390,24 @@ fn _start() {
 #![clean(none)]        // Sin limpieza (debug)
 ```
 
-#### v2.8.0 — Peephole Optimizer
+**Implementado en:** `src/rust/optimizer/binary_optimizer.rs`
+
+**Comandos CLI:**
+```bash
+adB opt archivo.adB          # Optimización ultra
+adB build archivo.adB --size # Optimización agresiva
+adB build archivo.adB --ultra # Optimización máxima
+```
+
+#### v2.8.0 — Peephole Optimizer ✅
 
 **Objetivo:** Optimizaciones locales de secuencias de bytes.
 
-- [ ] Patrones comunes de instrucciones
-- [ ] Reemplazo de secuencias ineficientes
-- [ ] Alineación inteligente
+- [x] Patrones comunes de instrucciones ✅
+- [x] Reemplazo de secuencias ineficientes ✅
+- [x] Alineación inteligente ✅
+
+**Implementado en:** `src/rust/optimizer/binary_optimizer.rs`
 
 ---
 

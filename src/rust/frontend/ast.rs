@@ -263,8 +263,33 @@ pub struct Import {
     pub alias: Option<String>,   // import module as alias
 }
 
+/// Atributos de programa (#![...])
+#[derive(Debug, Clone, Default)]
+pub struct ProgramAttributes {
+    pub mode: OutputMode,           // #![mode(raw|pe|elf)]
+    pub base_address: Option<u64>,  // #![base(0x1000)]
+    pub clean_level: CleanLevel,    // #![clean(normal|aggressive|none)]
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum OutputMode {
+    #[default]
+    PE,     // Windows PE (default)
+    ELF,    // Linux ELF
+    Raw,    // Bytes puros sin headers
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum CleanLevel {
+    #[default]
+    Normal,
+    Aggressive,
+    None,
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
+    pub attributes: ProgramAttributes,  // Atributos del programa
     pub imports: Vec<Import>,
     pub interfaces: Vec<Interface>,
     pub traits: Vec<Trait>,         // Rust-style traits (v1.6.0)
@@ -278,6 +303,7 @@ pub struct Program {
 impl Program {
     pub fn new() -> Self {
         Self {
+            attributes: ProgramAttributes::default(),
             imports: Vec::new(),
             interfaces: Vec::new(),
             traits: Vec::new(),
