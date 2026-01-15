@@ -1,0 +1,11 @@
+[package]
+name = "fastos-boot"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fastos-boot"
+path = "src/main.rs"
+
+[dependencies]
+bootloader = { version = "0.11", features = ["bios"] }

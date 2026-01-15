@@ -1,4 +1,4 @@
-# 🎮 ADead-BIB Game: Vulkan Bird
+# 🎮 ADead-BIB Game Engine v2.0
 
 > **A 2D Flappy Bird-style game powered by Vulkan + ADead-BIB Runtime**
 
@@ -27,27 +27,59 @@ This game demonstrates the full power of ADead-BIB:
 
 ---
 
-## 📁 Structure
+## 📁 Structure (OOP Architecture)
 
 ```
 GAME/
 ├── src/
-│   ├── main.rs           # Entry point
-│   ├── vulkan_init.rs    # Vulkan initialization
-│   ├── renderer.rs       # 2D sprite rendering
-│   ├── game_logic.rs     # Branchless game logic
-│   ├── physics.rs        # Collision detection
-│   └── input.rs          # Keyboard/mouse input
-├── shaders/
-│   ├── sprite.vert       # Vertex shader
-│   ├── sprite.frag       # Fragment shader
-│   └── compute.comp      # Compute shader for physics
-├── assets/
-│   ├── bird.raw          # Bird sprite (raw pixels)
-│   ├── pipe.raw          # Pipe sprite
-│   └── background.raw    # Background
-├── Cargo.toml            # Rust dependencies
-└── README.md             # This file
+│   ├── main.rs              # Entry point
+│   ├── lib.rs               # Library exports
+│   │
+│   ├── engine/              # 🔧 ENGINE CORE
+│   │   ├── mod.rs           # Engine module
+│   │   ├── window.rs        # Window management
+│   │   ├── renderer.rs      # 2D rendering (softbuffer)
+│   │   ├── input.rs         # Input handling
+│   │   └── time.rs          # Time/FPS management
+│   │
+│   ├── ecs/                 # 🎯 ENTITY COMPONENT SYSTEM
+│   │   ├── mod.rs           # ECS module
+│   │   ├── entity.rs        # Entity base class
+│   │   ├── components.rs    # Transform, Velocity, Sprite, etc.
+│   │   └── world.rs         # World container
+│   │
+│   ├── systems/             # ⚙️ GAME SYSTEMS
+│   │   ├── mod.rs           # Systems module
+│   │   ├── physics.rs       # Physics system (gravity, velocity)
+│   │   ├── collision.rs     # Collision detection
+│   │   └── render.rs        # Render system
+│   │
+│   ├── games/               # 🎮 GAME IMPLEMENTATIONS
+│   │   ├── mod.rs           # Games module
+│   │   └── flappy.rs        # Flappy Bird game
+│   │
+│   └── game.rs              # Legacy game logic
+│
+├── Cargo.toml               # Rust dependencies
+└── README.md                # This file
+```
+
+### Arquitectura de 3 Capas
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    🎮 GAMES (flappy.rs)                      │
+│         Lógica específica del juego                          │
+├─────────────────────────────────────────────────────────────┤
+│                    ⚙️ SYSTEMS                                │
+│         Physics | Collision | Render                         │
+├─────────────────────────────────────────────────────────────┤
+│                    🎯 ECS                                    │
+│         Entity | Components | World                          │
+├─────────────────────────────────────────────────────────────┤
+│                    🔧 ENGINE                                 │
+│         Window | Renderer | Input | Time                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---

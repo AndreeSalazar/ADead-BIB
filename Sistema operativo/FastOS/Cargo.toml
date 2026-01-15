@@ -1,0 +1,25 @@
+[package]
+name = "fastos"
+version = "0.1.0"
+edition = "2021"
+authors = ["Eddi Andreé Salazar Matos <eddi.salazar.dev@gmail.com>"]
+description = "FastOS - GPU-First / Binary-First Operating System (ADead-BIB + Rust + wgpu)"
+
+[[bin]]
+name = "fastos-kernel"
+path = "kernel/main.rs"
+
+[dependencies]
+bootloader_api = "0.11"
+
+[build-dependencies]
+bootloader = "0.11"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+lto = true
+codegen-units = 1

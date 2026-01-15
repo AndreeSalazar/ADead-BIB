@@ -1258,6 +1258,7 @@ impl Parser {
             Some(Token::Minus) => { self.advance(); Some(BinOp::Sub) },
             Some(Token::Star) => { self.advance(); Some(BinOp::Mul) },
             Some(Token::Slash) => { self.advance(); Some(BinOp::Div) },
+            Some(Token::Percent) => { self.advance(); Some(BinOp::Mod) },
             _ => None
         }
     }

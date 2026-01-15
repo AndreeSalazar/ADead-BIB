@@ -3,9 +3,25 @@
 > **ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
 > 
 > Lenguaje **OOP Puro + ASM Simbionte** que compila **DIRECTO a BINARIO**.
-> Sin ASM intermedio. Sin LLVM. Sin linker externo.
+> Sin ASM intermedio. Sin LLVM. Sin linker externo. Sin NASM.
 > 
 > **Código → AST → BYTES DIRECTOS → Ejecutable**
+>
+> ## 🎯 Visión a Largo Plazo
+> 
+> ```
+> ┌─────────────────────────────────────────────────────────────────┐
+> │                    ADead-BIB — Visión Completa                   │
+> ├─────────────────────────────────────────────────────────────────┤
+> │                                                                  │
+> │  v2.x  →  Compilador HEX-First (CPU + GPU directo)              │
+> │  v3.x  →  OOP Avanzado (structs, traits, herencia)              │
+> │  v4.x  →  ASM Simbionte (interop con Python/Java/C#/Rust)       │
+> │  v5.x  →  ADead-OS (Sistema Operativo alternativo)              │
+> │  v6.x  →  Ecosistema (IDE, paquetes, comunidad)                 │
+> │                                                                  │
+> └─────────────────────────────────────────────────────────────────┘
+> ```
 
 ---
 
@@ -508,6 +524,279 @@ graphics = "0.2.0"
 
 ---
 
+### Fase 7: ASM Simbionte — Interoperabilidad Universal
+
+#### v4.0.0 — ASM Simbionte Core
+
+**Objetivo:** Crear un sistema de "ASM Simbionte" que permita a ADead-BIB combinarse con **cualquier lenguaje OOP** de forma nativa, sin dependencias externas.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        ASM SIMBIONTE — Arquitectura                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐      │
+│  │   Python    │   │    Java     │   │     C#      │   │    Rust     │      │
+│  │   (OOP)     │   │   (OOP)     │   │   (OOP)     │   │   (OOP)     │      │
+│  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘      │
+│         │                 │                 │                 │              │
+│         ▼                 ▼                 ▼                 ▼              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    ADead-BIB ASM Simbionte                          │    │
+│  │                                                                     │    │
+│  │   • FFI Universal (Foreign Function Interface)                     │    │
+│  │   • ABI Estándar (Application Binary Interface)                    │    │
+│  │   • Vtables Compatibles (Polimorfismo cross-language)              │    │
+│  │   • Memory Layout Definido (Structs binarios)                      │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    BYTES DIRECTOS (x86-64 / ARM64)                  │    │
+│  │                    Sin NASM. Sin LLVM. Sin GAS.                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Características del ASM Simbionte:**
+
+| Característica | Descripción |
+|----------------|-------------|
+| **FFI Universal** | Llamar funciones de cualquier lenguaje OOP |
+| **ABI Estándar** | Convención de llamada compatible (cdecl, stdcall, fastcall) |
+| **Vtables Simbionte** | Polimorfismo que funciona entre lenguajes |
+| **Memory Layout** | Structs con layout binario definido |
+| **Sin NASM** | Emitimos bytes x86-64 directamente |
+| **Sin LLVM** | No dependemos de infraestructura externa |
+
+**Sintaxis propuesta:**
+
+```rust
+// Exportar función para otros lenguajes
+#[export("C")]
+fn calculate(x: i32, y: i32) -> i32 {
+    return x + y
+}
+
+// Importar función de otro lenguaje
+#[import("python", "numpy.add")]
+extern fn numpy_add(a: ptr, b: ptr) -> ptr
+
+// Struct con layout binario compatible
+#[repr(C)]
+struct Point {
+    x: f32,
+    y: f32
+}
+
+// Clase simbionte (compatible con OOP de otros lenguajes)
+#[symbiont]
+class Entity {
+    x: i32
+    y: i32
+    
+    fn new(x: i32, y: i32) -> Entity
+    fn move(dx: i32, dy: i32)
+}
+```
+
+**Tareas:**
+- [ ] Definir ABI Simbionte estándar
+- [ ] Implementar FFI para C/C++
+- [ ] Implementar FFI para Python (ctypes)
+- [ ] Implementar FFI para Rust
+- [ ] Vtables compatibles cross-language
+- [ ] Documentación de interoperabilidad
+
+#### v4.1.0 — Bindings Automáticos
+
+**Objetivo:** Generar bindings automáticamente para otros lenguajes.
+
+```bash
+# Generar bindings
+adB bind mylib.adB --python    # Genera mylib.py
+adB bind mylib.adB --rust      # Genera mylib.rs
+adB bind mylib.adB --c         # Genera mylib.h
+adB bind mylib.adB --csharp    # Genera mylib.cs
+```
+
+---
+
+### Fase 8: FastOS — Sistema Operativo Rápido y Directo
+
+#### v5.0.0 — FastOS Kernel Core ✅ (En Desarrollo)
+
+**Objetivo:** Crear un sistema operativo alternativo a Windows, **virgen y directo**, usando el stack **ADead-BIB + Rust + wgpu**.
+
+**Ubicación:** `Sistema operativo/FastOS/`
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         FastOS — Arquitectura                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      APLICACIONES (ADead-BIB)                       │    │
+│  │   • Juegos (GAME/)                                                  │    │
+│  │   • Utilidades                                                      │    │
+│  │   • IDE nativo                                                      │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      ADead-OS API (Syscalls)                        │    │
+│  │   • File I/O                                                        │    │
+│  │   • Memory Management                                               │    │
+│  │   • Process Control                                                 │    │
+│  │   • Graphics (GPU Direct)                                           │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      ADead-OS KERNEL                                │    │
+│  │                                                                     │    │
+│  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │    │
+│  │   │   Scheduler  │  │    Memory    │  │   Drivers    │              │    │
+│  │   │  (ADead-BIB) │  │  (ADead-BIB) │  │ (Rust/wgpu)  │              │    │
+│  │   └──────────────┘  └──────────────┘  └──────────────┘              │    │
+│  │                                                                     │    │
+│  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │    │
+│  │   │  Filesystem  │  │   Network    │  │     GPU      │              │    │
+│  │   │  (ADead-BIB) │  │  (ADead-BIB) │  │ (Rust/wgpu)  │              │    │
+│  │   └──────────────┘  └──────────────┘  └──────────────┘              │    │
+│  │                                                                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      HARDWARE (x86-64 / ARM64)                      │    │
+│  │   • CPU (bytes directos ADead-BIB)                                  │    │
+│  │   • GPU (wgpu/Vulkan cuando necesario)                              │    │
+│  │   • Memoria, Disco, Red                                             │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Filosofía FastOS:**
+
+| Principio | Descripción |
+|-----------|-------------|
+| **Virgen** | Sin código legacy de Windows/Linux |
+| **Directo** | Bytes directos al hardware, sin capas innecesarias |
+| **Claro** | Código legible y documentado |
+| **Mínimo** | Solo lo necesario, nada más |
+| **Sin NASM** | Todo en ADead-BIB (bytes directos) |
+| **Rust/wgpu opcional** | Solo para drivers GPU complejos |
+
+**Componentes del Kernel:**
+
+```
+FastOS/
+├── boot/
+│   ├── bootloader.adB      # Bootloader en ADead-BIB (bytes directos)
+│   ├── stage1.adB          # Modo real → Modo protegido
+│   └── stage2.adB          # Modo protegido → Modo largo (64-bit)
+│
+├── kernel/
+│   ├── main.adB            # Entry point del kernel
+│   ├── memory.adB          # Gestión de memoria (paging, heap)
+│   ├── scheduler.adB       # Planificador de procesos
+│   ├── syscalls.adB        # Llamadas al sistema
+│   └── interrupts.adB      # Manejo de interrupciones (IDT)
+│
+├── drivers/
+│   ├── keyboard.adB        # Driver de teclado (PS/2, USB)
+│   ├── display.adB         # Driver de pantalla (framebuffer)
+│   ├── disk.adB            # Driver de disco (AHCI, NVMe)
+│   ├── gpu.rs              # Driver GPU (Rust + wgpu, opcional)
+│   └── network.adB         # Driver de red (básico)
+│
+├── fs/
+│   ├── vfs.adB             # Virtual File System
+│   ├── fat32.adB           # Soporte FAT32
+│   └── adeadfs.adB         # Filesystem propio (simple)
+│
+└── userspace/
+    ├── shell.adB           # Shell básica
+    ├── init.adB            # Proceso init
+    └── apps/               # Aplicaciones de usuario
+```
+
+**Tareas v5.0.0:**
+- [x] Estructura del proyecto ✅
+- [x] Bootloader básico (MBR → Modo largo) ✅
+- [x] Kernel mínimo (VGA print) ✅
+- [x] Gestión de memoria (bump allocator) ✅
+- [x] IDT y manejo de interrupciones ✅
+- [x] Driver de teclado PS/2 ✅
+- [x] Shell básica con comandos ✅
+- [ ] Scheduler simple (round-robin)
+- [ ] Syscalls básicos (read, write, exit)
+
+#### v5.1.0 — FastOS Graphics
+
+**Objetivo:** Sistema gráfico nativo usando GPU directo.
+
+```rust
+// ADead-OS Graphics API
+fn main() {
+    let screen = Screen::init(1920, 1080)
+    
+    screen.clear(Color::BLACK)
+    screen.draw_rect(100, 100, 200, 150, Color::RED)
+    screen.draw_text(10, 10, "ADead-OS v5.1", Color::WHITE)
+    screen.present()
+}
+```
+
+**Tareas:**
+- [ ] Framebuffer básico (VESA/GOP)
+- [ ] Driver GPU con wgpu (opcional)
+- [ ] Window manager simple
+- [ ] Compositor básico
+
+#### v5.2.0 — ADead-OS Userspace
+
+**Objetivo:** Entorno de usuario completo.
+
+- [ ] Shell interactiva
+- [ ] Editor de texto
+- [ ] Compilador ADead-BIB nativo
+- [ ] Gestor de archivos
+- [ ] Juegos de ejemplo (Flappy Bird portado)
+
+---
+
+### Fase 9: Ecosistema Completo
+
+#### v6.0.0 — ADead-IDE
+
+**Objetivo:** IDE nativo para ADead-BIB.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ADead-IDE                                         [─][□][×]│
+├─────────────────────────────────────────────────────────────┤
+│  File  Edit  View  Build  Run  Help                         │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────┐ ┌────────────────────────────────────────────┐│
+│  │ Explorer │ │ main.adB                                   ││
+│  │          │ │                                            ││
+│  │ ▼ src/   │ │  fn main() {                               ││
+│  │  main.adB│ │      println("Hello, ADead-OS!")           ││
+│  │  lib.adB │ │  }                                         ││
+│  │          │ │                                            ││
+│  └──────────┘ └────────────────────────────────────────────┘│
+│  ┌──────────────────────────────────────────────────────────┐
+│  │ Output: ✅ Compiled successfully (0.02s, 1.2KB)          │
+│  └──────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Arquitectura de Backends
 
 ### CPU Backend (Binario)
@@ -698,6 +987,43 @@ cargo run --bin adeadc -- run TESTEO/v2/integrados/test_v2_0_0_hex_first.adB
 | C | ~50 KB | libc |
 | Rust | ~150 KB | std |
 | Go | ~2 MB | Go Runtime |
+
+---
+
+## 🔧 Tareas Pendientes del Parser/Compilador
+
+### Completadas Recientemente ✅
+
+| Tarea | Estado | Archivo |
+|-------|--------|---------|
+| Operador módulo `%` | ✅ | `parser.rs` |
+| Comparaciones `>`, `<`, `>=`, `<=` | ✅ | `parser.rs` |
+| Atributos de programa `#![mode()]` | ✅ | `ast.rs` |
+| Optimizador binario | ✅ | `binary_optimizer.rs` |
+
+### Pendientes para Mejorar 🚧
+
+| Tarea | Prioridad | Descripción |
+|-------|-----------|-------------|
+| **Constantes globales** | Alta | `const X = 10` no se evalúa correctamente en runtime |
+| **Operadores bit a bit** | Media | `>>`, `<<`, `&`, `\|`, `^` en expresiones |
+| **Operador ternario** | Baja | `x = a > b ? a : b` |
+| **Asignación múltiple** | Baja | `let (a, b) = (1, 2)` |
+| **Strings interpolados** | Media | `"Valor: {x}"` |
+| **Arrays dinámicos** | Media | `let arr = [1, 2, 3]` con push/pop |
+| **Match expressions** | Media | Pattern matching completo |
+| **Closures/Lambdas** | Baja | `let f = \|x\| x * 2` |
+
+### Motor de Juegos (GAME/) ✅
+
+| Componente | Estado | Descripción |
+|------------|--------|-------------|
+| Engine Core | ✅ | Window, Renderer, Input, Time |
+| ECS | ✅ | Entity, Components, World |
+| Systems | ✅ | Physics, Collision, Render |
+| Flappy Game | ✅ | Juego funcional de ejemplo |
+| ADead-BIB Logic | ✅ | `game_logic.adB` integrado |
+| Ventana redimensionable | ✅ | Soporte para maximizar |
 
 ---
 
