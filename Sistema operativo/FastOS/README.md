@@ -1,4 +1,4 @@
-# FastOS
+# FastOS v0.2.0
 
 **GPU-First / Binary-First Operating System (64-bit)**
 
@@ -10,10 +10,14 @@
 
 | Módulo | Estado | Descripción |
 |--------|--------|-------------|
-| **GPU Driver** | ✅ | Acceso directo al framebuffer |
-| **ADead-BIB Loader** | ✅ | Carga y ejecuta binarios .adB |
-| **Syscall API** | ✅ | API para programas ADead-BIB |
-| **Framebuffer** | ✅ | 1280x720 gráficos |
+| **GPU Driver** | ✅ | Framebuffer + HAL |
+| **GPU HAL** | ✅ | NVIDIA/AMD/Intel detection |
+| **Mouse PS/2** | ✅ | Driver funcional |
+| **Desktop** | ✅ | Windows 11 style |
+| **Timer** | ✅ | PIT + RTC |
+| **Double Buffer** | ✅ | Sin parpadeo |
+| **ADead-BIB Loader** | ✅ | Carga binarios .adB |
+| **Syscall API** | ✅ | API para programas |
 
 ---
 
@@ -22,15 +26,25 @@
 ```
 FastOS/
 ├── kernel/
-│   ├── main.rs        # Entry point
-│   ├── gpu.rs         # Driver GPU (framebuffer)
-│   ├── loader.rs      # Cargador de binarios ADead-BIB
-│   ├── syscall.rs     # API de sistema (syscalls)
-│   └── adead_bib.rs   # Definiciones ADead-BIB
-├── Cargo.toml
-├── make_boot.ps1      # Crear imagen booteable
-└── target/
-    └── fastos-bios.img
+│   ├── main.rs              # Entry point
+│   ├── gpu.rs               # Driver GPU
+│   ├── mouse.rs             # Mouse PS/2
+│   ├── desktop.rs           # Desktop Windows 11
+│   ├── timer.rs             # PIT Timer
+│   ├── framebuffer_double.rs # Double buffering
+│   ├── loader.rs            # ADead-BIB loader
+│   ├── syscall.rs           # Syscalls
+│   └── drivers/gpu/
+│       ├── hal.rs           # GPU HAL
+│       ├── nvidia.rs        # NVIDIA driver
+│       ├── amd.rs           # AMD driver
+│       ├── intel.rs         # Intel driver
+│       └── software.rs      # Software renderer
+├── docs/
+│   ├── WGPU_INTEGRATION.md  # Roadmap wgpu
+│   └── ROADMAP_FASTOS.md    # Roadmap completo
+├── make_boot.ps1
+└── target/fastos-bios.img
 ```
 
 ---

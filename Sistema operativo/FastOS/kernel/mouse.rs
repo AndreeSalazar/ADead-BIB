@@ -75,21 +75,23 @@ pub fn init(screen_w: i32, screen_h: i32) {
     }
 }
 
-/// Procesar byte del mouse (llamado desde IRQ12)
+/// Procesar byte del mouse (llamado desde polling)
 pub fn handle_byte(byte: u8) {
     unsafe {
         let mouse = &mut MOUSE;
+        
+        // Si es el primer byte, debe tener bit 3 activo (always 1)
+        if mouse.packet_index == 0 {
+            if byte & 0x08 == 0 {
+                return; // No es un byte válido de inicio, ignorar
+            }
+        }
         
         mouse.packet[mouse.packet_index] = byte;
         mouse.packet_index += 1;
         
         if mouse.packet_index >= 3 {
             mouse.packet_index = 0;
-            
-            // Verificar que el paquete es válido
-            if mouse.packet[0] & 0x08 == 0 {
-                return;
-            }
             
             // Botones
             mouse.buttons = mouse.packet[0] & 0x07;

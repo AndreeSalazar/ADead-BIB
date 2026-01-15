@@ -16,6 +16,16 @@ mod syscall;
 mod loader;
 mod mouse;
 mod desktop;
+mod drivers;
+mod timer;
+mod framebuffer_double;
+mod vfs;
+mod shell;
+mod heap;
+
+// Renombrar keyboard para evitar conflicto
+#[path = "keyboard_new.rs"]
+mod keyboard;
 
 use bootloader_api::{entry_point, BootInfo};
 use core::panic::PanicInfo;
@@ -43,21 +53,42 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         // Crear escritorio
         let mut desktop = Desktop::new(w as i32, h as i32);
         
+        // Variables para detectar cambios
+        let mut last_mx: i32 = -1;
+        let mut last_my: i32 = -1;
+        let mut last_wx: i32 = -1;
+        let mut last_wy: i32 = -1;
+        
         // Loop principal del escritorio
         loop {
             // Leer datos del mouse (polling)
-            poll_mouse();
+            for _ in 0..20 {
+                poll_mouse();
+                for _ in 0..500 { unsafe { asm!("nop"); } }
+            }
+            
+            // Obtener posición actual
+            let (mx, my) = mouse::get_position();
             
             // Actualizar lógica
             desktop.update();
             
-            // Dibujar
-            if let Some(gpu) = GpuDriver::get() {
-                desktop.draw(gpu);
+            // Solo redibujar si hubo cambios
+            let changed = mx != last_mx || my != last_my || 
+                          desktop.window.x != last_wx || desktop.window.y != last_wy;
+            
+            if changed {
+                if let Some(gpu) = GpuDriver::get() {
+                    desktop.draw(gpu);
+                }
+                last_mx = mx;
+                last_my = my;
+                last_wx = desktop.window.x;
+                last_wy = desktop.window.y;
             }
             
-            // Pequeña pausa
-            for _ in 0..50000 {
+            // Pausa para reducir CPU
+            for _ in 0..80000 {
                 unsafe { asm!("nop"); }
             }
         }
@@ -69,14 +100,23 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 /// Polling del mouse PS/2
 fn poll_mouse() {
     unsafe {
-        // Verificar si hay datos disponibles
-        let status: u8;
-        asm!("in al, dx", out("al") status, in("dx") 0x64u16, options(nomem, nostack));
-        
-        if status & 0x21 == 0x21 {  // Datos del mouse disponibles
-            let data: u8;
-            asm!("in al, dx", out("al") data, in("dx") 0x60u16, options(nomem, nostack));
-            mouse::handle_byte(data);
+        // Leer todos los bytes disponibles
+        for _ in 0..10 {
+            let status: u8;
+            asm!("in al, dx", out("al") status, in("dx") 0x64u16, options(nomem, nostack));
+            
+            // Bit 0 = datos disponibles, Bit 5 = datos del mouse
+            if status & 0x01 != 0 {
+                let data: u8;
+                asm!("in al, dx", out("al") data, in("dx") 0x60u16, options(nomem, nostack));
+                
+                // Solo procesar si es del mouse (bit 5)
+                if status & 0x20 != 0 {
+                    mouse::handle_byte(data);
+                }
+            } else {
+                break;
+            }
         }
     }
 }
