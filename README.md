@@ -1,57 +1,92 @@
 # 🔥 ADead-BIB v2.0
 
-**Binary Is Binary** — Direct compilation to CPU (Binary) + GPU (HEX)
+**OOP Puro + ASM Simbionte = El Nuevo Lenguaje**
 
-> Write human-friendly code. Get raw bytes. No ASM. No LLVM. No lies.
+> Escribe código humano. Obtén bytes directos. Sin ASM. Sin LLVM. Sin mentiras.
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  Your Code (.adB)                                          │
+│  Tu Código (.adB)                                          │
 │       ↓                                                    │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │              ADead-BIB Compiler                     │   │
+│  │              Compilador ADead-BIB                   │   │
 │  │                                                     │   │
 │  │  ┌──────────────┐      ┌──────────────────────────┐ │   │
 │  │  │     CPU      │      │          GPU             │ │   │
-│  │  │  (Binary)    │      │         (HEX)            │ │   │
+│  │  │  (Binario)   │      │         (HEX)            │ │   │
 │  │  │              │      │                          │ │   │
-│  │  │ x86-64 bytes │      │ SPIR-V (All GPUs)        │ │   │
-│  │  │ direct emit  │      │ CUDA (NVIDIA)            │ │   │
+│  │  │ x86-64 bytes │      │ SPIR-V (Todas las GPUs)  │ │   │
+│  │  │ emisión dir. │      │ CUDA (NVIDIA)            │ │   │
 │  │  └──────────────┘      └──────────────────────────┘ │   │
 │  └─────────────────────────────────────────────────────┘   │
 │       ↓                           ↓                        │
 │  .exe / .elf                 .spv / .ptx                   │
-│  (Native Binary)             (GPU Bytecode)                │
+│  (Binario Nativo)            (Bytecode GPU)                │
 └────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🇵🇪 Made with ❤️ in Peru
+## 🚀 Inicio Rápido (5 minutos)
 
-**Author:** Eddi Andreé Salazar Matos  
-**Email:** eddi.salazar.dev@gmail.com  
-**License:** GPLv2
+```bash
+# 1. Clonar e instalar
+git clone https://github.com/AndreeSalazar/ADead-BIB.git
+cd ADead-BIB
+cargo build --release
+
+# 2. Crear tu primer proyecto
+adB create hola
+
+# 3. Entrar y ejecutar
+cd hola
+adB run main.adB
+```
+
+**Salida:**
+```
+========================================
+     hola - ADead-BIB
+     Binary Is Binary
+========================================
+
+Hello, hola!
+
+Resultado: 52
+
+========================================
+     Proyecto listo!
+========================================
+```
 
 ---
 
-## 🎯 What is ADead-BIB?
+## 🇵🇪 Hecho con ❤️ en Perú
+
+**Autor:** Eddi Andreé Salazar Matos  
+**Email:** eddi.salazar.dev@gmail.com  
+**Licencia:** GPLv2 (código abierto, libre para usar y modificar)
+
+---
+
+## 🎯 ¿Qué es ADead-BIB?
 
 **ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
 
-A programming language that compiles **directly to binary and hexadecimal** without intermediate assembly.
+Un lenguaje de programación que compila **directamente a binario y hexadecimal** sin ensamblador intermedio.
 
-| Traditional Compilers | ADead-BIB |
-|----------------------|-----------|
-| Code → Tokens → AST → IR → Optimizer → ASM → Assembler → Linker → Binary | Code → AST → **BYTES DIRECT** → Binary/HEX |
-| 7+ layers of translation | 2-3 layers, no intermediaries |
+| Compiladores Tradicionales | ADead-BIB |
+|---------------------------|-----------|
+| Código → Tokens → AST → IR → Optimizer → ASM → Assembler → Linker → Binario | Código → AST → **BYTES DIRECTOS** → Binario/HEX |
+| 7+ capas de traducción | 2-3 capas, sin intermediarios |
 
-### Core Philosophy
+### Filosofía Core
 
-1. **No intermediate ASM** — We emit x86-64 bytes directly
-2. **No external linker** — We generate complete PE/ELF in memory
-3. **No heavy runtime** — The binary is self-sufficient
-4. **HEX is first-class** — You can write literal bytes in your code
+1. **Sin ASM intermedio** — Emitimos bytes x86-64 directamente
+2. **Sin linker externo** — Generamos PE/ELF completos en memoria
+3. **Sin runtime pesado** — El binario es autosuficiente
+4. **HEX es ciudadano de primera clase** — Puedes escribir bytes literales
+5. **OOP Puro** — Objetos, traits, herencia sin runtime
 
 ---
 
@@ -168,51 +203,81 @@ GPU:
 
 ---
 
-## 🚀 Installation
+## 🚀 Instalación
 
-### Requirements
+### Requisitos
 - Rust 1.70+ (rustup)
-- Windows 10/11 or Linux
+- Windows 10/11 o Linux
 
-### Quick Installation
+### Instalación Rápida
 
 ```bash
-# Clone repository
-git clone https://github.com/your-user/ADead-BIB.git
+# Clonar repositorio
+git clone https://github.com/AndreeSalazar/ADead-BIB.git
 cd ADead-BIB
 
-# Build
+# Compilar
 cargo build --release
 
-# Install globally
+# Instalar globalmente (opcional)
 cargo install --path .
 
-# Verify
-adeadc --help
+# Verificar
+adB --help
 ```
 
 ---
 
-## 📋 CLI Commands
+## 📋 Comandos CLI (estilo Rust)
+
+### Crear Proyecto
 
 ```bash
-# Run program (compile and execute)
-adeadc run file.adB
-
-# Compile to executable
-adeadc build file.adB
-adeadc build file.adB -o my_program.exe
-
-# Check syntax
-adeadc check file.adB
-
-# Ultra-compact binary modes
-adeadc tiny file.adB         # < 500 bytes
-
-# GPU commands
-adeadc gpu                   # Detect GPU
-adeadc spirv matmul 1024     # Generate SPIR-V shader
+adB create mi_proyecto       # Crear proyecto nuevo
+adB new mi_proyecto          # Alias de create
+adB init                     # Inicializar en directorio actual
 ```
+
+### Compilar y Ejecutar
+
+```bash
+adB run archivo.adB          # Compilar y ejecutar
+adB build archivo.adB        # Compilar a ejecutable
+adB build archivo.adB -o app.exe  # Con nombre específico
+adB check archivo.adB        # Verificar sintaxis
+```
+
+### Modo Interactivo
+
+```bash
+adB play                     # REPL interactivo (playground)
+```
+
+### Modos Avanzados
+
+```bash
+adB tiny archivo.adB         # PE ultra-compacto (< 500 bytes)
+adB nano output.exe          # PE más pequeño posible
+adB micro output.exe         # PE32 sub-256 bytes
+```
+
+### GPU
+
+```bash
+adB gpu                      # Detectar GPU
+adB spirv matmul 1024        # Generar shader SPIR-V
+adB cuda matmul 1024         # Generar código CUDA
+adB unified matmul 1000000   # Pipeline unificado CPU↔GPU
+```
+
+### Comparación con Rust
+
+| Rust | ADead-BIB |
+|------|-----------|
+| `cargo new hola` | `adB create hola` |
+| `cargo run` | `adB run main.adB` |
+| `cargo build` | `adB build main.adB` |
+| `cargo check` | `adB check main.adB` |
 
 ---
 
@@ -330,22 +395,73 @@ cargo run --bin adeadc -- run TESTEO/v2/integrados/test_v2_0_0_hex_first.adB
 
 ---
 
-## 🔗 Documentation
+## 🔗 Documentación
 
-- [ROADMAP.md](ROADMAP.md) — Development roadmap (Spanish)
-- [GUIA_ES.md](GUIA_ES.md) — Spanish guide
-- [docs/ESTRUCTURA.md](docs/ESTRUCTURA.md) — Project structure
-
----
-
-## 📜 License
-
-GPLv2 — See [LICENSE](LICENSE)
+- [ROADMAP.md](ROADMAP.md) — Hoja de ruta de desarrollo
+- [GUIA_ES.md](GUIA_ES.md) — Guía en español
+- [docs/ESTRUCTURA.md](docs/ESTRUCTURA.md) — Estructura del proyecto
+- [Project/](Project/) — Template de proyecto con ejemplos funcionales
 
 ---
 
-**ADead-BIB: Code → Bytes → Binary**
-**Binary-Oriented Object Language (BOOL)**
-**O**
-**Object-Centric Assembly Language (OCAL)**
-**No ASM. No LLVM. No lies.**
+## 📜 Licencia (GPLv2)
+
+### Resumen Claro
+
+**ADead-BIB** está licenciado bajo **GNU General Public License v2.0**.
+
+#### ✅ Puedes:
+
+| Acción | Descripción |
+|--------|-------------|
+| **Usar** | Para cualquier propósito (personal, comercial, educativo) |
+| **Estudiar** | Leer y aprender del código fuente |
+| **Modificar** | Cambiar el código para tus necesidades |
+| **Distribuir** | Compartir copias del código |
+
+#### ⚠️ Condiciones:
+
+| Condición | Descripción |
+|-----------|-------------|
+| **Misma licencia** | Si distribuyes modificaciones, DEBEN ser GPLv2 |
+| **Código fuente** | Si distribuyes binarios, incluir código fuente |
+| **Atribución** | Mantener los créditos del autor original |
+
+#### 📋 En términos simples:
+
+> **Usa ADead-BIB libremente. Si lo modificas y distribuyes, comparte el código.**
+
+```
+Copyright (C) 2024-2026 Eddi Andreé Salazar Matos
+Email: eddi.salazar.dev@gmail.com
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+```
+
+Ver archivo [LICENSE](LICENSE) para el texto completo.
+
+---
+
+## 👤 Autor
+
+**Eddi Andreé Salazar Matos**  
+📧 eddi.salazar.dev@gmail.com  
+🇵🇪 Hecho con ❤️ en Perú
+
+---
+
+## 🌟 Contribuir
+
+1. Fork del repositorio
+2. Crear rama: `git checkout -b feature/nueva-funcionalidad`
+3. Commit: `git commit -m "Agregar funcionalidad"`
+4. Push: `git push origin feature/nueva-funcionalidad`
+5. Crear Pull Request
+
+---
+
+**ADead-BIB v2.0: Código → Bytes → Binario**
+**OOP Puro + ASM Simbionte = El Nuevo Lenguaje**
+**Sin ASM. Sin LLVM. Sin mentiras.**

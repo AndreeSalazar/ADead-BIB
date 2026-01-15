@@ -11,7 +11,14 @@
 //   - Limpieza y shutdown
 // ============================================================================
 
-#![imports(call: run)]
+#![imports(call: run, run_gpu_demo, run_cpu_demo)]
+#![imports(core: init, shutdown)]
+#![imports(cpu: *)]
+#![imports(gpu: *)]
+
+// ============================================================================
+// PUNTO DE ENTRADA PRINCIPAL
+// ============================================================================
 
 fn _start() {
     // ========================================
@@ -20,14 +27,45 @@ fn _start() {
     core::init()
     
     // ========================================
-    // Fase 2: Ejecutar lógica principal
+    // Fase 2: Ejecutar demos
     // ========================================
-    // La lógica OOP vive en call.adB
-    // main.adB solo orquesta, no implementa
+    
+    // Demo principal: OOP Puro
     call::run()
+    
+    // Demo GPU: Compute con opcodes directos
+    call::run_gpu_demo()
+    
+    // Demo CPU: Instrucciones x86-64 directas
+    call::run_cpu_demo()
     
     // ========================================
     // Fase 3: Limpieza y salida
     // ========================================
+    core::shutdown()
+}
+
+// ============================================================================
+// FUNCIONES ALTERNATIVAS DE ENTRADA
+// ============================================================================
+
+// Entrada para modo solo OOP
+fn main_oop_only() {
+    core::init()
+    call::run()
+    core::shutdown()
+}
+
+// Entrada para modo GPU compute
+fn main_gpu_only() {
+    core::init()
+    call::run_gpu_demo()
+    core::shutdown()
+}
+
+// Entrada para modo CPU optimizado
+fn main_cpu_only() {
+    core::init()
+    call::run_cpu_demo()
     core::shutdown()
 }

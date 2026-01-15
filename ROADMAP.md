@@ -1,11 +1,39 @@
-# ADead-BIB — Roadmap de Desarrollo
+# ADead-BIB v2.0 — Roadmap de Desarrollo
 
 > **ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
 > 
-> Lenguaje que compila **DIRECTO a BINARIO (CPU) y HEX (GPU)**.
+> Lenguaje **OOP Puro + ASM Simbionte** que compila **DIRECTO a BINARIO**.
 > Sin ASM intermedio. Sin LLVM. Sin linker externo.
 > 
 > **Código → AST → BYTES DIRECTOS → Ejecutable**
+
+---
+
+## Flujo de Trabajo Estándar (estilo Rust)
+
+```bash
+# Crear proyecto nuevo
+adB create mi_proyecto      # Crea estructura completa
+adB new mi_proyecto         # Alias de create
+adB init                    # Inicializa en directorio actual
+
+# Compilar y ejecutar
+adB run main.adB            # Compila y ejecuta
+adB build main.adB          # Solo compila
+adB check main.adB          # Verifica sintaxis
+
+# Modo interactivo
+adB play                    # REPL interactivo
+```
+
+### Comparación con Rust
+
+| Rust | ADead-BIB |
+|------|-----------|
+| `cargo new hola` | `adB create hola` |
+| `cargo run` | `adB run main.adB` |
+| `cargo build` | `adB build main.adB` |
+| `cargo check` | `adB check main.adB` |
 
 ---
 
@@ -25,7 +53,8 @@ ADead-BIB (2-3 capas):
 2. **Sin linker externo** — Generamos PE/ELF completos en memoria
 3. **Sin runtime pesado** — El binario es autosuficiente
 4. **HEX es ciudadano de primera clase** — Puedes escribir bytes literales
-5. **CPU y GPU trabajan por separado** — Contratos directos para cada uno
+5. **OOP Puro** — Objetos como memoria plana, métodos como funciones
+6. **CPU y GPU trabajan por separado** — Contratos directos para cada uno
 
 ---
 
@@ -165,7 +194,7 @@ Ver carpeta `Project/` para un ejemplo completo de esta arquitectura.
 
 ### Fase 1: Instrucciones Directas
 
-#### v2.1.0 — Módulo `cpu::`
+#### v2.1.0 — Módulo `cpu::` ✅
 
 **Objetivo:** Funciones que emiten instrucciones x86-64 directamente.
 
@@ -183,12 +212,14 @@ fn optimized_loop() {
 ```
 
 **Tareas:**
-- [ ] Implementar módulo `cpu::` con funciones de instrucciones
-- [ ] Registros como constantes tipadas (rax, rbx, rcx, etc.)
-- [ ] Validación de operandos en tiempo de compilación
+- [x] Implementar módulo `cpu::` con funciones de instrucciones ✅
+- [x] Registros como constantes tipadas (rax, rbx, rcx, etc.) ✅
+- [x] Validación de operandos en tiempo de compilación ✅
 - [ ] Tests para cada instrucción
 
-#### v2.2.0 — Módulo `gpu::`
+**Implementado en:** `Project/cpu/mod.adB`
+
+#### v2.2.0 — Módulo `gpu::` ✅
 
 **Objetivo:** Funciones que emiten opcodes GPU directamente.
 
@@ -202,16 +233,18 @@ fn gpu_compute() {
 ```
 
 **Tareas:**
-- [ ] Implementar módulo `gpu::` con funciones de opcodes
-- [ ] Registros GPU como constantes
-- [ ] Generación automática de command buffer
+- [x] Implementar módulo `gpu::` con funciones de opcodes ✅
+- [x] Registros GPU como constantes ✅
+- [x] Generación automática de command buffer ✅
 - [ ] Tests para cada opcode
+
+**Implementado en:** `Project/gpu/mod.adB`
 
 ---
 
 ### Fase 2: Bytes Directos
 
-#### v2.3.0 — Macro `emit![]`
+#### v2.3.0 — Macro `emit![]` ✅
 
 **Objetivo:** Insertar bytes directamente en el flujo de código.
 
@@ -223,10 +256,12 @@ fn fast_function() {
 ```
 
 **Tareas:**
-- [ ] Implementar macro `emit![]` en el parser
-- [ ] Validación de bytes en tiempo de compilación
-- [ ] Integración con el flujo de código existente
-- [ ] Bloque `unsafe` requerido para emit![]
+- [x] Implementar macro `emit![]` en el parser ✅
+- [x] Validación de bytes en tiempo de compilación ✅
+- [x] Integración con el flujo de código existente ✅
+- [x] Bloque `unsafe` requerido para emit![] ✅
+
+**Implementado en:** `Project/cpu/mod.adB` y `Project/call.adB`
 
 #### v2.4.0 — Modo Raw Binary
 
@@ -319,7 +354,7 @@ fn _start() {
 
 ### Fase 5: OOP Avanzado
 
-#### v3.0.0 — OOP Core Spec
+#### v3.0.0 — OOP Core Spec ✅
 
 **Objetivo:** Sistema OOP completo y documentado.
 
@@ -353,11 +388,17 @@ impl Drawable for Player {
 ```
 
 **Tareas:**
-- [ ] Especificación formal de structs
-- [ ] Especificación formal de impl
-- [ ] Especificación formal de traits
-- [ ] Vtables simples para polimorfismo
-- [ ] Documentación completa
+- [x] Especificación formal de structs ✅
+- [x] Especificación formal de impl ✅
+- [x] Especificación formal de traits ✅
+- [x] Vtables simples para polimorfismo ✅
+- [x] Documentación completa ✅
+
+**Implementado en:** `Project/call.adB` con ejemplos completos:
+- `Vec2`, `Vec3`, `Matrix4` — Tipos matemáticos
+- `Entity`, `Player`, `Enemy` — Entidades de juego
+- `GameState` — Sistema completo
+- `Drawable`, `Updatable` — Traits con implementaciones
 
 #### v3.1.0 — Herencia Simple
 
@@ -502,23 +543,40 @@ Alineación: Stack a 16 bytes antes de call
 ## Comandos CLI
 
 ```bash
-# Compilar y ejecutar
-adeadc run archivo.adB
+# ═══════════════════════════════════════════════════════════════
+# CREAR PROYECTO (estilo Rust)
+# ═══════════════════════════════════════════════════════════════
+adB create mi_proyecto          # Crear proyecto nuevo
+adB new mi_proyecto             # Alias de create
+adB init                        # Inicializar en directorio actual
 
-# Compilar a ejecutable
-adeadc build archivo.adB
-adeadc build archivo.adB -o mi_programa.exe
+# ═══════════════════════════════════════════════════════════════
+# COMPILAR Y EJECUTAR
+# ═══════════════════════════════════════════════════════════════
+adB run archivo.adB             # Compilar y ejecutar
+adB build archivo.adB           # Compilar a ejecutable
+adB build archivo.adB -o app.exe # Compilar con nombre específico
+adB check archivo.adB           # Verificar sintaxis
 
-# Verificar sintaxis
-adeadc check archivo.adB
+# ═══════════════════════════════════════════════════════════════
+# MODO INTERACTIVO
+# ═══════════════════════════════════════════════════════════════
+adB play                        # REPL interactivo (playground)
 
-# Modos especiales
-adeadc tiny archivo.adB         # PE ultra-compacto (<500 bytes)
-adeadc raw archivo.adB          # Bytes puros sin header
+# ═══════════════════════════════════════════════════════════════
+# MODOS AVANZADOS
+# ═══════════════════════════════════════════════════════════════
+adB tiny archivo.adB            # PE ultra-compacto (<500 bytes)
+adB nano output.exe             # PE más pequeño posible
+adB micro output.exe            # PE32 sub-256 bytes
 
+# ═══════════════════════════════════════════════════════════════
 # GPU
-adeadc gpu                      # Detectar GPU
-adeadc spirv matmul 1024        # Generar shader SPIR-V
+# ═══════════════════════════════════════════════════════════════
+adB gpu                         # Detectar GPU
+adB spirv matmul 1024           # Generar shader SPIR-V
+adB cuda matmul 1024            # Generar código CUDA
+adB unified matmul 1000000      # Pipeline unificado CPU↔GPU
 ```
 
 ---
@@ -604,6 +662,67 @@ cargo run --bin adeadc -- run TESTEO/v2/integrados/test_v2_0_0_hex_first.adB
 
 ---
 
-**ADead-BIB: Código → Bytes → Binario**
-**CPU (Binario) + GPU (HEX) = Contratos Directos**
+## Licencia
+
+### GPLv2 — Resumen Claro
+
+**ADead-BIB** está licenciado bajo **GNU General Public License v2.0 (GPLv2)**.
+
+#### ✅ Puedes:
+
+| Acción | Descripción |
+|--------|-------------|
+| **Usar** | Usar ADead-BIB para cualquier propósito (personal, comercial, educativo) |
+| **Estudiar** | Leer y aprender del código fuente |
+| **Modificar** | Cambiar el código para tus necesidades |
+| **Distribuir** | Compartir copias del código original |
+| **Distribuir modificaciones** | Compartir tus versiones modificadas |
+
+#### ⚠️ Condiciones:
+
+| Condición | Descripción |
+|-----------|-------------|
+| **Misma licencia** | Si distribuyes modificaciones, DEBEN ser GPLv2 |
+| **Código fuente** | Si distribuyes binarios, DEBES incluir el código fuente |
+| **Aviso de copyright** | Mantener los avisos de copyright originales |
+| **Cambios documentados** | Documentar los cambios que hagas |
+
+#### ❌ No puedes:
+
+| Restricción | Descripción |
+|-------------|-------------|
+| **Cerrar el código** | No puedes hacer versiones propietarias cerradas |
+| **Sublicenciar** | No puedes cambiar la licencia a otra diferente |
+| **Quitar atribución** | No puedes quitar los créditos del autor original |
+
+#### 📋 En términos simples:
+
+> **Usa ADead-BIB libremente, pero si lo modificas y distribuyes, comparte el código.**
+
+```
+Copyright (C) 2024-2026 Eddi Andreé Salazar Matos
+Email: eddi.salazar.dev@gmail.com
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+```
+
+---
+
+## Autor
+
+**Eddi Andreé Salazar Matos**  
+📧 eddi.salazar.dev@gmail.com  
+🇵🇪 Hecho con ❤️ en Perú
+
+---
+
+**ADead-BIB v2.0: Código → Bytes → Binario**
+**OOP Puro + ASM Simbionte = El Nuevo Lenguaje**
 **Sin ASM. Sin LLVM. Sin mentiras.**

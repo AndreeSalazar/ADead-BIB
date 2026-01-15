@@ -504,6 +504,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Modo interactivo estilo Rust Playground / Jupyter
             run_playground()?;
         },
+        "create" => {
+            // adB create <nombre> - Crear nuevo proyecto (estilo Rust: cargo new)
+            if args.len() < 3 {
+                eprintln!("❌ Uso: adB create <nombre_proyecto>");
+                eprintln!("   Ejemplo: adB create mi_juego");
+                std::process::exit(1);
+            }
+            let project_name = &args[2];
+            create_new_project(project_name)?;
+        },
+        "new" => {
+            // Alias: adB new <nombre> = adB create <nombre>
+            if args.len() < 3 {
+                eprintln!("❌ Uso: adB new <nombre_proyecto>");
+                std::process::exit(1);
+            }
+            let project_name = &args[2];
+            create_new_project(project_name)?;
+        },
+        "init" => {
+            // adB init - Inicializar proyecto en directorio actual
+            let current_dir = std::env::current_dir()?;
+            let project_name = current_dir.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("proyecto");
+            create_new_project_in_place(project_name)?;
+        },
         _ => {
             // Legacy behavior: treat first arg as input file if it's not a command
             // Or just show usage. Let's support legacy "cargo run file.adB" style if possible, 
@@ -553,38 +580,43 @@ fn get_output_filename(input: &str, args: &[String]) -> String {
         .to_string() + ".exe"
 }
 
-fn print_usage(program: &str) {
+fn print_usage(_program: &str) {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║           🔥 ADead-BIB Compiler v0.2.0 🔥                    ║");
-    println!("║     Un lenguaje parecido a Rust + Python, 100% en Rust      ║");
+    println!("║           🔥 ADead-BIB v2.0.0 🔥                             ║");
+    println!("║     OOP Puro + ASM Simbionte = El Nuevo Lenguaje            ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
-    println!("📋 USO BÁSICO:");
-    println!("   {} run <archivo.adB>              - Compilar y ejecutar", program);
-    println!("   {} build <archivo.adB>            - Compilar a ejecutable", program);
-    println!("   {} check <archivo.adB>            - Verificar sintaxis", program);
-    println!("   {} play                           - 🎮 Modo interactivo (REPL)", program);
+    println!("📋 CREAR PROYECTO (estilo Rust):");
+    println!("   adB create <nombre>               - Crear nuevo proyecto");
+    println!("   adB new <nombre>                  - Alias de create");
+    println!("   adB init                          - Inicializar en directorio actual");
+    println!();
+    println!("📋 COMPILAR Y EJECUTAR:");
+    println!("   adB run <archivo.adB>             - Compilar y ejecutar");
+    println!("   adB build <archivo.adB>           - Compilar a ejecutable");
+    println!("   adB check <archivo.adB>           - Verificar sintaxis");
+    println!("   adB play                          - 🎮 Modo interactivo (REPL)");
     println!();
     println!("🚀 EJEMPLOS:");
-    println!("   {} run hello.adB                  - Ejecuta hello.adB", program);
-    println!("   {} build main.adB -o app.exe      - Compila a app.exe", program);
+    println!("   adB create hola                   - Crear proyecto 'hola'");
+    println!("   adB run main.adB                  - Ejecutar main.adB");
+    println!("   adB build main.adB -o app.exe     - Compilar a app.exe");
     println!();
     println!("⚡ MODOS AVANZADOS:");
-    println!("   {} tiny <archivo.adB>             - PE ultra-compacto (< 500 bytes)", program);
-    println!("   {} nano [output.exe] [exit_code]  - PE más pequeño posible", program);
-    println!("   {} micro [output.exe] [exit_code] - PE32 sub-256 bytes", program);
-    println!("   {} vm <output.adb> [exit_code]    - MicroVM bytecode", program);
+    println!("   adB tiny <archivo.adB>            - PE ultra-compacto (< 500 bytes)");
+    println!("   adB nano [output.exe] [exit_code] - PE más pequeño posible");
+    println!("   adB micro [output.exe]            - PE32 sub-256 bytes");
+    println!("   adB vm <output.adb>               - MicroVM bytecode");
     println!();
     println!("🎮 GPU (Vulkan/CUDA):");
-    println!("   {} gpu                            - Detectar GPU y generar shader", program);
-    println!("   {} spirv [op] [size]              - Generar SPIR-V compute shader", program);
-    println!("   {} vulkan                         - Inicializar Vulkan runtime", program);
-    println!("   {} cuda [op] [size]               - Generar código CUDA (.cu)", program);
+    println!("   adB gpu                           - Detectar GPU y generar shader");
+    println!("   adB spirv [op] [size]             - Generar SPIR-V compute shader");
+    println!("   adB vulkan                        - Inicializar Vulkan runtime");
+    println!("   adB cuda [op] [size]              - Generar código CUDA (.cu)");
     println!();
     println!("🚀 PIPELINE UNIFICADO (HEX + CUDA):");
-    println!("   {} unified [op] [size]            - Decisión auto CPU↔GPU", program);
-    println!("   {} unified matmul 1000000         - MatMul 1000x1000", program);
-    println!("   {} unified vectoradd 10000000     - VectorAdd 10M elementos", program);
+    println!("   adB unified [op] [size]           - Decisión auto CPU↔GPU");
+    println!("   adB unified matmul 1000000        - MatMul 1000x1000");
     println!("   Flags: --cpu (forzar CPU), --force-gpu (forzar GPU)");
     println!();
     println!("📝 SINTAXIS SOPORTADA:");
@@ -593,7 +625,7 @@ fn print_usage(program: &str) {
     println!("   • Scripts:      Código directo sin main() requerido");
     println!();
     println!("🎮 MODO PLAY (REPL):");
-    println!("   {} play                           - Inicia playground interactivo", program);
+    println!("   adB play                          - Inicia playground interactivo");
     println!("   Escribe código ADead-BIB y presiona Enter para ejecutar");
     println!("   Comandos: :help, :clear, :exit, :run, :ast");
     println!();
@@ -894,4 +926,322 @@ fn is_complete_statement(line: &str) -> bool {
     line.starts_with("let ") ||
     line.starts_with("const ") ||
     (line.contains('=') && !line.contains("==") && !line.starts_with("fn ") && !line.starts_with("def "))
+}
+
+/// Crear un nuevo proyecto ADead-BIB con estructura estándar
+/// Uso: adB create <nombre> o adB new <nombre>
+fn create_new_project(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use std::path::Path;
+    
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║           🚀 ADead-BIB v2.0 - Nuevo Proyecto                ║");
+    println!("║           OOP Puro + ASM Simbionte                          ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!();
+    
+    let project_path = Path::new(name);
+    
+    if project_path.exists() {
+        eprintln!("❌ Error: El directorio '{}' ya existe", name);
+        std::process::exit(1);
+    }
+    
+    // Crear estructura
+    create_project_structure(name, name)?;
+    
+    // Mostrar resultado
+    print_project_created(name);
+    
+    Ok(())
+}
+
+/// Inicializar proyecto en el directorio actual
+/// Uso: adB init
+fn create_new_project_in_place(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║           � ADead-BIB v2.0 - Inicializar Proyecto          ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!();
+    
+    // Crear estructura en directorio actual
+    create_project_structure(".", name)?;
+    
+    // Mostrar resultado
+    print_project_created(name);
+    
+    Ok(())
+}
+
+/// Crear la estructura de archivos del proyecto
+fn create_project_structure(base_path: &str, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    println!("📁 Creando estructura de proyecto...");
+    println!();
+    
+    // Crear directorios
+    fs::create_dir_all(format!("{}/core", base_path))?;
+    fs::create_dir_all(format!("{}/cpu", base_path))?;
+    fs::create_dir_all(format!("{}/gpu", base_path))?;
+    
+    // ========================================================================
+    // main.adB - Punto de entrada FUNCIONAL
+    // ========================================================================
+    let main_content = format!(r#"// ============================================================================
+// {} - ADead-BIB Project
+// ============================================================================
+// Creado con: adB create {}
+// Ejecutar:   adB run main.adB
+// ============================================================================
+
+fn main() {{
+    println("========================================")
+    println("     {} - ADead-BIB")
+    println("     Binary Is Binary")
+    println("========================================")
+    println("")
+    
+    // Tu código aquí
+    println("Hello, {}!")
+    println("")
+    
+    // Variables
+    let x = 42
+    let y = 10
+    let result = x + y
+    
+    print("Resultado: ")
+    println(result)
+    println("")
+    
+    println("========================================")
+    println("     Proyecto listo!")
+    println("========================================")
+}}
+"#, name, name, name, name);
+    fs::write(format!("{}/main.adB", base_path), &main_content)?;
+    println!("   ✅ main.adB          (punto de entrada)");
+    
+    // ========================================================================
+    // call.adB - Lógica OOP (para proyectos más complejos)
+    // ========================================================================
+    let call_content = format!(r#"// ============================================================================
+// {} - Lógica OOP Pura
+// ============================================================================
+// Este archivo es para lógica más compleja con OOP
+// Importar desde main.adB con: #![imports(call: run)]
+// ============================================================================
+
+#![exports(run, Player)]
+
+// Ejemplo de struct
+struct Player {{
+    name: string,
+    x: i32,
+    y: i32,
+    hp: i32
+}}
+
+impl Player {{
+    fn new(name: string) {{
+        return Player {{
+            name: name,
+            x: 0,
+            y: 0,
+            hp: 100
+        }}
+    }}
+    
+    fn move_to(self, dx: i32, dy: i32) {{
+        self.x = self.x + dx
+        self.y = self.y + dy
+    }}
+    
+    fn info(self) {{
+        print("Player: ")
+        println(self.name)
+        print("Position: (")
+        print(self.x)
+        print(", ")
+        print(self.y)
+        println(")")
+        print("HP: ")
+        println(self.hp)
+    }}
+}}
+
+// Función exportada
+pub fn run() {{
+    println("=== OOP Demo ===")
+    
+    let player = Player::new("Hero")
+    player.info()
+    
+    player.move_to(5, 3)
+    println("Moved!")
+    player.info()
+    
+    println("=== Done ===")
+}}
+"#, name);
+    fs::write(format!("{}/call.adB", base_path), &call_content)?;
+    println!("   ✅ call.adB          (lógica OOP)");
+    
+    // ========================================================================
+    // core/mod.adB - Intrínsecos del sistema
+    // ========================================================================
+    let core_content = r#"// ============================================================================
+// core/mod.adB - Intrínsecos del Sistema
+// ============================================================================
+
+#![exports(init, shutdown)]
+
+pub fn init() {
+    // Inicialización del sistema
+}
+
+pub fn shutdown() {
+    // Limpieza del sistema
+}
+"#;
+    fs::write(format!("{}/core/mod.adB", base_path), core_content)?;
+    println!("   ✅ core/mod.adB      (sistema)");
+    
+    // ========================================================================
+    // cpu/mod.adB - Instrucciones CPU directas
+    // ========================================================================
+    let cpu_content = r#"// ============================================================================
+// cpu/mod.adB - Instrucciones CPU Directas (x86-64)
+// ============================================================================
+// Usa cpu::mov, cpu::add, etc. para instrucciones directas
+// Ejemplo: cpu::mov(cpu::rax, 42)
+// ============================================================================
+
+#![exports(rax, rbx, rcx, rdx, rsi, rdi)]
+
+// Registros x86-64
+pub const rax: u8 = 0
+pub const rcx: u8 = 1
+pub const rdx: u8 = 2
+pub const rbx: u8 = 3
+pub const rsi: u8 = 6
+pub const rdi: u8 = 7
+"#;
+    fs::write(format!("{}/cpu/mod.adB", base_path), cpu_content)?;
+    println!("   ✅ cpu/mod.adB       (instrucciones CPU)");
+    
+    // ========================================================================
+    // gpu/mod.adB - Opcodes GPU directos
+    // ========================================================================
+    let gpu_content = r#"// ============================================================================
+// gpu/mod.adB - Opcodes GPU Directos
+// ============================================================================
+// Usa gpu::init, gpu::matmul, etc. para operaciones GPU
+// Opcodes: 0xC0DA0001 (init), 0xC0DA0020 (matmul), etc.
+// ============================================================================
+
+#![exports(init, shutdown, sync)]
+
+pub fn init() {
+    // GPU init: 0xC0DA0001
+}
+
+pub fn shutdown() {
+    // GPU shutdown: 0xC0DA0002
+}
+
+pub fn sync() {
+    // GPU sync: 0xC0DA00F0
+}
+"#;
+    fs::write(format!("{}/gpu/mod.adB", base_path), gpu_content)?;
+    println!("   ✅ gpu/mod.adB       (opcodes GPU)");
+    
+    // ========================================================================
+    // build.adB - Configuración de build
+    // ========================================================================
+    let build_content = format!(r#"// ============================================================================
+// build.adB - Configuración de Build
+// ============================================================================
+
+#![project("{}")]
+#![version("1.0.0")]
+#![main("main.adB")]
+#![output("{}.exe")]
+
+// Opciones de compilación
+#![optimize(true)]
+#![target("windows")]  // windows, linux, raw
+"#, name, name);
+    fs::write(format!("{}/build.adB", base_path), &build_content)?;
+    println!("   ✅ build.adB         (configuración)");
+    
+    // ========================================================================
+    // README.md
+    // ========================================================================
+    let readme_content = format!(r#"# {}
+
+Proyecto ADead-BIB - OOP Puro + ASM Simbionte
+
+## Ejecutar
+
+```bash
+adB run main.adB
+```
+
+## Compilar
+
+```bash
+adB build main.adB
+```
+
+## Estructura
+
+```
+{}/
+├── main.adB      # Punto de entrada (EMPIEZA AQUÍ)
+├── call.adB      # Lógica OOP pura
+├── core/         # Intrínsecos del sistema
+├── cpu/          # Instrucciones CPU directas
+├── gpu/          # Opcodes GPU directos
+└── build.adB     # Configuración
+```
+
+## Filosofía
+
+> **ADead-BIB no abstrae la máquina, la domestica.**
+
+| Nivel | Descripción | Ejemplo |
+|-------|-------------|---------|
+| Normal | OOP puro | `player.move(1, 0)` |
+| Avanzado | Módulos cpu/gpu | `cpu::mov(rax, 42)` |
+| Peligroso | Bytes directos | `emit![0x48, 0x31, 0xC0]` |
+
+---
+
+**Código → Bytes → Binario**
+"#, name, name);
+    fs::write(format!("{}/README.md", base_path), &readme_content)?;
+    println!("   ✅ README.md         (documentación)");
+    
+    Ok(())
+}
+
+/// Mostrar mensaje de proyecto creado
+fn print_project_created(name: &str) {
+    println!();
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║                    ✅ Proyecto Creado                        ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!();
+    println!("📂 Proyecto: {}", name);
+    println!();
+    println!("🚀 Comandos:");
+    println!("   cd {}              # Entrar al proyecto", name);
+    println!("   adB run main.adB   # Ejecutar");
+    println!("   adB build main.adB # Compilar");
+    println!("   adB check main.adB # Verificar sintaxis");
+    println!();
+    println!("📝 Edita main.adB para empezar a programar");
+    println!();
+    println!("💡 Tip: Usa call.adB para lógica OOP más compleja");
+    println!();
 }
