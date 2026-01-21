@@ -1,8 +1,8 @@
-# ADead-BIB v2.0 — Roadmap de Desarrollo
+# ADead-BIB v2.5 — Roadmap de Desarrollo
 
 > **ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
 > 
-> Lenguaje **OOP Puro + ASM Simbionte** que compila **DIRECTO a BINARIO**.
+> Lenguaje **OOP Puro + ASM Simbionte + Compute Unificado** que compila **DIRECTO a BINARIO**.
 > Sin ASM intermedio. Sin LLVM. Sin linker externo. Sin NASM.
 > 
 > **Código → AST → BYTES DIRECTOS → Ejecutable**
@@ -15,6 +15,7 @@
 > ├─────────────────────────────────────────────────────────────────┤
 > │                                                                  │
 > │  v2.x  →  Compilador HEX-First (CPU + GPU directo)              │
+> │  v2.5  →  🆕 Compute Unificado (CUDA/HIP-CPU/Vulkan)            │
 > │  v3.x  →  OOP Avanzado (structs, traits, herencia)              │
 > │  v4.x  →  ASM Simbionte (interop con Python/Java/C#/Rust)       │
 > │  v5.x  →  ADead-OS (Sistema Operativo alternativo)              │
@@ -25,26 +26,222 @@
 
 ---
 
-## Flujo de Trabajo Estándar (estilo Rust)
+## 🚀 Guía Rápida: Crear y Ejecutar Proyectos
+
+### Comparación con Rust (cargo)
+
+| Rust (cargo) | ADead-BIB (adB) | Descripción |
+|--------------|-----------------|-------------|
+| `cargo new hola` | `adB new hola` | Crear proyecto nuevo |
+| `cargo run` | `adB run main.adB` | Compilar y ejecutar |
+| `cargo build` | `adB build main.adB` | Solo compilar |
+| `cargo check` | `adB check main.adB` | Verificar sintaxis |
+| `cargo init` | `adB init` | Inicializar en directorio actual |
+
+### 📦 Crear Proyecto Nuevo
+
+#### Windows (PowerShell)
+
+```powershell
+# Opción 1: Si tienes adeadc instalado globalmente
+adB new hola
+cd hola
+adB run main.adB
+
+# Opción 2: Desde el repositorio ADead-BIB (desarrollo)
+cd C:\Users\andre\OneDrive\Documentos\ADead-BIB
+cargo run --bin adeadc -- new hola
+cd hola
+cargo run --bin adeadc -- run main.adB
+```
+
+#### Linux / macOS
 
 ```bash
-# Crear proyecto nuevo
-adB create mi_proyecto      # Crea estructura completa
-adB new mi_proyecto         # Alias de create
-adB init                    # Inicializa en directorio actual
+# Opción 1: Si tienes adeadc instalado globalmente
+adB new hola
+cd hola
+adB run main.adB
 
-# Compilar y ejecutar
-adB run main.adB            # Compila y ejecuta
-adB build main.adB          # Solo compila
-adB check main.adB          # Verifica sintaxis
+# Opción 2: Desde el repositorio ADead-BIB (desarrollo)
+cd ~/ADead-BIB
+cargo run --bin adeadc -- new hola
+cd hola
+cargo run --bin adeadc -- run main.adB
+```
 
-# Optimización de tamaño (NUEVO!)
-adB opt main.adB            # Compilación ultra-optimizada
-adB build main.adB --size   # Optimización agresiva
-adB build main.adB --ultra  # Optimización máxima
+### 📁 Estructura del Proyecto Generado
 
-# Modo interactivo
-adB play                    # REPL interactivo
+Cuando ejecutas `adB new hola`, se crea:
+
+```
+hola/
+├── main.adB          # 🎯 Punto de entrada (tu código aquí)
+├── call.adB          # 📦 Lógica OOP (structs, traits, impl)
+├── build.adB         # ⚙️ Configuración de compilación
+├── README.md         # 📖 Documentación del proyecto
+├── core/
+│   └── mod.adB       # 🔧 init(), shutdown()
+├── cpu/
+│   └── mod.adB       # 💻 Instrucciones x86-64 directas
+└── gpu/
+    └── mod.adB       # 🎮 Opcodes GPU (0xC0DA...)
+```
+
+### 📝 Contenido de main.adB (generado automáticamente)
+
+```rust
+// ============================================================================
+// hola - ADead-BIB Project
+// ============================================================================
+// Ejecutar: adB run main.adB
+// ============================================================================
+
+fn main() {
+    println("========================================")
+    println("     hola - ADead-BIB")
+    println("     Binary Is Binary")
+    println("========================================")
+    println("")
+    
+    // Tu código aquí
+    println("Hello, hola!")
+    println("")
+    
+    // Variables
+    let x = 42
+    let y = 10
+    let result = x + y
+    
+    print("Resultado: ")
+    println(result)
+    println("")
+    
+    println("========================================")
+    println("     Proyecto listo!")
+    println("========================================")
+}
+```
+
+### 🎮 Ejemplo: Proyecto con OOP
+
+```bash
+# Crear proyecto
+adB new mi_juego
+cd mi_juego
+```
+
+Edita `call.adB` para agregar OOP:
+
+```rust
+// call.adB - Lógica OOP del juego
+
+struct Player {
+    name: string,
+    x: f32,
+    y: f32,
+    health: i32
+}
+
+impl Player {
+    fn new(name: string) -> Player {
+        return Player {
+            name: name,
+            x: 0.0,
+            y: 0.0,
+            health: 100
+        }
+    }
+    
+    fn move_to(mut self, x: f32, y: f32) {
+        self.x = x
+        self.y = y
+    }
+    
+    fn info(self) {
+        print("Player: ")
+        println(self.name)
+        print("Position: (")
+        print(self.x)
+        print(", ")
+        print(self.y)
+        println(")")
+    }
+}
+
+pub fn run() {
+    let player = Player::new("Hero")
+    player.info()
+    
+    player.move_to(10.0, 20.0)
+    println("Moved!")
+    player.info()
+}
+```
+
+Edita `main.adB` para usar la lógica:
+
+```rust
+// main.adB
+#![imports(call: run)]
+
+fn main() {
+    println("=== Mi Juego ===")
+    call::run()
+    println("=== Fin ===")
+}
+```
+
+Ejecutar:
+```bash
+adB run main.adB
+```
+
+### 📋 Todos los Comandos Disponibles
+
+```bash
+# CREAR PROYECTO
+adB new <nombre>              # Crear proyecto nuevo
+adB create <nombre>           # Alias de new
+adB init                      # Inicializar en directorio actual
+
+# COMPILAR Y EJECUTAR
+adB run <archivo.adB>         # Compilar y ejecutar
+adB build <archivo.adB>       # Solo compilar
+adB check <archivo.adB>       # Verificar sintaxis sin compilar
+
+# OPTIMIZACIÓN
+adB opt <archivo.adB>         # Compilación ultra-optimizada
+adB build <archivo.adB> --size   # Optimización agresiva
+adB build <archivo.adB> --ultra  # Optimización máxima (<1KB)
+
+# INFORMACIÓN
+adB help                      # Mostrar ayuda
+adB version                   # Mostrar versión
+adB gpu                       # Info de GPU detectada
+
+# MODO INTERACTIVO
+adB play                      # REPL interactivo
+```
+
+### 🔧 Ejemplo Completo: De Cero a Ejecutable
+
+```bash
+# 1. Crear proyecto
+cargo run --bin adeadc -- new mi_app
+
+# 2. Ver estructura
+ls mi_app/
+
+# 3. Ejecutar (modo desarrollo)
+cargo run --bin adeadc -- run mi_app/main.adB
+
+# 4. Compilar a ejecutable
+cargo run --bin adeadc -- build mi_app/main.adB
+
+# 5. Ejecutar el binario generado
+./mi_app.exe    # Windows
+./mi_app        # Linux
 ```
 
 ---
@@ -138,6 +335,10 @@ ADead-BIB (2-3 capas):
 | **SPIR-V** | ✅ Funcional | `backend/gpu/spirv/` |
 | **CUDA** | ✅ Funcional | `backend/gpu/cuda/` |
 | **Vulkan Runtime** | ✅ Funcional | `backend/gpu/vulkan_runtime.rs` |
+| **🆕 HIP-CPU** | ✅ Funcional | `backend/gpu/hip/hip_cpu.rs` |
+| **🆕 HIP Runtime** | ✅ Funcional | `backend/gpu/hip/hip_runtime.rs` |
+| **🆕 CUDA→HIP** | ✅ Funcional | `backend/gpu/hip/cuda_to_hip.rs` |
+| **🆕 Compute API** | ✅ Funcional | `backend/gpu/compute.rs` |
 
 ### Estructura del Proyecto
 
@@ -348,9 +549,96 @@ fn _start() {
 
 ---
 
-### Fase 3: Formatos Avanzados
+### Fase 3: Compute Unificado
 
-#### v2.5.0 — Formato AHYB (ADead Hybrid Binary)
+#### v2.5.0 — API Compute Unificada ✅ (NUEVO!)
+
+**Objetivo:** API de alto nivel que abstrae GPU (CUDA/HIP) y CPU (SIMD) con auto-dispatch.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    ADead-BIB Compute Backend v2.5                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                   API Unificada (compute::)                      │   │
+│  │   compute::vector_add(a, b, c, n)                               │   │
+│  │   compute::matmul(A, B, C, m, n, k)                             │   │
+│  │   compute::parallel_for(n, |i| { ... })                         │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│              ┌───────────────┼───────────────┐                         │
+│              ▼               ▼               ▼                         │
+│  ┌──────────────────┐ ┌──────────────┐ ┌──────────────┐                │
+│  │   CUDA Backend   │ │  HIP-CPU     │ │   Vulkan     │                │
+│  │   (RTX 3060)     │ │  (Fallback)  │ │   (Portable) │                │
+│  └──────────────────┘ └──────────────┘ └──────────────┘                │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Sintaxis ADead-BIB:**
+```rust
+// Auto-detecta el mejor backend (CUDA si hay GPU, HIP-CPU si no)
+let runtime = Compute::auto()
+
+// Operaciones vectoriales
+runtime.vector_add(a, b, c, n)
+runtime.saxpy(2.5, x, y, n)
+let dot = runtime.dot_product(a, b, n)
+
+// Multiplicación de matrices (usa cuBLAS en CUDA)
+runtime.matmul(A, B, C, m, n, k)
+
+// Tensor Cores FP16 (RTX 3060)
+runtime.matmul_fp16(A_fp16, B_fp16, C, m, n, k)
+
+// Deep Learning activations
+runtime.relu(input, output, n)
+runtime.softmax(input, output, n)
+
+// Async Streams
+let stream = runtime.create_stream()
+runtime.async_matmul(stream, a, b, c, m, n, k)
+runtime.sync_stream(stream)
+
+// Parallel for personalizado
+runtime.parallel_for(n, |i| {
+    result[i] = a[i] * b[i]
+})
+
+// Benchmark
+let results = runtime.benchmark()
+results.print()
+```
+
+**Tareas v2.5.0:**
+- [x] HIP-CPU Runtime (fallback paralelo con SIMD AVX2/512) ✅
+- [x] Detección automática de backend (CUDA/ROCm/CPU) ✅
+- [x] Traductor CUDA → HIP para portabilidad ✅
+- [x] API unificada ComputeRuntime ✅
+- [x] Operaciones vectoriales (vector_add, saxpy, dot_product) ✅
+- [x] Multiplicación de matrices (matmul, matmul_tiled) ✅
+- [x] Reducciones (reduce_sum, reduce_max, reduce_min) ✅
+- [x] SendPtr<T> wrapper thread-safe para closures paralelas ✅
+- [x] Benchmark integrado ✅
+- [x] Documentación: `docs/HIP_CUDA_GUIDE.md` ✅
+- [x] Módulo ADead-BIB: `Project/compute/mod.adB` ✅
+
+**Implementado en:**
+- `src/rust/backend/gpu/hip/` - HIP backend completo
+- `src/rust/backend/gpu/compute.rs` - API unificada Rust
+- `Project/compute/mod.adB` - API ADead-BIB
+- `docs/HIP_CUDA_GUIDE.md` - Documentación
+
+**Características avanzadas (en progreso):**
+- [ ] cuBLAS integration para MatMul ultra-optimizado
+- [ ] Tensor Cores FP16 para RTX 3060
+- [ ] Async Streams para overlap compute+transfer
+- [ ] Multi-GPU support
+
+---
+
+### Fase 4: Formatos Avanzados
+
+#### v2.6.0 — Formato AHYB (ADead Hybrid Binary)
 
 **Objetivo:** Binario que contiene código CPU + GPU en un solo archivo.
 
@@ -427,68 +715,697 @@ adB build archivo.adB --ultra # Optimización máxima
 
 ---
 
-### Fase 5: OOP Avanzado
+### Fase 5: OOP Avanzado — El Corazón de ADead-BIB 💎
+
+> **"OOP sin runtime pesado. Objetos como memoria plana. Métodos como funciones puras."**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ADead-BIB OOP — Arquitectura Binaria                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐                   │
+│   │   struct    │───▶│    impl     │────▶│   trait     │                   │
+│   │  (Memoria)  │     │  (Métodos)  │     │ (Contrato)  │                   │
+│   └─────────────┘     └─────────────┘     └─────────────┘                   │
+│         │                   │                   │                            │
+│         ▼                   ▼                   ▼                            │
+│   ┌─────────────────────────────────────────────────────┐                   │
+│   │              BYTES DIRECTOS (sin GC)                │                   │
+│   │   • Struct = Layout de memoria contigua             │                   │
+│   │   • Método = Función con self como primer arg       │                   │
+│   │   • Vtable = Tabla de punteros a funciones          │                   │
+│   └─────────────────────────────────────────────────────┘                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 #### v3.0.0 — OOP Core Spec ✅
 
-**Objetivo:** Sistema OOP completo y documentado.
+**Objetivo:** Sistema OOP completo sin runtime pesado.
+
+##### 📦 Structs — Datos como Memoria Plana
 
 ```rust
+// Struct simple - Layout contiguo en memoria
+struct Vec2 {
+    x: f32,    // offset 0
+    y: f32     // offset 4
+}
+
+// Struct con múltiples tipos
 struct Player {
-    x: i32,
-    y: i32,
-    health: u8
+    name: string,      // offset 0  (puntero)
+    position: Vec2,    // offset 8  (inline)
+    health: i32,       // offset 16
+    mana: i32,         // offset 20
+    level: u8,         // offset 24
+    is_alive: bool     // offset 25
+}
+
+// Struct genérico (v3.2+)
+struct Container<T> {
+    data: T,
+    size: u64
+}
+```
+
+##### 🔧 Impl — Métodos sin Magia
+
+```rust
+impl Vec2 {
+    // Constructor estático
+    fn new(x: f32, y: f32) -> Vec2 {
+        return Vec2 { x: x, y: y }
+    }
+    
+    // Constructor con valores por defecto
+    fn zero() -> Vec2 {
+        return Vec2 { x: 0.0, y: 0.0 }
+    }
+    
+    // Método de instancia (self = primer argumento)
+    fn length(self) -> f32 {
+        return sqrt(self.x * self.x + self.y * self.y)
+    }
+    
+    // Método que modifica (self mutable)
+    fn normalize(mut self) {
+        let len = self.length()
+        if len > 0.0 {
+            self.x = self.x / len
+            self.y = self.y / len
+        }
+    }
+    
+    // Método que retorna nuevo valor
+    fn add(self, other: Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x + other.x,
+            y: self.y + other.y
+        }
+    }
+    
+    // Operadores sobrecargados (v3.1+)
+    fn __add__(self, other: Vec2) -> Vec2 {
+        return self.add(other)
+    }
+    
+    fn __mul__(self, scalar: f32) -> Vec2 {
+        return Vec2 { x: self.x * scalar, y: self.y * scalar }
+    }
 }
 
 impl Player {
-    fn new(x, y) {
-        return Player { x: x, y: y, health: 100 }
+    fn new(name: string) -> Player {
+        return Player {
+            name: name,
+            position: Vec2::zero(),
+            health: 100,
+            mana: 50,
+            level: 1,
+            is_alive: true
+        }
     }
     
-    fn move(self, dx, dy) {
-        self.x += dx
-        self.y += dy
+    fn take_damage(mut self, amount: i32) {
+        self.health = self.health - amount
+        if self.health <= 0 {
+            self.health = 0
+            self.is_alive = false
+            println("Player died!")
+        }
     }
-}
-
-trait Drawable {
-    fn draw(self)
-}
-
-impl Drawable for Player {
-    fn draw(self) {
-        // ...
+    
+    fn heal(mut self, amount: i32) {
+        if self.is_alive {
+            self.health = self.health + amount
+            if self.health > 100 {
+                self.health = 100
+            }
+        }
+    }
+    
+    fn move_to(mut self, x: f32, y: f32) {
+        self.position.x = x
+        self.position.y = y
+    }
+    
+    fn info(self) {
+        print("Player: ")
+        println(self.name)
+        print("  Position: (")
+        print(self.position.x)
+        print(", ")
+        print(self.position.y)
+        println(")")
+        print("  Health: ")
+        print(self.health)
+        print("/100  Mana: ")
+        print(self.mana)
+        print("/50  Level: ")
+        println(self.level)
     }
 }
 ```
 
-**Tareas:**
+##### 📜 Traits — Contratos sin Herencia
+
+```rust
+// Trait básico
+trait Drawable {
+    fn draw(self)
+    fn get_bounds(self) -> (f32, f32, f32, f32)
+}
+
+// Trait con método por defecto
+trait Updatable {
+    fn update(mut self, delta_time: f32)
+    
+    // Método con implementación por defecto
+    fn should_update(self) -> bool {
+        return true
+    }
+}
+
+// Trait para serialización
+trait Serializable {
+    fn to_bytes(self) -> [u8]
+    fn from_bytes(data: [u8]) -> Self
+}
+
+// Trait para comparación
+trait Comparable {
+    fn equals(self, other: Self) -> bool
+    fn less_than(self, other: Self) -> bool
+    
+    fn greater_than(self, other: Self) -> bool {
+        return other.less_than(self)
+    }
+}
+
+// Implementar trait para struct
+impl Drawable for Player {
+    fn draw(self) {
+        print("Drawing player at (")
+        print(self.position.x)
+        print(", ")
+        print(self.position.y)
+        println(")")
+    }
+    
+    fn get_bounds(self) -> (f32, f32, f32, f32) {
+        return (self.position.x - 16.0, 
+                self.position.y - 16.0,
+                self.position.x + 16.0,
+                self.position.y + 16.0)
+    }
+}
+
+impl Updatable for Player {
+    fn update(mut self, delta_time: f32) {
+        // Regenerar mana con el tiempo
+        if self.mana < 50 {
+            self.mana = self.mana + 1
+        }
+    }
+    
+    fn should_update(self) -> bool {
+        return self.is_alive
+    }
+}
+```
+
+##### 🎮 Ejemplo Completo: Sistema de Juego
+
+```rust
+// ============================================================================
+// SISTEMA DE ENTIDADES COMPLETO
+// ============================================================================
+
+struct Entity {
+    id: u64,
+    position: Vec2,
+    velocity: Vec2,
+    active: bool
+}
+
+struct Enemy {
+    entity: Entity,
+    health: i32,
+    damage: i32,
+    ai_state: u8
+}
+
+struct Projectile {
+    entity: Entity,
+    owner_id: u64,
+    damage: i32,
+    lifetime: f32
+}
+
+// Trait para entidades del juego
+trait GameEntity {
+    fn get_id(self) -> u64
+    fn get_position(self) -> Vec2
+    fn set_position(mut self, pos: Vec2)
+    fn is_active(self) -> bool
+    fn destroy(mut self)
+}
+
+impl GameEntity for Enemy {
+    fn get_id(self) -> u64 { return self.entity.id }
+    fn get_position(self) -> Vec2 { return self.entity.position }
+    fn set_position(mut self, pos: Vec2) { self.entity.position = pos }
+    fn is_active(self) -> bool { return self.entity.active }
+    fn destroy(mut self) { self.entity.active = false }
+}
+
+// Sistema de colisiones
+trait Collidable {
+    fn get_hitbox(self) -> (f32, f32, f32, f32)
+    fn on_collision(mut self, other_id: u64)
+}
+
+impl Collidable for Player {
+    fn get_hitbox(self) -> (f32, f32, f32, f32) {
+        return (self.position.x - 8.0, self.position.y - 8.0,
+                self.position.x + 8.0, self.position.y + 8.0)
+    }
+    
+    fn on_collision(mut self, other_id: u64) {
+        println("Player collided with entity!")
+    }
+}
+
+// GameState - Contenedor principal
+struct GameState {
+    player: Player,
+    enemies: [Enemy; 100],
+    enemy_count: u32,
+    projectiles: [Projectile; 500],
+    projectile_count: u32,
+    score: u64,
+    game_time: f32,
+    is_running: bool
+}
+
+impl GameState {
+    fn new() -> GameState {
+        return GameState {
+            player: Player::new("Hero"),
+            enemies: [Enemy::default(); 100],
+            enemy_count: 0,
+            projectiles: [Projectile::default(); 500],
+            projectile_count: 0,
+            score: 0,
+            game_time: 0.0,
+            is_running: true
+        }
+    }
+    
+    fn spawn_enemy(mut self, x: f32, y: f32) {
+        if self.enemy_count < 100 {
+            self.enemies[self.enemy_count] = Enemy {
+                entity: Entity {
+                    id: self.enemy_count as u64,
+                    position: Vec2::new(x, y),
+                    velocity: Vec2::zero(),
+                    active: true
+                },
+                health: 50,
+                damage: 10,
+                ai_state: 0
+            }
+            self.enemy_count = self.enemy_count + 1
+        }
+    }
+    
+    fn update(mut self, delta_time: f32) {
+        self.game_time = self.game_time + delta_time
+        
+        // Actualizar player
+        if self.player.should_update() {
+            self.player.update(delta_time)
+        }
+        
+        // Actualizar enemigos
+        for i in 0..self.enemy_count {
+            if self.enemies[i].entity.active {
+                // AI simple: moverse hacia el player
+                let dx = self.player.position.x - self.enemies[i].entity.position.x
+                let dy = self.player.position.y - self.enemies[i].entity.position.y
+                let dist = sqrt(dx * dx + dy * dy)
+                
+                if dist > 0.0 {
+                    self.enemies[i].entity.velocity.x = (dx / dist) * 50.0
+                    self.enemies[i].entity.velocity.y = (dy / dist) * 50.0
+                }
+                
+                self.enemies[i].entity.position.x += self.enemies[i].entity.velocity.x * delta_time
+                self.enemies[i].entity.position.y += self.enemies[i].entity.velocity.y * delta_time
+            }
+        }
+    }
+    
+    fn render(self) {
+        // Dibujar player
+        self.player.draw()
+        
+        // Dibujar enemigos
+        for i in 0..self.enemy_count {
+            if self.enemies[i].entity.active {
+                print("Enemy at (")
+                print(self.enemies[i].entity.position.x)
+                print(", ")
+                print(self.enemies[i].entity.position.y)
+                println(")")
+            }
+        }
+    }
+}
+
+// Main del juego
+fn main() {
+    let mut game = GameState::new()
+    
+    // Spawn algunos enemigos
+    game.spawn_enemy(100.0, 100.0)
+    game.spawn_enemy(200.0, 50.0)
+    game.spawn_enemy(150.0, 200.0)
+    
+    // Game loop simulado
+    let delta_time = 0.016  // ~60 FPS
+    
+    for frame in 0..100 {
+        game.update(delta_time)
+        
+        if frame % 10 == 0 {
+            game.render()
+        }
+    }
+    
+    println("Game finished!")
+    print("Final score: ")
+    println(game.score)
+}
+```
+
+**Tareas v3.0.0:**
 - [x] Especificación formal de structs ✅
 - [x] Especificación formal de impl ✅
 - [x] Especificación formal de traits ✅
 - [x] Vtables simples para polimorfismo ✅
 - [x] Documentación completa ✅
 
-**Implementado en:** `Project/call.adB` con ejemplos completos:
-- `Vec2`, `Vec3`, `Matrix4` — Tipos matemáticos
-- `Entity`, `Player`, `Enemy` — Entidades de juego
-- `GameState` — Sistema completo
-- `Drawable`, `Updatable` — Traits con implementaciones
+**Implementado en:** `Project/call.adB`
 
-#### v3.1.0 — Herencia Simple
+---
 
-**Objetivo:** Herencia de un solo nivel (sin herencia profunda).
+#### v3.1.0 — Herencia y Composición
+
+**Objetivo:** Herencia simple + composición preferida.
 
 ```rust
+// Herencia simple (un solo nivel)
 struct Entity {
-    x: i32,
-    y: i32
+    id: u64,
+    x: f32,
+    y: f32
 }
 
 struct Player extends Entity {
-    health: u8
+    health: i32,
+    name: string
+}
+
+// Player hereda id, x, y de Entity
+let player = Player { id: 1, x: 0.0, y: 0.0, health: 100, name: "Hero" }
+
+// Composición (PREFERIDA en ADead-BIB)
+struct PlayerComposed {
+    entity: Entity,    // Composición explícita
+    health: i32,
+    name: string
+}
+
+// Acceso: player.entity.x vs player.x (herencia)
+```
+
+##### Sobrecarga de Operadores
+
+```rust
+impl Vec2 {
+    // Operadores aritméticos
+    fn __add__(self, other: Vec2) -> Vec2 { ... }
+    fn __sub__(self, other: Vec2) -> Vec2 { ... }
+    fn __mul__(self, scalar: f32) -> Vec2 { ... }
+    fn __div__(self, scalar: f32) -> Vec2 { ... }
+    fn __neg__(self) -> Vec2 { ... }
+    
+    // Operadores de comparación
+    fn __eq__(self, other: Vec2) -> bool { ... }
+    fn __ne__(self, other: Vec2) -> bool { ... }
+    
+    // Indexación
+    fn __index__(self, i: u32) -> f32 { ... }
+    fn __index_mut__(mut self, i: u32) -> mut f32 { ... }
+}
+
+// Uso natural
+let a = Vec2::new(1.0, 2.0)
+let b = Vec2::new(3.0, 4.0)
+let c = a + b           // __add__
+let d = c * 2.0         // __mul__
+let e = -d              // __neg__
+let x = c[0]            // __index__ -> 4.0
+```
+
+**Tareas v3.1.0:**
+- [ ] Herencia simple (extends)
+- [ ] Sobrecarga de operadores (__add__, __mul__, etc.)
+- [ ] Indexación personalizada (__index__)
+- [ ] Conversiones implícitas (Into, From traits)
+
+---
+
+#### v3.2.0 — Genéricos y Tipos Avanzados
+
+**Objetivo:** Tipos genéricos sin monomorphization pesado.
+
+```rust
+// Struct genérico
+struct Option<T> {
+    has_value: bool,
+    value: T
+}
+
+impl<T> Option<T> {
+    fn some(value: T) -> Option<T> {
+        return Option { has_value: true, value: value }
+    }
+    
+    fn none() -> Option<T> {
+        return Option { has_value: false, value: T::default() }
+    }
+    
+    fn unwrap(self) -> T {
+        if !self.has_value {
+            panic("Unwrap on None!")
+        }
+        return self.value
+    }
+    
+    fn unwrap_or(self, default: T) -> T {
+        if self.has_value {
+            return self.value
+        }
+        return default
+    }
+    
+    fn map<U, F>(self, f: F) -> Option<U> 
+    where F: Fn(T) -> U {
+        if self.has_value {
+            return Option::some(f(self.value))
+        }
+        return Option::none()
+    }
+}
+
+// Result para manejo de errores
+struct Result<T, E> {
+    is_ok: bool,
+    ok_value: T,
+    err_value: E
+}
+
+impl<T, E> Result<T, E> {
+    fn ok(value: T) -> Result<T, E> {
+        return Result { is_ok: true, ok_value: value, err_value: E::default() }
+    }
+    
+    fn err(error: E) -> Result<T, E> {
+        return Result { is_ok: false, ok_value: T::default(), err_value: error }
+    }
+    
+    fn is_ok(self) -> bool { return self.is_ok }
+    fn is_err(self) -> bool { return !self.is_ok }
+    
+    fn unwrap(self) -> T {
+        if !self.is_ok {
+            panic("Unwrap on Err!")
+        }
+        return self.ok_value
+    }
+}
+
+// Vec dinámico
+struct Vec<T> {
+    data: ptr<T>,
+    len: u64,
+    capacity: u64
+}
+
+impl<T> Vec<T> {
+    fn new() -> Vec<T> {
+        return Vec { data: null, len: 0, capacity: 0 }
+    }
+    
+    fn with_capacity(cap: u64) -> Vec<T> {
+        return Vec {
+            data: alloc(cap * sizeof(T)),
+            len: 0,
+            capacity: cap
+        }
+    }
+    
+    fn push(mut self, item: T) {
+        if self.len >= self.capacity {
+            self.grow()
+        }
+        self.data[self.len] = item
+        self.len = self.len + 1
+    }
+    
+    fn pop(mut self) -> Option<T> {
+        if self.len == 0 {
+            return Option::none()
+        }
+        self.len = self.len - 1
+        return Option::some(self.data[self.len])
+    }
+    
+    fn get(self, index: u64) -> Option<T> {
+        if index >= self.len {
+            return Option::none()
+        }
+        return Option::some(self.data[index])
+    }
+}
+
+// HashMap básico
+struct HashMap<K, V> {
+    buckets: [Option<(K, V)>; 256],
+    len: u64
+}
+
+impl<K: Hashable, V> HashMap<K, V> {
+    fn new() -> HashMap<K, V> { ... }
+    fn insert(mut self, key: K, value: V) { ... }
+    fn get(self, key: K) -> Option<V> { ... }
+    fn remove(mut self, key: K) -> Option<V> { ... }
 }
 ```
+
+**Tareas v3.2.0:**
+- [ ] Structs genéricos (`struct Option<T>`)
+- [ ] Impl genéricos (`impl<T> Option<T>`)
+- [ ] Traits con tipos asociados
+- [ ] Where clauses
+- [ ] Tipos built-in: Option, Result, Vec, HashMap
+
+---
+
+#### v3.3.0 — Pattern Matching y Enums
+
+**Objetivo:** Enums con datos y pattern matching exhaustivo.
+
+```rust
+// Enum simple
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right
+}
+
+// Enum con datos (tagged union)
+enum Event {
+    KeyPress { key: u8, modifiers: u8 },
+    MouseMove { x: i32, y: i32 },
+    MouseClick { button: u8, x: i32, y: i32 },
+    WindowResize { width: u32, height: u32 },
+    Quit
+}
+
+// Pattern matching
+fn handle_event(event: Event) {
+    match event {
+        Event::KeyPress { key, modifiers } => {
+            print("Key pressed: ")
+            println(key)
+        },
+        Event::MouseMove { x, y } => {
+            print("Mouse at: ")
+            print(x)
+            print(", ")
+            println(y)
+        },
+        Event::MouseClick { button, x, y } => {
+            print("Click button ")
+            print(button)
+            print(" at ")
+            print(x)
+            print(", ")
+            println(y)
+        },
+        Event::WindowResize { width, height } => {
+            print("Window resized to ")
+            print(width)
+            print("x")
+            println(height)
+        },
+        Event::Quit => {
+            println("Quitting...")
+        }
+    }
+}
+
+// Pattern matching con guards
+fn categorize_number(n: i32) -> string {
+    match n {
+        0 => "zero",
+        1..=9 => "single digit",
+        10..=99 => "double digit",
+        n if n < 0 => "negative",
+        _ => "large"
+    }
+}
+
+// Destructuring en let
+let point = (10, 20)
+let (x, y) = point
+
+let player = Player::new("Hero")
+let Player { name, health, .. } = player
+```
+
+**Tareas v3.3.0:**
+- [ ] Enums simples
+- [ ] Enums con datos (tagged unions)
+- [ ] Pattern matching exhaustivo
+- [ ] Guards en match
+- [ ] Destructuring
 
 ---
 

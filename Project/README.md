@@ -1,7 +1,7 @@
-# ADead-BIB Project Template
+# ADead-BIB Project Template v2.5
 
 > Estructura de proyecto siguiendo la arquitectura binaria dual.
-> **OOP Puro + ASM Simbionte = Lenguaje del Futuro**
+> **OOP Puro + ASM Simbionte + Compute Unificado = Lenguaje del Futuro**
 
 ## Estructura Completa
 
@@ -14,9 +14,11 @@ Project/
 │   ├── init.adB          # Inicialización CPU/GPU
 │   └── shutdown.adB      # Limpieza y shutdown
 ├── cpu/                  # Módulo CPU
-│   └── mod.adB           # Instrucciones x86-64 directas
+│   └── mod.adB           # Instrucciones x86-64 directas + SIMD
 ├── gpu/                  # Módulo GPU
 │   └── mod.adB           # Opcodes GPU (0xC0DA...)
+├── compute/              # 🆕 API Unificada de Compute v2.5
+│   └── mod.adB           # Auto-dispatch CUDA/HIP-CPU/Vulkan
 ├── build.adB             # Configuración de build
 └── README.md             # Este archivo
 ```

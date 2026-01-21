@@ -38,6 +38,10 @@ pub mod hex;
 pub mod spirv;           // SPIR-V (Vulkan/OpenCL) - Todas las GPUs
 pub mod cuda;            // CUDA/PTX - Solo NVIDIA
 pub mod vulkan;          // Runtime Vulkan
+pub mod hip;             // HIP (AMD ROCm + HIP-CPU fallback)
+
+// === API Unificada ===
+pub mod compute;         // API unificada: compute::parallel_for, compute::matmul, etc.
 
 // === Legacy (mantener compatibilidad) ===
 pub mod vulkan_runtime;  // TODO: migrar a vulkan/
@@ -55,3 +59,10 @@ pub use scheduler::{GpuScheduler, Dispatch, CommandBuffer};
 pub use memory::{GpuAllocator, BufferUsage, MemoryType};
 pub use spirv::bytecode::{BytecodeToSpirV, ADeadGpuOp};
 pub use metrics::{GpuProfiler, GpuMetrics, PerformanceEstimator};
+
+// Re-exports HIP + Compute API
+pub use hip::{HipCpuRuntime, HipCpuConfig, Dim3, ThreadIdx, SendPtr};
+pub use hip::{HipBackend, detect_hip_backend, get_device_info, HipDeviceInfo};
+pub use hip::{HipCodeGen, HipKernel, print_hip_info};
+pub use hip::cuda_to_hip::{CudaToHipTranslator, translate_cuda_file};
+pub use compute::{ComputeRuntime, ComputeBackend, ComputeConfig, BenchmarkResults};
