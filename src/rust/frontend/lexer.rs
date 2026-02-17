@@ -90,6 +90,28 @@ pub enum Token {
     Str,        // str() - convertir a string
     BoolCast,   // bool() - convertir a booleano
     
+    // C-style types (NEW v3.0)
+    IntType,    // int
+    CharType,   // char
+    VoidType,   // void
+    LongType,   // long
+    ShortType,  // short
+    UnsignedKw, // unsigned
+    SignedKw,   // signed
+    DoubleType, // double
+    FloatType,  // float (type, not cast)
+    SizeofKw,   // sizeof
+    TypedefKw,  // typedef
+    ExternKw,   // extern
+    RegisterKw, // register
+    VolatileKw, // volatile
+    AutoKw,     // auto
+    Printf,     // printf (C-style)
+    Scanf,      // scanf
+    Malloc,     // malloc
+    Free,       // free
+    NULL,       // NULL
+    
     // Identifiers
     Identifier(String),
     
@@ -653,8 +675,30 @@ impl Lexer {
                     "len" => Token::Len,
                     "push" => Token::Push,
                     "pop" => Token::Pop,
-                    "int" => Token::Int,
-                    "float" => Token::FloatCast,
+                    
+                    // C-style types and keywords (NEW v3.0)
+                    "int" => Token::IntType,
+                    "char" => Token::CharType,
+                    "void" => Token::VoidType,
+                    "long" => Token::LongType,
+                    "short" => Token::ShortType,
+                    "unsigned" => Token::UnsignedKw,
+                    "signed" => Token::SignedKw,
+                    "double" => Token::DoubleType,
+                    "sizeof" => Token::SizeofKw,
+                    "typedef" => Token::TypedefKw,
+                    "extern" => Token::ExternKw,
+                    "register" => Token::RegisterKw,
+                    "volatile" => Token::VolatileKw,
+                    "auto" => Token::AutoKw,
+                    "printf" => Token::Printf,
+                    "scanf" => Token::Scanf,
+                    "malloc" => Token::Malloc,
+                    "free" => Token::Free,
+                    "NULL" => Token::NULL,
+                    
+                    // Type casts (keep for compatibility)
+                    "float" => Token::FloatType,
                     "str" => Token::Str,
                     "bool" => Token::BoolCast,
                     

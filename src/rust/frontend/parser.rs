@@ -104,6 +104,12 @@ impl Parser {
                     program.add_function(func);
                     self.skip_newlines();
                 }
+                // C-style: int/void/char function (NEW v3.0)
+                Some(Token::IntType) | Some(Token::VoidType) | Some(Token::CharType) => {
+                    let func = self.parse_c_function()?;
+                    program.add_function(func);
+                    self.skip_newlines();
+                }
                 // Rust style: struct
                 Some(Token::Struct) => {
                     let class = self.parse_struct()?;
@@ -412,6 +418,178 @@ impl Parser {
         self.expect(Token::RBrace)?;
         
         Ok(Function { name, params, return_type, body })
+    }
+    
+    /// Parse C-style function: int/void/char name(params) { body }
+    /// Supports: int main() { ... }, void func(int x) { ... }
+    fn parse_c_function(&mut self) -> Result<Function, ParseError> {
+        // Get return type (int, void, char, etc.)
+        let return_type = match self.advance() {
+            Some(Token::IntType) => Some("int".to_string()),
+            Some(Token::VoidType) => None,
+            Some(Token::CharType) => Some("char".to_string()),
+            Some(Token::LongType) => Some("long".to_string()),
+            Some(Token::ShortType) => Some("short".to_string()),
+            Some(Token::DoubleType) => Some("double".to_string()),
+            Some(Token::FloatType) => Some("float".to_string()),
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        // Check for pointer return type (int* func)
+        let _is_pointer = if matches!(self.peek(), Some(Token::Star)) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+        
+        // Get function name
+        let name = match self.advance() {
+            Some(Token::Identifier(n)) => n,
+            Some(token) => return Err(ParseError::UnexpectedToken(token)),
+            None => return Err(ParseError::UnexpectedEof),
+        };
+        
+        self.expect(Token::LParen)?;
+        
+        let mut params = Vec::new();
+        if !matches!(self.peek(), Some(Token::RParen)) {
+            loop {
+                if matches!(self.peek(), Some(Token::RParen)) {
+                    break;
+                }
+                
+                // Parse C-style parameter: type name or type* name
+                let param_type = match self.peek() {
+                    Some(Token::IntType) => { self.advance(); Some("int".to_string()) }
+                    Some(Token::CharType) => { self.advance(); Some("char".to_string()) }
+                    Some(Token::VoidType) => { self.advance(); Some("void".to_string()) }
+                    Some(Token::LongType) => { self.advance(); Some("long".to_string()) }
+                    Some(Token::ShortType) => { self.advance(); Some("short".to_string()) }
+                    Some(Token::DoubleType) => { self.advance(); Some("double".to_string()) }
+                    Some(Token::FloatType) => { self.advance(); Some("float".to_string()) }
+                    Some(Token::Identifier(_)) => {
+                        match self.advance() {
+                            Some(Token::Identifier(t)) => Some(t),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                
+                // Check for pointer (int* x)
+                if matches!(self.peek(), Some(Token::Star)) {
+                    self.advance();
+                }
+                
+                let param_name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                
+                params.push(Param { name: param_name, type_name: param_type });
+                
+                if matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        self.expect(Token::RParen)?;
+        
+        // C style: { body }
+        self.expect(Token::LBrace)?;
+        self.skip_newlines();
+        
+        let mut body = Vec::new();
+        while !matches!(self.peek(), Some(Token::RBrace) | None) {
+            let stmt = self.parse_c_statement()?;
+            body.push(stmt);
+            self.skip_newlines();
+            // Skip semicolons
+            while matches!(self.peek(), Some(Token::Semicolon)) {
+                self.advance();
+                self.skip_newlines();
+            }
+        }
+        
+        self.expect(Token::RBrace)?;
+        
+        Ok(Function { name, params, return_type, body })
+    }
+    
+    /// Parse C-style statement
+    fn parse_c_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.skip_newlines();
+        
+        match self.peek() {
+            // printf("...") or printf("...", args)
+            Some(Token::Printf) => {
+                self.advance();
+                self.expect(Token::LParen)?;
+                let format_expr = self.parse_expression()?;
+                
+                // Check for additional arguments
+                let mut args = vec![format_expr];
+                while matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                    args.push(self.parse_expression()?);
+                }
+                
+                self.expect(Token::RParen)?;
+                
+                // Convert to Print (single arg)
+                Ok(Stmt::Print(args.into_iter().next().unwrap()))
+            }
+            // return expr;
+            Some(Token::Return) => {
+                self.advance();
+                if matches!(self.peek(), Some(Token::Semicolon) | Some(Token::Newline) | Some(Token::RBrace)) {
+                    Ok(Stmt::Return(None))
+                } else {
+                    let value = self.parse_expression()?;
+                    Ok(Stmt::Return(Some(value)))
+                }
+            }
+            // int x = ...; or int* p = ...;
+            Some(Token::IntType) | Some(Token::CharType) | Some(Token::LongType) | 
+            Some(Token::ShortType) | Some(Token::DoubleType) | Some(Token::FloatType) => {
+                self.advance(); // consume type
+                
+                // Check for pointer
+                let _is_pointer = if matches!(self.peek(), Some(Token::Star)) {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+                
+                let name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                
+                if matches!(self.peek(), Some(Token::Equals)) {
+                    self.advance();
+                    let value = self.parse_expression()?;
+                    Ok(Stmt::Assign { name, value })
+                } else {
+                    // Declaration without initialization
+                    Ok(Stmt::Assign { name, value: Expr::Number(0) })
+                }
+            }
+            // if, while, for
+            Some(Token::If) => self.parse_if_statement(),
+            Some(Token::While) => self.parse_while_statement(),
+            Some(Token::For) => self.parse_for_statement(),
+            // Default: expression or assignment
+            _ => self.parse_statement(),
+        }
     }
     
     /// Parse let statement: let [mut] name [: Type] = value;
@@ -1000,6 +1178,50 @@ impl Parser {
             Some(Token::Continue) => {
                 self.advance();
                 Ok(Stmt::Continue)
+            }
+            // C-style printf (NEW v3.0)
+            Some(Token::Printf) => {
+                self.advance();
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                // Skip additional args for now
+                while matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                    let _ = self.parse_expression()?;
+                }
+                self.expect(Token::RParen)?;
+                Ok(Stmt::Print(expr))
+            }
+            // C-style variable declarations (NEW v3.0)
+            Some(Token::IntType) | Some(Token::CharType) | Some(Token::LongType) |
+            Some(Token::ShortType) | Some(Token::DoubleType) | Some(Token::FloatType) => {
+                self.advance(); // consume type
+                // Check for pointer
+                if matches!(self.peek(), Some(Token::Star)) {
+                    self.advance();
+                }
+                let name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                if matches!(self.peek(), Some(Token::Equals)) {
+                    self.advance();
+                    let value = self.parse_expression()?;
+                    Ok(Stmt::Assign { name, value })
+                } else {
+                    Ok(Stmt::Assign { name, value: Expr::Number(0) })
+                }
+            }
+            // C-style return (handled here too)
+            Some(Token::Return) => {
+                self.advance();
+                if matches!(self.peek(), Some(Token::Semicolon) | Some(Token::Newline) | Some(Token::RBrace)) {
+                    Ok(Stmt::Return(None))
+                } else {
+                    let value = self.parse_expression()?;
+                    Ok(Stmt::Return(Some(value)))
+                }
             }
             Some(Token::Print) => {
                 self.advance();
