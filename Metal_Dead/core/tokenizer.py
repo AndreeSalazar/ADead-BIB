@@ -89,3 +89,7 @@ class SmartTokenizer:
     
     def __len__(self):
         return len(self.vocab)
+
+
+# Alias para compatibilidad con CPU module
+SimpleTokenizer = SmartTokenizer

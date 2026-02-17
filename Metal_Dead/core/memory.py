@@ -170,3 +170,41 @@ class PersistentMemory:
             "avg_importance": float(np.mean([m.importance for m in self.memories])) if self.memories else 0,
             "total_accesses": sum(m.access_count for m in self.memories),
         }
+
+
+class Memory:
+    """
+    Memoria simple en RAM para Metal-Dead CPU.
+    Sin persistencia, optimizada para velocidad.
+    """
+    
+    def __init__(self):
+        self.data: Dict = {}
+    
+    def get(self, key: str, default=None):
+        """Obtiene valor de memoria."""
+        return self.data.get(key, default)
+    
+    def set(self, key: str, value):
+        """Establece valor en memoria."""
+        self.data[key] = value
+    
+    def delete(self, key: str):
+        """Elimina valor de memoria."""
+        if key in self.data:
+            del self.data[key]
+    
+    def clear(self):
+        """Limpia toda la memoria."""
+        self.data.clear()
+    
+    def has(self, key: str) -> bool:
+        """Verifica si existe una clave."""
+        return key in self.data
+    
+    def keys(self) -> List[str]:
+        """Retorna todas las claves."""
+        return list(self.data.keys())
+    
+    def __len__(self) -> int:
+        return len(self.data)
