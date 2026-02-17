@@ -10,6 +10,7 @@ use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
 use crate::optimizer::binary_optimizer::{BinaryOptimizer, OptLevel};
 use crate::isa::isa_compiler::{IsaCompiler, Target};
+use crate::isa::optimizer::{IsaOptimizer, IsaOptLevel};
 use crate::backend::{pe, elf};
 use std::fs;
 use std::path::Path;
@@ -84,27 +85,59 @@ impl Builder {
         let mut compiler = IsaCompiler::new(options.target);
         let (opcodes, data) = compiler.compile(&program);
 
-        // 4.5. Binary Optimization (new!)
+        // 4.5. ISA-Level Optimization (operates on ADeadIR before encoding)
+        let optimized_opcodes = if options.size_optimize {
+            if options.verbose { println!("Step 4.5: ISA Optimization (level: {:?})...", options.opt_level); }
+            
+            // Aplicar ISA optimizer al IR antes de encoding
+            let isa_level = match options.opt_level {
+                OptLevel::None => IsaOptLevel::None,
+                OptLevel::Basic => IsaOptLevel::Basic,
+                OptLevel::Aggressive => IsaOptLevel::Aggressive,
+                OptLevel::Ultra => IsaOptLevel::Size,
+            };
+            let mut isa_opt = IsaOptimizer::new(isa_level);
+            let optimized_ir = isa_opt.optimize(compiler.ir());
+            
+            // Re-encode con IR optimizado
+            let mut encoder = crate::isa::encoder::Encoder::new();
+            let result = encoder.encode_all(optimized_ir.ops());
+            
+            if options.verbose {
+                let stats = isa_opt.stats();
+                println!("   ISA Ops: {} → {} (peephole: {}, dead: {}, nops: {})",
+                    stats.original_ops, stats.optimized_ops,
+                    stats.peephole_applied, stats.dead_code_removed, stats.nops_eliminated
+                );
+            }
+            
+            result.code
+        } else {
+            opcodes
+        };
+
+        // 4.6. Binary-Level Optimization (operates on raw bytes)
         let final_opcodes = if options.size_optimize {
-            if options.verbose { println!("Step 4.5: Binary Optimization (level: {:?})...", options.opt_level); }
             let mut binary_opt = BinaryOptimizer::new(options.opt_level);
-            let optimized = binary_opt.optimize(&opcodes);
+            let optimized = binary_opt.optimize(&optimized_opcodes);
             if options.verbose {
                 let stats = binary_opt.get_stats();
-                println!("   Original: {} bytes, Optimized: {} bytes, Saved: {} bytes ({:.1}%)",
+                println!("   Bytes: {} → {} (saved: {} bytes, {:.1}%)",
                     stats.original_size, stats.optimized_size, stats.bytes_saved,
                     if stats.original_size > 0 { (stats.bytes_saved as f64 / stats.original_size as f64) * 100.0 } else { 0.0 }
                 );
             }
             optimized
         } else {
-            opcodes
+            optimized_opcodes
         };
 
         // 5. Linking / Binary Generation
         if options.verbose { println!("Step 5: Writing Binary to {}...", options.output_path); }
         match options.target {
-            Target::Windows => pe::generate_pe(&final_opcodes, &data, &options.output_path)?,
+            Target::Windows => {
+                pe::generate_pe(&final_opcodes, &data, &options.output_path)?;
+            },
             Target::Linux => elf::generate_elf(&final_opcodes, &data, &options.output_path)?,
             Target::Raw => fs::write(&options.output_path, &final_opcodes)?,
         }
