@@ -112,6 +112,40 @@ pub enum Token {
     Free,       // free
     NULL,       // NULL
     
+    // C++ style (NEW v3.1)
+    Do,         // do (for do-while)
+    Namespace,  // namespace
+    Using,      // using
+    Template,   // template
+    Typename,   // typename
+    Private,    // private
+    Protected,  // protected
+    Public,     // public (C++ style)
+    Friend,     // friend
+    Inline,     // inline
+    Constexpr,  // constexpr
+    Delete,     // delete
+    Nullptr,    // nullptr
+    Bool,       // bool type
+    Cout,       // cout
+    Cin,        // cin
+    Endl,       // endl
+    
+    // Operators adicionales
+    PlusPlus,   // ++
+    MinusMinus, // --
+    AndAnd,     // &&
+    OrOr,       // ||
+    LeftShift,  // <<
+    RightShift, // >>
+    PercentEq,  // %=
+    AmpEq,      // &=
+    PipeEq,     // |=
+    CaretEq,    // ^=
+    LeftShiftEq,  // <<=
+    RightShiftEq, // >>=
+    Scope,      // :: (namespace scope)
+    
     // Identifiers
     Identifier(String),
     
@@ -392,6 +426,9 @@ impl Lexer {
                 if self.current_char == Some('=') {
                     self.advance();
                     Token::PlusEq
+                } else if self.current_char == Some('+') {
+                    self.advance();
+                    Token::PlusPlus
                 } else {
                     Token::Plus
                 }
@@ -405,6 +442,9 @@ impl Lexer {
                 } else if self.current_char == Some('=') {
                     self.advance();
                     Token::MinusEq
+                } else if self.current_char == Some('-') {
+                    self.advance();
+                    Token::MinusMinus
                 } else {
                     Token::Minus
                 }
@@ -462,6 +502,14 @@ impl Lexer {
                 if self.current_char == Some('=') {
                     self.advance();
                     Token::LessEq
+                } else if self.current_char == Some('<') {
+                    self.advance();
+                    if self.current_char == Some('=') {
+                        self.advance();
+                        Token::LeftShiftEq
+                    } else {
+                        Token::LeftShift
+                    }
                 } else {
                     Token::Less
                 }
@@ -472,6 +520,14 @@ impl Lexer {
                 if self.current_char == Some('=') {
                     self.advance();
                     Token::GreaterEq
+                } else if self.current_char == Some('>') {
+                    self.advance();
+                    if self.current_char == Some('=') {
+                        self.advance();
+                        Token::RightShiftEq
+                    } else {
+                        Token::RightShift
+                    }
                 } else {
                     Token::Greater
                 }
@@ -479,7 +535,48 @@ impl Lexer {
             
             Some('%') => {
                 self.advance();
-                Token::Percent
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::PercentEq
+                } else {
+                    Token::Percent
+                }
+            }
+            
+            Some('&') => {
+                self.advance();
+                if self.current_char == Some('&') {
+                    self.advance();
+                    Token::AndAnd
+                } else if self.current_char == Some('=') {
+                    self.advance();
+                    Token::AmpEq
+                } else {
+                    Token::Ampersand
+                }
+            }
+            
+            Some('|') => {
+                self.advance();
+                if self.current_char == Some('|') {
+                    self.advance();
+                    Token::OrOr
+                } else if self.current_char == Some('=') {
+                    self.advance();
+                    Token::PipeEq
+                } else {
+                    Token::Pipe
+                }
+            }
+            
+            Some('^') => {
+                self.advance();
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::CaretEq
+                } else {
+                    Token::Caret
+                }
             }
             
             Some(',') => {
@@ -530,26 +627,6 @@ impl Lexer {
             Some('}') => {
                 self.advance();
                 Token::RBrace
-            }
-            
-            Some('&') => {
-                self.advance();
-                if self.current_char == Some('&') {
-                    self.advance();
-                    Token::And
-                } else {
-                    Token::Ampersand
-                }
-            }
-            
-            Some('|') => {
-                self.advance();
-                if self.current_char == Some('|') {
-                    self.advance();
-                    Token::Or
-                } else {
-                    Token::Pipe
-                }
             }
             
             Some('?') => {
@@ -697,10 +774,28 @@ impl Lexer {
                     "free" => Token::Free,
                     "NULL" => Token::NULL,
                     
+                    // C++ style keywords (NEW v3.1)
+                    "do" => Token::Do,
+                    "namespace" => Token::Namespace,
+                    "using" => Token::Using,
+                    "template" => Token::Template,
+                    "typename" => Token::Typename,
+                    "private" => Token::Private,
+                    "protected" => Token::Protected,
+                    "public" => Token::Public,
+                    "friend" => Token::Friend,
+                    "inline" => Token::Inline,
+                    "constexpr" => Token::Constexpr,
+                    "delete" => Token::Delete,
+                    "nullptr" => Token::Nullptr,
+                    "bool" => Token::Bool,
+                    "cout" => Token::Cout,
+                    "cin" => Token::Cin,
+                    "endl" => Token::Endl,
+                    
                     // Type casts (keep for compatibility)
                     "float" => Token::FloatType,
                     "str" => Token::Str,
-                    "bool" => Token::BoolCast,
                     
                     _ => Token::Identifier(ident),
                 }
