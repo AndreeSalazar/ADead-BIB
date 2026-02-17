@@ -1188,6 +1188,77 @@ impl CodeGeneratorV2 {
                 // No soportado en codegen_v2 por ahora
                 self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
             }
+            
+            // ========== PUNTEROS Y MEMORIA (v3.2) ==========
+            Expr::Deref(ptr) => {
+                self.emit_expression(ptr);
+                // mov rax, [rax] - dereference pointer
+                self.emit_bytes(&[0x48, 0x8B, 0x00]);
+            }
+            Expr::AddressOf(expr) => {
+                if let Expr::Variable(name) = expr.as_ref() {
+                    if let Some(&offset) = self.variables.get(name) {
+                        // lea rax, [rbp + offset]
+                        self.emit_bytes(&[0x48, 0x8D, 0x85]);
+                        self.emit_i32(offset);
+                    } else {
+                        self.emit_bytes(&[0x48, 0x31, 0xC0]);
+                    }
+                } else {
+                    self.emit_expression(expr);
+                }
+            }
+            Expr::ArrowAccess { pointer, field: _ } => {
+                self.emit_expression(pointer);
+                self.emit_bytes(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
+            }
+            Expr::SizeOf(_) => {
+                // sizeof(int) = 8 en x86-64
+                self.emit_bytes(&[0x48, 0xB8]);
+                self.emit_u64(8);
+            }
+            Expr::Malloc(size) => {
+                self.emit_expression(size);
+                // Placeholder - llamar a HeapAlloc
+                self.emit_bytes(&[0x48, 0x31, 0xC0]);
+            }
+            Expr::Realloc { ptr, new_size } => {
+                self.emit_expression(ptr);
+                self.emit_expression(new_size);
+                self.emit_bytes(&[0x48, 0x31, 0xC0]);
+            }
+            Expr::Cast { target_type: _, expr } => {
+                self.emit_expression(expr);
+            }
+            Expr::Nullptr => {
+                self.emit_bytes(&[0x48, 0x31, 0xC0]);
+            }
+            Expr::PreIncrement(expr) | Expr::PostIncrement(expr) => {
+                self.emit_expression(expr);
+                self.emit_bytes(&[0x48, 0xFF, 0xC0]); // inc rax
+            }
+            Expr::PreDecrement(expr) | Expr::PostDecrement(expr) => {
+                self.emit_expression(expr);
+                self.emit_bytes(&[0x48, 0xFF, 0xC8]); // dec rax
+            }
+            Expr::BitwiseOp { op, left, right } => {
+                self.emit_expression(left);
+                self.emit_bytes(&[0x50]); // push rax
+                self.emit_expression(right);
+                self.emit_bytes(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                self.emit_bytes(&[0x58]); // pop rax
+                match op {
+                    crate::frontend::ast::BitwiseOp::And => self.emit_bytes(&[0x48, 0x21, 0xC8]),
+                    crate::frontend::ast::BitwiseOp::Or => self.emit_bytes(&[0x48, 0x09, 0xC8]),
+                    crate::frontend::ast::BitwiseOp::Xor => self.emit_bytes(&[0x48, 0x31, 0xC8]),
+                    crate::frontend::ast::BitwiseOp::LeftShift => self.emit_bytes(&[0x48, 0xD3, 0xE0]),
+                    crate::frontend::ast::BitwiseOp::RightShift => self.emit_bytes(&[0x48, 0xD3, 0xE8]),
+                }
+            }
+            Expr::BitwiseNot(expr) => {
+                self.emit_expression(expr);
+                self.emit_bytes(&[0x48, 0xF7, 0xD0]); // not rax
+            }
         }
     }
     

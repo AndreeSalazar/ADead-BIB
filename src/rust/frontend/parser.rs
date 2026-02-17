@@ -278,7 +278,14 @@ impl Parser {
                             None
                         };
                         
-                        params.push(Param { name: param_name, type_name });
+                        params.push(Param { 
+                            name: param_name, 
+                            type_name,
+                            param_type: None,
+                            is_pointer: false,
+                            is_reference: false,
+                            default_value: None,
+                        });
                         
                         if matches!(self.peek(), Some(Token::Comma)) {
                             self.advance();
@@ -335,7 +342,14 @@ impl Parser {
                     if matches!(self.peek(), Some(Token::This)) {
                         self.advance(); // consume self
                         // Add self as implicit first parameter
-                        params.push(Param { name: "self".to_string(), type_name: Some("Self".to_string()) });
+                        params.push(Param { 
+                            name: "self".to_string(), 
+                            type_name: Some("Self".to_string()),
+                            param_type: None,
+                            is_pointer: false,
+                            is_reference: true,
+                            default_value: None,
+                        });
                         if matches!(self.peek(), Some(Token::Comma)) {
                             self.advance();
                             continue;
@@ -348,7 +362,14 @@ impl Parser {
                 // Handle bare 'self'
                 if matches!(self.peek(), Some(Token::This)) {
                     self.advance();
-                    params.push(Param { name: "self".to_string(), type_name: Some("Self".to_string()) });
+                    params.push(Param { 
+                        name: "self".to_string(), 
+                        type_name: Some("Self".to_string()),
+                        param_type: None,
+                        is_pointer: false,
+                        is_reference: false,
+                        default_value: None,
+                    });
                     if matches!(self.peek(), Some(Token::Comma)) {
                         self.advance();
                         continue;
@@ -377,7 +398,14 @@ impl Parser {
                     None
                 };
                 
-                params.push(Param { name: param_name, type_name });
+                params.push(Param { 
+                    name: param_name, 
+                    type_name,
+                    param_type: None,
+                    is_pointer: false,
+                    is_reference: false,
+                    default_value: None,
+                });
                 
                 if matches!(self.peek(), Some(Token::Comma)) {
                     self.advance();
@@ -489,7 +517,14 @@ impl Parser {
                     None => return Err(ParseError::UnexpectedEof),
                 };
                 
-                params.push(Param { name: param_name, type_name: param_type });
+                params.push(Param { 
+                    name: param_name, 
+                    type_name: param_type,
+                    param_type: None,
+                    is_pointer: false,
+                    is_reference: false,
+                    default_value: None,
+                });
                 
                 if matches!(self.peek(), Some(Token::Comma)) {
                     self.advance();
@@ -812,7 +847,14 @@ impl Parser {
                             None
                         };
                         
-                        params.push(Param { name: param_name, type_name });
+                        params.push(Param { 
+                            name: param_name, 
+                            type_name,
+                            param_type: None,
+                            is_pointer: false,
+                            is_reference: false,
+                            default_value: None,
+                        });
                         
                         if matches!(self.peek(), Some(Token::Comma)) {
                             self.advance();
@@ -898,7 +940,14 @@ impl Parser {
                     None
                 };
                 
-                params.push(Param { name: param_name, type_name });
+                params.push(Param { 
+                    name: param_name, 
+                    type_name,
+                    param_type: None,
+                    is_pointer: false,
+                    is_reference: false,
+                    default_value: None,
+                });
                 
                 if matches!(self.peek(), Some(Token::Comma)) {
                     self.advance();
@@ -1076,7 +1125,14 @@ impl Parser {
                     None
                 };
                 
-                params.push(Param { name: param_name, type_name });
+                params.push(Param { 
+                    name: param_name, 
+                    type_name,
+                    param_type: None,
+                    is_pointer: false,
+                    is_reference: false,
+                    default_value: None,
+                });
                 
                 if matches!(self.peek(), Some(Token::Comma)) {
                     self.advance();

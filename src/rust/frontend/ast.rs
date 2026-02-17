@@ -1,6 +1,62 @@
 // AST (Abstract Syntax Tree) para ADead-BIB
 // Lenguaje de uso general con OOP - Binario + HEX
 
+/// Tipos de datos del lenguaje
+#[derive(Debug, Clone, PartialEq)]
+pub enum Type {
+    // Primitivos
+    Int,
+    Long,
+    Short,
+    Char,
+    Float,
+    Double,
+    Bool,
+    Void,
+    
+    // Punteros
+    Pointer(Box<Type>),           // int* -> Pointer(Int)
+    Reference(Box<Type>),         // int& -> Reference(Int)
+    
+    // Arrays
+    Array(Box<Type>, Option<usize>),  // int[10] -> Array(Int, Some(10))
+    
+    // Tipos definidos por usuario
+    Named(String),                // struct/class name
+    
+    // Auto (inferencia)
+    Auto,
+}
+
+impl Type {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "int" => Type::Int,
+            "long" => Type::Long,
+            "short" => Type::Short,
+            "char" => Type::Char,
+            "float" => Type::Float,
+            "double" => Type::Double,
+            "bool" => Type::Bool,
+            "void" => Type::Void,
+            "auto" => Type::Auto,
+            other => Type::Named(other.to_string()),
+        }
+    }
+    
+    pub fn pointer_to(self) -> Self {
+        Type::Pointer(Box::new(self))
+    }
+    
+    pub fn reference_to(self) -> Self {
+        Type::Reference(Box::new(self))
+    }
+    
+    pub fn array_of(self, size: Option<usize>) -> Self {
+        Type::Array(Box::new(self), size)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Number(i64),
@@ -82,6 +138,80 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    
+    // ========== PUNTEROS Y MEMORIA (v3.2) ==========
+    
+    /// Dereference: *ptr
+    Deref(Box<Expr>),
+    
+    /// Address-of: &var
+    AddressOf(Box<Expr>),
+    
+    /// Arrow access: ptr->field
+    ArrowAccess {
+        pointer: Box<Expr>,
+        field: String,
+    },
+    
+    /// Sizeof: sizeof(type) o sizeof(expr)
+    SizeOf(Box<SizeOfArg>),
+    
+    /// Malloc: malloc(size)
+    Malloc(Box<Expr>),
+    
+    /// Realloc: realloc(ptr, new_size)
+    Realloc {
+        ptr: Box<Expr>,
+        new_size: Box<Expr>,
+    },
+    
+    /// Cast: (int*)ptr
+    Cast {
+        target_type: Type,
+        expr: Box<Expr>,
+    },
+    
+    /// Nullptr literal
+    Nullptr,
+    
+    /// Pre-increment: ++x
+    PreIncrement(Box<Expr>),
+    
+    /// Pre-decrement: --x
+    PreDecrement(Box<Expr>),
+    
+    /// Post-increment: x++
+    PostIncrement(Box<Expr>),
+    
+    /// Post-decrement: x--
+    PostDecrement(Box<Expr>),
+    
+    // Bitwise operations
+    BitwiseOp {
+        op: BitwiseOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    
+    /// Bitwise NOT: ~x
+    BitwiseNot(Box<Expr>),
+}
+
+/// Argumento de sizeof
+#[derive(Debug, Clone)]
+pub enum SizeOfArg {
+    Type(Type),
+    Expr(Expr),
+}
+
+/// Operadores bitwise
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BitwiseOp {
+    And,        // &
+    Or,         // |
+    Xor,        // ^
+    LeftShift,  // <<
+    RightShift, // >>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -159,12 +289,121 @@ pub enum Stmt {
         message: Option<Expr>,
     },
     Expr(Expr),
+    
+    // ========== PUNTEROS Y MEMORIA (v3.2) ==========
+    
+    /// Declaración con tipo: int x = 5, int* ptr = &x
+    VarDecl {
+        var_type: Type,
+        name: String,
+        value: Option<Expr>,
+    },
+    
+    /// Asignación a puntero dereferenciado: *ptr = value
+    DerefAssign {
+        pointer: Expr,
+        value: Expr,
+    },
+    
+    /// Asignación via arrow: ptr->field = value
+    ArrowAssign {
+        pointer: Expr,
+        field: String,
+        value: Expr,
+    },
+    
+    /// Free memory: free(ptr)
+    Free(Expr),
+    
+    /// Delete (C++ style): delete ptr, delete[] arr
+    Delete {
+        expr: Expr,
+        is_array: bool,
+    },
+    
+    /// Do-While loop
+    DoWhile {
+        body: Vec<Stmt>,
+        condition: Expr,
+    },
+    
+    /// Switch statement
+    Switch {
+        expr: Expr,
+        cases: Vec<SwitchCase>,
+        default: Option<Vec<Stmt>>,
+    },
+    
+    /// Compound assignment: x += 5, x -= 3, etc.
+    CompoundAssign {
+        name: String,
+        op: CompoundOp,
+        value: Expr,
+    },
+    
+    /// Increment/Decrement statement: x++, ++x, x--, --x
+    Increment {
+        name: String,
+        is_pre: bool,
+        is_increment: bool,
+    },
+}
+
+/// Case de switch
+#[derive(Debug, Clone)]
+pub struct SwitchCase {
+    pub value: Expr,
+    pub body: Vec<Stmt>,
+    pub has_break: bool,
+}
+
+/// Operadores de asignación compuesta
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompoundOp {
+    AddAssign,    // +=
+    SubAssign,    // -=
+    MulAssign,    // *=
+    DivAssign,    // /=
+    ModAssign,    // %=
+    AndAssign,    // &=
+    OrAssign,     // |=
+    XorAssign,    // ^=
+    ShlAssign,    // <<=
+    ShrAssign,    // >>=
 }
 
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
     pub type_name: Option<String>,
+    pub param_type: Option<Type>,  // Tipo completo (v3.2)
+    pub is_pointer: bool,          // Es puntero?
+    pub is_reference: bool,        // Es referencia?
+    pub default_value: Option<Expr>, // Valor por defecto
+}
+
+impl Param {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            type_name: None,
+            param_type: None,
+            is_pointer: false,
+            is_reference: false,
+            default_value: None,
+        }
+    }
+    
+    pub fn with_type(name: String, type_name: String) -> Self {
+        Self {
+            name,
+            type_name: Some(type_name.clone()),
+            param_type: Some(Type::from_str(&type_name)),
+            is_pointer: false,
+            is_reference: false,
+            default_value: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
