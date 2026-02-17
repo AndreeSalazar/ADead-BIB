@@ -1,1033 +1,525 @@
-# ADead-BIB — Documento de Diseño del Lenguaje
+# ADead-BIB v3.0 — Documento de Arquitectura
 
-> **Versión:** 2.0  
+> **Versión:** 3.0  
 > **Autor:** Eddi Andreé Salazar Matos  
-> **Filosofía:** Binary Is Binary — Código → Bytes → Binario
+> **Filosofía:** División por Verdad Binaria — CPU = IR | GPU = SPIR-V
 
 ---
 
-## Manifiesto
+## Manifiesto v3.0
 
-**ADead-BIB no abstrae la máquina, la domestica.**
-
-El humano piensa en objetos y lógica. El lenguaje traduce eso a bytes sin mentir.
+**ADead-BIB divide CPU y GPU por VERDAD BINARIA, no por comodidad.**
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  COMPILADORES TRADICIONALES (7+ capas)                      │
-│  Código → Tokens → AST → IR → Optimizer → ASM → Linker → Bin│
-├─────────────────────────────────────────────────────────────┤
-│  ADead-BIB (2-3 capas)                                      │
-│  Código → AST → BYTES DIRECTOS → Binario/HEX                │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         ADead-BIB v3.0                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   ┌─────────────────────┐       ┌─────────────────────┐         │
+│   │        CPU          │       │        GPU          │         │
+│   │   (IR Completo)     │       │   (SPIR-V Directo)  │         │
+│   │                     │       │                     │         │
+│   │  AST → IR → x86-64  │       │  AST → SPIR-V bytes │         │
+│   │  Optimización       │       │  Sin intermediarios │         │
+│   │  completa           │       │                     │         │
+│   └─────────────────────┘       └─────────────────────┘         │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Parte I: Identidad del Lenguaje
+## Parte I: División CPU / GPU
 
-### 1.1 Principios Fundamentales
+### 1.1 Por qué dividir
 
-| Principio | Descripción |
-|-----------|-------------|
-| **Sin ASM intermedio** | Emitimos bytes x86-64 directamente |
-| **Sin linker externo** | Generamos PE/ELF completos en memoria |
-| **Sin runtime pesado** | El binario es autosuficiente |
-| **HEX es ciudadano de primera clase** | Puedes escribir bytes literales |
-| **CPU y GPU son iguales** | Misma sintaxis, diferentes targets |
+| Aspecto | CPU | GPU |
+|---------|-----|-----|
+| **Modelo de ejecución** | Secuencial + SIMD | Masivamente paralelo |
+| **Memoria** | Stack + Heap | Buffers + Shared |
+| **Control de flujo** | Branches, loops | Workgroups, barriers |
+| **Optimización** | En compilador | En driver |
+| **Representación** | IR (optimizable) | SPIR-V (directo) |
 
-### 1.2 Sensación del Lenguaje
+### 1.2 Principio Fundamental
 
-ADead-BIB debe sentirse como:
+> **No estás dividiendo por comodidad.**
+> **Estás dividiendo por VERDAD BINARIA.**
 
-| Aspecto | Inspiración | Resultado |
-|---------|-------------|-----------|
-| **Al escribir** | Python | Fluidez, sintaxis limpia |
-| **Al estructurar** | Rust | Disciplina, reglas claras |
-| **Al ejecutar** | ASM | Control total, bytes directos |
-| **Al pensar** | OOP | Objetos como mini-máquinas |
+La CPU necesita IR porque:
+- Tiene registros limitados que asignar
+- Tiene branches que optimizar
+- Tiene cache que considerar
+- El compilador DEBE optimizar
 
-### 1.3 Regla de Oro
-
-> **El 80% del código debe escribirse sin pensar en bytes.**
-> **El 20% restante tiene acceso total a la máquina.**
-
----
-
-## Parte II: Sistema de Tipos
-
-### 2.1 Tipos Primitivos
-
-```rust
-// Enteros con signo
-i8, i16, i32, i64
-
-// Enteros sin signo  
-u8, u16, u32, u64
-
-// Otros
-bool        // true/false → 1/0
-string      // puntero + longitud, UTF-8, inmutable
-ptr<T>      // puntero tipado
-```
-
-**Regla:** El tipo define EXACTAMENTE los bytes que se emiten.
-
-### 2.2 Literales Numéricos
-
-```rust
-let decimal = 42              // Decimal
-let hex = 0xFF                // Hexadecimal
-let hex_sep = 0xFF_FF         // Con separadores
-let binary = 0b11110000       // Binario
-let binary_sep = 0b1111_0000  // Con separadores
-let octal = 0o755             // Octal
-```
-
-### 2.3 Strings
-
-```rust
-let msg = "Hola, ADead-BIB"
-```
-
-**Contrato interno:**
-- Bytes en `.rodata`
-- Longitud conocida en compilación
-- UTF-8 por defecto
-- Sin null-termination implícita
+La GPU no necesita IR porque:
+- El driver ya optimiza
+- Los workgroups son fijos
+- La memoria es explícita
+- SPIR-V es suficiente
 
 ---
 
-## Parte III: Sintaxis Core
+## Parte II: CPU Backend — IR Completo
 
-### 3.1 Variables
+### 2.1 Pipeline CPU
 
-```rust
-let x = 42                    // Inmutable por defecto
-let mut counter = 0           // Mutable explícito
-const PI = 3                  // Constante de compilación
+```
+Código ADead (.adB)
+       ↓
+    Lexer
+       ↓
+    Parser
+       ↓
+     AST
+       ↓
+  ┌────────────────────────────────────┐
+  │              IR                    │
+  │  (Intermediate Representation)     │
+  │                                    │
+  │  - SSA form                        │
+  │  - Type-annotated                  │
+  │  - Control flow graph              │
+  └────────────────────────────────────┘
+       ↓
+  ┌────────────────────────────────────┐
+  │          Optimizador               │
+  │                                    │
+  │  - Dead Code Elimination           │
+  │  - Constant Folding                │
+  │  - Inlining                        │
+  │  - Register Allocation             │
+  │  - Peephole                        │
+  └────────────────────────────────────┘
+       ↓
+   x86-64 bytes
+       ↓
+   PE / ELF
 ```
 
-**Ubicación:** El compilador decide (stack/registro). El usuario no elige para lo común.
+### 2.2 IR Operations
 
-### 3.2 Funciones
+| IR Op | Descripción | x86-64 Emission |
+|-------|-------------|-----------------|
+| `IR_CONST(val)` | Cargar constante | `mov rax, imm64` |
+| `IR_ADD(a, b)` | Suma | `add rax, rbx` |
+| `IR_SUB(a, b)` | Resta | `sub rax, rbx` |
+| `IR_MUL(a, b)` | Multiplicación | `imul rax, rbx` |
+| `IR_DIV(a, b)` | División | `idiv rbx` |
+| `IR_LOAD(addr)` | Cargar memoria | `mov rax, [rbp+off]` |
+| `IR_STORE(addr, val)` | Guardar memoria | `mov [rbp+off], rax` |
+| `IR_CALL(fn)` | Llamar función | `call rel32` |
+| `IR_RET(val)` | Retornar | `mov rax, val; ret` |
+| `IR_JMP(label)` | Salto | `jmp rel32` |
+| `IR_JZ(cond, label)` | Salto condicional | `test rax, rax; jz rel32` |
+| `IR_CMP(a, b)` | Comparar | `cmp rax, rbx` |
+| `IR_PHI(...)` | SSA phi node | (resolved in regalloc) |
+
+### 2.3 Optimizaciones CPU
+
+| Optimización | Descripción | Impacto |
+|--------------|-------------|---------|
+| **DCE** | Dead Code Elimination | -10% código |
+| **Constant Folding** | Evaluar constantes | -5% instrucciones |
+| **Inlining** | Expandir funciones pequeñas | +velocidad, -calls |
+| **Register Allocation** | Minimizar spills | +velocidad |
+| **Peephole** | Patrones locales | -instrucciones |
+| **Loop Unrolling** | Desenrollar loops pequeños | +velocidad |
+
+### 2.4 Ejemplo CPU
 
 ```rust
-fn add(a, b) {
-    return a + b
+fn factorial(n: i64) -> i64 {
+    if n <= 1 { return 1 }
+    return n * factorial(n - 1)
 }
 
 fn main() {
-    let result = add(10, 20)
-    println(result)
+    let result = factorial(10)
+    println(result)  // 3628800
 }
 ```
 
-**Contrato:**
-- Calling convention Windows x64: RCX, RDX, R8, R9
-- Retorno en RAX
-- Stack alineado a 16 bytes
-
-### 3.3 Control de Flujo
-
-```rust
-// Condicionales
-if x == 0xFF {
-    println("Max byte!")
-} else if x == 0 {
-    println("Zero")
-} else {
-    println("Other")
-}
-
-// Bucles
-for i in 0..10 {
-    println(i)
-}
-
-while condition {
-    // ...
-}
-
-loop {
-    if done { break }
-}
+**IR generado:**
+```
+factorial:
+  IR_PARAM n
+  IR_CMP n, 1
+  IR_JG .recurse
+  IR_RET 1
+.recurse:
+  IR_SUB n, 1
+  IR_CALL factorial
+  IR_MUL n, result
+  IR_RET result
 ```
 
-**Internamente:** Se traduce a `cmp` + `jmp`, pero el usuario no ve flags.
+**x86-64 generado:** ~50 bytes
 
 ---
 
-## Parte IV: OOP Binario
+## Parte III: GPU Backend — SPIR-V Directo
 
-### 4.1 Filosofía
-
-> **Los objetos son mini-máquinas binarias, no abstracciones conceptuales.**
-
-Un objeto en ADead-BIB es:
-- Un layout de memoria fijo
-- Métodos = funciones con `self` como puntero
-- Sin herencia profunda
-- Polimorfismo = vtable simple
-
-### 4.2 Structs e Implementaciones
-
-```rust
-struct Player {
-    x: i32,
-    y: i32,
-    health: u8
-}
-
-impl Player {
-    fn new(x, y) {
-        return Player { x: x, y: y, health: 100 }
-    }
-    
-    fn move(self, dx, dy) {
-        self.x += dx
-        self.y += dy
-    }
-    
-    fn is_alive(self) {
-        return self.health > 0
-    }
-}
-
-fn main() {
-    let player = Player::new(10, 20)
-    player.move(5, -3)
-}
-```
-
-### 4.3 Traits (Polimorfismo Simple)
-
-```rust
-trait Drawable {
-    fn draw(self)
-}
-
-impl Drawable for Player {
-    fn draw(self) {
-        // Dibujar jugador
-    }
-}
-```
-
-**Contrato interno:**
-- Una tabla de punteros (vtable)
-- Un índice por método
-- Un call indirecto
-
-**Sin:** lifetimes complejos, inferencia profunda, metaprogramación pesada.
-
-### 4.4 CPU y GPU como Objetos
-
-```rust
-// CPU y GPU usan la misma sintaxis
-let gpu = GPU::init()
-gpu.alloc(4096)
-gpu.matmul(a, b, c)
-gpu.sync()
-
-// El usuario NO cambia de paradigma
-```
-
----
-
-## Parte V: Niveles de Acceso
-
-### 5.1 Nivel Normal (80% del código)
-
-```rust
-fn main() {
-    let x = 42
-    println("Hello, ADead-BIB!")
-    
-    for i in 0..10 {
-        println(i)
-    }
-}
-```
-
-- Sin bytes visibles
-- Sin registros
-- Sin preocupaciones
-
-### 5.2 Nivel Avanzado (módulos especiales)
-
-```rust
-fn optimized() {
-    cpu::mov(rcx, 1000000)
-    cpu::xor(rax, rax)
-    
-    gpu::init()
-    gpu::matmul(a, b, c)
-}
-```
-
-- Acceso a instrucciones directas
-- Registros como constantes tipadas
-- Validación en compilación
-
-### 5.3 Nivel Peligroso (explícito)
-
-```rust
-unsafe {
-    emit![0x48, 0x31, 0xC0]  // xor rax, rax
-    emit![0xC3]              // ret
-}
-```
-
-- Bytes crudos
-- Sin validación
-- Poder total
-
----
-
-## Parte VI: Módulos Core
-
-### 6.1 Módulos Estándar Mínimos
-
-```rust
-core::io      // println, print, input
-core::mem     // alloc, free, copy
-core::cpu     // Instrucciones x86-64 directas
-core::gpu     // Opcodes GPU (0xC0DA...)
-core::panic   // Manejo de errores fatales
-core::sys     // Syscalls del sistema
-```
-
-### 6.2 Intrínsecos del Compilador
-
-| Función | Descripción | Emite |
-|---------|-------------|-------|
-| `println(x)` | Imprimir con newline | Syscall write |
-| `print(x)` | Imprimir sin newline | Syscall write |
-| `input()` | Leer entrada | Syscall read |
-| `len(s)` | Longitud de string | Valor inmediato |
-| `panic(msg)` | Error fatal | Exit con código |
-
-**Regla:** Los intrínsecos son funciones que el compilador conoce y emite bytes específicos. No hay runtime oculto.
-
----
-
-## Parte VII: Manejo de Errores
-
-### 7.1 Filosofía
-
-> **Errores como contratos, no excepciones.**
-
-ADead-BIB no tiene:
-- Excepciones
-- Stack unwinding complejo
-- Try/catch oculto
-
-### 7.2 Errores de Compilación
+### 3.1 Pipeline GPU
 
 ```
-error[E001]: variable 'x' not defined
-  --> main.adB:5:10
-   |
- 5 |     println(x)
-   |             ^ not found in this scope
+Código ADead (.adB)
+       ↓
+    Lexer
+       ↓
+    Parser
+       ↓
+     AST
+       ↓
+  ┌────────────────────────────────────┐
+  │         SPIR-V Emission            │
+  │         (DIRECTO)                  │
+  │                                    │
+  │  - Header SPIR-V                   │
+  │  - Declaraciones de tipos          │
+  │  - Variables globales              │
+  │  - Función main                    │
+  │  - Instrucciones compute           │
+  └────────────────────────────────────┘
+       ↓
+   .spv bytecode
 ```
 
-### 7.3 Errores de Runtime
-
-```rust
-// Opción 1: panic explícito
-file.open() or panic("No se pudo abrir")
-
-// Opción 2: Result simple
-let result = file.open()
-if result.is_err() {
-    println("Error al abrir")
-    return
-}
-```
-
-### 7.4 Panic
-
-```rust
-panic("División por cero")
-```
-
-**Contrato:**
-- Imprime mensaje
-- Termina con código de error
-- Sin cleanup complejo
-
----
-
-## Parte VIII: CPU Backend
-
-### 8.1 Arquitectura
-
-```
-Código ADead-BIB
-      ↓
-┌─────────────────────────────────┐
-│       BINARY EMITTER            │
-│                                 │
-│  codegen_v2.rs → bytes x86-64   │
-│  pe.rs         → Windows PE     │
-│  elf.rs        → Linux ELF      │
-│  pe_tiny.rs    → PE <500 bytes  │
-└─────────────────────────────────┘
-      ↓
-.exe / .elf (Binario Nativo)
-```
-
-### 8.2 Tabla de Opcodes x86-64
-
-| Instrucción | Bytes | Descripción |
-|-------------|-------|-------------|
-| `push rbp` | `0x55` | Guardar base pointer |
-| `mov rbp, rsp` | `0x48 0x89 0xE5` | Setup stack frame |
-| `pop rbp` | `0x5D` | Restaurar base pointer |
-| `ret` | `0xC3` | Retornar |
-| `xor rax, rax` | `0x48 0x31 0xC0` | Limpiar rax |
-| `call rel32` | `0xE8 [4 bytes]` | Llamar función |
-
-### 8.3 Calling Convention
-
-```
-Parámetros: RCX, RDX, R8, R9 (primeros 4)
-            Stack (resto)
-Retorno:    RAX
-Preservar:  RBX, RBP, RDI, RSI, R12-R15
-Alineación: Stack a 16 bytes antes de call
-```
-
----
-
-## Parte IX: GPU Backend
-
-### 9.1 Arquitectura de Dos Niveles
-
-```
-Nivel 1: Opcodes ADead-BIB (0xC0DA...)
-  - Formato propio
-  - Portable
-  - Documentado
-
-Nivel 2: Backend por target
-  ├── SPIR-V  → Todas las GPUs Vulkan
-  ├── CUDA    → NVIDIA (PTX)
-  └── Vulkan  → Runtime directo
-```
-
-### 9.2 Tabla de Opcodes GPU
-
-| Opcode | HEX | Descripción |
-|--------|-----|-------------|
-| `GPU_INIT` | `0xC0DA0001` | Inicializar contexto |
-| `GPU_SHUTDOWN` | `0xC0DA0002` | Cerrar contexto |
-| `GPU_ALLOC` | `0xC0DA0010` | Reservar memoria |
-| `GPU_FREE` | `0xC0DA0011` | Liberar memoria |
-| `GPU_COPY_H2D` | `0xC0DA0012` | Host → Device |
-| `GPU_COPY_D2H` | `0xC0DA0013` | Device → Host |
-| `GPU_MATMUL` | `0xC0DA0020` | Multiplicación matrices |
-| `GPU_SYNC` | `0xC0DA00F0` | Sincronizar |
-| `GPU_END` | `0xC0DAFFFF` | Fin programa |
-
-### 9.3 Relación CPU ↔ GPU
-
-```
-CPU prepara → GPU ejecuta → CPU recibe
-
-CPU:
-  1. Escribe datos en memoria
-  2. Escribe comandos GPU
-  3. Dispara ejecución
-  4. Se aparta
-
-GPU:
-  1. Lee comandos
-  2. Ejecuta kernels
-  3. Escribe resultados
-  4. Sin volver a preguntar
-```
-
-**La CPU NO mira cada iteración. La GPU NO pide permiso.**
-
----
-
-## Parte X: Formatos de Salida
-
-### 10.1 Formatos Soportados
-
-| Formato | Extensión | Descripción |
-|---------|-----------|-------------|
-| **PE Standard** | `.exe` | Windows ejecutable |
-| **PE Tiny** | `.exe` | Windows <500 bytes |
-| **ELF** | (sin ext) | Linux ejecutable |
-| **Raw Binary** | `.bin` | Bytes puros sin header |
-| **Intel HEX** | `.hex` | Formato HEX estándar |
-| **AHYB** | `.ahyb` | Híbrido CPU+GPU |
-
-### 10.2 Modo Raw
-
-```rust
-#![mode(raw)]
-#![base(0x1000)]
-
-fn _start() {
-    // Solo bytes de código
-}
-```
-
-### 10.3 Formato AHYB
-
-```
-┌─────────────────────────────────┐
-│ Header AHYB (8 bytes)           │
-│   Magic: "AHYB"                 │
-│   Version: u8                   │
-│   CPU_size: u16                 │
-│   GPU_size: u16                 │
-├─────────────────────────────────┤
-│ CPU Section (bytes x86-64)      │
-├─────────────────────────────────┤
-│ GPU Section (opcodes HEX)       │
-└─────────────────────────────────┘
-```
-
----
-
-## Parte XI: Ejemplos Completos
-
-### 11.1 Hello World
-
-```rust
-fn main() {
-    println("Hello, ADead-BIB!")
-}
-```
-
-### 11.2 Operaciones con Literales
-
-```rust
-fn main() {
-    let hex = 0xFF
-    let bin = 0b11110000
-    let sum = hex + bin
-    
-    println("Sum: ")
-    println(sum)  // 495
-}
-```
-
-### 11.3 OOP Completo
-
-```rust
-struct Vector2 {
-    x: i32,
-    y: i32
-}
-
-impl Vector2 {
-    fn new(x, y) {
-        return Vector2 { x: x, y: y }
-    }
-    
-    fn add(self, other) {
-        return Vector2 {
-            x: self.x + other.x,
-            y: self.y + other.y
-        }
-    }
-    
-    fn magnitude_squared(self) {
-        return self.x * self.x + self.y * self.y
-    }
-}
-
-fn main() {
-    let a = Vector2::new(3, 4)
-    let b = Vector2::new(1, 2)
-    let c = a.add(b)
-    
-    println(c.x)  // 4
-    println(c.y)  // 6
-}
-```
-
-### 11.4 GPU Compute
-
-```rust
-fn main() {
-    let gpu = GPU::init()
-    
-    // Reservar memoria
-    let a = gpu.alloc(4096)
-    let b = gpu.alloc(4096)
-    let c = gpu.alloc(4096)
-    
-    // Multiplicación de matrices
-    gpu.matmul(a, b, c)
-    gpu.sync()
-    
-    // Copiar resultado a CPU
-    gpu.copy_d2h(c, result)
-    
-    gpu.shutdown()
-}
-```
-
-### 11.5 Acceso Directo a CPU
-
-```rust
-fn fast_counter() {
-    unsafe {
-        cpu::mov(rcx, 1000000)
-        cpu::xor(rax, rax)
-        
-        loop {
-            cpu::inc(rax)
-            cpu::dec(rcx)
-            if rcx == 0 { break }
-        }
-    }
-    
-    return rax
-}
-```
-
----
-
-## Parte XII: Comparación con Otros Lenguajes
-
-| Característica | C | Rust | Python | ADead-BIB |
-|----------------|---|------|--------|-----------|
-| **Compilación** | ASM → Linker | LLVM | Interpretado | Bytes directos |
-| **Runtime** | libc | std | CPython | Ninguno |
-| **Tamaño Hello World** | ~50 KB | ~150 KB | N/A | ~1.5 KB |
-| **Acceso a hardware** | Inline ASM | unsafe | No | Nativo |
-| **GPU** | CUDA/OpenCL | wgpu | No | Integrado |
-| **OOP** | Manual | Traits | Classes | Híbrido |
-
----
-
-## Parte XIII: Lógicas de Uso
-
-### 13.1 Lo Común Debe Ser Corto
-
-> El 80% del código debe escribirse sin pensar en bytes.
-
-```rust
-user.login()
-user.logout()
-player.move(1, 0)
-```
-
-### 13.2 OOP Como Modelo Mental
-
-- Los objetos son layouts de memoria
-- Los métodos son funciones con `self` explícito
-- Sin herencia profunda
-- Polimorfismo = vtable simple
-
-### 13.3 Métodos > Funciones Sueltas
-
-> Todo lo que tenga estado debe ser método.
-
-```rust
-gpu.init()
-gpu.alloc(4096)
-gpu.matmul(a, b, c)
-```
-
-### 13.4 Explicitud Silenciosa
-
-- Explícito internamente
-- Silencioso externamente
-- El humano no escribe ruido
-
-### 13.5 ASM Como Modo, No Como Lenguaje
-
-```rust
-// Código normal
-player.move(1, 0)
-
-// Modo ASM (explícito)
-unsafe {
-    cpu::inc(rax)
-}
-```
-
----
-
-## Parte XIV: Resumen de Diseño
-
-### Lo Normal es Fácil
-
-```rust
-println("Hello")
-for i in 0..10 { }
-let x = 42
-```
-
-### Lo Avanzado es Visible
-
-```rust
-cpu::mov(rax, 42)
-gpu::matmul(a, b, c)
-```
-
-### Lo Peligroso es Explícito
-
-```rust
-unsafe {
-    emit![0x48, 0x31, 0xC0]
-}
-```
-
----
-
-## Parte XV: Próximos Pasos de Diseño
-
-1. **OOP Core Spec v1.0** — Definir formalmente structs, impl, traits
-2. **Vtables Simples** — Implementación de polimorfismo
-3. **Módulo cpu::** — Funciones de instrucciones directas
-4. **Módulo gpu::** — Funciones de opcodes GPU
-5. **emit![] Macro** — Inserción de bytes directos
-6. **Formato AHYB** — Binarios híbridos CPU+GPU
-7. **Arquitectura main.adB + call.adB** — Separación binaria
-
----
-
-## Parte XVI: Arquitectura Binaria Dual (main.adB + call.adB)
-
-### 16.1 Concepto Fundamental
-
-No es "dos archivos por comodidad". Es **separación de responsabilidades binaria**.
-
-> **Separar BINARIO FUNDAMENTAL de BINARIO DE COMPORTAMIENTO**
-
-Esto es una **decisión de arquitectura**, no de estilo.
-
-### 16.2 Roles de Cada Archivo
-
-#### `main.adB` — BINARIO BASE (ROOT)
-
-Este archivo:
-- Define el **punto de entrada real**
-- Crea el **layout inicial**
-- Controla el **flujo global**
-- Inicializa CPU / GPU
-- **NO** tiene lógica compleja
-
-Es el **esqueleto binario**.
-
-```rust
-// main.adB - Binario Base
-fn _start() {
-    core::init()
-    call::run()
-    core::shutdown()
-}
-```
-
-Piensa en `main.adB` como:
-- Bootloader lógico
-- Entrypoint
-- Controlador
-
-#### `call.adB` — BINARIO DE COMPORTAMIENTO (OOP PURO)
-
-Este archivo:
-- Define **objetos**
-- Define **métodos**
-- Define **lógica de alto nivel**
-- NO conoce el entrypoint
-- NO emite bytes peligrosos
-
-```rust
-// call.adB - Lógica OOP
-struct Engine {
-    running: bool
-}
-
-impl Engine {
-    fn new() {
-        return Engine { running: false }
-    }
-    
-    fn run(self) {
-        self.running = true
-        println("Engine running")
-    }
-    
-    fn shutdown(self) {
-        self.running = false
-        println("Engine stopped")
-    }
-}
-
-// Función exportada
-pub fn run() {
-    let engine = Engine::new()
-    engine.run()
-    engine.shutdown()
-}
-```
-
-### 16.3 Por Qué Esta Separación es Necesaria
-
-#### Problema Clásico del ASM
-
-Todo vive en el mismo archivo:
-- Entrypoint
-- Llamadas
-- Datos
-- Lógica
-
-**Resultado:** Caos, difícil mantenimiento, imposible escalar.
-
-#### Solución ADead-BIB
-
-| Archivo | Rol | Cambios |
-|---------|-----|---------|
-| `main.adB` | Binario **estable** | Rara vez |
-| `call.adB` | Binario **evolutivo** | Frecuente |
-
-> Cambias lógica **sin tocar el core binario**.
-
-### 16.4 Cooperación Sin Linker Externo
-
-No usamos linker externo. La cooperación es **explícita y binaria**.
-
-#### Modelo de Linking Interno
-
-`call.adB` expone una tabla clara de métodos:
-
-```
-CALL_TABLE:
-  0x00 → Engine::new
-  0x01 → Engine::run
-  0x02 → Engine::shutdown
-  0x10 → run (función pública)
-```
-
-`main.adB` conoce estos símbolos:
-
-```rust
-// main.adB
-fn _start() {
-    core::init()
-    call::run()   // Salta a offset conocido en CALL_TABLE
-    core::shutdown()
-}
-```
-
-### 16.5 VTable Binaria Simple
+**NO HAY IR INTERMEDIO.** El AST se traduce directamente a SPIR-V.
+
+### 3.2 ADead GPU Opcodes
+
+| Opcode | Valor | Operación | SPIR-V |
+|--------|-------|-----------|--------|
+| `EXIT` | 0x0 | Terminar | OpReturn |
+| `LOAD` | 0x1 | acc = buf[gid] | OpLoad |
+| `STORE` | 0x2 | buf[gid] = acc | OpStore |
+| `LOAD_IMM` | 0x3 | acc = imm | OpConstant |
+| `ADD` | 0x4 | acc += buf[gid] | OpFAdd |
+| `SUB` | 0x5 | acc -= buf[gid] | OpFSub |
+| `MUL` | 0x6 | acc *= buf[gid] | OpFMul |
+| `DIV` | 0x7 | acc /= buf[gid] | OpFDiv |
+| `VEC_ADD` | 0x8 | Vector add | OpFAdd (vec4) |
+| `VEC_MUL` | 0x9 | Vector mul | OpFMul (vec4) |
+| `DOT` | 0xA | Dot product | OpDot |
+| `MATMUL` | 0xB | Matrix multiply | Loop + OpFMul |
+| `SYNC` | 0xC | Barrier | OpControlBarrier |
+
+### 3.3 SPIR-V Structure
 
 ```
 ┌─────────────────────────────────────┐
-│ CALL_TABLE Header                   │
-│   Magic: "CALL"                     │
-│   Version: u8                       │
-│   Entry_count: u16                  │
+│  SPIR-V Header                      │
+│  Magic: 0x07230203                  │
+│  Version: 1.0                       │
+│  Generator: ADead-BIB               │
 ├─────────────────────────────────────┤
-│ Entry 0: offset → Engine::new       │
-│ Entry 1: offset → Engine::run       │
-│ Entry 2: offset → Engine::shutdown  │
-│ Entry 16: offset → run              │
+│  Capabilities                       │
+│  OpCapability Shader                │
 ├─────────────────────────────────────┤
-│ Code Section                        │
-│   [bytes de Engine::new]            │
-│   [bytes de Engine::run]            │
-│   [bytes de Engine::shutdown]       │
-│   [bytes de run]                    │
+│  Memory Model                       │
+│  OpMemoryModel Logical GLSL450      │
+├─────────────────────────────────────┤
+│  Entry Point                        │
+│  OpEntryPoint GLCompute %main       │
+├─────────────────────────────────────┤
+│  Execution Mode                     │
+│  OpExecutionMode %main LocalSize    │
+│  256 1 1                            │
+├─────────────────────────────────────┤
+│  Types & Variables                  │
+│  %void, %float, %uint               │
+│  %buffer_type, %ptr_type            │
+├─────────────────────────────────────┤
+│  Function                           │
+│  OpFunction %main                   │
+│  ... compute instructions ...       │
+│  OpReturn                           │
+│  OpFunctionEnd                      │
 └─────────────────────────────────────┘
 ```
 
-### 16.6 Ventaja: OOP Sin Runtime
-
-| Tradicional | ADead-BIB |
-|-------------|-----------|
-| OOP necesita runtime | OOP es binario puro |
-| VTables dinámicas | VTable = tabla binaria |
-| RTTI pesado | Métodos = offsets |
-| Objetos complejos | Objetos = memoria plana |
-
-> **OOP sin runtime. ASM organizado.**
-
-### 16.7 Estructura de Proyecto Recomendada
-
-```
-project/
-├── main.adB          # Binario base (entrypoint)
-├── call.adB          # Lógica OOP pura
-├── core/             # Intrínsecos del sistema
-│   ├── init.adB
-│   └── shutdown.adB
-├── cpu/              # Módulos CPU
-├── gpu/              # Módulos GPU
-└── build.adB         # Configuración de build
-```
-
-### 16.8 Reglas de Visibilidad
+### 3.4 Ejemplo GPU
 
 ```rust
-// call.adB
-
-// Público - exportado a CALL_TABLE
-pub fn run() { ... }
-
-// Privado - solo interno
-fn helper() { ... }
-
-// Público - struct exportado
-pub struct Engine { ... }
-```
-
-### 16.9 Contrato de Exportación (CALL CONTRACT v1.0)
-
-```rust
-// call.adB debe declarar explícitamente qué exporta
-
-#![exports(run, Engine)]
-
-pub fn run() { ... }
-
-pub struct Engine { ... }
-```
-
-```rust
-// main.adB importa explícitamente
-
-#![imports(call: run)]
-
-fn _start() {
-    call::run()
+// Kernel: C[i] = A[i] + B[i]
+@kernel
+fn vecadd(A: buffer<f32>, B: buffer<f32>, C: buffer<f32>) {
+    let gid = global_id()
+    C[gid] = A[gid] + B[gid]
 }
 ```
 
-### 16.10 Beneficios del Modelo
-
-| Beneficio | Descripción |
-|-----------|-------------|
-| **Código limpio** | Separación clara de responsabilidades |
-| **Menos ASM mezclado** | OOP vive en call.adB |
-| **Binarios estables** | main.adB cambia poco |
-| **Evolución segura** | Cambias lógica sin tocar core |
-| **Menos bugs** | Aislamiento de complejidad |
-| **Mentalidad clara** | "main = no toco, call = programo" |
-
-### 16.11 Ejemplo Completo
-
-#### `main.adB`
-
-```rust
-#![imports(call: run)]
-
-fn _start() {
-    // Inicialización del sistema
-    core::init()
-    
-    // Ejecutar lógica principal
-    call::run()
-    
-    // Limpieza
-    core::shutdown()
-}
+**ADead bytecode:**
+```
+[LOAD, 0]     // acc = A[gid]
+[ADD, 1]      // acc += B[gid]
+[STORE, 2]    // C[gid] = acc
+[EXIT, 0]
 ```
 
-#### `call.adB`
+**SPIR-V generado:** ~200 bytes de bytecode válido
 
-```rust
-#![exports(run)]
+---
 
-struct Player {
-    x: i32,
-    y: i32,
-    health: u8
-}
+## Parte IV: FFI GPU (Python)
 
-impl Player {
-    fn new() {
-        return Player { x: 0, y: 0, health: 100 }
-    }
-    
-    fn move(self, dx, dy) {
-        self.x += dx
-        self.y += dy
-    }
-    
-    fn is_alive(self) {
-        return self.health > 0
-    }
-}
+### 4.1 API Simple
 
-struct Game {
-    player: Player,
-    running: bool
-}
+```python
+from FFI_GPU import GPU
 
-impl Game {
-    fn new() {
-        return Game {
-            player: Player::new(),
-            running: false
-        }
-    }
-    
-    fn start(self) {
-        self.running = true
-        println("Game started!")
-    }
-    
-    fn update(self) {
-        if self.player.is_alive() {
-            self.player.move(1, 0)
-        }
-    }
-    
-    fn stop(self) {
-        self.running = false
-        println("Game stopped!")
-    }
-}
+gpu = GPU()
 
-// Función pública exportada
-pub fn run() {
-    let game = Game::new()
-    game.start()
-    
-    for i in 0..100 {
-        game.update()
-    }
-    
-    game.stop()
-}
+# Crear buffers
+A = gpu.buffer(data_a)           # CPU → GPU
+B = gpu.buffer(data_b)
+C = gpu.buffer(size=N)           # Solo GPU
+
+# Cargar y ejecutar kernel
+kernel = gpu.load_spirv("vecadd.spv")
+gpu.dispatch(kernel, A, B, C, groups=(N//256, 1, 1))
+gpu.wait()
+
+# Leer resultado
+result = C.read()                 # GPU → CPU
+```
+
+### 4.2 Componentes FFI GPU
+
+| Componente | Archivo | Función |
+|------------|---------|---------|
+| `GPU` | gpu_runtime.py | API principal |
+| `GPUBuffer` | gpu_buffer.py | Gestión memoria |
+| `GPUKernel` | gpu_kernel.py | Carga kernels |
+| `GPUOptimizer` | gpu_optimizer.py | Layout optimizer |
+| `GPUFence` | gpu_runtime.py | Sincronización |
+| `GPUStream` | gpu_runtime.py | Queues async |
+
+### 4.3 Kernels Predefinidos
+
+```python
+from FFI_GPU import kernel_vector_add, kernel_matmul
+
+# Vector add: C = A + B
+kernel = kernel_vector_add()
+
+# Matrix multiply: C = A @ B
+kernel = kernel_matmul()
 ```
 
 ---
 
-## Parte XVII: Resumen de Arquitectura
+## Parte V: Metal_Dead — IA CPU-First
+
+### 5.1 Arquitectura
+
+```
+Metal_Dead/
+├── core/
+│   ├── cpu_compute.py      # Motor CPU con ADead-BIB FFI
+│   ├── metal_dead_cpu.py   # IA principal
+│   ├── tokenizer.py        # Tokenizador
+│   └── memory.py           # Memoria persistente
+```
+
+### 5.2 Uso
+
+```python
+from Metal_Dead.core import MetalDeadCPU
+
+ai = MetalDeadCPU()
+response = ai.chat("Hola, soy el desarrollador")
+print(response)
+ai.shutdown()
+```
+
+### 5.3 Características
+
+| Característica | Valor |
+|----------------|-------|
+| Backend | CPU-First (ADead-BIB FFI) |
+| SIMD | AVX2 |
+| Cores | 12 |
+| Modelo | ~1.2 MB RAM |
+| Embedding | 128 dim |
+| Layers | 2 transformer |
+
+---
+
+## Parte VI: Comparación CPU vs GPU
+
+### 6.1 Rendimiento
+
+| Operación | CPU (IR) | GPU (SPIR-V) | Speedup |
+|-----------|----------|--------------|---------|
+| MatMul 1024x1024 | ~200ms | ~5ms | **40x** |
+| VecAdd 1M | ~10ms | ~0.5ms | **20x** |
+| Reduce 1M | ~15ms | ~1ms | **15x** |
+| Factorial(20) | ~0.001ms | N/A | CPU wins |
+
+### 6.2 Cuándo usar cada uno
+
+| Caso de uso | Recomendación | Por qué |
+|-------------|---------------|---------|
+| Lógica de control | CPU | Branches eficientes |
+| Cálculo paralelo | GPU | Miles de threads |
+| I/O, archivos | CPU | Acceso secuencial |
+| Matrices grandes | GPU | Paralelismo masivo |
+| Recursión | CPU | Stack nativo |
+| Procesamiento imágenes | GPU | Pixels independientes |
+
+---
+
+## Parte VII: Flujo de Compilación
+
+### 7.1 CPU Flow
+
+```
+main.adB
+    ↓
+┌─────────────────┐
+│     Lexer       │  Tokens
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│     Parser      │  AST
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   IR Builder    │  IR (SSA)
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   Optimizer     │  IR optimizado
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│    Codegen      │  x86-64 bytes
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   PE/ELF Gen    │  Binario
+└────────┬────────┘
+         ↓
+    main.exe
+```
+
+### 7.2 GPU Flow
+
+```
+kernel.adB
+    ↓
+┌─────────────────┐
+│     Lexer       │  Tokens
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│     Parser      │  AST
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│  SPIR-V Emit    │  SPIR-V bytes (DIRECTO)
+└────────┬────────┘
+         ↓
+    kernel.spv
+```
+
+**Nota:** GPU NO tiene paso de IR ni optimizador. El driver GPU optimiza.
+
+---
+
+## Parte VIII: Archivos del Proyecto
+
+### 8.1 Estructura
+
+```
+ADead-BIB/
+├── src/rust/
+│   ├── frontend/
+│   │   ├── lexer.rs
+│   │   ├── parser.rs
+│   │   └── ast.rs
+│   ├── backend/
+│   │   ├── cpu/
+│   │   │   ├── ir.rs           # IR definition
+│   │   │   ├── ir_builder.rs   # AST → IR
+│   │   │   ├── optimizer.rs    # IR optimizations
+│   │   │   ├── codegen.rs      # IR → x86-64
+│   │   │   └── pe.rs           # PE generation
+│   │   └── gpu/
+│   │       ├── spirv/
+│   │       │   └── bytecode.rs # AST → SPIR-V
+│   │       ├── vulkan_runtime.rs
+│   │       └── compute.rs
+│   └── optimizer/
+│
+├── FFI GPU/
+│   └── python/
+│       ├── gpu_runtime.py
+│       ├── gpu_buffer.py
+│       ├── gpu_kernel.py
+│       └── gpu_optimizer.py
+│
+├── Metal_Dead/
+│   └── core/
+│       ├── cpu_compute.py
+│       └── metal_dead_cpu.py
+│
+└── examples/
+```
+
+---
+
+## Parte IX: Principios de Diseño
+
+### 9.1 CPU: Optimización es Responsabilidad del Compilador
+
+El compilador CPU DEBE:
+- Eliminar código muerto
+- Propagar constantes
+- Asignar registros eficientemente
+- Minimizar accesos a memoria
+
+### 9.2 GPU: Optimización es Responsabilidad del Driver
+
+El compilador GPU DEBE:
+- Emitir SPIR-V válido
+- Declarar tipos correctamente
+- Configurar workgroups
+- **NO optimizar** (el driver lo hace mejor)
+
+### 9.3 Regla de Oro v3.0
+
+> **CPU: IR completo, optimización completa.**
+> **GPU: SPIR-V directo, sin intermediarios.**
+> **División por VERDAD BINARIA.**
+
+---
+
+## Parte X: Resumen de Arquitectura
 
 ### División por Verdad Binaria
 
-| Archivo | Contenido | Frecuencia de Cambio |
-|---------|-----------|---------------------|
-| `main.adB` | Entrypoint, init, shutdown | Rara vez |
-| `call.adB` | OOP, lógica, comportamiento | Frecuente |
+| Archivo | Contenido | Target |
+|---------|-----------|--------|
+| `main.adB` | Código CPU | IR → x86-64 |
+| `kernel.adB` | Código GPU | AST → SPIR-V |
 
-### Flujo de Ejecución
+### Flujo de Ejecución Híbrido
 
 ```
-main.adB::_start()
+main.adB::main()
     ↓
-core::init()
+CPU: inicializar datos
     ↓
-call::run()  ──→  [OOP puro en call.adB]
+GPU: dispatch kernel
     ↓
-core::shutdown()
+GPU: ejecutar paralelo
     ↓
-exit
+CPU: leer resultados
+    ↓
+CPU: continuar lógica
 ```
 
 ### Principio Clave
@@ -1037,7 +529,5 @@ exit
 
 ---
 
-**ADead-BIB: El lenguaje que domestica la máquina sin mentir.**
-
-**Código → Bytes → Binario**
-**Sin ASM. Sin LLVM. Sin mentiras.**
+**ADead-BIB v3.0: El lenguaje que domestica la máquina sin mentir.**
+**CPU = IR Completo | GPU = SPIR-V Directo**

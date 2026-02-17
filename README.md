@@ -1,487 +1,317 @@
-# 🔥 ADead-BIB v2.0
+# ADead-BIB v3.0
 
-**OOP Puro + ASM Simbionte = El Nuevo Lenguaje**
+**El Lenguaje que Divide CPU y GPU por Verdad Binaria**
 
-> Escribe código humano. Obtén bytes directos. Sin ASM. Sin LLVM. Sin mentiras.
+> CPU = IR Completo | GPU = SPIR-V Directo
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│  Tu Código (.adB)                                          │
-│       ↓                                                    │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Compilador ADead-BIB                   │   │
-│  │                                                     │   │
-│  │  ┌──────────────┐      ┌──────────────────────────┐ │   │
-│  │  │     CPU      │      │          GPU             │ │   │
-│  │  │  (Binario)   │      │         (HEX)            │ │   │
-│  │  │              │      │                          │ │   │
-│  │  │ x86-64 bytes │      │ SPIR-V (Todas las GPUs)  │ │   │
-│  │  │ emisión dir. │      │ CUDA (NVIDIA)            │ │   │
-│  │  └──────────────┘      └──────────────────────────┘ │   │
-│  └─────────────────────────────────────────────────────┘   │
-│       ↓                           ↓                        │
-│  .exe / .elf                 .spv / .ptx                   │
-│  (Binario Nativo)            (Bytecode GPU)                │
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      Tu Código (.adB)                           │
+│                            ↓                                    │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                   ADead-BIB Compiler                      │  │
+│  │                                                           │  │
+│  │   ┌─────────────────┐         ┌─────────────────────┐     │  │
+│  │   │      CPU        │         │        GPU          │     │  │
+│  │   │   (IR Completo) │         │   (SPIR-V Directo)  │     │  │
+│  │   │                 │         │                     │     │  │
+│  │   │  AST → IR → x86 │         │  AST → SPIR-V bytes │     │  │
+│  │   │  Optimización   │         │  Sin intermediarios │     │  │
+│  │   │  completa       │         │                     │     │  │
+│  │   └────────┬────────┘         └──────────┬──────────┘     │  │
+│  └────────────┼──────────────────────────────┼───────────────┘  │
+│               ↓                              ↓                  │
+│         .exe / .elf                      .spv / .ahyb           │
+│      (Binario Nativo)                 (Bytecode GPU)            │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Inicio Rápido (5 minutos)
+## Filosofía: División por Verdad Binaria
+
+| Aspecto | CPU | GPU |
+|---------|-----|-----|
+| **Representación** | IR (Intermediate Representation) | SPIR-V (bytecode directo) |
+| **Optimización** | Completa (DCE, inlining, etc.) | Mínima (driver optimiza) |
+| **Ejecución** | Secuencial + SIMD | Masivamente paralela |
+| **Memoria** | Stack + Heap | Buffers + Shared Memory |
+| **Control** | Branches, loops | Workgroups, barriers |
+
+**No estás dividiendo por comodidad, estás dividiendo por VERDAD BINARIA.**
+
+---
+
+## Inicio Rápido
 
 ```bash
-# 1. Clonar e instalar
+# Clonar e instalar
 git clone https://github.com/AndreeSalazar/ADead-BIB.git
 cd ADead-BIB
 cargo build --release
 
-# 2. Crear tu primer proyecto
-adB create hola
-
-# 3. Entrar y ejecutar
-cd hola
+# Ejecutar CPU
 adB run main.adB
-```
 
-**Salida:**
-```
-========================================
-     hola - ADead-BIB
-     Binary Is Binary
-========================================
-
-Hello, hola!
-
-Resultado: 52
-
-========================================
-     Proyecto listo!
-========================================
+# Ejecutar GPU
+adB gpu matmul 1024
 ```
 
 ---
 
-## 🇵🇪 Hecho con ❤️ en Perú
+## Autor
 
-**Autor:** Eddi Andreé Salazar Matos  
-**Email:** eddi.salazar.dev@gmail.com  
-**Licencia:** GPLv2 (código abierto, libre para usar y modificar)
+**Eddi Andreé Salazar Matos**  
+eddi.salazar.dev@gmail.com  
+Hecho en Perú
 
----
-
-## 🎯 ¿Qué es ADead-BIB?
-
-**ADead-BIB** = **A**SM **Dead** - **B**inary **I**s **B**inary
-
-Un lenguaje de programación que compila **directamente a binario y hexadecimal** sin ensamblador intermedio.
-
-| Compiladores Tradicionales | ADead-BIB |
-|---------------------------|-----------|
-| Código → Tokens → AST → IR → Optimizer → ASM → Assembler → Linker → Binario | Código → AST → **BYTES DIRECTOS** → Binario/HEX |
-| 7+ capas de traducción | 2-3 capas, sin intermediarios |
-
-### Filosofía Core
-
-1. **Sin ASM intermedio** — Emitimos bytes x86-64 directamente
-2. **Sin linker externo** — Generamos PE/ELF completos en memoria
-3. **Sin runtime pesado** — El binario es autosuficiente
-4. **HEX es ciudadano de primera clase** — Puedes escribir bytes literales
-5. **OOP Puro** — Objetos, traits, herencia sin runtime
+**Licencia:** GPLv2
 
 ---
 
-## 🔵 CPU Backend (Binary)
+## CPU Backend: IR Completo
 
-The CPU backend generates **x86-64 machine code directly** as byte sequences.
+El backend CPU usa **Intermediate Representation** para optimización completa antes de emitir bytes x86-64.
 
-### Binary Literals
+### Pipeline CPU
+
+```
+Código ADead → AST → IR → Optimizador → x86-64 bytes → PE/ELF
+```
+
+### IR Operations
+
+| IR Op | Descripción | x86-64 |
+|-------|-------------|--------|
+| `IR_CONST` | Cargar constante | `mov rax, imm` |
+| `IR_ADD` | Suma | `add rax, rbx` |
+| `IR_MUL` | Multiplicación | `imul rax, rbx` |
+| `IR_LOAD` | Cargar de memoria | `mov rax, [rbp+off]` |
+| `IR_STORE` | Guardar en memoria | `mov [rbp+off], rax` |
+| `IR_CALL` | Llamar función | `call rel32` |
+| `IR_RET` | Retornar | `ret` |
+| `IR_JMP` | Salto incondicional | `jmp rel32` |
+| `IR_JZ` | Salto si cero | `jz rel32` |
+
+### Optimizaciones CPU
+
+- **Dead Code Elimination (DCE)** — Elimina código inalcanzable
+- **Constant Folding** — Evalúa constantes en compilación
+- **Inlining** — Expande funciones pequeñas
+- **Register Allocation** — Minimiza accesos a memoria
+- **Peephole** — Optimiza patrones locales
+
+### Ejemplo CPU
+
 ```rust
-// Binary literals (0b...)
-let mask = 0b11110000          // 240
-let bits = 0b1010_1010         // 170 (with separators)
-
-// HEX literals for opcodes
-let push_rbp = 0x55            // push rbp
-let ret = 0xC3                 // ret
-let call = 0xE8                // call rel32
-```
-
-### What ADead-BIB Generates
-```
-Your code:
-  fn main() {
-      let x = 42
-      println(x)
-  }
-
-Generated bytes:
-  55                    ; push rbp
-  48 89 E5              ; mov rbp, rsp
-  48 C7 C0 2A 00 00 00  ; mov rax, 42
-  ...
-  5D                    ; pop rbp
-  C3                    ; ret
-```
-
-### CPU Contracts
-- **Calling Convention**: Windows x64 (RCX, RDX, R8, R9)
-- **Stack Alignment**: 16 bytes before `call`
-- **Return Value**: RAX
-
----
-
-## 🟢 GPU Backend (HEX)
-
-The GPU backend generates **HEX opcodes** that translate to SPIR-V (all GPUs) or CUDA (NVIDIA).
-
-### Two-Level Architecture
-```
-Level 1: ADead-BIB Opcodes (0xC0DA...)
-  - Your contract
-  - Your format
-  - Portable
-  - Documented
-
-Level 2: Backend per target
-  - spirv/   → Vulkan/OpenCL (ALL GPUs)
-  - cuda/    → NVIDIA (PTX direct)
-```
-
-### GPU Opcodes
-```rust
-// HEX literals for GPU
-let GPU_INIT = 0xC0DA0001      // Initialize context
-let GPU_ALLOC = 0xC0DA0010     // Allocate memory
-let GPU_MATMUL = 0xC0DA0020    // Matrix multiplication
-let GPU_SYNC = 0xC0DA00F0      // Synchronize
-let GPU_END = 0xC0DAFFFF       // End program
-```
-
-### GPU Contracts
-- **Command Buffer**: CPU writes commands, GPU executes
-- **Synchronization**: GPU_SYNC for barriers
-- **Memory**: Host (CPU RAM) ↔ Device (GPU VRAM)
-
-### CPU ↔ GPU Relationship
-```
-CPU prepares → GPU executes → CPU receives
-
-CPU:
-  1. Writes data to memory
-  2. Writes GPU commands
-  3. Triggers execution
-  4. Steps aside
-
-GPU:
-  1. Reads commands
-  2. Executes kernels
-  3. Writes results
-  4. Without asking again
-```
-
-**The CPU does NOT watch each iteration.**
-**The GPU does NOT ask for permission.**
-
----
-
-## ⚡ Features
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| **HEX Literals (0x...)** | ✅ | `0xFF`, `0x1234`, `0xFF_FF` |
-| **Binary Literals (0b...)** | ✅ | `0b11110000`, `0b1111_0000` |
-| **Octal Literals (0o...)** | ✅ | `0o755`, `0o777` |
-| **Direct CPU Bytes** | ✅ | x86-64 opcodes as bytes |
-| **GPU HEX Opcodes** | ✅ | 0xC0DA... format |
-| **SPIR-V Backend** | ✅ | All Vulkan GPUs |
-| **CUDA Backend** | ✅ | NVIDIA GPUs |
-| **PE Generator** | ✅ | Windows .exe without linker |
-| **ELF Generator** | ✅ | Linux binaries without linker |
-| **Ultra-small binaries** | ✅ | < 2 KB typically |
-| **Rust/Python syntax** | ✅ | Human-friendly |
-| **Full OOP** | ✅ | Classes, traits, inheritance |
-
----
-
-## 🚀 Instalación
-
-### Requisitos
-- Rust 1.70+ (rustup)
-- Windows 10/11 o Linux
-
-### Instalación Rápida
-
-```bash
-# Clonar repositorio
-git clone https://github.com/AndreeSalazar/ADead-BIB.git
-cd ADead-BIB
-
-# Compilar
-cargo build --release
-
-# Instalar globalmente (opcional)
-cargo install --path .
-
-# Verificar
-adB --help
-```
-
----
-
-## 📋 Comandos CLI (estilo Rust)
-
-### Crear Proyecto
-
-```bash
-adB create mi_proyecto       # Crear proyecto nuevo
-adB new mi_proyecto          # Alias de create
-adB init                     # Inicializar en directorio actual
-```
-
-### Compilar y Ejecutar
-
-```bash
-adB run archivo.adB          # Compilar y ejecutar
-adB build archivo.adB        # Compilar a ejecutable
-adB build archivo.adB -o app.exe  # Con nombre específico
-adB check archivo.adB        # Verificar sintaxis
-```
-
-### Modo Interactivo
-
-```bash
-adB play                     # REPL interactivo (playground)
-```
-
-### Optimización de Tamaño (NUEVO!)
-
-```bash
-adB opt archivo.adB          # Compilación ultra-optimizada
-adB build archivo.adB --size # Optimización agresiva
-adB build archivo.adB --ultra # Optimización máxima
-```
-
-### Modos Avanzados
-
-```bash
-adB tiny archivo.adB         # PE ultra-compacto (< 500 bytes)
-adB nano output.exe          # PE más pequeño posible
-adB micro output.exe         # PE32 sub-256 bytes
-```
-
-### GPU
-
-```bash
-adB gpu                      # Detectar GPU
-adB spirv matmul 1024        # Generar shader SPIR-V
-adB cuda matmul 1024         # Generar código CUDA
-adB unified matmul 1000000   # Pipeline unificado CPU↔GPU
-```
-
-### Comparación con Rust
-
-| Rust | ADead-BIB |
-|------|-----------|
-| `cargo new hola` | `adB create hola` |
-| `cargo run` | `adB run main.adB` |
-| `cargo build` | `adB build main.adB` |
-| `cargo check` | `adB check main.adB` |
-
----
-
-## 📝 Syntax
-
-### Hello World
-```rust
-fn main() {
-    println("Hello, ADead-BIB!")
-}
-```
-
-### Variables with Literals
-```rust
-// Decimal
-let x = 42
-
-// HEX
-let byte = 0xFF
-let word = 0x1234
-
-// Binary
-let mask = 0b11110000
-let bits = 0b1010_1010
-
-// Octal
-let perms = 0o755
-```
-
-### Functions
-```rust
-fn add(a, b) {
-    return a + b
+fn factorial(n) {
+    if n <= 1 { return 1 }
+    return n * factorial(n - 1)
 }
 
 fn main() {
-    let result = add(0x10, 0x20)
-    println(result)  // 48
+    let result = factorial(10)
+    println(result)  // 3628800
 }
 ```
 
-### Control Flow
-```rust
-if value == 0xFF {
-    println("Max byte!")
-}
+**Genera ~1.5 KB de binario nativo.**
 
-for i in 0..10 {
-    println(i)
-}
+---
+
+## GPU Backend: SPIR-V Directo
+
+El backend GPU emite **SPIR-V bytecode directamente** sin IR intermedio.
+
+### Pipeline GPU
+
+```
+Código ADead → AST → SPIR-V bytes (directo)
+```
+
+### ADead GPU Opcodes (4 bits)
+
+| Opcode | Valor | Operación |
+|--------|-------|-----------|
+| `EXIT` | 0x0 | Terminar kernel |
+| `LOAD` | 0x1 | acc = buffer[gid] |
+| `STORE` | 0x2 | buffer[gid] = acc |
+| `LOAD_IMM` | 0x3 | acc = immediate |
+| `ADD` | 0x4 | acc += buffer[gid] |
+| `SUB` | 0x5 | acc -= buffer[gid] |
+| `MUL` | 0x6 | acc *= buffer[gid] |
+| `DIV` | 0x7 | acc /= buffer[gid] |
+| `VEC_ADD` | 0x8 | Vector add |
+| `VEC_MUL` | 0x9 | Vector multiply |
+| `DOT` | 0xA | Dot product |
+| `MATMUL` | 0xB | Matrix multiply |
+| `SYNC` | 0xC | Barrier |
+
+### SPIR-V Generation
+
+```rust
+// ADead bytecode
+let kernel = [
+    (LOAD, 0),      // acc = A[gid]
+    (ADD, 1),       // acc += B[gid]
+    (STORE, 2),     // C[gid] = acc
+    (EXIT, 0),
+]
+
+// Genera SPIR-V válido directamente
+// Magic: 0x07230203
+// Version: 1.0
+// ...compute shader completo
+```
+
+### FFI GPU (Python)
+
+```python
+from FFI_GPU import GPU
+
+gpu = GPU()
+
+# Crear buffers
+A = gpu.buffer(data_a)
+B = gpu.buffer(data_b)
+C = gpu.buffer(size=N)
+
+# Cargar y ejecutar kernel
+kernel = gpu.load_spirv("vecadd.spv")
+gpu.dispatch(kernel, A, B, C, groups=(N//256, 1, 1))
+gpu.wait()
+
+# Leer resultado
+result = C.read()
 ```
 
 ---
 
-## 📁 Project Structure
+## Comparación CPU vs GPU
+
+| Operación | CPU (IR) | GPU (SPIR-V) |
+|-----------|----------|--------------|
+| MatMul 1024x1024 | ~200ms | ~5ms |
+| VecAdd 1M | ~10ms | ~0.5ms |
+| Reduce 1M | ~15ms | ~1ms |
+| Compilación | Optimizada | Directa |
+| Tamaño binario | ~1.5 KB | ~2 KB shader |
+
+### Cuándo usar cada uno
+
+| Caso | Recomendación |
+|------|---------------|
+| Lógica de control | CPU |
+| Cálculo masivo paralelo | GPU |
+| I/O, archivos | CPU |
+| Matrices grandes | GPU |
+| Código secuencial | CPU |
+| Procesamiento de imágenes | GPU |
+
+---
+
+## Estructura del Proyecto
 
 ```
 ADead-BIB/
-├── src/rust/                # Main compiler
-│   ├── frontend/            # Lexer, Parser, AST
+├── src/rust/
+│   ├── frontend/           # Lexer, Parser, AST
 │   ├── backend/
-│   │   ├── cpu/             # Binary x86-64
-│   │   └── gpu/             # HEX/SPIR-V/CUDA
-│   │       ├── hex/         # Core opcodes (0xC0DA...)
-│   │       ├── spirv/       # SPIR-V backend
-│   │       └── cuda/        # CUDA backend
-│   ├── optimizer/
-│   └── runtime/
+│   │   ├── cpu/            # IR → x86-64
+│   │   │   ├── ir.rs       # Intermediate Representation
+│   │   │   ├── codegen.rs  # x86-64 emission
+│   │   │   └── pe.rs       # PE/ELF generation
+│   │   └── gpu/            # AST → SPIR-V
+│   │       ├── spirv/      # SPIR-V bytecode
+│   │       ├── vulkan/     # Vulkan runtime
+│   │       └── compute.rs  # Unified compute API
+│   └── optimizer/          # CPU optimizations
 │
-├── TESTEO/
-│   ├── CPU/                 # CPU tests (Binary)
-│   ├── GPU/                 # GPU tests (HEX)
-│   └── v2/                  # v2.0.0 tests
+├── FFI GPU/                # Python GPU runtime
+│   └── python/
+│       ├── gpu_runtime.py
+│       ├── gpu_buffer.py
+│       ├── gpu_kernel.py
+│       └── gpu_optimizer.py
 │
-├── examples/                # Code examples
-├── docs/                    # Documentation
-└── Metal_Dead/              # Personal AI project
+├── Metal_Dead/             # IA Personal CPU-first
+│   └── core/
+│       ├── cpu_compute.py
+│       └── metal_dead_cpu.py
+│
+└── examples/
 ```
 
 ---
 
-## 🧪 Running Tests
+## Metal_Dead: IA con ADead-BIB
+
+Metal_Dead es una IA personal que usa ADead-BIB FFI para cómputo CPU-first.
+
+```python
+from Metal_Dead.core import MetalDeadCPU
+
+ai = MetalDeadCPU()
+response = ai.chat("Hola, soy el desarrollador")
+print(response)
+ai.shutdown()
+```
+
+### Características
+
+- **CPU-First**: Optimizado para CPU con SIMD
+- **ADead-BIB FFI**: Integración nativa
+- **Transformer**: 2 capas, 128 dim embedding
+- **Memoria**: ~1.2 MB en RAM
+
+---
+
+## Comandos CLI
 
 ```bash
-# CPU Tests (Binary)
-cargo run --bin adeadc -- run TESTEO/CPU/binario/test_binary_literals.adB
-cargo run --bin adeadc -- run TESTEO/CPU/opcodes/test_x86_opcodes.adB
+# CPU
+adB run main.adB              # Compilar y ejecutar
+adB build main.adB            # Compilar a .exe
+adB opt main.adB              # Optimización máxima
 
-# GPU Tests (HEX)
-cargo run --bin adeadc -- run TESTEO/GPU/hex/test_hex_literals.adB
-cargo run --bin adeadc -- run TESTEO/GPU/opcodes/test_gpu_opcodes.adB
+# GPU
+adB gpu                       # Detectar GPU
+adB spirv kernel.adB          # Generar SPIR-V
+adB unified matmul 1024       # CPU+GPU unificado
 
-# Integrated v2.0 Test
-cargo run --bin adeadc -- run TESTEO/v2/integrados/test_v2_0_0_hex_first.adB
+# Proyecto
+adB create proyecto           # Nuevo proyecto
+adB check main.adB            # Verificar sintaxis
 ```
 
 ---
 
-## 📊 Binary Sizes — Más Pequeño que ASM
+## Tamaños de Binario
 
-ADead-BIB genera binarios **más pequeños que ensamblador tradicional** porque no usa linker externo.
-
-| Mode | Size | Command | Description |
-|------|------|---------|-------------|
-| **Ultra** | **~1 KB** | `adB opt` | Optimización máxima |
-| Standard | ~1.5 KB | `adB build` | Compilación normal |
-| Tiny | < 500 bytes | `adB tiny` | PE ultra-compacto |
-
-### Comparación con Otros Lenguajes
-
-| Herramienta | Hello World | vs ADead-BIB |
-|-------------|-------------|--------------|
-| **ADead-BIB Ultra** | **~1 KB** | — |
-| **ADead-BIB Normal** | **~1.5 KB** | — |
-| NASM + link | ~4 KB | 4x más grande |
-| MASM + link | ~4 KB | 4x más grande |
-| GCC (C) | ~50 KB | 50x más grande |
-| Rust | ~150 KB | 150x más grande |
-| Go | ~2 MB | 2000x más grande |
-
-### ¿Por qué ADead-BIB es más pequeño?
-
-1. **Sin linker** — Generamos PE/ELF directamente en memoria
-2. **Sin runtime** — El binario es 100% autosuficiente
-3. **Optimización binaria** — Patrones de código compactos
-4. **Headers mínimos** — Solo bytes necesarios
+| Modo | Tamaño | Descripción |
+|------|--------|-------------|
+| CPU Normal | ~1.5 KB | Con IR optimizado |
+| CPU Ultra | ~1 KB | Optimización máxima |
+| CPU Tiny | <500 bytes | PE mínimo |
+| GPU Shader | ~2 KB | SPIR-V completo |
 
 ---
 
-## 🔗 Documentación
+## Licencia
 
-- [ROADMAP.md](ROADMAP.md) — Hoja de ruta de desarrollo
-- [GUIA_ES.md](GUIA_ES.md) — Guía en español
-- [docs/ESTRUCTURA.md](docs/ESTRUCTURA.md) — Estructura del proyecto
-- [Project/](Project/) — Template de proyecto con ejemplos funcionales
+**GNU General Public License v2.0**
 
----
-
-## 📜 Licencia (GPLv2)
-
-### Resumen Claro
-
-**ADead-BIB** está licenciado bajo **GNU General Public License v2.0**.
-
-#### ✅ Puedes:
-
-| Acción | Descripción |
-|--------|-------------|
-| **Usar** | Para cualquier propósito (personal, comercial, educativo) |
-| **Estudiar** | Leer y aprender del código fuente |
-| **Modificar** | Cambiar el código para tus necesidades |
-| **Distribuir** | Compartir copias del código |
-
-#### ⚠️ Condiciones:
-
-| Condición | Descripción |
-|-----------|-------------|
-| **Misma licencia** | Si distribuyes modificaciones, DEBEN ser GPLv2 |
-| **Código fuente** | Si distribuyes binarios, incluir código fuente |
-| **Atribución** | Mantener los créditos del autor original |
-
-#### 📋 En términos simples:
-
-> **Usa ADead-BIB libremente. Si lo modificas y distribuyes, comparte el código.**
+- Usar libremente
+- Modificar libremente
+- Distribuir con misma licencia
+- Incluir código fuente
 
 ```
 Copyright (C) 2024-2026 Eddi Andreé Salazar Matos
-Email: eddi.salazar.dev@gmail.com
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; version 2 of the License.
+eddi.salazar.dev@gmail.com
 ```
 
-Ver archivo [LICENSE](LICENSE) para el texto completo.
-
 ---
 
-## 👤 Autor
-
-**Eddi Andreé Salazar Matos**  
-📧 eddi.salazar.dev@gmail.com  
-🇵🇪 Hecho con ❤️ en Perú
-
----
-
-## 🌟 Contribuir
-
-1. Fork del repositorio
-2. Crear rama: `git checkout -b feature/nueva-funcionalidad`
-3. Commit: `git commit -m "Agregar funcionalidad"`
-4. Push: `git push origin feature/nueva-funcionalidad`
-5. Crear Pull Request
-
----
-
-**ADead-BIB v2.0: Código → Bytes → Binario**
-**OOP Puro + ASM Simbionte = El Nuevo Lenguaje**
-**Sin ASM. Sin LLVM. Sin mentiras.**
+**ADead-BIB v3.0: CPU = IR | GPU = SPIR-V**
+**División por Verdad Binaria**
