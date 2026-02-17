@@ -9,7 +9,7 @@ use crate::frontend::ast::{Program, Function};
 use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
 use crate::optimizer::binary_optimizer::{BinaryOptimizer, OptLevel};
-use crate::backend::codegen_v2::{CodeGeneratorV2, Target};
+use crate::isa::isa_compiler::{IsaCompiler, Target};
 use crate::backend::{pe, elf};
 use std::fs;
 use std::path::Path;
@@ -79,10 +79,10 @@ impl Builder {
             Self::apply_optimizations(&mut program);
         }
 
-        // 4. Backend: Code Generation
-        if options.verbose { println!("Step 4: Code Generation..."); }
-        let mut codegen = CodeGeneratorV2::new(options.target);
-        let (opcodes, data) = codegen.generate(&program);
+        // 4. Backend: ISA Compilation (ADead ISA → bytes)
+        if options.verbose { println!("Step 4: ISA Compilation..."); }
+        let mut compiler = IsaCompiler::new(options.target);
+        let (opcodes, data) = compiler.compile(&program);
 
         // 4.5. Binary Optimization (new!)
         let final_opcodes = if options.size_optimize {

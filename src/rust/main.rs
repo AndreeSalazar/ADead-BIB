@@ -7,7 +7,7 @@ use std::process::Command;
 use std::path::Path;
 use std::fs;
 use adead_bib::builder::{Builder, BuildOptions};
-use adead_bib::backend::codegen_v2::Target;
+use adead_bib::isa::isa_compiler::Target;
 use adead_bib::backend::pe_tiny;
 use adead_bib::backend::microvm::{self, MicroVM, MicroOp, compile_microvm};
 use adead_bib::backend::gpu::vulkan::VulkanBackend;
@@ -186,9 +186,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let source = fs::read_to_string(input_file)?;
             let program = Parser::parse_program(&source)?;
             
-            // Generar código mínimo
-            let mut codegen = adead_bib::backend::codegen_v2::CodeGeneratorV2::new(Target::Raw);
-            let (opcodes, _data) = codegen.generate(&program);
+            // Generar código mínimo via ISA Compiler
+            let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(Target::Raw);
+            let (opcodes, _data) = compiler.compile(&program);
             
             // Si el código es muy grande, usar exit simple
             let final_opcodes = if opcodes.len() > 200 {
