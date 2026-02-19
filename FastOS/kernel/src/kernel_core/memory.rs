@@ -163,3 +163,166 @@ pub fn heap_used() -> usize {
 pub fn heap_free() -> usize {
     HEAP_SIZE - heap_used()
 }
+
+// ============================================================
+// Virtual Memory Manager (4-level paging)
+// ============================================================
+
+use crate::arch::x86_64::paging::{PageTable, PageTableEntry, flags as PageFlags};
+
+/// Get the current PML4 table address from CR3
+pub fn current_pml4() -> u64 {
+    crate::arch::x86_64::cpu::read_cr3()
+}
+
+/// Map a virtual address to a physical address in the current page tables
+/// Creates intermediate tables as needed using frame allocator
+pub fn map_page(virt: u64, phys: u64, flags: u64) -> bool {
+    let pml4_addr = current_pml4();
+    map_page_in(pml4_addr, virt, phys, flags)
+}
+
+/// Map a virtual address to a physical address in a specific PML4
+pub fn map_page_in(pml4_addr: u64, virt: u64, phys: u64, flags: u64) -> bool {
+    let pml4_idx = ((virt >> 39) & 0x1FF) as usize;
+    let pdpt_idx = ((virt >> 30) & 0x1FF) as usize;
+    let pd_idx   = ((virt >> 21) & 0x1FF) as usize;
+    let pt_idx   = ((virt >> 12) & 0x1FF) as usize;
+
+    unsafe {
+        let pml4 = &mut *(pml4_addr as *mut PageTable);
+
+        // Ensure PDPT exists
+        if !pml4.entries[pml4_idx].is_present() {
+            let frame = match alloc_frame() {
+                Some(f) => f,
+                None => return false,
+            };
+            let addr = frame_to_addr(frame);
+            zero_page(addr);
+            pml4.entries[pml4_idx].set(addr, PageFlags::PRESENT | PageFlags::WRITABLE);
+        }
+
+        let pdpt_addr = pml4.entries[pml4_idx].address();
+        let pdpt = &mut *(pdpt_addr as *mut PageTable);
+
+        // Ensure PD exists
+        if !pdpt.entries[pdpt_idx].is_present() {
+            let frame = match alloc_frame() {
+                Some(f) => f,
+                None => return false,
+            };
+            let addr = frame_to_addr(frame);
+            zero_page(addr);
+            pdpt.entries[pdpt_idx].set(addr, PageFlags::PRESENT | PageFlags::WRITABLE);
+        }
+
+        let pd_addr = pdpt.entries[pdpt_idx].address();
+        let pd = &mut *(pd_addr as *mut PageTable);
+
+        // Ensure PT exists
+        if !pd.entries[pd_idx].is_present() {
+            let frame = match alloc_frame() {
+                Some(f) => f,
+                None => return false,
+            };
+            let addr = frame_to_addr(frame);
+            zero_page(addr);
+            pd.entries[pd_idx].set(addr, PageFlags::PRESENT | PageFlags::WRITABLE);
+        }
+
+        let pt_addr = pd.entries[pd_idx].address();
+        let pt = &mut *(pt_addr as *mut PageTable);
+
+        // Map the page
+        pt.entries[pt_idx].set(phys, flags);
+
+        // Flush TLB for this address
+        crate::arch::x86_64::paging::flush_tlb(virt);
+    }
+
+    true
+}
+
+/// Unmap a virtual address from the current page tables
+pub fn unmap_page(virt: u64) {
+    let pml4_addr = current_pml4();
+    let pml4_idx = ((virt >> 39) & 0x1FF) as usize;
+    let pdpt_idx = ((virt >> 30) & 0x1FF) as usize;
+    let pd_idx   = ((virt >> 21) & 0x1FF) as usize;
+    let pt_idx   = ((virt >> 12) & 0x1FF) as usize;
+
+    unsafe {
+        let pml4 = &mut *(pml4_addr as *mut PageTable);
+        if !pml4.entries[pml4_idx].is_present() { return; }
+
+        let pdpt = &mut *(pml4.entries[pml4_idx].address() as *mut PageTable);
+        if !pdpt.entries[pdpt_idx].is_present() { return; }
+
+        let pd = &mut *(pdpt.entries[pdpt_idx].address() as *mut PageTable);
+        if !pd.entries[pd_idx].is_present() { return; }
+
+        let pt = &mut *(pd.entries[pd_idx].address() as *mut PageTable);
+
+        // Clear the entry
+        pt.entries[pt_idx].set(0, 0);
+
+        crate::arch::x86_64::paging::flush_tlb(virt);
+    }
+}
+
+/// Translate a virtual address to physical using current page tables
+pub fn virt_to_phys(virt: u64) -> Option<u64> {
+    let pml4_addr = current_pml4();
+    let pml4_idx = ((virt >> 39) & 0x1FF) as usize;
+    let pdpt_idx = ((virt >> 30) & 0x1FF) as usize;
+    let pd_idx   = ((virt >> 21) & 0x1FF) as usize;
+    let pt_idx   = ((virt >> 12) & 0x1FF) as usize;
+    let offset   = virt & 0xFFF;
+
+    unsafe {
+        let pml4 = &*(pml4_addr as *const PageTable);
+        if !pml4.entries[pml4_idx].is_present() { return None; }
+
+        let pdpt = &*(pml4.entries[pml4_idx].address() as *const PageTable);
+        if !pdpt.entries[pdpt_idx].is_present() { return None; }
+
+        let pd = &*(pdpt.entries[pdpt_idx].address() as *const PageTable);
+        if !pd.entries[pd_idx].is_present() { return None; }
+
+        let pt = &*(pd.entries[pd_idx].address() as *const PageTable);
+        if !pt.entries[pt_idx].is_present() { return None; }
+
+        Some(pt.entries[pt_idx].address() + offset)
+    }
+}
+
+/// Zero a 4KB page
+fn zero_page(addr: u64) {
+    unsafe {
+        let ptr = addr as *mut u8;
+        for i in 0..4096 {
+            core::ptr::write_volatile(ptr.add(i), 0);
+        }
+    }
+}
+
+/// Create a new empty PML4 for a user process (identity-maps kernel space)
+pub fn create_user_page_table() -> Option<u64> {
+    let frame = alloc_frame()?;
+    let addr = frame_to_addr(frame);
+    zero_page(addr);
+
+    // Copy kernel mappings (upper half) from current PML4
+    unsafe {
+        let current = &*(current_pml4() as *const PageTable);
+        let new_pml4 = &mut *(addr as *mut PageTable);
+
+        // Copy entries 256-511 (kernel space, upper half)
+        for i in 256..512 {
+            new_pml4.entries[i] = current.entries[i];
+        }
+    }
+
+    Some(addr)
+}

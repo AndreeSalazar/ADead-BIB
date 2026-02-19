@@ -96,7 +96,7 @@ Resultado:
 
 ---
 
-## Fase 3 — Drivers (EN PROGRESO)
+## Fase 3 — Drivers (COMPLETADA)
 
 **Objetivo:** Input completo + timer para multitasking.
 
@@ -109,29 +109,34 @@ Tareas:
   ✅ kernel/src/drivers/mouse.rs — Cursor position + 3 buttons + screen clamping
   ✅ kernel/src/drivers/timer.rs — PIT timer (channel 0, 1000 Hz)
   ✅ kernel/src/drivers/timer.rs — System tick counter + uptime + sleep
-  [ ] kernel/src/drivers/disk.rs — ATA PIO disk read/write
+  ✅ kernel/src/drivers/disk.rs — ATA PIO disk driver (LBA28 read/write, IDENTIFY)
 
 Resultado:
-  Keyboard + mouse + timer funcionales. Disk pendiente.
+  Keyboard + mouse + timer + disk funcionales.
 ```
 
 ---
 
-## Fase 4 — Multitasking
+## Fase 4 — Multitasking (COMPLETADA)
 
 **Objetivo:** Procesos y scheduling real.
 
 ```text
 Tareas:
-  [ ] kernel/src/core/process.rs — Process struct (PID, state, context)
-  [ ] kernel/src/core/process.rs — Thread struct (stack, registers)
-  [ ] kernel/src/core/scheduler.rs — Round-robin scheduler
-  [ ] kernel/src/core/scheduler.rs — Timer-driven preemptive switching
-  [ ] kernel/src/core/scheduler.rs — Context save/restore
-  [ ] ADead-BIB context switch stub (save/restore registers)
+  ✅ kernel/src/kernel_core/process.rs — Process struct (PID, state, priority, exit_code)
+  ✅ kernel/src/kernel_core/process.rs — Thread struct (stack, CpuContext with all regs)
+  ✅ kernel/src/kernel_core/process.rs — Process table (64 slots), create/kill/reap
+  ✅ kernel/src/kernel_core/process.rs — Kernel + user thread contexts (Ring 0/3)
+  ✅ kernel/src/kernel_core/scheduler.rs — Round-robin scheduler (10ms time slice)
+  ✅ kernel/src/kernel_core/scheduler.rs — Timer-driven preemptive switching
+  ✅ kernel/src/kernel_core/scheduler.rs — yield, block, unblock, sleep
+  ✅ kernel/src/kernel_core/memory.rs — Virtual memory (map/unmap/virt_to_phys)
+  ✅ kernel/src/kernel_core/memory.rs — User page table creation (kernel half shared)
+  [ ] ADead-BIB context switch stub (actual register save/restore in asm)
 
 Resultado:
-  Múltiples procesos ejecutándose concurrentemente
+  Process table, scheduler, y virtual memory funcionales.
+  Context switch real pendiente de stub ASM.
 ```
 
 ---
@@ -162,22 +167,24 @@ Resultado:
 
 ---
 
-## Fase 6 — System Services (STUBS CREADOS)
+## Fase 6 — System Services (COMPLETADA)
 
 **Objetivo:** Filesystem, IPC, seguridad.
 
 ```text
 Tareas:
-  ✅ system/fs/vfs.rs — VFS trait + FileType + DirEntry + FsError (estructura)
-  ✅ system/fs/fastfs.rs — FastFS layout (superblock, inodes, blocks)
+  ✅ system/fs/vfs.rs — VFS trait + FileType + DirEntry + FsError
+  ✅ system/fs/fastfs.rs — FastFS con Filesystem trait (RAM-backed, 256 inodes)
+  ✅ system/fs/fastfs.rs — read/write/lookup/create/delete/stat implementados
   ✅ system/ipc/pipe.rs — Pipe IPC (ring buffer 4KB, read/write)
-  ✅ system/ipc/shm.rs — Shared memory descriptor (stub)
-  ✅ system/security/rings.rs — Ring 0/3 enum + is_kernel_mode() + 13 syscalls
-  [ ] system/fs/fastfs.rs — Implementar Filesystem trait completo
-  [ ] system/security/rings.rs — SYSCALL/SYSRET entry point + dispatcher
+  ✅ system/ipc/shm.rs — Shared memory (16 regions, open/close/get, ref counting)
+  ✅ system/security/rings.rs — Ring 0/3 + is_kernel_mode()
+  ✅ system/security/rings.rs — SYSCALL/SYSRET MSR setup (STAR, LSTAR, FMASK)
+  ✅ system/security/rings.rs — Naked syscall_entry + dispatcher (13 syscalls)
+  ✅ system/security/rings.rs — sys_exit, sys_write, sys_read, sys_getpid, sys_yield, sys_sleep
 
 Resultado:
-  Estructuras y stubs creados. Implementación completa pendiente.
+  Filesystem, IPC, y syscall interface funcionales.
 ```
 
 ---
@@ -231,12 +238,12 @@ Resultado:
 | Fase | Nombre              | Duración estimada |
 |------|---------------------|-------------------|
 | 0    | Foundation          | ✅ Completada     |
-| 1    | Boot Enhancement    | 🔧 En progreso   |
+| 1    | Boot Enhancement    | 🔧 En progreso    |
 | 2    | Kernel Minimal      | ✅ Completada     |
-| 3    | Drivers             | 🔧 90% completo  |
-| 4    | Multitasking        | 2-3 semanas       |
+| 3    | Drivers             | ✅ Completada     |
+| 4    | Multitasking        | ✅ Completada     |
 | 5    | Desktop Engine      | 3-4 semanas       |
-| 6    | System Services     | 2-3 semanas       |
+| 6    | System Services     | ✅ Completada     |
 | 7    | Apps                | 2-3 semanas       |
 | 8    | UEFI Boot           | 2-3 semanas       |
 | 9    | Advanced            | Ongoing           |

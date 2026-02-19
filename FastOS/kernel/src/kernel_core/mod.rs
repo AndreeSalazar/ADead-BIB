@@ -7,9 +7,12 @@
 
 pub mod memory;
 pub mod interrupts;
+pub mod process;
+pub mod scheduler;
 
 /// Initialize all core kernel subsystems
 pub fn init() {
     memory::init();
     interrupts::init();
+    scheduler::init(); // Also initializes process table
 }
