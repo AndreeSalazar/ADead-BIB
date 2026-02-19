@@ -1,0 +1,13 @@
+FastOS Changelog
+================
+
+v1.0 (2025)
+  - Initial release
+  - Windows 11-style VGA desktop
+  - Auto-boot splash screen
+  - Login screen with avatar
+  - 6 desktop icons
+  - Centered taskbar with Start, Search, system tray
+  - Shutdown screen with animation
+  - 11 SVG icons (Win11 style)
+  - Desktop folder structure

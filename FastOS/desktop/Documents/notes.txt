@@ -1,0 +1,19 @@
+FastOS Development Notes
+========================
+
+Boot Stack:
+  Stage1 → Stage2 → Kernel (Rust)
+
+Technologies:
+  - ADead-BIB (bootloader, bytes generation)
+  - Rust (kernel, drivers, apps)
+  - FsOS binary format
+  - VGA text mode 80x25
+
+Desktop Apps:
+  1. Terminal - Command line interface
+  2. Files - File manager
+  3. Settings - System configuration
+  4. Calculator - Basic arithmetic
+  5. Editor - Text editor
+  6. System Info - Hardware details

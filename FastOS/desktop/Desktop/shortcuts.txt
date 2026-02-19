@@ -1,0 +1,9 @@
+Desktop Shortcuts
+=================
+
+[Terminal]     >_  Green prompt
+[Files]        ██  Yellow folder
+[Documents]    •█  Yellow folder with dot
+[Downloads]    ↓█  Cyan arrow
+[Settings]     ☼☼  Grey gears
+[Calculator]   █=  White with equals

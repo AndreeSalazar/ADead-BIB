@@ -167,6 +167,69 @@ impl VgaWriter {
         self.col
     }
 
+    /// Write a character directly at (row, col) without moving cursor
+    pub fn put_char_at(&mut self, row: usize, col: usize, ch: u8, fg: Color, bg: Color) {
+        if row >= VGA_HEIGHT || col >= VGA_WIDTH {
+            return;
+        }
+        let color = (fg as u8) | ((bg as u8) << 4);
+        let offset = (row * VGA_WIDTH + col) * 2;
+        unsafe {
+            let ptr = (VGA_BUFFER + offset) as *mut u8;
+            *ptr = ch;
+            *ptr.add(1) = color;
+        }
+    }
+
+    /// Fill a rectangular region with a character and color
+    pub fn fill_rect(&mut self, row: usize, col: usize, w: usize, h: usize, ch: u8, fg: Color, bg: Color) {
+        for r in row..(row + h) {
+            for c in col..(col + w) {
+                self.put_char_at(r, c, ch, fg, bg);
+            }
+        }
+    }
+
+    /// Draw a horizontal line
+    pub fn draw_hline(&mut self, row: usize, col: usize, len: usize, ch: u8, fg: Color, bg: Color) {
+        for c in col..(col + len) {
+            self.put_char_at(row, c, ch, fg, bg);
+        }
+    }
+
+    /// Draw a vertical line
+    pub fn draw_vline(&mut self, row: usize, col: usize, len: usize, ch: u8, fg: Color, bg: Color) {
+        for r in row..(row + len) {
+            self.put_char_at(r, col, ch, fg, bg);
+        }
+    }
+
+    /// Write a string at a specific position without moving the main cursor
+    pub fn write_str_at(&mut self, row: usize, col: usize, s: &str, fg: Color, bg: Color) {
+        let mut c = col;
+        for byte in s.bytes() {
+            if c >= VGA_WIDTH {
+                break;
+            }
+            self.put_char_at(row, c, byte, fg, bg);
+            c += 1;
+        }
+    }
+
+    /// Clear the entire screen with a specific color
+    pub fn clear_with(&mut self, fg: Color, bg: Color) {
+        let color = (fg as u8) | ((bg as u8) << 4);
+        for i in 0..(VGA_WIDTH * VGA_HEIGHT) {
+            unsafe {
+                let ptr = (VGA_BUFFER + i * 2) as *mut u8;
+                *ptr = b' ';
+                *ptr.add(1) = color;
+            }
+        }
+        self.col = 0;
+        self.row = 0;
+    }
+
     fn scroll(&mut self) {
         // Move all lines up by 1
         for row in 1..VGA_HEIGHT {

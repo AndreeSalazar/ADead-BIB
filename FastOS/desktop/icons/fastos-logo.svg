@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <rect width="48" height="48" rx="10" fill="#0078D4"/>
+  <text x="24" y="20" fill="white" font-family="Segoe UI, sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Fast</text>
+  <text x="24" y="34" fill="#FFB900" font-family="Segoe UI, sans-serif" font-size="12" font-weight="bold" text-anchor="middle">OS</text>
+  <rect x="8" y="38" width="32" height="2" rx="1" fill="white" opacity="0.3"/>
+</svg>

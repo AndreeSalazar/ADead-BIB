@@ -1,0 +1,8 @@
+Welcome to FastOS v1.0!
+
+This is your Documents folder.
+FastOS is a 64-bit operating system built with ADead-BIB.
+
+Format: FsOS
+Architecture: x86-64
+Desktop: Windows 11 style (VGA text mode)
