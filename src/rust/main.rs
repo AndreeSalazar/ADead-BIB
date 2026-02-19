@@ -371,6 +371,90 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output_file
             );
         }
+        "fastos" => {
+            // Genera imagen de disco FastOS booteable desde ADead-BIB
+            use adead_bib::isa::isa_compiler::CpuMode;
+
+            if args.len() < 3 {
+                eprintln!("❌ Error: Missing input file");
+                eprintln!("   Uso: adB fastos <archivo.adB> [-o fastos.bin] [--run] [--mode real16|prot32|long64]");
+                std::process::exit(1);
+            }
+            let input_file = &args[2];
+            let output_file = if let Some(pos) = args.iter().position(|a| a == "-o") {
+                args.get(pos + 1)
+                    .cloned()
+                    .unwrap_or_else(|| "fastos.bin".to_string())
+            } else {
+                "fastos.bin".to_string()
+            };
+            let run_qemu = args.iter().any(|a| a == "--run");
+
+            // Parse CPU mode (default: long64)
+            let cpu_mode = if let Some(pos) = args.iter().position(|a| a == "--mode") {
+                match args.get(pos + 1).map(|s| s.as_str()) {
+                    Some("real16") | Some("16") => CpuMode::Real16,
+                    Some("prot32") | Some("32") => CpuMode::Protected32,
+                    Some("long64") | Some("64") => CpuMode::Long64,
+                    Some(other) => {
+                        eprintln!("❌ Unknown CPU mode: {}. Use: real16, prot32, long64", other);
+                        std::process::exit(1);
+                    }
+                    None => CpuMode::Long64,
+                }
+            } else {
+                CpuMode::Long64 // Default: 64-bit
+            };
+
+            let mode_name = match cpu_mode {
+                CpuMode::Real16 => "16-bit Real Mode",
+                CpuMode::Protected32 => "32-bit Protected Mode",
+                CpuMode::Long64 => "64-bit Long Mode (default)",
+            };
+
+            println!("🚀 Building FastOS image from {}...", input_file);
+            println!("   Format: FastOS (magic: FsOS) — Alternative to PE/ELF");
+            println!("   CPU Mode: {} ({}-bit)", mode_name, cpu_mode.operand_bits());
+            println!("   Scaling: 16-bit → 32-bit → 64-bit (natural)");
+
+            // Leer y compilar fuente ADead-BIB
+            let source = fs::read_to_string(input_file)?;
+            let program = Parser::parse_program(&source)?;
+
+            // Generar código via ISA Compiler con CPU mode
+            let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::with_cpu_mode(Target::Raw, cpu_mode);
+            let (opcodes, _data) = compiler.compile(&program);
+
+            // Generar boot sector con firma 0x55AA
+            let mut gen = adead_bib::backend::cpu::flat_binary::FlatBinaryGenerator::new(0x7C00);
+            let binary = gen.generate_boot_sector(&opcodes);
+
+            fs::write(&output_file, &binary)?;
+            println!(
+                "✅ FastOS image complete: {} ({} bytes)",
+                output_file,
+                binary.len()
+            );
+            println!("   🔥 Magic: FsOS | Signature: 0x55AA | Mode: {}", mode_name);
+
+            if run_qemu {
+                println!("   🖥️  Launching QEMU...");
+                let qemu = "C:\\Program Files\\qemu\\qemu-system-x86_64.exe";
+                let status = std::process::Command::new(qemu)
+                    .args(&["-drive", &format!("format=raw,file={}", output_file),
+                            "-no-reboot", "-no-shutdown"])
+                    .status();
+                match status {
+                    Ok(s) => println!("   QEMU exited: {}", s),
+                    Err(e) => eprintln!("   ❌ QEMU failed: {}", e),
+                }
+            } else {
+                println!(
+                    "   Test: \"C:\\Program Files\\qemu\\qemu-system-x86_64.exe\" -drive format=raw,file={}",
+                    output_file
+                );
+            }
+        }
         "vm" => {
             // MicroVM: Bytecode ultra-compacto
             let output_file = if args.len() >= 3 {
@@ -793,6 +877,15 @@ fn print_usage(_program: &str) {
     println!("   adB play                          - Inicia playground interactivo");
     println!("   Escribe código ADead-BIB y presiona Enter para ejecutar");
     println!("   Comandos: :help, :clear, :exit, :run, :ast");
+    println!();
+    println!("🖥️  FASTOS / OS DEVELOPMENT:");
+    println!("   adB fastos <archivo.adB> [-o out.bin]  - Build FastOS bootable image");
+    println!("   adB fastos <archivo.adB> --run         - Build + launch QEMU");
+    println!("   adB fastos <archivo.adB> --mode real16 - 16-bit real mode");
+    println!("   adB fastos <archivo.adB> --mode prot32 - 32-bit protected mode");
+    println!("   adB fastos <archivo.adB> --mode long64 - 64-bit long mode (default)");
+    println!("   adB boot <archivo.adB> [-o boot.bin]   - Build 512-byte boot sector");
+    println!("   adB flat <archivo.adB> [-o flat.bin]    - Build flat binary (no headers)");
     println!();
     println!("🎯 TAMAÑOS DE BINARIO:");
     println!("   Standard: ~1.5 KB  │  Tiny: < 500 bytes  │  Nano: ~1 KB");

@@ -34,4 +34,5 @@ pub mod elf;
 pub mod flat_binary;
 pub mod pe_valid;
 pub mod os_codegen; // 🔥 OS-Level Codegen - Phase 6: multi-mode, GDT/IDT, paging, Rust bridge
+pub mod fastos_format; // 🔥 FastOS Format - Alternativa a PE/ELF para FastOS (magic: "FsOS")
 pub mod win32_resolver; // 🔥 Flat Binary Generator - boot sectors & bare-metal

@@ -25,6 +25,58 @@ pub enum Target {
     Raw,
 }
 
+/// CPU Mode — Escalado natural de ADead-BIB: 16-bit → 32-bit → 64-bit
+/// Default: Long64 (64-bit). ADead-BIB escala naturalmente desde la base.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CpuMode {
+    /// 16-bit real mode — boot sectors, BIOS calls
+    Real16,
+    /// 32-bit protected mode — legacy drivers, transitions
+    Protected32,
+    /// 64-bit long mode — kernel, applications (DEFAULT)
+    Long64,
+}
+
+impl CpuMode {
+    /// Operand size in bits for this mode
+    pub fn operand_bits(&self) -> u8 {
+        match self {
+            CpuMode::Real16 => 16,
+            CpuMode::Protected32 => 32,
+            CpuMode::Long64 => 64,
+        }
+    }
+
+    /// Address size in bits for this mode
+    pub fn address_bits(&self) -> u8 {
+        match self {
+            CpuMode::Real16 => 16,
+            CpuMode::Protected32 => 32,
+            CpuMode::Long64 => 64,
+        }
+    }
+
+    /// Whether this mode needs REX prefix for 64-bit operands
+    pub fn needs_rex(&self) -> bool {
+        matches!(self, CpuMode::Long64)
+    }
+
+    /// Stack pointer register name for this mode
+    pub fn stack_reg(&self) -> &'static str {
+        match self {
+            CpuMode::Real16 => "SP",
+            CpuMode::Protected32 => "ESP",
+            CpuMode::Long64 => "RSP",
+        }
+    }
+}
+
+impl Default for CpuMode {
+    fn default() -> Self {
+        CpuMode::Long64 // ADead-BIB defaults to 64-bit
+    }
+}
+
 /// Función compilada (metadatos)
 #[derive(Clone, Debug)]
 pub struct CompiledFunction {
@@ -53,6 +105,9 @@ pub struct IsaCompiler {
     target: Target,
     base_address: u64,
     data_rva: u64,
+
+    // CPU Mode — 16/32/64-bit scaling (default: 64-bit)
+    cpu_mode: CpuMode,
 }
 
 impl IsaCompiler {
@@ -74,7 +129,40 @@ impl IsaCompiler {
             target,
             base_address: base,
             data_rva,
+            cpu_mode: CpuMode::Long64, // Default: 64-bit
         }
+    }
+
+    /// Create compiler with specific CPU mode (16/32/64-bit scaling)
+    pub fn with_cpu_mode(target: Target, mode: CpuMode) -> Self {
+        let mut compiler = Self::new(target);
+        compiler.cpu_mode = mode;
+        compiler
+    }
+
+    /// Create compiler for 16-bit real mode (boot sectors)
+    pub fn new_real16() -> Self {
+        Self::with_cpu_mode(Target::Raw, CpuMode::Real16)
+    }
+
+    /// Create compiler for 32-bit protected mode
+    pub fn new_protected32() -> Self {
+        Self::with_cpu_mode(Target::Raw, CpuMode::Protected32)
+    }
+
+    /// Create compiler for 64-bit long mode (default)
+    pub fn new_long64(target: Target) -> Self {
+        Self::with_cpu_mode(target, CpuMode::Long64)
+    }
+
+    /// Set CPU mode at runtime (for mode transitions)
+    pub fn set_cpu_mode(&mut self, mode: CpuMode) {
+        self.cpu_mode = mode;
+    }
+
+    /// Get current CPU mode
+    pub fn cpu_mode(&self) -> CpuMode {
+        self.cpu_mode
     }
 
     /// Compila un programa completo y retorna (code_bytes, data_bytes).
