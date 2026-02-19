@@ -282,13 +282,21 @@ impl IsaCompiler {
         self.variables.clear();
         self.stack_offset = -8;
 
-        self.emit_prologue();
+        // For bare-metal (Target::Raw), emit instructions directly — no prologue/epilogue.
+        // Boot sectors and flat binaries need raw machine code, not 64-bit function frames.
+        let is_raw = self.target == Target::Raw;
+
+        if !is_raw {
+            self.emit_prologue();
+        }
 
         for stmt in stmts {
             self.emit_statement(stmt);
         }
 
-        self.emit_epilogue();
+        if !is_raw {
+            self.emit_epilogue();
+        }
         self.current_function = None;
     }
 

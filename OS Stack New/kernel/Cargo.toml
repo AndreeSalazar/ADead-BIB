@@ -1,0 +1,17 @@
+[package]
+name = "adead-os-kernel"
+version = "0.1.0"
+edition = "2021"
+authors = ["Eddi Andreé Salazar Matos <eddi.salazar.dev@gmail.com>"]
+description = "ADead-OS Kernel — Rust security layer (no_std bare-metal)"
+
+[dependencies]
+# No dependencies — bare-metal kernel
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+lto = true
