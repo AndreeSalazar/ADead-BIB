@@ -39,9 +39,14 @@ Tareas:
   [ ] Set VBE video mode (1024x768x32 via INT 10h AX=4F02h)
   [ ] Load kernel binary from disk sectors
   [ ] Jump to kernel_main in 64-bit mode
+  ✅ kernel/linker.ld — Kernel binary layout at 0x100000
+  ✅ kernel/rust-toolchain.toml — Nightly + rust-src + llvm-tools
+  ✅ kernel/x86_64-fastos.json — Updated with linker script reference
+  ✅ build.ps1 — Updated with Rust kernel compilation step (5 steps)
+  ✅ kernel/src/main.rs — Wired all new modules (arch, boot, kernel_core, drivers)
 
 Archivos:
-  boot/stage2.adB — Rewrite completo para mode switch
+  boot/stage2.adB — Rewrite completo para mode switch (PENDIENTE)
   
 Resultado:
   BIOS → Stage1 → Stage2 → 64-bit kernel con framebuffer
@@ -49,35 +54,41 @@ Resultado:
 
 ---
 
-## Fase 2 — Kernel Minimal
+## Fase 2 — Kernel Minimal (COMPLETADA)
 
 **Objetivo:** Kernel funcional con memoria, interrupciones y framebuffer.
 
 ```text
 Tareas:
-  [ ] kernel/src/core/memory.rs — Physical frame allocator (bitmap)
-  [ ] kernel/src/core/memory.rs — Virtual memory manager (4-level paging)
-  [ ] kernel/src/core/memory.rs — Kernel heap allocator (bump → linked list)
-  [ ] kernel/src/core/interrupts.rs — IDT setup (256 entries)
-  [ ] kernel/src/core/interrupts.rs — ISR handlers (exceptions 0-31)
-  [ ] kernel/src/core/interrupts.rs — IRQ handlers (PIC remapping)
-  [ ] kernel/src/arch/x86_64/gdt.rs — GDT with TSS
-  [ ] kernel/src/arch/x86_64/idt.rs — IDT implementation
-  [ ] kernel/src/arch/x86_64/paging.rs — Page table management
-  [ ] kernel/src/drivers/framebuffer.rs — Linear framebuffer driver
-  [ ] kernel/src/drivers/framebuffer.rs — Pixel, rect, line, fill primitives
-  [ ] kernel/src/drivers/framebuffer.rs — Bitmap font rendering (8x16)
+  ✅ kernel/src/kernel_core/memory.rs — Physical frame allocator (bitmap, 4GB max)
+  ✅ kernel/src/kernel_core/memory.rs — Kernel heap allocator (bump, 1MB)
+  [ ] kernel/src/kernel_core/memory.rs — Virtual memory manager (4-level paging)
+  ✅ kernel/src/kernel_core/interrupts.rs — High-level interrupt management
+  ✅ kernel/src/arch/x86_64/gdt.rs — GDT with TSS (5 segments)
+  ✅ kernel/src/arch/x86_64/idt.rs — IDT (256 entries) + PIC remap (32-47)
+  ✅ kernel/src/arch/x86_64/paging.rs — 4-level page table structures
+  ✅ kernel/src/arch/x86_64/port.rs — I/O port wrappers (inb/outb/inw/outw/inl/outl)
+  ✅ kernel/src/arch/x86_64/cpu.rs — CPU control (CR0-4, MSR, CPUID, TLB)
+  ✅ kernel/src/drivers/framebuffer.rs — Linear framebuffer (VBE 1024x768x32)
+  ✅ kernel/src/drivers/framebuffer.rs — Pixel, rect, line, circle, rounded rect
+  ✅ kernel/src/drivers/framebuffer.rs — Alpha blending, bitmap font (8x16, A-Z/a-z/0-9)
+  ✅ kernel/src/boot.rs — BootInfo struct at 0x9000 + E820 memory map
 
-Archivos nuevos:
-  kernel/src/core/mod.rs
-  kernel/src/core/memory.rs
-  kernel/src/core/interrupts.rs
+Archivos creados:
+  kernel/src/kernel_core/mod.rs
+  kernel/src/kernel_core/memory.rs
+  kernel/src/kernel_core/interrupts.rs
+  kernel/src/arch/mod.rs
   kernel/src/arch/x86_64/mod.rs
   kernel/src/arch/x86_64/gdt.rs
   kernel/src/arch/x86_64/idt.rs
   kernel/src/arch/x86_64/paging.rs
   kernel/src/arch/x86_64/port.rs
+  kernel/src/arch/x86_64/cpu.rs
+  kernel/src/drivers/mod.rs
   kernel/src/drivers/framebuffer.rs
+  kernel/src/drivers/timer.rs
+  kernel/src/boot.rs
 
 Resultado:
   Kernel arranca en 64-bit, maneja memoria, muestra gráficos en framebuffer
@@ -85,22 +96,23 @@ Resultado:
 
 ---
 
-## Fase 3 — Drivers
+## Fase 3 — Drivers (EN PROGRESO)
 
 **Objetivo:** Input completo + timer para multitasking.
 
 ```text
 Tareas:
-  [ ] kernel/src/drivers/keyboard.rs — PS/2 keyboard con scancodes completos
-  [ ] kernel/src/drivers/keyboard.rs — Key repeat, modifiers (Shift, Ctrl, Alt)
-  [ ] kernel/src/drivers/mouse.rs — PS/2 mouse driver
-  [ ] kernel/src/drivers/mouse.rs — Cursor movement + button events
-  [ ] kernel/src/drivers/timer.rs — PIT timer (channel 0, ~1000 Hz)
-  [ ] kernel/src/drivers/timer.rs — System tick counter
+  ✅ kernel/src/drivers/keyboard.rs — PS/2 keyboard (IRQ + polling, scancode set 1)
+  ✅ kernel/src/drivers/keyboard.rs — Modifiers (Shift, Ctrl, Alt, CapsLock)
+  ✅ kernel/src/drivers/keyboard.rs — Circular key buffer (64 keys)
+  ✅ kernel/src/drivers/mouse.rs — PS/2 mouse driver (3-byte protocol)
+  ✅ kernel/src/drivers/mouse.rs — Cursor position + 3 buttons + screen clamping
+  ✅ kernel/src/drivers/timer.rs — PIT timer (channel 0, 1000 Hz)
+  ✅ kernel/src/drivers/timer.rs — System tick counter + uptime + sleep
   [ ] kernel/src/drivers/disk.rs — ATA PIO disk read/write
 
 Resultado:
-  Keyboard + mouse + timer + disk funcionales
+  Keyboard + mouse + timer funcionales. Disk pendiente.
 ```
 
 ---
@@ -150,21 +162,22 @@ Resultado:
 
 ---
 
-## Fase 6 — System Services
+## Fase 6 — System Services (STUBS CREADOS)
 
 **Objetivo:** Filesystem, IPC, seguridad.
 
 ```text
 Tareas:
-  [ ] system/fs/fastfs.rs — FastFS filesystem
-  [ ] system/fs/vfs.rs — Virtual filesystem layer
-  [ ] system/ipc/pipe.rs — Pipe IPC
-  [ ] system/ipc/shm.rs — Shared memory
-  [ ] system/security/rings.rs — Ring 0/3 separation
-  [ ] system/security/rings.rs — Syscall interface
+  ✅ system/fs/vfs.rs — VFS trait + FileType + DirEntry + FsError (estructura)
+  ✅ system/fs/fastfs.rs — FastFS layout (superblock, inodes, blocks)
+  ✅ system/ipc/pipe.rs — Pipe IPC (ring buffer 4KB, read/write)
+  ✅ system/ipc/shm.rs — Shared memory descriptor (stub)
+  ✅ system/security/rings.rs — Ring 0/3 enum + is_kernel_mode() + 13 syscalls
+  [ ] system/fs/fastfs.rs — Implementar Filesystem trait completo
+  [ ] system/security/rings.rs — SYSCALL/SYSRET entry point + dispatcher
 
 Resultado:
-  OS con filesystem, comunicación entre procesos, y seguridad
+  Estructuras y stubs creados. Implementación completa pendiente.
 ```
 
 ---
@@ -218,9 +231,9 @@ Resultado:
 | Fase | Nombre              | Duración estimada |
 |------|---------------------|-------------------|
 | 0    | Foundation          | ✅ Completada     |
-| 1    | Boot Enhancement    | 1-2 semanas       |
-| 2    | Kernel Minimal      | 2-3 semanas       |
-| 3    | Drivers             | 1-2 semanas       |
+| 1    | Boot Enhancement    | 🔧 En progreso   |
+| 2    | Kernel Minimal      | ✅ Completada     |
+| 3    | Drivers             | 🔧 90% completo  |
 | 4    | Multitasking        | 2-3 semanas       |
 | 5    | Desktop Engine      | 3-4 semanas       |
 | 6    | System Services     | 2-3 semanas       |

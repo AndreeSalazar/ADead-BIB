@@ -109,9 +109,59 @@ try {
 }
 
 # ============================================================
-# Step 4: Combine into disk image
+# Step 4: Build Rust kernel
 # ============================================================
-Write-Host "[4/4] Creating FastOS disk image..." -ForegroundColor Cyan
+Write-Host "[4/5] Building Rust kernel..." -ForegroundColor Cyan
+$KernelDir = Join-Path $ProjectRoot "kernel"
+$KernelBin = Join-Path $BuildDir "kernel.bin"
+
+Push-Location $KernelDir
+try {
+    # Build kernel with custom target
+    $kernelOutput = cargo build --release --target x86_64-fastos.json -Zbuild-std=core,compiler_builtins -Zbuild-std-features=compiler-builtins-mem 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $errors = $kernelOutput | Select-String "^error"
+        if ($errors) {
+            Write-Host "  FAILED: Kernel build error" -ForegroundColor Red
+            $errors | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+            # Continue without kernel for now (VGA text mode fallback)
+            Write-Host "  WARNING: Continuing without kernel binary" -ForegroundColor Yellow
+            $KernelBin = $null
+        }
+    }
+
+    if ($KernelBin) {
+        # Find the built ELF and convert to flat binary
+        $KernelElf = Join-Path $KernelDir "target\x86_64-fastos\release\fastos-kernel"
+        if (Test-Path $KernelElf) {
+            # Use objcopy to create flat binary (if available)
+            $objcopy = Get-Command "rust-objcopy" -ErrorAction SilentlyContinue
+            if (-not $objcopy) {
+                $objcopy = Get-Command "llvm-objcopy" -ErrorAction SilentlyContinue
+            }
+            if ($objcopy) {
+                & $objcopy.Source -O binary $KernelElf $KernelBin
+                $size = (Get-Item $KernelBin).Length
+                Write-Host "  OK ($size bytes)" -ForegroundColor Green
+            } else {
+                Write-Host "  WARNING: objcopy not found, copying ELF directly" -ForegroundColor Yellow
+                Copy-Item $KernelElf $KernelBin
+                $size = (Get-Item $KernelBin).Length
+                Write-Host "  OK ($size bytes, ELF format)" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  WARNING: Kernel ELF not found at $KernelElf" -ForegroundColor Yellow
+            $KernelBin = $null
+        }
+    }
+} finally {
+    Pop-Location
+}
+
+# ============================================================
+# Step 5: Combine into disk image
+# ============================================================
+Write-Host "[5/5] Creating FastOS disk image..." -ForegroundColor Cyan
 $FastOSBin = Join-Path $BuildDir "fastos.bin"
 
 # Read stage1 (512 bytes boot sector)
@@ -124,10 +174,25 @@ $stage2Bytes = [System.IO.File]::ReadAllBytes($Stage2Bin)
 $stage2Padded = New-Object byte[] ([Math]::Ceiling($stage2Bytes.Length / 512) * 512)
 [Array]::Copy($stage2Bytes, $stage2Padded, $stage2Bytes.Length)
 
-# Combine: stage1 + stage2
-$image = New-Object byte[] ($stage1Bytes.Length + $stage2Padded.Length)
+# Read kernel (if available)
+$kernelBytes = $null
+$kernelPadded = @()
+if ($KernelBin -and (Test-Path $KernelBin)) {
+    $kernelBytes = [System.IO.File]::ReadAllBytes($KernelBin)
+    $kernelPadded = New-Object byte[] ([Math]::Ceiling($kernelBytes.Length / 512) * 512)
+    [Array]::Copy($kernelBytes, $kernelPadded, $kernelBytes.Length)
+}
+
+# Combine: stage1 + stage2 + kernel
+$totalLen = $stage1Bytes.Length + $stage2Padded.Length + $kernelPadded.Length
+# Minimum 1.44MB floppy image for QEMU compatibility
+$imageSize = [Math]::Max($totalLen, 1474560)
+$image = New-Object byte[] $imageSize
 [Array]::Copy($stage1Bytes, 0, $image, 0, $stage1Bytes.Length)
 [Array]::Copy($stage2Padded, 0, $image, $stage1Bytes.Length, $stage2Padded.Length)
+if ($kernelPadded.Length -gt 0) {
+    [Array]::Copy($kernelPadded, 0, $image, $stage1Bytes.Length + $stage2Padded.Length, $kernelPadded.Length)
+}
 
 [System.IO.File]::WriteAllBytes($FastOSBin, $image)
 $totalSize = $image.Length
@@ -142,6 +207,11 @@ Write-Host "  FastOS Build Complete!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Green
 Write-Host "  Stage1:  $($stage1Bytes.Length) bytes (boot sector)" -ForegroundColor White
 Write-Host "  Stage2:  $($stage2Bytes.Length) bytes (mode switch)" -ForegroundColor White
+if ($kernelBytes) {
+    Write-Host "  Kernel:  $($kernelBytes.Length) bytes (Rust x86_64)" -ForegroundColor White
+} else {
+    Write-Host "  Kernel:  (not included — VGA text mode only)" -ForegroundColor Yellow
+}
 Write-Host "  Image:   $totalSize bytes total" -ForegroundColor White
 Write-Host "  Output:  $FastOSBin" -ForegroundColor White
 Write-Host "  Sig:     0x$('{0:X2}' -f $stage1Bytes[510])$('{0:X2}' -f $stage1Bytes[511])" -ForegroundColor White
@@ -153,12 +223,15 @@ Write-Host ""
 if ($Run) {
     if (Test-Path $QEMU) {
         Write-Host "Launching QEMU..." -ForegroundColor Cyan
-        & $QEMU -drive "format=raw,file=$FastOSBin" -no-reboot -no-shutdown
+        & $QEMU -drive "format=raw,file=$FastOSBin" `
+                -m 256M `
+                -serial stdio `
+                -no-reboot -no-shutdown
     } else {
         Write-Host "QEMU not found at: $QEMU" -ForegroundColor Red
         Write-Host "Install QEMU or update the path in build.ps1" -ForegroundColor Yellow
     }
 } else {
     Write-Host "To test: .\build.ps1 -Run" -ForegroundColor Yellow
-    Write-Host "Or:      & `"$QEMU`" -drive format=raw,file=$FastOSBin" -ForegroundColor Yellow
+    Write-Host "Or:      & `"$QEMU`" -drive format=raw,file=$FastOSBin -m 256M" -ForegroundColor Yellow
 }

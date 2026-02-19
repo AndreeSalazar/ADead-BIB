@@ -50,8 +50,8 @@ pub fn init_from_e820(entries: &[crate::boot::E820Entry]) {
                 let end = start + entry.length as usize;
 
                 // Skip first 1MB
-                let start_frame = core::cmp::max(start, 0x100000) / FRAME_SIZE;
-                let end_frame = core::cmp::min(end, MAX_FRAMES * FRAME_SIZE) / FRAME_SIZE;
+                let start_frame = if start < 0x100000 { 0x100000 / FRAME_SIZE } else { start / FRAME_SIZE };
+                let end_frame = if end > MAX_FRAMES * FRAME_SIZE { MAX_FRAMES } else { end / FRAME_SIZE };
 
                 for frame in start_frame..end_frame {
                     free_frame(frame);
