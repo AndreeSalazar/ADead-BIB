@@ -214,49 +214,66 @@ impl IsaCompiler {
         self.variables.clear();
         self.stack_offset = -8;
 
+        let is_interrupt = func.attributes.is_interrupt;
+        let is_exception = func.attributes.is_exception;
+        let is_naked = func.attributes.is_naked;
+
         // Label de entrada
         if let Some(compiled) = self.functions.get(&func.name) {
             let label = compiled.label;
             self.ir.emit(ADeadOp::Label(label));
         }
 
-        // Prologue
-        self.emit_prologue();
+        if is_interrupt || is_exception {
+            // @interrupt / @exception: push all registers (auto-generated wrapper)
+            self.emit_interrupt_prologue();
+        } else if !is_naked {
+            // Normal function prologue
+            self.emit_prologue();
 
-        // Registrar y guardar parámetros
-        for (i, param) in func.params.iter().enumerate() {
-            let param_offset = if i <= 3 {
-                let off = self.stack_offset;
-                self.stack_offset -= 8;
-                off
-            } else {
-                16 + ((i - 4) as i32 * 8)
-            };
-            self.variables.insert(param.name.clone(), param_offset);
-
-            // Guardar parámetros de registros en stack
-            if i <= 3 {
-                let src_reg = match i {
-                    0 => Reg::RCX,
-                    1 => Reg::RDX,
-                    2 => Reg::R8,
-                    3 => Reg::R9,
-                    _ => unreachable!(),
+            // Registrar y guardar parámetros
+            for (i, param) in func.params.iter().enumerate() {
+                let param_offset = if i <= 3 {
+                    let off = self.stack_offset;
+                    self.stack_offset -= 8;
+                    off
+                } else {
+                    16 + ((i - 4) as i32 * 8)
                 };
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Mem { base: Reg::RBP, disp: param_offset },
-                    src: Operand::Reg(src_reg),
-                });
+                self.variables.insert(param.name.clone(), param_offset);
+
+                // Guardar parámetros de registros en stack
+                if i <= 3 {
+                    let src_reg = match i {
+                        0 => Reg::RCX,
+                        1 => Reg::RDX,
+                        2 => Reg::R8,
+                        3 => Reg::R9,
+                        _ => unreachable!(),
+                    };
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Mem { base: Reg::RBP, disp: param_offset },
+                        src: Operand::Reg(src_reg),
+                    });
+                }
             }
         }
+        // @naked: no prologue at all
 
         // Body
         for stmt in &func.body {
             self.emit_statement(stmt);
         }
 
-        // Epilogue
-        self.emit_epilogue();
+        if is_interrupt || is_exception {
+            // @interrupt / @exception: pop all registers + iretq
+            self.emit_interrupt_epilogue();
+        } else if !is_naked {
+            // Normal function epilogue
+            self.emit_epilogue();
+        }
+        // @naked: no epilogue at all
+
         self.current_function = None;
     }
 
@@ -303,6 +320,50 @@ impl IsaCompiler {
     }
 
     // ========================================
+    // Interrupt Prologue / Epilogue
+    // ========================================
+
+    fn emit_interrupt_prologue(&mut self) {
+        // Push all general purpose registers (64-bit)
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBX) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RCX) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RDX) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RSI) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RDI) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBP) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R8) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R9) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R10) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R11) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R12) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R13) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R14) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R15) });
+    }
+
+    fn emit_interrupt_epilogue(&mut self) {
+        // Pop all general purpose registers (reverse order)
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R15 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R14 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R13 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R12 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R11 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R10 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R9 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R8 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RBP });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RDI });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RSI });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RDX });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+        // IRETQ — return from interrupt
+        self.ir.emit(ADeadOp::Iret);
+    }
+
+    // ========================================
     // Statements
     // ========================================
 
@@ -320,7 +381,253 @@ impl IsaCompiler {
             Stmt::Return(expr) => self.emit_return(expr.as_ref()),
             Stmt::Expr(expr) => { self.emit_expression(expr); }
             Stmt::Pass => {}
+
+            // ========== OS-LEVEL / MACHINE CODE (v3.1-OS) ==========
+            Stmt::Cli => {
+                self.ir.emit(ADeadOp::Cli);
+            }
+            Stmt::Sti => {
+                self.ir.emit(ADeadOp::Sti);
+            }
+            Stmt::Hlt => {
+                self.ir.emit(ADeadOp::Hlt);
+            }
+            Stmt::Iret => {
+                self.ir.emit(ADeadOp::Iret);
+            }
+            Stmt::Cpuid => {
+                self.ir.emit(ADeadOp::Cpuid);
+            }
+            Stmt::IntCall { vector } => {
+                self.ir.emit(ADeadOp::Int { vector: *vector });
+            }
+            Stmt::RegAssign { reg_name, value } => {
+                self.emit_reg_assign(reg_name, value);
+            }
+            Stmt::MemWrite { addr, value } => {
+                self.emit_mem_write(addr, value);
+            }
+            Stmt::PortOut { port, value } => {
+                self.emit_port_out(port, value);
+            }
+            Stmt::RawBlock { bytes } => {
+                self.ir.emit(ADeadOp::RawBytes(bytes.clone()));
+            }
+            Stmt::OrgDirective { address } => {
+                // Store origin for address calculations
+                self.base_address = *address;
+            }
+            Stmt::AlignDirective { alignment } => {
+                // Emit NOP padding to align to boundary
+                let align = *alignment as usize;
+                if align > 0 {
+                    // We'll emit a placeholder; actual alignment resolved at link time
+                    // For flat binary, pad with NOPs
+                    self.ir.emit(ADeadOp::RawBytes(vec![0x90])); // marker NOP
+                }
+            }
+            Stmt::FarJump { selector, offset } => {
+                self.ir.emit(ADeadOp::FarJmp {
+                    selector: *selector,
+                    offset: *offset,
+                });
+            }
+
+            // Pointer/memory statements (v3.2)
+            Stmt::VarDecl { var_type: _, name, value } => {
+                if let Some(val) = value {
+                    self.emit_assign(name, val);
+                } else {
+                    // Declare with zero
+                    let offset = self.stack_offset;
+                    self.variables.insert(name.clone(), offset);
+                    self.stack_offset -= 8;
+                    self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                }
+            }
+            Stmt::CompoundAssign { name, op, value } => {
+                self.emit_compound_assign(name, op, value);
+            }
+            Stmt::Increment { name, is_pre: _, is_increment } => {
+                if let Some(&offset) = self.variables.get(name.as_str()) {
+                    if *is_increment {
+                        self.ir.emit(ADeadOp::Inc {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                    } else {
+                        self.ir.emit(ADeadOp::Dec {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                    }
+                }
+            }
+            Stmt::DoWhile { body, condition } => {
+                let loop_start = self.ir.new_label();
+                self.ir.emit(ADeadOp::Label(loop_start));
+                for s in body {
+                    self.emit_statement(s);
+                }
+                self.emit_condition(condition);
+                self.ir.emit(ADeadOp::Test { left: Reg::RAX, right: Reg::RAX });
+                self.ir.emit(ADeadOp::Jcc { cond: Condition::NotEqual, target: loop_start });
+            }
+
             _ => {}
+        }
+    }
+
+    // ========================================
+    // OS-Level Helpers
+    // ========================================
+
+    fn string_to_reg(name: &str) -> Option<Reg> {
+        match name {
+            "rax" => Some(Reg::RAX), "rbx" => Some(Reg::RBX),
+            "rcx" => Some(Reg::RCX), "rdx" => Some(Reg::RDX),
+            "rsi" => Some(Reg::RSI), "rdi" => Some(Reg::RDI),
+            "rbp" => Some(Reg::RBP), "rsp" => Some(Reg::RSP),
+            "r8"  => Some(Reg::R8),  "r9"  => Some(Reg::R9),
+            "r10" => Some(Reg::R10), "r11" => Some(Reg::R11),
+            "r12" => Some(Reg::R12), "r13" => Some(Reg::R13),
+            "r14" => Some(Reg::R14), "r15" => Some(Reg::R15),
+            "eax" => Some(Reg::EAX), "ebx" => Some(Reg::EBX),
+            "ecx" => Some(Reg::ECX), "edx" => Some(Reg::EDX),
+            "esi" => Some(Reg::ESI), "edi" => Some(Reg::EDI),
+            "esp" => Some(Reg::ESP), "ebp" => Some(Reg::EBP),
+            "ax"  => Some(Reg::AX),  "bx"  => Some(Reg::BX),
+            "cx"  => Some(Reg::CX),  "dx"  => Some(Reg::DX),
+            "si"  => Some(Reg::SI),  "di"  => Some(Reg::DI),
+            "sp"  => Some(Reg::SP),  "bp"  => Some(Reg::BP),
+            "al"  => Some(Reg::AL),  "ah"  => Some(Reg::AH),
+            "bl"  => Some(Reg::BL),  "bh"  => Some(Reg::BH),
+            "cl"  => Some(Reg::CL),  "ch"  => Some(Reg::CH),
+            "dl"  => Some(Reg::DL),  "dh"  => Some(Reg::DH),
+            "cr0" => Some(Reg::CR0), "cr2" => Some(Reg::CR2),
+            "cr3" => Some(Reg::CR3), "cr4" => Some(Reg::CR4),
+            "cs"  => Some(Reg::CS),  "ds"  => Some(Reg::DS),
+            "es"  => Some(Reg::ES),  "fs"  => Some(Reg::FS),
+            "gs"  => Some(Reg::GS),  "ss"  => Some(Reg::SS),
+            _ => None,
+        }
+    }
+
+    fn emit_reg_assign(&mut self, reg_name: &str, value: &Expr) {
+        self.emit_expression(value);
+        if let Some(reg) = Self::string_to_reg(reg_name) {
+            if reg.is_control() {
+                // mov crN, rax
+                let cr_num = match reg {
+                    Reg::CR0 => 0, Reg::CR2 => 2, Reg::CR3 => 3, Reg::CR4 => 4,
+                    _ => 0,
+                };
+                self.ir.emit(ADeadOp::MovToCr { cr: cr_num, src: Reg::RAX });
+            } else if reg.is_segment() {
+                // Segment register assignment via raw bytes
+                // mov <seg>, ax requires specific encoding
+                let seg_code: u8 = match reg {
+                    Reg::DS => 0xD8, Reg::ES => 0xC0, Reg::SS => 0xD0,
+                    Reg::FS => 0xE0, Reg::GS => 0xE8,
+                    _ => 0xD8,
+                };
+                // 8E /r = mov Sreg, r/m16
+                self.ir.emit(ADeadOp::RawBytes(vec![0x8E, seg_code]));
+            } else {
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(reg),
+                    src: Operand::Reg(Reg::RAX),
+                });
+            }
+        }
+    }
+
+    fn emit_mem_write(&mut self, addr: &Expr, value: &Expr) {
+        // Evaluate value → RAX, then addr → RBX, then mov [RBX], RAX
+        self.emit_expression(value);
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+        self.emit_expression(addr);
+        self.ir.emit(ADeadOp::Mov {
+            dst: Operand::Reg(Reg::RBX),
+            src: Operand::Reg(Reg::RAX),
+        });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+        // mov [rbx], rax
+        self.ir.emit(ADeadOp::RawBytes(vec![0x48, 0x89, 0x03]));
+    }
+
+    fn emit_port_out(&mut self, port: &Expr, value: &Expr) {
+        // Evaluate value → AL, port → immediate or DX
+        self.emit_expression(value);
+        match port {
+            Expr::Number(p) if *p >= 0 && *p <= 255 => {
+                self.ir.emit(ADeadOp::OutByte {
+                    port: Operand::Imm8(*p as i8),
+                    src: Operand::Reg(Reg::AL),
+                });
+            }
+            _ => {
+                // Port in DX
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(port);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RDX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                self.ir.emit(ADeadOp::OutByte {
+                    port: Operand::Reg(Reg::DX),
+                    src: Operand::Reg(Reg::AL),
+                });
+            }
+        }
+    }
+
+    fn emit_compound_assign(&mut self, name: &str, op: &CompoundOp, value: &Expr) {
+        // Load current value
+        if let Some(&offset) = self.variables.get(name) {
+            self.emit_expression(value);
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBX),
+                src: Operand::Reg(Reg::RAX),
+            });
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Mem { base: Reg::RBP, disp: offset },
+            });
+            match op {
+                CompoundOp::AddAssign => self.ir.emit(ADeadOp::Add {
+                    dst: Operand::Reg(Reg::RAX), src: Operand::Reg(Reg::RBX),
+                }),
+                CompoundOp::SubAssign => self.ir.emit(ADeadOp::Sub {
+                    dst: Operand::Reg(Reg::RAX), src: Operand::Reg(Reg::RBX),
+                }),
+                CompoundOp::MulAssign => self.ir.emit(ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX }),
+                CompoundOp::DivAssign => self.ir.emit(ADeadOp::Div { src: Reg::RBX }),
+                CompoundOp::AndAssign => self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RBX }),
+                CompoundOp::OrAssign  => self.ir.emit(ADeadOp::Or  { dst: Reg::RAX, src: Reg::RBX }),
+                CompoundOp::XorAssign => self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RBX }),
+                CompoundOp::ShlAssign => {
+                    // Move shift amount to CL, then SHL
+                    self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 1 }); // simplified
+                }
+                CompoundOp::ShrAssign => {
+                    self.ir.emit(ADeadOp::Shr { dst: Reg::RAX, amount: 1 });
+                }
+                CompoundOp::ModAssign => {
+                    self.ir.emit(ADeadOp::Div { src: Reg::RBX });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(Reg::RDX),
+                    });
+                }
+            }
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                src: Operand::Reg(Reg::RAX),
+            });
         }
     }
 
@@ -763,6 +1070,106 @@ impl IsaCompiler {
                 self.ir.emit(ADeadOp::Test { left: Reg::RAX, right: Reg::RAX });
                 self.ir.emit(ADeadOp::SetCC { cond: Condition::NotEqual, dst: Reg::AL });
                 self.ir.emit(ADeadOp::MovZx { dst: Reg::RAX, src: Reg::AL });
+            }
+            // OS-Level expressions
+            Expr::RegRead { reg_name } => {
+                if let Some(reg) = Self::string_to_reg(reg_name) {
+                    if reg.is_control() {
+                        let cr_num = match reg {
+                            Reg::CR0 => 0, Reg::CR2 => 2, Reg::CR3 => 3, Reg::CR4 => 4,
+                            _ => 0,
+                        };
+                        self.ir.emit(ADeadOp::MovFromCr { cr: cr_num, dst: Reg::RAX });
+                    } else {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Reg(reg),
+                        });
+                    }
+                }
+            }
+            Expr::MemRead { addr } => {
+                self.emit_expression(addr);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                // mov rax, [rbx]
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RAX),
+                    src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                });
+            }
+            Expr::PortIn { port } => {
+                match port.as_ref() {
+                    Expr::Number(p) if *p >= 0 && *p <= 255 => {
+                        self.ir.emit(ADeadOp::InByte {
+                            port: Operand::Imm8(*p as i8),
+                        });
+                        // Result in AL, zero-extend to RAX
+                        self.ir.emit(ADeadOp::MovZx { dst: Reg::RAX, src: Reg::AL });
+                    }
+                    _ => {
+                        self.emit_expression(port);
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RDX),
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                        self.ir.emit(ADeadOp::InByte {
+                            port: Operand::Reg(Reg::DX),
+                        });
+                        self.ir.emit(ADeadOp::MovZx { dst: Reg::RAX, src: Reg::AL });
+                    }
+                }
+            }
+            Expr::CpuidExpr => {
+                self.ir.emit(ADeadOp::Cpuid);
+                // EAX already has result
+            }
+            // Bitwise operations
+            Expr::BitwiseOp { op, left, right } => {
+                self.emit_expression(left);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(right);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                match op {
+                    BitwiseOp::And => self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RBX }),
+                    BitwiseOp::Or  => self.ir.emit(ADeadOp::Or  { dst: Reg::RAX, src: Reg::RBX }),
+                    BitwiseOp::Xor => self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RBX }),
+                    BitwiseOp::LeftShift  => self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 1 }),
+                    BitwiseOp::RightShift => self.ir.emit(ADeadOp::Shr { dst: Reg::RAX, amount: 1 }),
+                }
+            }
+            Expr::BitwiseNot(inner) => {
+                self.emit_expression(inner);
+                // Bitwise NOT: not rax (F7 /2)
+                self.ir.emit(ADeadOp::RawBytes(vec![0x48, 0xF7, 0xD0]));
+            }
+            Expr::PreIncrement(inner) | Expr::PostIncrement(inner) => {
+                self.emit_expression(inner);
+                self.ir.emit(ADeadOp::Inc { dst: Operand::Reg(Reg::RAX) });
+            }
+            Expr::PreDecrement(inner) | Expr::PostDecrement(inner) => {
+                self.emit_expression(inner);
+                self.ir.emit(ADeadOp::Dec { dst: Operand::Reg(Reg::RAX) });
+            }
+            Expr::Nullptr | Expr::Null => {
+                self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+            }
+            Expr::String(s) => {
+                let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
+                if !self.strings.contains(&processed) {
+                    self.strings.push(processed.clone());
+                }
+                let addr = self.get_string_address(&processed);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RAX),
+                    src: Operand::Imm64(addr),
+                });
             }
             _ => {
                 self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });

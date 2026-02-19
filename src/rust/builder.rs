@@ -5,7 +5,7 @@
 
 use crate::frontend::parser::Parser;
 use crate::frontend::type_checker::TypeChecker;
-use crate::frontend::ast::{Program, Function};
+use crate::frontend::ast::{Program, Function, FunctionAttributes};
 use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
 use crate::optimizer::binary_optimizer::{BinaryOptimizer, OptLevel};
@@ -254,6 +254,7 @@ impl Builder {
                     params: method.params.clone(),
                     return_type: method.return_type.clone(),
                     body: method.body.clone(),
+                    attributes: FunctionAttributes::default(),
                 };
                 program.functions.push(func);
             }
@@ -266,6 +267,7 @@ impl Builder {
                     params: constructor.params.clone(),
                     return_type: constructor.return_type.clone(),
                     body: constructor.body.clone(),
+                    attributes: FunctionAttributes::default(),
                 };
                 program.functions.push(func);
             }

@@ -18,8 +18,8 @@
 // Email: eddi.salazar.dev@gmail.com
 // ============================================================
 
-pub mod encoder;
 pub mod decoder;
+pub mod encoder;
 pub mod isa_compiler;
 pub mod optimizer;
 
@@ -53,14 +53,59 @@ pub enum Reg {
 
     // 32-bit (sub-registers)
     EAX,
+    EBX,
     ECX,
+    EDX,
+    ESI,
+    EDI,
+    ESP,
+    EBP,
+
+    // 16-bit (sub-registers)
+    AX,
+    BX,
+    CX,
+    DX,
+    SI,
+    DI,
+    SP,
+    BP,
 
     // 8-bit (sub-registers)
     AL,
+    AH,
+    BL,
+    BH,
+    CL,
+    CH,
+    DL,
+    DH,
 
     // SSE registers
     XMM0,
     XMM1,
+
+    // Control registers (OS-level)
+    CR0,
+    CR2,
+    CR3,
+    CR4,
+
+    // Debug registers
+    DR0,
+    DR1,
+    DR2,
+    DR3,
+    DR6,
+    DR7,
+
+    // Segment registers
+    CS,
+    DS,
+    ES,
+    FS,
+    GS,
+    SS,
 }
 
 impl Reg {
@@ -87,14 +132,49 @@ impl Reg {
         )
     }
 
+    /// Retorna true si el registro es de 16 bits.
+    pub fn is_16bit(&self) -> bool {
+        matches!(
+            self,
+            Reg::AX | Reg::BX | Reg::CX | Reg::DX | Reg::SI | Reg::DI | Reg::SP | Reg::BP
+        )
+    }
+
+    /// Retorna true si es un registro de control.
+    pub fn is_control(&self) -> bool {
+        matches!(self, Reg::CR0 | Reg::CR2 | Reg::CR3 | Reg::CR4)
+    }
+
+    /// Retorna true si es un registro de segmento.
+    pub fn is_segment(&self) -> bool {
+        matches!(
+            self,
+            Reg::CS | Reg::DS | Reg::ES | Reg::FS | Reg::GS | Reg::SS
+        )
+    }
+
+    /// Retorna true si es un registro de debug.
+    pub fn is_debug(&self) -> bool {
+        matches!(
+            self,
+            Reg::DR0 | Reg::DR1 | Reg::DR2 | Reg::DR3 | Reg::DR6 | Reg::DR7
+        )
+    }
+
     /// Retorna true si el registro es de 32 bits.
     pub fn is_32bit(&self) -> bool {
-        matches!(self, Reg::EAX | Reg::ECX)
+        matches!(
+            self,
+            Reg::EAX | Reg::EBX | Reg::ECX | Reg::EDX | Reg::ESI | Reg::EDI | Reg::ESP | Reg::EBP
+        )
     }
 
     /// Retorna true si el registro es de 8 bits.
     pub fn is_8bit(&self) -> bool {
-        matches!(self, Reg::AL)
+        matches!(
+            self,
+            Reg::AL | Reg::AH | Reg::BL | Reg::BH | Reg::CL | Reg::CH | Reg::DL | Reg::DH
+        )
     }
 
     /// Retorna true si es un registro SSE/XMM.
@@ -123,10 +203,47 @@ impl std::fmt::Display for Reg {
             Reg::R14 => "r14",
             Reg::R15 => "r15",
             Reg::EAX => "eax",
+            Reg::EBX => "ebx",
             Reg::ECX => "ecx",
+            Reg::EDX => "edx",
+            Reg::ESI => "esi",
+            Reg::EDI => "edi",
+            Reg::ESP => "esp",
+            Reg::EBP => "ebp",
+            Reg::AX => "ax",
+            Reg::BX => "bx",
+            Reg::CX => "cx",
+            Reg::DX => "dx",
+            Reg::SI => "si",
+            Reg::DI => "di",
+            Reg::SP => "sp",
+            Reg::BP => "bp",
             Reg::AL => "al",
+            Reg::AH => "ah",
+            Reg::BL => "bl",
+            Reg::BH => "bh",
+            Reg::CL => "cl",
+            Reg::CH => "ch",
+            Reg::DL => "dl",
+            Reg::DH => "dh",
             Reg::XMM0 => "xmm0",
             Reg::XMM1 => "xmm1",
+            Reg::CR0 => "cr0",
+            Reg::CR2 => "cr2",
+            Reg::CR3 => "cr3",
+            Reg::CR4 => "cr4",
+            Reg::DR0 => "dr0",
+            Reg::DR1 => "dr1",
+            Reg::DR2 => "dr2",
+            Reg::DR3 => "dr3",
+            Reg::DR6 => "dr6",
+            Reg::DR7 => "dr7",
+            Reg::CS => "cs",
+            Reg::DS => "ds",
+            Reg::ES => "es",
+            Reg::FS => "fs",
+            Reg::GS => "gs",
+            Reg::SS => "ss",
         };
         write!(f, "{}", name)
     }
@@ -394,6 +511,60 @@ pub enum ADeadOp {
     /// El encoder calcula el offset RIP-relative automáticamente.
     /// iat_rva: RVA del slot IAT (ej: 0x2040 para printf, 0x2048 para scanf)
     CallIAT { iat_rva: u32 },
+
+    // ================================================================
+    // OS-Level / Privileged Instructions (ADead-BIB v3.1-OS)
+    // ================================================================
+    /// CLI — Clear Interrupt Flag (disable interrupts)
+    Cli,
+
+    /// STI — Set Interrupt Flag (enable interrupts)
+    Sti,
+
+    /// HLT — Halt CPU (wait for interrupt)
+    Hlt,
+
+    /// IRETQ — Return from interrupt (64-bit)
+    Iret,
+
+    /// INT n — Software interrupt (e.g., INT 0x10 for BIOS, INT 0x80 for Linux syscall)
+    Int { vector: u8 },
+
+    /// LGDT [mem] — Load Global Descriptor Table register
+    Lgdt { src: Operand },
+
+    /// LIDT [mem] — Load Interrupt Descriptor Table register
+    Lidt { src: Operand },
+
+    /// MOV CRn, reg — Write to control register
+    MovToCr { cr: u8, src: Reg },
+
+    /// MOV reg, CRn — Read from control register
+    MovFromCr { cr: u8, dst: Reg },
+
+    /// CPUID — CPU identification
+    Cpuid,
+
+    /// RDMSR — Read Model Specific Register (ECX=index, result in EDX:EAX)
+    Rdmsr,
+
+    /// WRMSR — Write Model Specific Register (ECX=index, value in EDX:EAX)
+    Wrmsr,
+
+    /// INVLPG [addr] — Invalidate TLB entry for page containing addr
+    Invlpg { addr: Operand },
+
+    /// IN AL, imm8 / IN AL, DX — Read byte from I/O port
+    InByte { port: Operand },
+
+    /// OUT imm8, AL / OUT DX, AL — Write byte to I/O port
+    OutByte { port: Operand, src: Operand },
+
+    /// SHR dst, amount — Shift right logical
+    Shr { dst: Reg, amount: u8 },
+
+    /// Far JMP — Jump with segment selector change (for mode switching)
+    FarJmp { selector: u16, offset: u32 },
 }
 
 impl std::fmt::Display for ADeadOp {
@@ -439,6 +610,26 @@ impl std::fmt::Display for ADeadOp {
                 Ok(())
             }
             ADeadOp::CallIAT { iat_rva } => write!(f, "call [iat:0x{:04X}]", iat_rva),
+            // OS-Level instructions
+            ADeadOp::Cli => write!(f, "cli"),
+            ADeadOp::Sti => write!(f, "sti"),
+            ADeadOp::Hlt => write!(f, "hlt"),
+            ADeadOp::Iret => write!(f, "iretq"),
+            ADeadOp::Int { vector } => write!(f, "int 0x{:02X}", vector),
+            ADeadOp::Lgdt { src } => write!(f, "lgdt {}", src),
+            ADeadOp::Lidt { src } => write!(f, "lidt {}", src),
+            ADeadOp::MovToCr { cr, src } => write!(f, "mov cr{}, {}", cr, src),
+            ADeadOp::MovFromCr { cr, dst } => write!(f, "mov {}, cr{}", dst, cr),
+            ADeadOp::Cpuid => write!(f, "cpuid"),
+            ADeadOp::Rdmsr => write!(f, "rdmsr"),
+            ADeadOp::Wrmsr => write!(f, "wrmsr"),
+            ADeadOp::Invlpg { addr } => write!(f, "invlpg {}", addr),
+            ADeadOp::InByte { port } => write!(f, "in al, {}", port),
+            ADeadOp::OutByte { port, src } => write!(f, "out {}, {}", port, src),
+            ADeadOp::Shr { dst, amount } => write!(f, "shr {}, {}", dst, amount),
+            ADeadOp::FarJmp { selector, offset } => {
+                write!(f, "jmp 0x{:04X}:0x{:08X}", selector, offset)
+            }
         }
     }
 }

@@ -13,17 +13,17 @@ pub enum Type {
     Double,
     Bool,
     Void,
-    
+
     // Punteros
-    Pointer(Box<Type>),           // int* -> Pointer(Int)
-    Reference(Box<Type>),         // int& -> Reference(Int)
-    
+    Pointer(Box<Type>),   // int* -> Pointer(Int)
+    Reference(Box<Type>), // int& -> Reference(Int)
+
     // Arrays
-    Array(Box<Type>, Option<usize>),  // int[10] -> Array(Int, Some(10))
-    
+    Array(Box<Type>, Option<usize>), // int[10] -> Array(Int, Some(10))
+
     // Tipos definidos por usuario
-    Named(String),                // struct/class name
-    
+    Named(String), // struct/class name
+
     // Auto (inferencia)
     Auto,
 }
@@ -43,15 +43,15 @@ impl Type {
             other => Type::Named(other.to_string()),
         }
     }
-    
+
     pub fn pointer_to(self) -> Self {
         Type::Pointer(Box::new(self))
     }
-    
+
     pub fn reference_to(self) -> Self {
         Type::Reference(Box::new(self))
     }
-    
+
     pub fn array_of(self, size: Option<usize>) -> Self {
         Type::Array(Box::new(self), size)
     }
@@ -111,7 +111,7 @@ pub enum Expr {
     This,
     Super,
     // Input del usuario
-    Input,  // input() - lee un número del teclado
+    Input, // input() - lee un número del teclado
     // Funcional
     Lambda {
         params: Vec<String>,
@@ -123,78 +123,98 @@ pub enum Expr {
         else_expr: Box<Expr>,
     },
     // Built-in functions v1.3.0
-    Len(Box<Expr>),           // len(expr) - longitud de array/string
-    Push {                     // arr.push(val) o push(arr, val)
+    Len(Box<Expr>), // len(expr) - longitud de array/string
+    Push {
+        // arr.push(val) o push(arr, val)
         array: Box<Expr>,
         value: Box<Expr>,
     },
-    Pop(Box<Expr>),           // arr.pop() o pop(arr)
-    IntCast(Box<Expr>),       // int(expr) - convertir a entero
-    FloatCast(Box<Expr>),     // float(expr) - convertir a flotante
-    StrCast(Box<Expr>),       // str(expr) - convertir a string
-    BoolCast(Box<Expr>),      // bool(expr) - convertir a booleano
+    Pop(Box<Expr>),       // arr.pop() o pop(arr)
+    IntCast(Box<Expr>),   // int(expr) - convertir a entero
+    FloatCast(Box<Expr>), // float(expr) - convertir a flotante
+    StrCast(Box<Expr>),   // str(expr) - convertir a string
+    BoolCast(Box<Expr>),  // bool(expr) - convertir a booleano
     // String operations
-    StringConcat {             // "a" + "b"
+    StringConcat {
+        // "a" + "b"
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    
+
     // ========== PUNTEROS Y MEMORIA (v3.2) ==========
-    
     /// Dereference: *ptr
     Deref(Box<Expr>),
-    
+
     /// Address-of: &var
     AddressOf(Box<Expr>),
-    
+
     /// Arrow access: ptr->field
     ArrowAccess {
         pointer: Box<Expr>,
         field: String,
     },
-    
+
     /// Sizeof: sizeof(type) o sizeof(expr)
     SizeOf(Box<SizeOfArg>),
-    
+
     /// Malloc: malloc(size)
     Malloc(Box<Expr>),
-    
+
     /// Realloc: realloc(ptr, new_size)
     Realloc {
         ptr: Box<Expr>,
         new_size: Box<Expr>,
     },
-    
+
     /// Cast: (int*)ptr
     Cast {
         target_type: Type,
         expr: Box<Expr>,
     },
-    
+
     /// Nullptr literal
     Nullptr,
-    
+
     /// Pre-increment: ++x
     PreIncrement(Box<Expr>),
-    
+
     /// Pre-decrement: --x
     PreDecrement(Box<Expr>),
-    
+
     /// Post-increment: x++
     PostIncrement(Box<Expr>),
-    
+
     /// Post-decrement: x--
     PostDecrement(Box<Expr>),
-    
+
     // Bitwise operations
     BitwiseOp {
         op: BitwiseOp,
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    
+
     /// Bitwise NOT: ~x
     BitwiseNot(Box<Expr>),
+
+    // ========== OS-LEVEL / MACHINE CODE (v3.1-OS) ==========
+    /// Read from CPU register: reg(rax), reg(cr0), etc.
+    RegRead {
+        reg_name: String,
+    },
+
+    /// Read from memory address: read_mem(addr)
+    MemRead {
+        addr: Box<Expr>,
+    },
+
+    /// Read from I/O port: port_in(port_num)
+    PortIn {
+        port: Box<Expr>,
+    },
+
+    /// CPUID result (returns conceptual value)
+    CpuidExpr,
 }
 
 /// Argumento de sizeof
@@ -233,18 +253,18 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CmpOp {
-    Eq,      // ==
-    Ne,      // !=
-    Lt,      // <
-    Le,      // <=
-    Gt,      // >
-    Ge,      // >=
+    Eq, // ==
+    Ne, // !=
+    Lt, // <
+    Le, // <=
+    Gt, // >
+    Ge, // >=
 }
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Print(Expr),
-    Println(Expr),  // println con \n automático
+    Println(Expr), // println con \n automático
     PrintNum(Expr),
     Assign {
         name: String,
@@ -289,64 +309,123 @@ pub enum Stmt {
         message: Option<Expr>,
     },
     Expr(Expr),
-    
+
     // ========== PUNTEROS Y MEMORIA (v3.2) ==========
-    
     /// Declaración con tipo: int x = 5, int* ptr = &x
     VarDecl {
         var_type: Type,
         name: String,
         value: Option<Expr>,
     },
-    
+
     /// Asignación a puntero dereferenciado: *ptr = value
     DerefAssign {
         pointer: Expr,
         value: Expr,
     },
-    
+
     /// Asignación via arrow: ptr->field = value
     ArrowAssign {
         pointer: Expr,
         field: String,
         value: Expr,
     },
-    
+
     /// Free memory: free(ptr)
     Free(Expr),
-    
+
     /// Delete (C++ style): delete ptr, delete[] arr
     Delete {
         expr: Expr,
         is_array: bool,
     },
-    
+
     /// Do-While loop
     DoWhile {
         body: Vec<Stmt>,
         condition: Expr,
     },
-    
+
     /// Switch statement
     Switch {
         expr: Expr,
         cases: Vec<SwitchCase>,
         default: Option<Vec<Stmt>>,
     },
-    
+
     /// Compound assignment: x += 5, x -= 3, etc.
     CompoundAssign {
         name: String,
         op: CompoundOp,
         value: Expr,
     },
-    
+
     /// Increment/Decrement statement: x++, ++x, x--, --x
     Increment {
         name: String,
         is_pre: bool,
         is_increment: bool,
     },
+
+    // ========== OS-LEVEL / MACHINE CODE (v3.1-OS) ==========
+    /// CLI — Disable interrupts
+    Cli,
+
+    /// STI — Enable interrupts
+    Sti,
+
+    /// HLT — Halt CPU
+    Hlt,
+
+    /// IRET — Return from interrupt handler
+    Iret,
+
+    /// INT n — Software interrupt call
+    IntCall {
+        vector: u8,
+    },
+
+    /// reg rax = value — Write to CPU register
+    RegAssign {
+        reg_name: String,
+        value: Expr,
+    },
+
+    /// write_mem(addr, value) — Write to memory address
+    MemWrite {
+        addr: Expr,
+        value: Expr,
+    },
+
+    /// port_out(port, value) — Write byte to I/O port
+    PortOut {
+        port: Expr,
+        value: Expr,
+    },
+
+    /// raw { 0xEB, 0xFE } — Inline raw machine code bytes
+    RawBlock {
+        bytes: Vec<u8>,
+    },
+
+    /// org 0x7C00 — Set origin address
+    OrgDirective {
+        address: u64,
+    },
+
+    /// align 16 — Alignment directive
+    AlignDirective {
+        alignment: u64,
+    },
+
+    /// far_jump(selector, offset) — Far jump for mode switching
+    FarJump {
+        selector: u16,
+        offset: u32,
+    },
+
+    /// cpuid — Execute CPUID instruction
+    Cpuid,
 }
 
 /// Case de switch
@@ -360,25 +439,25 @@ pub struct SwitchCase {
 /// Operadores de asignación compuesta
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CompoundOp {
-    AddAssign,    // +=
-    SubAssign,    // -=
-    MulAssign,    // *=
-    DivAssign,    // /=
-    ModAssign,    // %=
-    AndAssign,    // &=
-    OrAssign,     // |=
-    XorAssign,    // ^=
-    ShlAssign,    // <<=
-    ShrAssign,    // >>=
+    AddAssign, // +=
+    SubAssign, // -=
+    MulAssign, // *=
+    DivAssign, // /=
+    ModAssign, // %=
+    AndAssign, // &=
+    OrAssign,  // |=
+    XorAssign, // ^=
+    ShlAssign, // <<=
+    ShrAssign, // >>=
 }
 
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
     pub type_name: Option<String>,
-    pub param_type: Option<Type>,  // Tipo completo (v3.2)
-    pub is_pointer: bool,          // Es puntero?
-    pub is_reference: bool,        // Es referencia?
+    pub param_type: Option<Type>,    // Tipo completo (v3.2)
+    pub is_pointer: bool,            // Es puntero?
+    pub is_reference: bool,          // Es referencia?
     pub default_value: Option<Expr>, // Valor por defecto
 }
 
@@ -393,7 +472,7 @@ impl Param {
             default_value: None,
         }
     }
-    
+
     pub fn with_type(name: String, type_name: String) -> Self {
         Self {
             name,
@@ -406,12 +485,26 @@ impl Param {
     }
 }
 
+/// Atributos de función para OS-level (v3.1-OS)
+#[derive(Debug, Clone, Default)]
+pub struct FunctionAttributes {
+    /// @interrupt — auto push/pop registers + iretq
+    pub is_interrupt: bool,
+    /// @exception — like interrupt but for CPU exceptions (with error code)
+    pub is_exception: bool,
+    /// @naked — no prologue/epilogue generated
+    pub is_naked: bool,
+    /// @export("C") — C-compatible symbol name
+    pub export_name: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<String>,
     pub body: Vec<Stmt>,
+    pub attributes: FunctionAttributes,
 }
 
 // OOP: Interface/Trait
@@ -432,12 +525,12 @@ pub struct MethodSignature {
 #[derive(Debug, Clone)]
 pub struct Class {
     pub name: String,
-    pub parent: Option<String>,        // Herencia
-    pub implements: Vec<String>,       // Interfaces implementadas
+    pub parent: Option<String>,  // Herencia
+    pub implements: Vec<String>, // Interfaces implementadas
     pub fields: Vec<Field>,
     pub methods: Vec<Method>,
-    pub constructor: Option<Method>,   // __init__
-    pub destructor: Option<Method>,    // __del__
+    pub constructor: Option<Method>, // __init__
+    pub destructor: Option<Method>,  // __del__
 }
 
 #[derive(Debug, Clone)]
@@ -453,9 +546,9 @@ pub struct Method {
     pub params: Vec<Param>,
     pub return_type: Option<String>,
     pub body: Vec<Stmt>,
-    pub is_virtual: bool,              // Para polimorfismo
-    pub is_override: bool,             // Override de método padre
-    pub is_static: bool,               // Método estático
+    pub is_virtual: bool,  // Para polimorfismo
+    pub is_override: bool, // Override de método padre
+    pub is_static: bool,   // Método estático
 }
 
 // Rust-style struct
@@ -463,6 +556,8 @@ pub struct Method {
 pub struct Struct {
     pub name: String,
     pub fields: Vec<StructField>,
+    /// @packed — no padding, exact memory layout (for hardware structs)
+    pub is_packed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -475,7 +570,7 @@ pub struct StructField {
 #[derive(Debug, Clone)]
 pub struct Impl {
     pub struct_name: String,
-    pub trait_name: Option<String>,  // Some("TraitName") for `impl Trait for Struct`
+    pub trait_name: Option<String>, // Some("TraitName") for `impl Trait for Struct`
     pub methods: Vec<Function>,
 }
 
@@ -491,31 +586,42 @@ pub struct TraitMethod {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<String>,
-    pub default_body: Option<Vec<Stmt>>,  // Default implementation (optional)
+    pub default_body: Option<Vec<Stmt>>, // Default implementation (optional)
 }
 
 // Sistema de imports
 #[derive(Debug, Clone)]
 pub struct Import {
     pub module: String,
-    pub items: Vec<String>,      // from module import item1, item2
-    pub alias: Option<String>,   // import module as alias
+    pub items: Vec<String>,    // from module import item1, item2
+    pub alias: Option<String>, // import module as alias
 }
 
 /// Atributos de programa (#![...])
 #[derive(Debug, Clone, Default)]
 pub struct ProgramAttributes {
-    pub mode: OutputMode,           // #![mode(raw|pe|elf)]
-    pub base_address: Option<u64>,  // #![base(0x1000)]
-    pub clean_level: CleanLevel,    // #![clean(normal|aggressive|none)]
+    pub mode: OutputMode,          // #![mode(raw|pe|elf)]
+    pub base_address: Option<u64>, // #![base(0x1000)]
+    pub clean_level: CleanLevel,   // #![clean(normal|aggressive|none)]
+    pub cpu_mode: CpuModeAttr,     // #![cpu(real16|protected32|long64)]
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum OutputMode {
     #[default]
-    PE,     // Windows PE (default)
-    ELF,    // Linux ELF
-    Raw,    // Bytes puros sin headers
+    PE, // Windows PE (default)
+    ELF,  // Linux ELF
+    Raw,  // Bytes puros sin headers
+    Flat, // Flat binary (boot sectors, bare-metal)
+}
+
+/// CPU mode attribute for OS-level code generation
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum CpuModeAttr {
+    Real16,      // 16-bit real mode (boot sector)
+    Protected32, // 32-bit protected mode
+    #[default]
+    Long64,      // 64-bit long mode (default)
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -528,13 +634,13 @@ pub enum CleanLevel {
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub attributes: ProgramAttributes,  // Atributos del programa
+    pub attributes: ProgramAttributes, // Atributos del programa
     pub imports: Vec<Import>,
     pub interfaces: Vec<Interface>,
-    pub traits: Vec<Trait>,         // Rust-style traits (v1.6.0)
+    pub traits: Vec<Trait>, // Rust-style traits (v1.6.0)
     pub classes: Vec<Class>,
-    pub structs: Vec<Struct>,       // Rust-style structs
-    pub impls: Vec<Impl>,           // Rust-style impl blocks
+    pub structs: Vec<Struct>, // Rust-style structs
+    pub impls: Vec<Impl>,     // Rust-style impl blocks
     pub functions: Vec<Function>,
     pub statements: Vec<Stmt>, // Top-level statements (scripts)
 }
@@ -553,31 +659,31 @@ impl Program {
             statements: Vec::new(),
         }
     }
-    
+
     pub fn add_trait(&mut self, t: Trait) {
         self.traits.push(t);
     }
-    
+
     pub fn add_struct(&mut self, s: Struct) {
         self.structs.push(s);
     }
-    
+
     pub fn add_impl(&mut self, i: Impl) {
         self.impls.push(i);
     }
-    
+
     pub fn add_import(&mut self, import: Import) {
         self.imports.push(import);
     }
-    
+
     pub fn add_function(&mut self, func: Function) {
         self.functions.push(func);
     }
-    
+
     pub fn add_class(&mut self, class: Class) {
         self.classes.push(class);
     }
-    
+
     pub fn add_interface(&mut self, iface: Interface) {
         self.interfaces.push(iface);
     }
@@ -592,4 +698,3 @@ impl Default for Program {
         Self::new()
     }
 }
-

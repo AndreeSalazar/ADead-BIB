@@ -1,5 +1,5 @@
+use crate::frontend::ast::{BinOp, CmpOp, Expr, Stmt, UnaryOp};
 use std::collections::HashMap;
-use crate::frontend::ast::{Stmt, Expr, BinOp, UnaryOp, CmpOp};
 
 pub struct CodeGenerator {
     code: Vec<u8>,
@@ -62,7 +62,11 @@ impl CodeGenerator {
                 self.code.push(0x85);
                 self.emit_u32(offset as u32); // Use u32 for offset
             }
-            Stmt::If { condition: _condition, then_body: _then_body, else_body: _else_body } => {
+            Stmt::If {
+                condition: _condition,
+                then_body: _then_body,
+                else_body: _else_body,
+            } => {
                 // TODO: Implementar control flow
                 eprintln!("⚠️  If statement not implemented in legacy codegen");
             }
@@ -70,7 +74,10 @@ impl CodeGenerator {
                 self.emit_expression(expr);
             }
             _ => {
-                eprintln!("⚠️  Statement type not implemented in legacy codegen: {:?}", stmt);
+                eprintln!(
+                    "⚠️  Statement type not implemented in legacy codegen: {:?}",
+                    stmt
+                );
             }
         }
     }
@@ -105,8 +112,8 @@ impl CodeGenerator {
             Expr::String(s) => {
                 let string_idx = self.add_string(s.clone());
                 let string_addr = self.string_addresses[string_idx];
-                self.code.push(0x48); 
-                self.code.push(0xB8); 
+                self.code.push(0x48);
+                self.code.push(0xB8);
                 self.emit_u64(string_addr);
             }
             Expr::Bool(b) => {
@@ -145,7 +152,11 @@ impl CodeGenerator {
             Expr::New { class_name, args } => {
                 self.emit_object_creation(class_name, args);
             }
-            Expr::MethodCall { object, method, args } => {
+            Expr::MethodCall {
+                object,
+                method,
+                args,
+            } => {
                 self.emit_method_call(object, method, args);
             }
             Expr::FieldAccess { object, field } => {
@@ -162,10 +173,14 @@ impl CodeGenerator {
                 self.emit_bytes(&[0x31, 0xC0]); // xor eax, eax
             }
             Expr::Lambda { params, body } => {
-                 self.emit_lambda(params, body);
+                self.emit_lambda(params, body);
             }
-            Expr::Ternary { condition, then_expr, else_expr } => {
-                 self.emit_ternary(condition, then_expr, else_expr);
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
+                self.emit_ternary(condition, then_expr, else_expr);
             }
             // Built-in functions v1.3.0
             Expr::Len(expr) => {
@@ -207,7 +222,7 @@ impl CodeGenerator {
                 self.emit_expression(right);
                 self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
             }
-            
+
             // ========== PUNTEROS Y MEMORIA (v3.2) ==========
             Expr::Deref(ptr) => {
                 self.emit_expression(ptr);
@@ -241,7 +256,10 @@ impl CodeGenerator {
                 self.emit_expression(new_size);
                 self.emit_bytes(&[0x48, 0x31, 0xC0]); // placeholder
             }
-            Expr::Cast { target_type: _, expr } => {
+            Expr::Cast {
+                target_type: _,
+                expr,
+            } => {
                 self.emit_expression(expr);
                 // Cast es no-op en nivel de bytes
             }
@@ -286,9 +304,14 @@ impl CodeGenerator {
                 self.emit_expression(expr);
                 self.emit_bytes(&[0x48, 0xF7, 0xD0]); // not rax
             }
+            // OS-Level expressions (v3.1-OS) — stubs in legacy codegen
+            Expr::RegRead { .. } | Expr::MemRead { .. } | Expr::PortIn { .. } | Expr::CpuidExpr => {
+                eprintln!("⚠️  OS-level expression not supported in legacy codegen");
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
         }
     }
-    
+
     fn emit_variable_address(&mut self, name: &str) {
         // Cargar dirección de variable en rax
         // Por ahora, placeholder
@@ -303,14 +326,15 @@ impl CodeGenerator {
         }
         let idx = self.string_addresses.len();
         self.strings.insert(s.clone(), idx);
-        
+
         // Calcular dirección basada en data actual
         let offset = self.data.len() as u64;
-        self.string_addresses.push(self.base_address + 0x2000 + offset); // 0x2000 es offset arbitrario de data section
-        
+        self.string_addresses
+            .push(self.base_address + 0x2000 + offset); // 0x2000 es offset arbitrario de data section
+
         self.data.extend_from_slice(s.as_bytes());
         self.data.push(0); // Null terminator
-        
+
         idx
     }
 
@@ -330,22 +354,22 @@ impl CodeGenerator {
     fn emit_u64(&mut self, value: u64) {
         self.code.extend_from_slice(&value.to_le_bytes());
     }
-    
+
     fn emit_bytes(&mut self, bytes: &[u8]) {
         self.code.extend_from_slice(bytes);
     }
 
     // --- Stubs for missing methods ---
-    
+
     fn emit_variable_load(&mut self, name: &str) {
         // Implementación básica o stub
-         eprintln!("⚠️  emit_variable_load not fully implemented in legacy codegen");
-         let offset = self.get_variable_offset(name);
-         // mov rax, [rbp - offset]
-         self.code.push(0x48);
-         self.code.push(0x8B);
-         self.code.push(0x85);
-         self.emit_u32(-(offset as i32) as u32);
+        eprintln!("⚠️  emit_variable_load not fully implemented in legacy codegen");
+        let offset = self.get_variable_offset(name);
+        // mov rax, [rbp - offset]
+        self.code.push(0x48);
+        self.code.push(0x8B);
+        self.code.push(0x85);
+        self.emit_u32(-(offset as i32) as u32);
     }
 
     fn emit_binary_op(&mut self, _op: &BinOp, _left: &Expr, _right: &Expr) {
@@ -363,35 +387,35 @@ impl CodeGenerator {
     fn emit_function_call(&mut self, _name: &str, _args: &[Expr]) {
         eprintln!("⚠️  emit_function_call stub");
     }
-    
+
     fn emit_array_creation(&mut self, _elements: &[Expr]) {
         eprintln!("⚠️  emit_array_creation stub");
     }
-    
+
     fn emit_index_access(&mut self, _object: &Expr, _index: &Expr) {
         eprintln!("⚠️  emit_index_access stub");
     }
-    
+
     fn emit_slice(&mut self, _object: &Expr, _start: &Option<Box<Expr>>, _end: &Option<Box<Expr>>) {
         eprintln!("⚠️  emit_slice stub");
     }
-    
+
     fn emit_object_creation(&mut self, _class_name: &str, _args: &[Expr]) {
         eprintln!("⚠️  emit_object_creation stub");
     }
-    
+
     fn emit_method_call(&mut self, _object: &Expr, _method: &str, _args: &[Expr]) {
         eprintln!("⚠️  emit_method_call stub");
     }
-    
+
     fn emit_field_access(&mut self, _object: &Expr, _field: &str) {
         eprintln!("⚠️  emit_field_access stub");
     }
-    
+
     fn emit_lambda(&mut self, _params: &[String], _body: &Box<Expr>) {
         eprintln!("⚠️  emit_lambda stub");
     }
-    
+
     fn emit_ternary(&mut self, _condition: &Expr, _then_expr: &Expr, _else_expr: &Expr) {
         eprintln!("⚠️  emit_ternary stub");
     }

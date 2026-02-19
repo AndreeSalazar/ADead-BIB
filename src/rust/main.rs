@@ -2,31 +2,31 @@
 // Interfaz de línea de comandos robusta
 // Soporta: build, run, check
 
-use std::env;
-use std::process::Command;
-use std::path::Path;
-use std::fs;
-use adead_bib::builder::{Builder, BuildOptions};
-use adead_bib::isa::isa_compiler::Target;
-use adead_bib::backend::pe_tiny;
-use adead_bib::backend::microvm::{self, MicroVM, MicroOp, compile_microvm};
-use adead_bib::backend::gpu::vulkan::VulkanBackend;
 use adead_bib::backend::gpu::gpu_detect::GPUFeatures;
+use adead_bib::backend::gpu::vulkan::VulkanBackend;
 use adead_bib::backend::gpu::vulkan_runtime;
-use adead_bib::frontend::parser::Parser;
+use adead_bib::backend::microvm::{self, compile_microvm, MicroOp, MicroVM};
+use adead_bib::backend::pe_tiny;
+use adead_bib::builder::{BuildOptions, Builder};
 use adead_bib::frontend::lexer::Lexer;
+use adead_bib::frontend::parser::Parser;
 use adead_bib::frontend::type_checker::TypeChecker;
+use adead_bib::isa::isa_compiler::Target;
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 {
         print_usage(&args[0]);
         std::process::exit(1);
     }
-    
+
     let command = &args[1];
-    
+
     match command.as_str() {
         "build" => {
             if args.len() < 3 {
@@ -36,11 +36,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let input_file = &args[2];
             let output_file = get_output_filename(input_file, &args);
-            
+
             // Check for optimization flags
             let size_opt = args.iter().any(|a| a == "--size" || a == "-s");
             let ultra_opt = args.iter().any(|a| a == "--ultra" || a == "-u");
-            
+
             let opt_level = if ultra_opt {
                 adead_bib::optimizer::OptLevel::Ultra
             } else if size_opt {
@@ -48,12 +48,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 adead_bib::optimizer::OptLevel::Basic
             };
-            
+
             println!("🔨 Building {}...", input_file);
             if size_opt || ultra_opt {
                 println!("   Optimization: {:?}", opt_level);
             }
-            
+
             let options = BuildOptions {
                 target: determine_target(),
                 optimize: true,
@@ -62,10 +62,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 opt_level,
                 size_optimize: size_opt || ultra_opt,
             };
-            
+
             Builder::build_file(input_file, options)?;
             println!("✅ Build complete: {}", output_file);
-        },
+        }
         "opt" | "optimize" => {
             // Compilación con optimización máxima de tamaño
             if args.len() < 3 {
@@ -75,10 +75,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let input_file = &args[2];
             let output_file = get_output_filename(input_file, &args);
-            
+
             println!("🔧 Building with ULTRA optimization: {}...", input_file);
             println!("   Target: Smallest possible binary");
-            
+
             let options = BuildOptions {
                 target: determine_target(),
                 optimize: true,
@@ -87,16 +87,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 opt_level: adead_bib::optimizer::OptLevel::Ultra,
                 size_optimize: true,
             };
-            
+
             Builder::build_file(input_file, options)?;
-            
+
             // Show file size
             if let Ok(metadata) = std::fs::metadata(&output_file) {
-                println!("✅ Optimized build complete: {} ({} bytes)", output_file, metadata.len());
+                println!(
+                    "✅ Optimized build complete: {} ({} bytes)",
+                    output_file,
+                    metadata.len()
+                );
             } else {
                 println!("✅ Optimized build complete: {}", output_file);
             }
-        },
+        }
         "run" => {
             if args.len() < 3 {
                 eprintln!("❌ Error: Missing input file");
@@ -104,8 +108,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
             let input_file = &args[2];
-            let output_file = format!("{}.exe", Path::new(input_file).file_stem().unwrap().to_str().unwrap());
-            
+            let output_file = format!(
+                "{}.exe",
+                Path::new(input_file).file_stem().unwrap().to_str().unwrap()
+            );
+
             // 1. Build
             let options = BuildOptions {
                 target: determine_target(),
@@ -115,12 +122,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 opt_level: adead_bib::optimizer::OptLevel::Basic,
                 size_optimize: false,
             };
-            
+
             if let Err(e) = Builder::build_file(input_file, options) {
                 eprintln!("❌ Build failed: {}", e);
                 std::process::exit(1);
             }
-            
+
             // 2. Run
             println!("🚀 Running {}...\n", input_file);
             // Usar ruta relativa con ./ para Windows
@@ -130,11 +137,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 format!("./{}", output_file)
             };
             let status = Command::new(&exe_path).status()?;
-            
+
             if !status.success() {
                 eprintln!("\n⚠️  Program exited with status: {}", status);
             }
-        },
+        }
         "check" => {
             if args.len() < 3 {
                 eprintln!("❌ Error: Missing input file");
@@ -143,21 +150,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let input_file = &args[2];
             let json_output = args.iter().any(|a| a == "--json" || a == "-j");
-            
+
             if json_output {
                 // Salida JSON para extensión VS Code
                 match check_syntax_json(input_file) {
                     Ok(json) => println!("{}", json),
                     Err(e) => {
-                        let error_json = format!(r#"{{"file":"{}","status":"error","errors":[{{"line":1,"column":1,"message":"{}"}}],"warnings":[]}}"#, 
-                            input_file, e.to_string().replace('"', "\\\""));
+                        let error_json = format!(
+                            r#"{{"file":"{}","status":"error","errors":[{{"line":1,"column":1,"message":"{}"}}],"warnings":[]}}"#,
+                            input_file,
+                            e.to_string().replace('"', "\\\"")
+                        );
                         println!("{}", error_json);
                         std::process::exit(1);
                     }
                 }
             } else {
                 println!("🔍 Checking syntax of {}...", input_file);
-                
+
                 match check_syntax(input_file) {
                     Ok(()) => {
                         println!("✅ Syntax check passed!");
@@ -168,7 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        },
+        }
         "tiny" => {
             // Genera PE ultra-compacto (< 500 bytes)
             if args.len() < 3 {
@@ -178,26 +188,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let input_file = &args[2];
             let output_file = get_output_filename(input_file, &args);
-            
+
             println!("🔬 Building TINY PE from {}...", input_file);
             println!("   Target: Ultra-compact binary (< 500 bytes)");
-            
+
             // Leer y compilar
             let source = fs::read_to_string(input_file)?;
             let program = Parser::parse_program(&source)?;
-            
+
             // Generar código mínimo via ISA Compiler
             let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(Target::Raw);
             let (opcodes, _data) = compiler.compile(&program);
-            
+
             // Si el código es muy grande, usar exit simple
             let final_opcodes = if opcodes.len() > 200 {
-                println!("   ⚠️  Code too large ({}b), using minimal exit", opcodes.len());
+                println!(
+                    "   ⚠️  Code too large ({}b), using minimal exit",
+                    opcodes.len()
+                );
                 pe_tiny::generate_exit_opcodes(0)
             } else {
                 opcodes
             };
-            
+
             // Generar PE tiny
             match pe_tiny::generate_pe_tiny(&final_opcodes, &output_file) {
                 Ok(size) => {
@@ -209,7 +222,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
-        },
+        }
         "nano" => {
             // Genera PE nano (el más pequeño posible)
             let output_file = if args.len() >= 3 {
@@ -217,16 +230,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 "nano.exe".to_string()
             };
-            
+
             let exit_code: u8 = if args.len() >= 4 {
                 args[3].parse().unwrap_or(0)
             } else {
                 0
             };
-            
+
             println!("🔬 Building NANO PE (x64)...");
             println!("   Target: Smallest valid Windows x64 executable");
-            
+
             match pe_tiny::generate_pe_nano(exit_code, &output_file) {
                 Ok(size) => {
                     println!("✅ Nano build complete: {} ({} bytes)", output_file, size);
@@ -237,7 +250,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
-        },
+        }
         "micro" => {
             // Genera PE32 micro (< 256 bytes)
             let output_file = if args.len() >= 3 {
@@ -245,16 +258,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 "micro.exe".to_string()
             };
-            
+
             let exit_code: u8 = if args.len() >= 4 {
                 args[3].parse().unwrap_or(0)
             } else {
                 0
             };
-            
+
             println!("🔬 Building MICRO PE (x86 32-bit)...");
             println!("   Target: Sub-256 byte Windows executable");
-            
+
             match pe_tiny::generate_pe32_micro(exit_code, &output_file) {
                 Ok(size) => {
                     println!("✅ Micro build complete: {} ({} bytes)", output_file, size);
@@ -269,36 +282,95 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
-        },
+        }
         "flat" => {
-            // Genera flat binary (solo código)
-            let output_file = if args.len() >= 3 {
-                args[2].clone()
-            } else {
-                "flat.bin".to_string()
-            };
-            
-            let exit_code: u8 = if args.len() >= 4 {
-                args[3].parse().unwrap_or(0)
-            } else {
-                0
-            };
-            
-            println!("🔬 Building FLAT binary...");
-            println!("   Target: Pure code, no headers");
-            
-            let opcodes = pe_tiny::generate_exit_opcodes(exit_code as u32);
-            match pe_tiny::generate_flat_binary(&opcodes, &output_file) {
-                Ok(size) => {
-                    println!("✅ Flat build complete: {} ({} bytes)", output_file, size);
-                    println!("   💎 Pure machine code - {} bytes!", size);
-                }
-                Err(e) => {
-                    eprintln!("❌ Flat build failed: {}", e);
-                    std::process::exit(1);
-                }
+            // Genera flat binary desde código ADead-BIB (v3.1-OS)
+            if args.len() < 3 {
+                eprintln!("❌ Error: Missing input file");
+                eprintln!("   Uso: adB flat <archivo.adB> [-o output.bin]");
+                std::process::exit(1);
             }
-        },
+            let input_file = &args[2];
+            let output_file = if let Some(pos) = args.iter().position(|a| a == "-o") {
+                args.get(pos + 1)
+                    .cloned()
+                    .unwrap_or_else(|| "flat.bin".to_string())
+            } else {
+                Path::new(input_file)
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+                    + ".bin"
+            };
+
+            println!("🔧 Building FLAT binary from {}...", input_file);
+            println!("   Target: Pure machine code, no headers");
+
+            // Leer y compilar fuente ADead-BIB
+            let source = fs::read_to_string(input_file)?;
+            let program = Parser::parse_program(&source)?;
+
+            // Generar código via ISA Compiler
+            let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(Target::Raw);
+            let (opcodes, data) = compiler.compile(&program);
+
+            // Usar FlatBinaryGenerator
+            let mut gen = adead_bib::backend::cpu::flat_binary::FlatBinaryGenerator::new(0x0000);
+            let binary = gen.generate(&opcodes, &data);
+
+            fs::write(&output_file, &binary)?;
+            println!(
+                "✅ Flat build complete: {} ({} bytes)",
+                output_file,
+                binary.len()
+            );
+            println!("   💎 Pure machine code — zero headers!");
+        }
+        "boot" => {
+            // Genera boot sector (512 bytes con firma 0x55AA) desde ADead-BIB (v3.1-OS)
+            if args.len() < 3 {
+                eprintln!("❌ Error: Missing input file");
+                eprintln!("   Uso: adB boot <archivo.adB> [-o boot.bin]");
+                std::process::exit(1);
+            }
+            let input_file = &args[2];
+            let output_file = if let Some(pos) = args.iter().position(|a| a == "-o") {
+                args.get(pos + 1)
+                    .cloned()
+                    .unwrap_or_else(|| "boot.bin".to_string())
+            } else {
+                "boot.bin".to_string()
+            };
+
+            println!("🔧 Building BOOT SECTOR from {}...", input_file);
+            println!("   Target: 512-byte boot sector (0x55AA signature)");
+            println!("   Origin: 0x7C00 (BIOS load address)");
+
+            // Leer y compilar fuente ADead-BIB
+            let source = fs::read_to_string(input_file)?;
+            let program = Parser::parse_program(&source)?;
+
+            // Generar código via ISA Compiler
+            let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(Target::Raw);
+            let (opcodes, _data) = compiler.compile(&program);
+
+            // Usar FlatBinaryGenerator para boot sector
+            let mut gen = adead_bib::backend::cpu::flat_binary::FlatBinaryGenerator::new(0x7C00);
+            let binary = gen.generate_boot_sector(&opcodes);
+
+            fs::write(&output_file, &binary)?;
+            println!(
+                "✅ Boot sector complete: {} ({} bytes)",
+                output_file,
+                binary.len()
+            );
+            println!(
+                "   🔥 Boot sector ready! Test with: qemu-system-x86_64 -drive format=raw,file={}",
+                output_file
+            );
+        }
         "vm" => {
             // MicroVM: Bytecode ultra-compacto
             let output_file = if args.len() >= 3 {
@@ -306,27 +378,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 "program.adb".to_string()
             };
-            
+
             let exit_code: u8 = if args.len() >= 4 {
                 args[3].parse().unwrap_or(0)
             } else {
                 0
             };
-            
+
             println!("🔬 Building MicroVM bytecode...");
             println!("   Target: 4-bit instructions (1 byte = 2 ops)");
-            
+
             // Generar bytecode: LOAD exit_code, EXIT
-            let bytecode = compile_microvm(&[
-                (MicroOp::Load, exit_code.min(15)),
-                (MicroOp::Exit, 0),
-            ]);
-            
+            let bytecode =
+                compile_microvm(&[(MicroOp::Load, exit_code.min(15)), (MicroOp::Exit, 0)]);
+
             match microvm::save_bytecode(&bytecode, &output_file) {
                 Ok(size) => {
                     println!("✅ MicroVM bytecode: {} ({} bytes)", output_file, size);
                     println!("   🧬 {} instructions in {} bytes", bytecode.len(), size);
-                    
+
                     // Ejecutar para verificar
                     let mut vm = MicroVM::new(&bytecode);
                     let result = vm.run();
@@ -337,7 +407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
-        },
+        }
         "bit" => {
             // 1 bit = 1 decisión
             let bit_value: bool = if args.len() >= 3 {
@@ -345,49 +415,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 false
             };
-            
+
             println!("🔬 1-BIT PROGRAM");
             println!("   The ultimate minimal computation");
             println!();
             println!("   Input bit: {}", if bit_value { "1" } else { "0" });
-            println!("   Decision:  {}", if bit_value { "YES/TRUE/ON" } else { "NO/FALSE/OFF" });
+            println!(
+                "   Decision:  {}",
+                if bit_value {
+                    "YES/TRUE/ON"
+                } else {
+                    "NO/FALSE/OFF"
+                }
+            );
             println!();
             println!("   📊 Theoretical size: 0.125 bytes (1 bit)");
             println!("   📊 Actual storage:   1 byte (8x overhead)");
             println!();
-            
+
             let program = microvm::generate_1bit_program(bit_value);
             let min_size = microvm::theoretical_minimum(1);
-            
+
             println!("   🧬 Program: {:08b} (binary)", program[0]);
             println!("   🎯 Minimum possible: {} bytes", min_size);
             println!();
             println!("   💡 With ADead runtime, this 1 bit executes as:");
-            println!("      [Runtime] + [1 bit] → exit({})", if bit_value { 1 } else { 0 });
-        },
+            println!(
+                "      [Runtime] + [1 bit] → exit({})",
+                if bit_value { 1 } else { 0 }
+            );
+        }
         "gpu" => {
             // Detectar GPU y mostrar info completa
             let gpu = GPUFeatures::detect();
-            
+
             // Mostrar resumen completo
             gpu.print_summary();
-            
+
             if gpu.available {
                 println!();
-                
+
                 // Generar shader optimizado
                 let mut backend = VulkanBackend::new();
                 let spirv = backend.generate_optimized_shader(&gpu);
-                
+
                 let output_path = if args.len() >= 3 {
                     args[2].clone()
                 } else {
                     "builds/matmul.spv".to_string()
                 };
-                
+
                 match backend.save_spirv(&spirv, &output_path) {
                     Ok(size) => {
-                        println!("✅ SPIR-V Shader generated: {} ({} bytes)", output_path, size);
+                        println!(
+                            "✅ SPIR-V Shader generated: {} ({} bytes)",
+                            output_path, size
+                        );
                         println!("   Optimized for: {}", gpu.device_name);
                     }
                     Err(e) => {
@@ -395,7 +478,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        },
+        }
         "spirv" => {
             // Generar SPIR-V para operación específica
             let op = if args.len() >= 3 { &args[2] } else { "matmul" };
@@ -404,23 +487,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 1024
             };
-            
+
             println!("🔬 SPIR-V Compute Shader Generator");
             println!("   Operation: {}", op);
             println!("   Size: {}x{}", size, size);
             println!();
-            
+
             let mut backend = VulkanBackend::new();
             let spirv = match op {
                 "matmul" => {
                     backend.set_workgroup_size(16, 16, 1);
                     backend.generate_matmul_shader(size, size, size)
                 }
-                _ => {
-                    backend.generate_matmul_shader(size, size, size)
-                }
+                _ => backend.generate_matmul_shader(size, size, size),
             };
-            
+
             let output_path = format!("builds/{}_{}.spv", op, size);
             match backend.save_spirv(&spirv, &output_path) {
                 Ok(sz) => {
@@ -432,12 +513,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("❌ Failed: {}", e);
                 }
             }
-        },
+        }
         "vulkan" | "vk" => {
             // Inicializar Vulkan runtime REAL y exprimir GPU
             println!("🔥 VULKAN RUNTIME - EXPRIMIR GPU");
             println!();
-            
+
             match unsafe { vulkan_runtime::VulkanRuntime::new() } {
                 Ok(runtime) => {
                     runtime.print_device_info();
@@ -445,36 +526,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("✅ Vulkan runtime initialized successfully!");
                     println!("   Ready to dispatch compute shaders on your GPU.");
                     println!();
-                    
+
                     // Mostrar capacidades
                     let props = &runtime.device_props;
                     println!("🎯 GPU Capabilities:");
                     println!("   Max workgroup: {:?}", props.max_compute_workgroup_size);
-                    println!("   Max invocations: {}", props.max_compute_workgroup_invocations);
-                    println!("   Shared memory: {} KB", props.max_compute_shared_memory / 1024);
+                    println!(
+                        "   Max invocations: {}",
+                        props.max_compute_workgroup_invocations
+                    );
+                    println!(
+                        "   Shared memory: {} KB",
+                        props.max_compute_shared_memory / 1024
+                    );
                 }
                 Err(e) => {
                     eprintln!("❌ Failed to initialize Vulkan: {}", e);
                     eprintln!("   Make sure Vulkan drivers are installed.");
                 }
             }
-        },
+        }
         "cuda" => {
             // Generar código CUDA desde ADead-BIB
             use adead_bib::backend::gpu::cuda;
-            
-            let op = if args.len() >= 3 { &args[2] } else { "vectoradd" };
+
+            let op = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "vectoradd"
+            };
             let size: usize = if args.len() >= 4 {
                 args[3].parse().unwrap_or(1024)
             } else {
                 1024
             };
-            
+
             println!("🔥 ADead-BIB + CUDA Code Generator");
             println!("   Operation: {}", op);
             println!("   Size: {}", size);
             println!();
-            
+
             let code = match op {
                 "matmul" => {
                     println!("   Generating MatMul kernel {}x{}...", size, size);
@@ -489,7 +580,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cuda::generate_adead_cuda_test(size)
                 }
             };
-            
+
             // Guardar en CUDA/ADead_Generated/
             let output_path = format!("CUDA/ADead_Generated/adead_{}.cu", op);
             match fs::write(&output_path, &code) {
@@ -507,22 +598,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("❌ Failed to write CUDA code: {}", e);
                 }
             }
-        },
+        }
         "unified" | "uni" => {
             // Pipeline unificado: decisión automática CPU/GPU, elimina ruido
-            use adead_bib::backend::gpu::unified_pipeline::{UnifiedPipeline, MathOperation, PipelineMode};
-            
-            let op = if args.len() >= 3 { &args[2] } else { "vectoradd" };
+            use adead_bib::backend::gpu::unified_pipeline::{
+                MathOperation, PipelineMode, UnifiedPipeline,
+            };
+
+            let op = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "vectoradd"
+            };
             let size: usize = if args.len() >= 4 {
                 args[3].parse().unwrap_or(1000000)
             } else {
                 1000000
             };
-            
+
             println!("🔥 ADead-BIB Unified Pipeline");
             println!("   Decisión automática CPU↔GPU | Elimina ruido");
             println!();
-            
+
             let mode = if args.iter().any(|a| a == "--force-gpu") {
                 PipelineMode::ForceGpu
             } else if args.iter().any(|a| a == "--cpu") {
@@ -530,9 +627,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 PipelineMode::Hybrid
             };
-            
+
             let mut pipeline = UnifiedPipeline::with_mode(mode);
-            
+
             let math_op = match op {
                 "matmul" => {
                     let n = (size as f64).sqrt() as usize;
@@ -552,22 +649,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     MathOperation::VectorAdd { size }
                 }
             };
-            
+
             let result = pipeline.compile_math_op(math_op);
-            
+
             println!();
             println!("📊 Compilation Result:");
             println!("   Target:  {:?}", result.target);
             println!("   Format:  {:?}", result.format);
             println!("   Size:    {} bytes", result.binary.len());
             println!();
-            
+
             pipeline.print_summary();
-        },
+        }
         "play" | "repl" => {
             // Modo interactivo estilo Rust Playground / Jupyter
             run_playground()?;
-        },
+        }
         "create" => {
             // adB create <nombre> - Crear nuevo proyecto (estilo Rust: cargo new)
             if args.len() < 3 {
@@ -577,7 +674,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let project_name = &args[2];
             create_new_project(project_name)?;
-        },
+        }
         "new" => {
             // Alias: adB new <nombre> = adB create <nombre>
             if args.len() < 3 {
@@ -586,24 +683,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let project_name = &args[2];
             create_new_project(project_name)?;
-        },
+        }
         "init" => {
             // adB init - Inicializar proyecto en directorio actual
             let current_dir = std::env::current_dir()?;
-            let project_name = current_dir.file_name()
+            let project_name = current_dir
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("proyecto");
             create_new_project_in_place(project_name)?;
-        },
+        }
         _ => {
             // Legacy behavior: treat first arg as input file if it's not a command
-            // Or just show usage. Let's support legacy "cargo run file.adB" style if possible, 
+            // Or just show usage. Let's support legacy "cargo run file.adB" style if possible,
             // but explicitly asking for command is cleaner.
             // Assuming default is build:
             let input_file = command;
             let output_file = get_output_filename(input_file, &args);
-            
-             let options = BuildOptions {
+
+            let options = BuildOptions {
                 target: determine_target(),
                 optimize: true,
                 output_path: output_file.clone(),
@@ -611,11 +709,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 opt_level: adead_bib::optimizer::OptLevel::Basic,
                 size_optimize: false,
             };
-            
+
             Builder::build_file(input_file, options)?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -633,17 +731,18 @@ fn get_output_filename(input: &str, args: &[String]) -> String {
     // Check if -o provided
     for i in 0..args.len() {
         if args[i] == "-o" && i + 1 < args.len() {
-            return args[i+1].clone();
+            return args[i + 1].clone();
         }
     }
-    
+
     // Default: input.exe
     Path::new(input)
         .file_stem()
         .unwrap()
         .to_str()
         .unwrap()
-        .to_string() + ".exe"
+        .to_string()
+        + ".exe"
 }
 
 fn print_usage(_program: &str) {
@@ -701,65 +800,68 @@ fn print_usage(_program: &str) {
 
 fn check_syntax(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let source = fs::read_to_string(file_path)?;
-    
+
     // 1. Lexing
     let mut lexer = Lexer::new(&source);
     let tokens = lexer.tokenize();
     println!("   📝 Tokens: {}", tokens.len());
-    
+
     // 2. Parsing
     let program = Parser::parse_program(&source)?;
     println!("   📦 Funciones: {}", program.functions.len());
     println!("   📦 Clases/Structs: {}", program.classes.len());
     println!("   📦 Statements top-level: {}", program.statements.len());
-    
+
     // 3. Type checking
     let mut type_checker = TypeChecker::new();
     let _types = type_checker.check_program(&program);
-    
+
     // 4. Validation - Scripts don't need main!
     if program.functions.is_empty() && program.statements.is_empty() {
         return Err("No code found in program".into());
     }
-    
+
     // Info about main function
     let has_main = program.functions.iter().any(|f| f.name == "main");
     if has_main {
         println!("   ✅ Función main() encontrada");
     } else if !program.statements.is_empty() {
-        println!("   ✅ Script mode: {} statements top-level", program.statements.len());
+        println!(
+            "   ✅ Script mode: {} statements top-level",
+            program.statements.len()
+        );
     }
-    
+
     Ok(())
 }
 
 /// Check syntax y devuelve JSON para VS Code Extension
 fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     let source = fs::read_to_string(file_path)?;
-    
+
     // 1. Lexing
     let mut lexer = Lexer::new(&source);
     let tokens = lexer.tokenize();
-    
+
     // 2. Parsing
     let program = Parser::parse_program(&source)?;
-    
+
     // 3. Type checking
     let mut type_checker = TypeChecker::new();
     let _types = type_checker.check_program(&program);
-    
+
     // 4. Detectar warnings y características
     let mut warnings: Vec<String> = Vec::new();
     let mut cpu_blocks = 0;
     let mut gpu_blocks = 0;
     let mut emit_calls = 0;
     let mut variables = 0;
-    
+
     // Analizar código fuente para detectar patrones
     for (line_num, line) in source.lines().enumerate() {
         let line_num = line_num + 1;
         let trimmed = line.trim();
-        
+
         // Detectar emit![]
         if trimmed.contains("emit!") || trimmed.contains("emit![") {
             emit_calls += 1;
@@ -768,7 +870,7 @@ fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Erro
                 line_num
             ));
         }
-        
+
         // Detectar cpu::
         if trimmed.contains("cpu::") {
             cpu_blocks += 1;
@@ -777,7 +879,7 @@ fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Erro
                 line_num
             ));
         }
-        
+
         // Detectar gpu::
         if trimmed.contains("gpu::") {
             gpu_blocks += 1;
@@ -786,7 +888,7 @@ fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Erro
                 line_num
             ));
         }
-        
+
         // Detectar HEX literals
         if trimmed.contains("0x") && !trimmed.starts_with("//") {
             warnings.push(format!(
@@ -794,13 +896,13 @@ fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Erro
                 line_num
             ));
         }
-        
+
         // Contar variables
         if trimmed.starts_with("let ") || trimmed.starts_with("const ") {
             variables += 1;
         }
     }
-    
+
     // Construir JSON
     let json = format!(
         r#"{{"file":"{}","status":"ok","errors":[],"warnings":[{}],"diagnostics":{{"functions":{},"variables":{},"cpu_blocks":{},"gpu_blocks":{},"emit_calls":{}}}}}"#,
@@ -812,7 +914,7 @@ fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Erro
         gpu_blocks,
         emit_calls
     );
-    
+
     Ok(json)
 }
 
@@ -820,7 +922,7 @@ fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Erro
 /// Permite escribir y ejecutar código ADead-BIB de forma interactiva
 fn run_playground() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::{self, Write};
-    
+
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║        🎮 ADead-BIB Playground v0.2.0 🎮                     ║");
     println!("║     Modo interactivo - Escribe código y presiona Enter       ║");
@@ -837,11 +939,11 @@ fn run_playground() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     println!("💡 Tip: Escribe código directamente y presiona Enter dos veces para ejecutar");
     println!();
-    
+
     let mut buffer = String::new();
     let mut line_number = 1;
     let mut variables: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    
+
     loop {
         // Prompt
         if buffer.is_empty() {
@@ -850,11 +952,11 @@ fn run_playground() -> Result<(), Box<dyn std::error::Error>> {
             print!("   ...> ");
         }
         io::stdout().flush()?;
-        
+
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input = input.trim();
-        
+
         // Comandos especiales
         if input.starts_with(':') {
             match input {
@@ -897,7 +999,8 @@ print("Hola desde el Playground!")
 let x = 42
 let y = 10
 print("Calculando...")
-"#.to_string();
+"#
+                    .to_string();
                     println!("📝 Ejemplo cargado. Usa :run para ejecutar o :ast para ver el AST");
                 }
                 ":vars" | ":v" => {
@@ -911,12 +1014,15 @@ print("Calculando...")
                     }
                 }
                 _ => {
-                    println!("❓ Comando desconocido: {}. Usa :help para ver comandos.", input);
+                    println!(
+                        "❓ Comando desconocido: {}. Usa :help para ver comandos.",
+                        input
+                    );
                 }
             }
             continue;
         }
-        
+
         // Si línea vacía y hay buffer, ejecutar
         if input.is_empty() && !buffer.is_empty() {
             execute_playground_code(&buffer, &mut variables);
@@ -924,12 +1030,12 @@ print("Calculando...")
             line_number += 1;
             continue;
         }
-        
+
         // Añadir al buffer
         if !input.is_empty() {
             buffer.push_str(input);
             buffer.push('\n');
-            
+
             // Si es una línea simple (print, let, etc.), ejecutar inmediatamente
             if is_complete_statement(input) && !input.ends_with(':') && !input.ends_with('{') {
                 execute_playground_code(&buffer, &mut variables);
@@ -938,7 +1044,7 @@ print("Calculando...")
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -975,7 +1081,7 @@ fn execute_playground_code(code: &str, _variables: &mut std::collections::HashMa
     println!();
     println!("▶️  Ejecutando...");
     println!("───────────────────────────────────────");
-    
+
     // Parse y ejecutar
     match Parser::parse_program(code) {
         Ok(program) => {
@@ -986,47 +1092,43 @@ fn execute_playground_code(code: &str, _variables: &mut std::collections::HashMa
                     println!("   • fn {}()", f.name);
                 }
             }
-            
+
             if !program.statements.is_empty() {
                 println!("📝 Statements: {}", program.statements.len());
-                
+
                 // Simular ejecución de statements
                 for stmt in &program.statements {
                     match stmt {
-                        adead_bib::frontend::ast::Stmt::Print(expr) => {
-                            match expr {
-                                adead_bib::frontend::ast::Expr::String(s) => {
-                                    println!("   → {}", s);
-                                }
-                                adead_bib::frontend::ast::Expr::Number(n) => {
-                                    println!("   → {}", n);
-                                }
-                                adead_bib::frontend::ast::Expr::Variable(v) => {
-                                    println!("   → [var: {}]", v);
-                                }
-                                _ => {
-                                    println!("   → [expresión]");
-                                }
+                        adead_bib::frontend::ast::Stmt::Print(expr) => match expr {
+                            adead_bib::frontend::ast::Expr::String(s) => {
+                                println!("   → {}", s);
                             }
-                        }
-                        adead_bib::frontend::ast::Stmt::Assign { name, value } => {
-                            match value {
-                                adead_bib::frontend::ast::Expr::Number(n) => {
-                                    println!("   {} = {}", name, n);
-                                }
-                                adead_bib::frontend::ast::Expr::String(s) => {
-                                    println!("   {} = \"{}\"", name, s);
-                                }
-                                _ => {
-                                    println!("   {} = [expresión]", name);
-                                }
+                            adead_bib::frontend::ast::Expr::Number(n) => {
+                                println!("   → {}", n);
                             }
-                        }
+                            adead_bib::frontend::ast::Expr::Variable(v) => {
+                                println!("   → [var: {}]", v);
+                            }
+                            _ => {
+                                println!("   → [expresión]");
+                            }
+                        },
+                        adead_bib::frontend::ast::Stmt::Assign { name, value } => match value {
+                            adead_bib::frontend::ast::Expr::Number(n) => {
+                                println!("   {} = {}", name, n);
+                            }
+                            adead_bib::frontend::ast::Expr::String(s) => {
+                                println!("   {} = \"{}\"", name, s);
+                            }
+                            _ => {
+                                println!("   {} = [expresión]", name);
+                            }
+                        },
                         _ => {}
                     }
                 }
             }
-            
+
             println!("───────────────────────────────────────");
             println!("✅ Ejecución completada");
         }
@@ -1041,7 +1143,7 @@ fn show_ast(code: &str) {
     println!();
     println!("🌳 AST (Abstract Syntax Tree):");
     println!("───────────────────────────────────────");
-    
+
     match Parser::parse_program(code) {
         Ok(program) => {
             println!("{:#?}", program);
@@ -1057,10 +1159,10 @@ fn show_tokens(code: &str) {
     println!();
     println!("🔤 Tokens:");
     println!("───────────────────────────────────────");
-    
+
     let mut lexer = Lexer::new(code);
     let tokens = lexer.tokenize();
-    
+
     for (i, token) in tokens.iter().enumerate() {
         println!("   [{}] {:?}", i, token);
     }
@@ -1069,38 +1171,41 @@ fn show_tokens(code: &str) {
 
 fn is_complete_statement(line: &str) -> bool {
     let line = line.trim();
-    
+
     // Statements simples que se pueden ejecutar inmediatamente
-    line.starts_with("print(") ||
-    line.starts_with("let ") ||
-    line.starts_with("const ") ||
-    (line.contains('=') && !line.contains("==") && !line.starts_with("fn ") && !line.starts_with("def "))
+    line.starts_with("print(")
+        || line.starts_with("let ")
+        || line.starts_with("const ")
+        || (line.contains('=')
+            && !line.contains("==")
+            && !line.starts_with("fn ")
+            && !line.starts_with("def "))
 }
 
 /// Crear un nuevo proyecto ADead-BIB con estructura estándar
 /// Uso: adB create <nombre> o adB new <nombre>
 fn create_new_project(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     use std::path::Path;
-    
+
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║           🚀 ADead-BIB v2.0 - Nuevo Proyecto                ║");
     println!("║           OOP Puro + ASM Simbionte                          ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
-    
+
     let project_path = Path::new(name);
-    
+
     if project_path.exists() {
         eprintln!("❌ Error: El directorio '{}' ya existe", name);
         std::process::exit(1);
     }
-    
+
     // Crear estructura
     create_project_structure(name, name)?;
-    
+
     // Mostrar resultado
     print_project_created(name);
-    
+
     Ok(())
 }
 
@@ -1111,13 +1216,13 @@ fn create_new_project_in_place(name: &str) -> Result<(), Box<dyn std::error::Err
     println!("║           � ADead-BIB v2.0 - Inicializar Proyecto          ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
-    
+
     // Crear estructura en directorio actual
     create_project_structure(".", name)?;
-    
+
     // Mostrar resultado
     print_project_created(name);
-    
+
     Ok(())
 }
 
@@ -1125,16 +1230,17 @@ fn create_new_project_in_place(name: &str) -> Result<(), Box<dyn std::error::Err
 fn create_project_structure(base_path: &str, name: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("📁 Creando estructura de proyecto...");
     println!();
-    
+
     // Crear directorios
     fs::create_dir_all(format!("{}/core", base_path))?;
     fs::create_dir_all(format!("{}/cpu", base_path))?;
     fs::create_dir_all(format!("{}/gpu", base_path))?;
-    
+
     // ========================================================================
     // main.adB - Punto de entrada FUNCIONAL
     // ========================================================================
-    let main_content = format!(r#"// ============================================================================
+    let main_content = format!(
+        r#"// ============================================================================
 // {} - ADead-BIB Project
 // ============================================================================
 // Creado con: adB create {}
@@ -1165,14 +1271,17 @@ fn main() {{
     println("     Proyecto listo!")
     println("========================================")
 }}
-"#, name, name, name, name);
+"#,
+        name, name, name, name
+    );
     fs::write(format!("{}/main.adB", base_path), &main_content)?;
     println!("   ✅ main.adB          (punto de entrada)");
-    
+
     // ========================================================================
     // call.adB - Lógica OOP (para proyectos más complejos)
     // ========================================================================
-    let call_content = format!(r#"// ============================================================================
+    let call_content = format!(
+        r#"// ============================================================================
 // {} - Lógica OOP Pura
 // ============================================================================
 // Este archivo es para lógica más compleja con OOP
@@ -1230,10 +1339,12 @@ pub fn run() {{
     
     println("=== Done ===")
 }}
-"#, name);
+"#,
+        name
+    );
     fs::write(format!("{}/call.adB", base_path), &call_content)?;
     println!("   ✅ call.adB          (lógica OOP)");
-    
+
     // ========================================================================
     // core/mod.adB - Intrínsecos del sistema
     // ========================================================================
@@ -1253,7 +1364,7 @@ pub fn shutdown() {
 "#;
     fs::write(format!("{}/core/mod.adB", base_path), core_content)?;
     println!("   ✅ core/mod.adB      (sistema)");
-    
+
     // ========================================================================
     // cpu/mod.adB - Instrucciones CPU directas
     // ========================================================================
@@ -1276,7 +1387,7 @@ pub const rdi: u8 = 7
 "#;
     fs::write(format!("{}/cpu/mod.adB", base_path), cpu_content)?;
     println!("   ✅ cpu/mod.adB       (instrucciones CPU)");
-    
+
     // ========================================================================
     // gpu/mod.adB - Opcodes GPU directos
     // ========================================================================
@@ -1303,11 +1414,12 @@ pub fn sync() {
 "#;
     fs::write(format!("{}/gpu/mod.adB", base_path), gpu_content)?;
     println!("   ✅ gpu/mod.adB       (opcodes GPU)");
-    
+
     // ========================================================================
     // build.adB - Configuración de build
     // ========================================================================
-    let build_content = format!(r#"// ============================================================================
+    let build_content = format!(
+        r#"// ============================================================================
 // build.adB - Configuración de Build
 // ============================================================================
 
@@ -1319,14 +1431,17 @@ pub fn sync() {
 // Opciones de compilación
 #![optimize(true)]
 #![target("windows")]  // windows, linux, raw
-"#, name, name);
+"#,
+        name, name
+    );
     fs::write(format!("{}/build.adB", base_path), &build_content)?;
     println!("   ✅ build.adB         (configuración)");
-    
+
     // ========================================================================
     // README.md
     // ========================================================================
-    let readme_content = format!(r#"# {}
+    let readme_content = format!(
+        r#"# {}
 
 Proyecto ADead-BIB - OOP Puro + ASM Simbionte
 
@@ -1367,10 +1482,12 @@ adB build main.adB
 ---
 
 **Código → Bytes → Binario**
-"#, name, name);
+"#,
+        name, name
+    );
     fs::write(format!("{}/README.md", base_path), &readme_content)?;
     println!("   ✅ README.md         (documentación)");
-    
+
     Ok(())
 }
 

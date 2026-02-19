@@ -132,6 +132,29 @@ impl Encoder {
             ADeadOp::Nop => self.emit(&[0x90]),
             ADeadOp::RawBytes(bytes) => self.emit(bytes),
             ADeadOp::CallIAT { iat_rva } => self.encode_call_iat(*iat_rva),
+
+            // ================================================================
+            // OS-Level / Privileged Instructions
+            // ================================================================
+            ADeadOp::Cli => self.emit(&[0xFA]),
+            ADeadOp::Sti => self.emit(&[0xFB]),
+            ADeadOp::Hlt => self.emit(&[0xF4]),
+            ADeadOp::Iret => self.emit(&[0x48, 0xCF]), // iretq (REX.W + IRET)
+            ADeadOp::Int { vector } => {
+                self.emit(&[0xCD, *vector]);
+            }
+            ADeadOp::Lgdt { src } => self.encode_lgdt(src),
+            ADeadOp::Lidt { src } => self.encode_lidt(src),
+            ADeadOp::MovToCr { cr, src } => self.encode_mov_to_cr(*cr, src),
+            ADeadOp::MovFromCr { cr, dst } => self.encode_mov_from_cr(*cr, dst),
+            ADeadOp::Cpuid => self.emit(&[0x0F, 0xA2]),
+            ADeadOp::Rdmsr => self.emit(&[0x0F, 0x32]),
+            ADeadOp::Wrmsr => self.emit(&[0x0F, 0x30]),
+            ADeadOp::Invlpg { addr } => self.encode_invlpg(addr),
+            ADeadOp::InByte { port } => self.encode_in_byte(port),
+            ADeadOp::OutByte { port, src: _ } => self.encode_out_byte(port),
+            ADeadOp::Shr { dst, amount } => self.encode_shr(dst, *amount),
+            ADeadOp::FarJmp { selector, offset } => self.encode_far_jmp(*selector, *offset),
         }
     }
 
@@ -144,14 +167,38 @@ impl Encoder {
             // mov reg64, imm64
             (Operand::Reg(r), Operand::Imm64(v)) => {
                 match r {
-                    Reg::RAX => { self.emit(&[0x48, 0xB8]); self.emit_u64(*v); }
-                    Reg::RCX => { self.emit(&[0x48, 0xB9]); self.emit_u64(*v); }
-                    Reg::RDX => { self.emit(&[0x48, 0xBA]); self.emit_u64(*v); }
-                    Reg::RBX => { self.emit(&[0x48, 0xBB]); self.emit_u64(*v); }
-                    Reg::RSI => { self.emit(&[0x48, 0xBE]); self.emit_u64(*v); }
-                    Reg::RDI => { self.emit(&[0x48, 0xBF]); self.emit_u64(*v); }
-                    Reg::R8  => { self.emit(&[0x49, 0xB8]); self.emit_u64(*v); }
-                    Reg::R9  => { self.emit(&[0x49, 0xB9]); self.emit_u64(*v); }
+                    Reg::RAX => {
+                        self.emit(&[0x48, 0xB8]);
+                        self.emit_u64(*v);
+                    }
+                    Reg::RCX => {
+                        self.emit(&[0x48, 0xB9]);
+                        self.emit_u64(*v);
+                    }
+                    Reg::RDX => {
+                        self.emit(&[0x48, 0xBA]);
+                        self.emit_u64(*v);
+                    }
+                    Reg::RBX => {
+                        self.emit(&[0x48, 0xBB]);
+                        self.emit_u64(*v);
+                    }
+                    Reg::RSI => {
+                        self.emit(&[0x48, 0xBE]);
+                        self.emit_u64(*v);
+                    }
+                    Reg::RDI => {
+                        self.emit(&[0x48, 0xBF]);
+                        self.emit_u64(*v);
+                    }
+                    Reg::R8 => {
+                        self.emit(&[0x49, 0xB8]);
+                        self.emit_u64(*v);
+                    }
+                    Reg::R9 => {
+                        self.emit(&[0x49, 0xB9]);
+                        self.emit_u64(*v);
+                    }
                     _ => self.emit(&[0x90]), // fallback nop
                 }
             }
@@ -161,46 +208,122 @@ impl Encoder {
                 self.emit_i32(*v);
             }
             // mov reg64, imm32 (sign-extended)
-            (Operand::Reg(r), Operand::Imm32(v)) => {
-                match r {
-                    Reg::RAX => { self.emit(&[0x48, 0xC7, 0xC0]); self.emit_i32(*v); }
-                    Reg::RCX => { self.emit(&[0x48, 0xC7, 0xC1]); self.emit_i32(*v); }
-                    Reg::RDX => { self.emit(&[0x48, 0xC7, 0xC2]); self.emit_i32(*v); }
-                    Reg::RDI => { self.emit(&[0x48, 0xC7, 0xC7]); self.emit_i32(*v); }
-                    _ => { self.emit(&[0x48, 0xC7, 0xC0]); self.emit_i32(*v); }
+            (Operand::Reg(r), Operand::Imm32(v)) => match r {
+                Reg::RAX => {
+                    self.emit(&[0x48, 0xC7, 0xC0]);
+                    self.emit_i32(*v);
                 }
-            }
+                Reg::RCX => {
+                    self.emit(&[0x48, 0xC7, 0xC1]);
+                    self.emit_i32(*v);
+                }
+                Reg::RDX => {
+                    self.emit(&[0x48, 0xC7, 0xC2]);
+                    self.emit_i32(*v);
+                }
+                Reg::RDI => {
+                    self.emit(&[0x48, 0xC7, 0xC7]);
+                    self.emit_i32(*v);
+                }
+                _ => {
+                    self.emit(&[0x48, 0xC7, 0xC0]);
+                    self.emit_i32(*v);
+                }
+            },
             // mov reg64, [rbp+disp32]
-            (Operand::Reg(r), Operand::Mem { base: Reg::RBP, disp }) => {
-                match r {
-                    Reg::RAX => { self.emit(&[0x48, 0x8B, 0x85]); self.emit_i32(*disp); }
-                    Reg::RCX => { self.emit(&[0x48, 0x8B, 0x8D]); self.emit_i32(*disp); }
-                    Reg::RDX => { self.emit(&[0x48, 0x8B, 0x95]); self.emit_i32(*disp); }
-                    Reg::RBX => { self.emit(&[0x48, 0x8B, 0x9D]); self.emit_i32(*disp); }
-                    _ => { self.emit(&[0x48, 0x8B, 0x85]); self.emit_i32(*disp); }
+            (
+                Operand::Reg(r),
+                Operand::Mem {
+                    base: Reg::RBP,
+                    disp,
+                },
+            ) => match r {
+                Reg::RAX => {
+                    self.emit(&[0x48, 0x8B, 0x85]);
+                    self.emit_i32(*disp);
                 }
-            }
+                Reg::RCX => {
+                    self.emit(&[0x48, 0x8B, 0x8D]);
+                    self.emit_i32(*disp);
+                }
+                Reg::RDX => {
+                    self.emit(&[0x48, 0x8B, 0x95]);
+                    self.emit_i32(*disp);
+                }
+                Reg::RBX => {
+                    self.emit(&[0x48, 0x8B, 0x9D]);
+                    self.emit_i32(*disp);
+                }
+                _ => {
+                    self.emit(&[0x48, 0x8B, 0x85]);
+                    self.emit_i32(*disp);
+                }
+            },
             // mov [rbp+disp32], reg64
-            (Operand::Mem { base: Reg::RBP, disp }, Operand::Reg(r)) => {
+            (
+                Operand::Mem {
+                    base: Reg::RBP,
+                    disp,
+                },
+                Operand::Reg(r),
+            ) => {
                 let fits_i8 = *disp >= -128 && *disp <= 127;
                 match r {
-                    Reg::RAX => { self.emit(&[0x48, 0x89, 0x85]); self.emit_i32(*disp); }
-                    Reg::RCX if fits_i8 => { self.emit(&[0x48, 0x89, 0x4D, *disp as u8]); }
-                    Reg::RCX => { self.emit(&[0x48, 0x89, 0x8D]); self.emit_i32(*disp); }
-                    Reg::RDX if fits_i8 => { self.emit(&[0x48, 0x89, 0x55, *disp as u8]); }
-                    Reg::RDX => { self.emit(&[0x48, 0x89, 0x95]); self.emit_i32(*disp); }
-                    Reg::R8 if fits_i8  => { self.emit(&[0x4C, 0x89, 0x45, *disp as u8]); }
-                    Reg::R8  => { self.emit(&[0x4C, 0x89, 0x85]); self.emit_i32(*disp); }
-                    Reg::R9 if fits_i8  => { self.emit(&[0x4C, 0x89, 0x4D, *disp as u8]); }
-                    Reg::R9  => { self.emit(&[0x4C, 0x89, 0x8D]); self.emit_i32(*disp); }
-                    _ => { self.emit(&[0x48, 0x89, 0x85]); self.emit_i32(*disp); }
+                    Reg::RAX => {
+                        self.emit(&[0x48, 0x89, 0x85]);
+                        self.emit_i32(*disp);
+                    }
+                    Reg::RCX if fits_i8 => {
+                        self.emit(&[0x48, 0x89, 0x4D, *disp as u8]);
+                    }
+                    Reg::RCX => {
+                        self.emit(&[0x48, 0x89, 0x8D]);
+                        self.emit_i32(*disp);
+                    }
+                    Reg::RDX if fits_i8 => {
+                        self.emit(&[0x48, 0x89, 0x55, *disp as u8]);
+                    }
+                    Reg::RDX => {
+                        self.emit(&[0x48, 0x89, 0x95]);
+                        self.emit_i32(*disp);
+                    }
+                    Reg::R8 if fits_i8 => {
+                        self.emit(&[0x4C, 0x89, 0x45, *disp as u8]);
+                    }
+                    Reg::R8 => {
+                        self.emit(&[0x4C, 0x89, 0x85]);
+                        self.emit_i32(*disp);
+                    }
+                    Reg::R9 if fits_i8 => {
+                        self.emit(&[0x4C, 0x89, 0x4D, *disp as u8]);
+                    }
+                    Reg::R9 => {
+                        self.emit(&[0x4C, 0x89, 0x8D]);
+                        self.emit_i32(*disp);
+                    }
+                    _ => {
+                        self.emit(&[0x48, 0x89, 0x85]);
+                        self.emit_i32(*disp);
+                    }
                 }
             }
             // mov reg64, [reg64] (base sin desplazamiento)
-            (Operand::Reg(Reg::RAX), Operand::Mem { base: Reg::RAX, disp: 0 }) => {
+            (
+                Operand::Reg(Reg::RAX),
+                Operand::Mem {
+                    base: Reg::RAX,
+                    disp: 0,
+                },
+            ) => {
                 self.emit(&[0x48, 0x8B, 0x00]);
             }
-            (Operand::Reg(Reg::RAX), Operand::Mem { base: Reg::RBX, disp: 0 }) => {
+            (
+                Operand::Reg(Reg::RAX),
+                Operand::Mem {
+                    base: Reg::RBX,
+                    disp: 0,
+                },
+            ) => {
                 self.emit(&[0x48, 0x8B, 0x03]);
             }
             // mov reg64, reg64
@@ -219,8 +342,8 @@ impl Encoder {
             (Reg::RCX, Reg::RAX) => self.emit(&[0x48, 0x89, 0xC1]),
             (Reg::RDX, Reg::RAX) => self.emit(&[0x48, 0x89, 0xC2]),
             (Reg::RAX, Reg::RCX) => self.emit(&[0x48, 0x89, 0xC8]),
-            (Reg::R8,  Reg::RAX) => self.emit(&[0x49, 0x89, 0xC0]),
-            (Reg::R9,  Reg::RAX) => self.emit(&[0x49, 0x89, 0xC1]),
+            (Reg::R8, Reg::RAX) => self.emit(&[0x49, 0x89, 0xC0]),
+            (Reg::R9, Reg::RAX) => self.emit(&[0x49, 0x89, 0xC1]),
             _ => {
                 // Encoding genérico: REX.W + MOV + ModR/M
                 let (rex, modrm) = self.reg_reg_encoding(src, dst);
@@ -239,11 +362,24 @@ impl Encoder {
     }
 
     fn encode_lea(&mut self, dst: &Reg, src: &Operand) {
-        if let Operand::Mem { base: Reg::RBP, disp } = src {
+        if let Operand::Mem {
+            base: Reg::RBP,
+            disp,
+        } = src
+        {
             match dst {
-                Reg::RAX => { self.emit(&[0x48, 0x8D, 0x85]); self.emit_i32(*disp); }
-                Reg::RDX => { self.emit(&[0x48, 0x8D, 0x95]); self.emit_i32(*disp); }
-                _ => { self.emit(&[0x48, 0x8D, 0x85]); self.emit_i32(*disp); }
+                Reg::RAX => {
+                    self.emit(&[0x48, 0x8D, 0x85]);
+                    self.emit_i32(*disp);
+                }
+                Reg::RDX => {
+                    self.emit(&[0x48, 0x8D, 0x95]);
+                    self.emit_i32(*disp);
+                }
+                _ => {
+                    self.emit(&[0x48, 0x8D, 0x85]);
+                    self.emit_i32(*disp);
+                }
             }
         }
     }
@@ -294,8 +430,8 @@ impl Encoder {
 
     fn encode_div(&mut self, _src: &Reg) {
         // cqo + idiv rbx
-        self.emit(&[0x48, 0x99]);           // cqo
-        self.emit(&[0x48, 0xF7, 0xFB]);     // idiv rbx
+        self.emit(&[0x48, 0x99]); // cqo
+        self.emit(&[0x48, 0xF7, 0xFB]); // idiv rbx
     }
 
     // ========================================
@@ -328,7 +464,10 @@ impl Encoder {
         match dst {
             Operand::Reg(Reg::RAX) => self.emit(&[0x48, 0xFF, 0xC0]),
             Operand::Reg(Reg::RCX) => self.emit(&[0x48, 0xFF, 0xC1]),
-            Operand::Mem { base: Reg::RBP, disp } => {
+            Operand::Mem {
+                base: Reg::RBP,
+                disp,
+            } => {
                 self.emit(&[0x48, 0xFF, 0x85]);
                 self.emit_i32(*disp);
             }
@@ -339,7 +478,10 @@ impl Encoder {
     fn encode_dec(&mut self, dst: &Operand) {
         match dst {
             Operand::Reg(Reg::RCX) => self.emit(&[0x48, 0xFF, 0xC9]),
-            Operand::Mem { base: Reg::RBP, disp } => {
+            Operand::Mem {
+                base: Reg::RBP,
+                disp,
+            } => {
                 self.emit(&[0x48, 0xFF, 0x8D]);
                 self.emit_i32(*disp);
             }
@@ -353,9 +495,9 @@ impl Encoder {
 
     fn encode_not(&mut self, _dst: &Reg) {
         // Logical NOT: test rax, rax; sete al; movzx rax, al
-        self.emit(&[0x48, 0x85, 0xC0]);        // test rax, rax
-        self.emit(&[0x0F, 0x94, 0xC0]);        // sete al
-        self.emit(&[0x48, 0x0F, 0xB6, 0xC0]);  // movzx rax, al
+        self.emit(&[0x48, 0x85, 0xC0]); // test rax, rax
+        self.emit(&[0x0F, 0x94, 0xC0]); // sete al
+        self.emit(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
 
     fn encode_shl(&mut self, _dst: &Reg, amount: u8) {
@@ -375,11 +517,23 @@ impl Encoder {
             (Operand::Reg(Reg::RCX), Operand::Reg(Reg::R8)) => {
                 self.emit(&[0x4C, 0x39, 0xC1]);
             }
-            (Operand::Mem { base: Reg::RBP, disp }, Operand::Reg(Reg::R8)) => {
+            (
+                Operand::Mem {
+                    base: Reg::RBP,
+                    disp,
+                },
+                Operand::Reg(Reg::R8),
+            ) => {
                 self.emit(&[0x4C, 0x39, 0x85]);
                 self.emit_i32(*disp);
             }
-            (Operand::Reg(Reg::RAX), Operand::Mem { base: Reg::RBP, disp }) => {
+            (
+                Operand::Reg(Reg::RAX),
+                Operand::Mem {
+                    base: Reg::RBP,
+                    disp,
+                },
+            ) => {
                 self.emit(&[0x48, 0x3B, 0x85]);
                 self.emit_i32(*disp);
             }
@@ -393,13 +547,13 @@ impl Encoder {
 
     fn encode_setcc(&mut self, cond: &Condition) {
         match cond {
-            Condition::Equal    => self.emit(&[0x0F, 0x94, 0xC0]),
+            Condition::Equal => self.emit(&[0x0F, 0x94, 0xC0]),
             Condition::NotEqual => self.emit(&[0x0F, 0x95, 0xC0]),
-            Condition::Less     => self.emit(&[0x0F, 0x9C, 0xC0]),
-            Condition::LessEq   => self.emit(&[0x0F, 0x9E, 0xC0]),
-            Condition::Greater  => self.emit(&[0x0F, 0x9F, 0xC0]),
+            Condition::Less => self.emit(&[0x0F, 0x9C, 0xC0]),
+            Condition::LessEq => self.emit(&[0x0F, 0x9E, 0xC0]),
+            Condition::Greater => self.emit(&[0x0F, 0x9F, 0xC0]),
             Condition::GreaterEq => self.emit(&[0x0F, 0x9D, 0xC0]),
-            Condition::Always   => {}
+            Condition::Always => {}
         }
     }
 
@@ -418,8 +572,8 @@ impl Encoder {
                 Reg::RBP => self.emit(&[0x55]),
                 Reg::RSI => self.emit(&[0x56]),
                 Reg::RDI => self.emit(&[0x57]),
-                Reg::R8  => self.emit(&[0x41, 0x50]),
-                Reg::R9  => self.emit(&[0x41, 0x51]),
+                Reg::R8 => self.emit(&[0x41, 0x50]),
+                Reg::R9 => self.emit(&[0x41, 0x51]),
                 Reg::R10 => self.emit(&[0x41, 0x52]),
                 Reg::R11 => self.emit(&[0x41, 0x53]),
                 Reg::R12 => self.emit(&[0x41, 0x54]),
@@ -442,8 +596,8 @@ impl Encoder {
             Reg::RBP => self.emit(&[0x5D]),
             Reg::RSI => self.emit(&[0x5E]),
             Reg::RDI => self.emit(&[0x5F]),
-            Reg::R8  => self.emit(&[0x41, 0x58]),
-            Reg::R9  => self.emit(&[0x41, 0x59]),
+            Reg::R8 => self.emit(&[0x41, 0x58]),
+            Reg::R9 => self.emit(&[0x41, 0x59]),
             _ => {}
         }
     }
@@ -545,8 +699,12 @@ impl Encoder {
         let (src_idx, src_ext) = reg_index(src);
         let (dst_idx, dst_ext) = reg_index(dst);
         let mut rex: u8 = 0x48;
-        if src_ext { rex |= 0x04; } // REX.R
-        if dst_ext { rex |= 0x01; } // REX.B
+        if src_ext {
+            rex |= 0x04;
+        } // REX.R
+        if dst_ext {
+            rex |= 0x01;
+        } // REX.B
         let modrm = 0xC0 | (src_idx << 3) | dst_idx;
         (rex, modrm)
     }
@@ -565,6 +723,190 @@ impl Encoder {
     fn emit_u64(&mut self, value: u64) {
         self.code.extend_from_slice(&value.to_le_bytes());
     }
+
+    #[inline(always)]
+    fn emit_u16(&mut self, value: u16) {
+        self.code.extend_from_slice(&value.to_le_bytes());
+    }
+
+    #[inline(always)]
+    fn emit_u32(&mut self, value: u32) {
+        self.code.extend_from_slice(&value.to_le_bytes());
+    }
+
+    // ========================================
+    // OS-Level: LGDT, LIDT
+    // ========================================
+
+    fn encode_lgdt(&mut self, src: &Operand) {
+        // lgdt [mem] = 0x0F 0x01 /2 (ModR/M reg field = 2)
+        match src {
+            Operand::Mem { base, disp } => {
+                let (base_idx, base_ext) = reg_index(base);
+                if base_ext {
+                    self.emit(&[0x41]); // REX.B
+                }
+                self.emit(&[0x0F, 0x01]);
+                // ModR/M: mod=10 (disp32), reg=010 (/2), r/m=base
+                let modrm = 0x80 | (2 << 3) | base_idx;
+                self.emit(&[modrm]);
+                self.emit_i32(*disp);
+            }
+            Operand::Reg(r) => {
+                // lgdt with direct register addressing (mod=00)
+                let (base_idx, _) = reg_index(r);
+                self.emit(&[0x0F, 0x01]);
+                let modrm = (2 << 3) | base_idx;
+                self.emit(&[modrm]);
+            }
+            _ => self.emit(&[0x90]), // fallback nop
+        }
+    }
+
+    fn encode_lidt(&mut self, src: &Operand) {
+        // lidt [mem] = 0x0F 0x01 /3 (ModR/M reg field = 3)
+        match src {
+            Operand::Mem { base, disp } => {
+                let (base_idx, base_ext) = reg_index(base);
+                if base_ext {
+                    self.emit(&[0x41]); // REX.B
+                }
+                self.emit(&[0x0F, 0x01]);
+                let modrm = 0x80 | (3 << 3) | base_idx;
+                self.emit(&[modrm]);
+                self.emit_i32(*disp);
+            }
+            Operand::Reg(r) => {
+                let (base_idx, _) = reg_index(r);
+                self.emit(&[0x0F, 0x01]);
+                let modrm = (3 << 3) | base_idx;
+                self.emit(&[modrm]);
+            }
+            _ => self.emit(&[0x90]),
+        }
+    }
+
+    // ========================================
+    // OS-Level: MOV CRn
+    // ========================================
+
+    fn encode_mov_to_cr(&mut self, cr: u8, src: &Reg) {
+        // mov crN, reg = 0x0F 0x22 ModR/M(11, crN, reg)
+        let (src_idx, src_ext) = reg_index(src);
+        // Only need REX prefix for extended registers
+        if src_ext {
+            self.emit(&[0x41]); // REX.B
+        }
+        self.emit(&[0x0F, 0x22]);
+        let modrm = 0xC0 | ((cr & 0x07) << 3) | src_idx;
+        self.emit(&[modrm]);
+    }
+
+    fn encode_mov_from_cr(&mut self, cr: u8, dst: &Reg) {
+        // mov reg, crN = 0x0F 0x20 ModR/M(11, crN, reg)
+        let (dst_idx, dst_ext) = reg_index(dst);
+        if dst_ext {
+            self.emit(&[0x41]); // REX.B
+        }
+        self.emit(&[0x0F, 0x20]);
+        let modrm = 0xC0 | ((cr & 0x07) << 3) | dst_idx;
+        self.emit(&[modrm]);
+    }
+
+    // ========================================
+    // OS-Level: INVLPG
+    // ========================================
+
+    fn encode_invlpg(&mut self, addr: &Operand) {
+        // invlpg [mem] = 0x0F 0x01 /7
+        match addr {
+            Operand::Mem { base, disp } => {
+                let (base_idx, base_ext) = reg_index(base);
+                if base_ext {
+                    self.emit(&[0x41]);
+                }
+                self.emit(&[0x0F, 0x01]);
+                let modrm = 0x80 | (7 << 3) | base_idx;
+                self.emit(&[modrm]);
+                self.emit_i32(*disp);
+            }
+            Operand::Reg(r) => {
+                let (base_idx, _) = reg_index(r);
+                self.emit(&[0x0F, 0x01]);
+                let modrm = (7 << 3) | base_idx;
+                self.emit(&[modrm]);
+            }
+            _ => self.emit(&[0x90]),
+        }
+    }
+
+    // ========================================
+    // OS-Level: IN / OUT (byte)
+    // ========================================
+
+    fn encode_in_byte(&mut self, port: &Operand) {
+        match port {
+            Operand::Imm8(p) => {
+                // in al, imm8
+                self.emit(&[0xE4, *p as u8]);
+            }
+            Operand::Reg(Reg::DX) => {
+                // in al, dx
+                self.emit(&[0xEC]);
+            }
+            _ => self.emit(&[0x90]),
+        }
+    }
+
+    fn encode_out_byte(&mut self, port: &Operand) {
+        match port {
+            Operand::Imm8(p) => {
+                // out imm8, al
+                self.emit(&[0xE6, *p as u8]);
+            }
+            Operand::Reg(Reg::DX) => {
+                // out dx, al
+                self.emit(&[0xEE]);
+            }
+            _ => self.emit(&[0x90]),
+        }
+    }
+
+    // ========================================
+    // OS-Level: SHR
+    // ========================================
+
+    fn encode_shr(&mut self, dst: &Reg, amount: u8) {
+        let (dst_idx, dst_ext) = reg_index(dst);
+        let rex = if dst.is_64bit() {
+            let mut r = 0x48u8;
+            if dst_ext {
+                r |= 0x01;
+            }
+            Some(r)
+        } else if dst_ext {
+            Some(0x41u8)
+        } else {
+            None
+        };
+        if let Some(rex_byte) = rex {
+            self.emit(&[rex_byte]);
+        }
+        // shr r/m, imm8: C1 /5
+        let modrm = 0xC0 | (5 << 3) | dst_idx;
+        self.emit(&[0xC1, modrm, amount]);
+    }
+
+    // ========================================
+    // OS-Level: Far JMP
+    // ========================================
+
+    fn encode_far_jmp(&mut self, selector: u16, offset: u32) {
+        // far jmp ptr16:32 = 0xEA + offset32 + selector16
+        self.emit(&[0xEA]);
+        self.emit_u32(offset);
+        self.emit_u16(selector);
+    }
 }
 
 impl Default for Encoder {
@@ -576,24 +918,45 @@ impl Default for Encoder {
 /// Retorna (índice 0-7, necesita extensión REX.B/R) para un registro.
 fn reg_index(reg: &Reg) -> (u8, bool) {
     match reg {
-        Reg::RAX | Reg::EAX | Reg::AL => (0, false),
-        Reg::RCX | Reg::ECX => (1, false),
-        Reg::RDX => (2, false),
-        Reg::RBX => (3, false),
-        Reg::RSP => (4, false),
-        Reg::RBP => (5, false),
-        Reg::RSI => (6, false),
-        Reg::RDI => (7, false),
-        Reg::R8  => (0, true),
-        Reg::R9  => (1, true),
+        // 64-bit GPR
+        Reg::RAX | Reg::EAX | Reg::AX | Reg::AL => (0, false),
+        Reg::RCX | Reg::ECX | Reg::CX | Reg::CL => (1, false),
+        Reg::RDX | Reg::EDX | Reg::DX | Reg::DL => (2, false),
+        Reg::RBX | Reg::EBX | Reg::BX | Reg::BL => (3, false),
+        Reg::RSP | Reg::ESP | Reg::SP | Reg::AH => (4, false),
+        Reg::RBP | Reg::EBP | Reg::BP | Reg::CH => (5, false),
+        Reg::RSI | Reg::ESI | Reg::SI | Reg::DH => (6, false),
+        Reg::RDI | Reg::EDI | Reg::DI | Reg::BH => (7, false),
+        Reg::R8 => (0, true),
+        Reg::R9 => (1, true),
         Reg::R10 => (2, true),
         Reg::R11 => (3, true),
         Reg::R12 => (4, true),
         Reg::R13 => (5, true),
         Reg::R14 => (6, true),
         Reg::R15 => (7, true),
+        // SSE
         Reg::XMM0 => (0, false),
         Reg::XMM1 => (1, false),
+        // Control registers (index = CR number)
+        Reg::CR0 => (0, false),
+        Reg::CR2 => (2, false),
+        Reg::CR3 => (3, false),
+        Reg::CR4 => (4, false),
+        // Debug registers
+        Reg::DR0 => (0, false),
+        Reg::DR1 => (1, false),
+        Reg::DR2 => (2, false),
+        Reg::DR3 => (3, false),
+        Reg::DR6 => (6, false),
+        Reg::DR7 => (7, false),
+        // Segment registers (encoding order)
+        Reg::CS => (1, false),
+        Reg::DS => (3, false),
+        Reg::ES => (0, false),
+        Reg::FS => (4, false),
+        Reg::GS => (5, false),
+        Reg::SS => (2, false),
     }
 }
 
@@ -605,7 +968,9 @@ mod tests {
     fn test_push_pop_prologue() {
         let mut enc = Encoder::new();
         let ops = vec![
-            ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP),
+            },
             ADeadOp::Mov {
                 dst: Operand::Reg(Reg::RBP),
                 src: Operand::Reg(Reg::RSP),
@@ -633,7 +998,10 @@ mod tests {
     #[test]
     fn test_xor_eax() {
         let mut enc = Encoder::new();
-        let ops = vec![ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX }];
+        let ops = vec![ADeadOp::Xor {
+            dst: Reg::EAX,
+            src: Reg::EAX,
+        }];
         let result = enc.encode_all(&ops);
         assert_eq!(result.code, vec![0x31, 0xC0]);
     }
@@ -650,7 +1018,10 @@ mod tests {
                 dst: Operand::Reg(Reg::RAX),
                 src: Operand::Reg(Reg::RBX),
             },
-            ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX },
+            ADeadOp::Mul {
+                dst: Reg::RAX,
+                src: Reg::RBX,
+            },
         ];
         let result = enc.encode_all(&ops);
         assert_eq!(
@@ -677,5 +1048,119 @@ mod tests {
         // Label at 0, nop at 0 (1 byte), jmp at 1 (5 bytes)
         // rel32 = 0 - (1+4+4) ... let's just verify it compiles and has content
         assert_eq!(result.code.len(), 6); // nop(1) + jmp(5)
+    }
+
+    // ========================================
+    // OS-Level instruction tests
+    // ========================================
+
+    #[test]
+    fn test_cli_sti_hlt() {
+        let mut enc = Encoder::new();
+        let ops = vec![ADeadOp::Cli, ADeadOp::Sti, ADeadOp::Hlt];
+        let result = enc.encode_all(&ops);
+        assert_eq!(result.code, vec![0xFA, 0xFB, 0xF4]);
+    }
+
+    #[test]
+    fn test_int() {
+        let mut enc = Encoder::new();
+        let ops = vec![ADeadOp::Int { vector: 0x10 }, ADeadOp::Int { vector: 0x80 }];
+        let result = enc.encode_all(&ops);
+        assert_eq!(result.code, vec![0xCD, 0x10, 0xCD, 0x80]);
+    }
+
+    #[test]
+    fn test_cpuid_rdmsr_wrmsr() {
+        let mut enc = Encoder::new();
+        let ops = vec![ADeadOp::Cpuid, ADeadOp::Rdmsr, ADeadOp::Wrmsr];
+        let result = enc.encode_all(&ops);
+        assert_eq!(
+            result.code,
+            vec![
+                0x0F, 0xA2, // cpuid
+                0x0F, 0x32, // rdmsr
+                0x0F, 0x30, // wrmsr
+            ]
+        );
+    }
+
+    #[test]
+    fn test_iretq() {
+        let mut enc = Encoder::new();
+        let ops = vec![ADeadOp::Iret];
+        let result = enc.encode_all(&ops);
+        assert_eq!(result.code, vec![0x48, 0xCF]);
+    }
+
+    #[test]
+    fn test_in_out_byte_imm() {
+        let mut enc = Encoder::new();
+        let ops = vec![
+            ADeadOp::InByte {
+                port: Operand::Imm8(0x60),
+            },
+            ADeadOp::OutByte {
+                port: Operand::Imm8(0x20),
+                src: Operand::Reg(Reg::AL),
+            },
+        ];
+        let result = enc.encode_all(&ops);
+        assert_eq!(
+            result.code,
+            vec![
+                0xE4, 0x60, // in al, 0x60
+                0xE6, 0x20, // out 0x20, al
+            ]
+        );
+    }
+
+    #[test]
+    fn test_in_out_byte_dx() {
+        let mut enc = Encoder::new();
+        let ops = vec![
+            ADeadOp::InByte {
+                port: Operand::Reg(Reg::DX),
+            },
+            ADeadOp::OutByte {
+                port: Operand::Reg(Reg::DX),
+                src: Operand::Reg(Reg::AL),
+            },
+        ];
+        let result = enc.encode_all(&ops);
+        assert_eq!(
+            result.code,
+            vec![
+                0xEC, // in al, dx
+                0xEE, // out dx, al
+            ]
+        );
+    }
+
+    #[test]
+    fn test_far_jmp() {
+        let mut enc = Encoder::new();
+        let ops = vec![ADeadOp::FarJmp {
+            selector: 0x08,
+            offset: 0x7C00,
+        }];
+        let result = enc.encode_all(&ops);
+        // EA 00 7C 00 00 08 00
+        let mut expected = vec![0xEA];
+        expected.extend_from_slice(&0x7C00u32.to_le_bytes());
+        expected.extend_from_slice(&0x0008u16.to_le_bytes());
+        assert_eq!(result.code, expected);
+    }
+
+    #[test]
+    fn test_shr() {
+        let mut enc = Encoder::new();
+        let ops = vec![ADeadOp::Shr {
+            dst: Reg::RAX,
+            amount: 4,
+        }];
+        let result = enc.encode_all(&ops);
+        // REX.W + C1 /5 ib => 48 C1 E8 04
+        assert_eq!(result.code, vec![0x48, 0xC1, 0xE8, 0x04]);
     }
 }
