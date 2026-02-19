@@ -1,0 +1,14 @@
+[package]
+name = "fastos-kernel"
+version = "1.0.0"
+edition = "2021"
+authors = ["Eddi Andreé Salazar Matos <eddi.salazar.dev@gmail.com>"]
+description = "FastOS Kernel — Rust security layer for FastOS (ADead-BIB + Rust + C)"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = true
