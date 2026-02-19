@@ -8,12 +8,10 @@
 const PS2_DATA: u16 = 0x60;
 const PS2_STATUS: u16 = 0x64;
 
-extern "C" {
-    fn fastos_inb(port: u16) -> u8;
-}
-
 fn inb(port: u16) -> u8 {
-    unsafe { fastos_inb(port) }
+    let value: u8;
+    unsafe { core::arch::asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack)); }
+    value
 }
 
 // Scancode Set 1 → ASCII (lowercase, no shift)
@@ -41,9 +39,10 @@ static SCANCODE_TABLE: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x47-0x4F: keypad
     0, 0, 0, 0, 0, 0, 0, // 0x50-0x56
     0, 0, // 0x57-0x58: F11, F12
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // padding
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // padding 0x59-0x62
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x63-0x6C
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x6D-0x76
+    0, 0, 0, 0, 0, 0, 0, 0, 0,    // 0x77-0x7F
 ];
 
 // Shifted scancode table
@@ -69,7 +68,8 @@ static SCANCODE_SHIFT: [u8; 128] = [
     0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 pub struct Keyboard {

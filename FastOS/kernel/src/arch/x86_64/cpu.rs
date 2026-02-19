@@ -172,9 +172,12 @@ pub fn cpuid(leaf: u32) -> CpuidResult {
     let (eax, ebx, ecx, edx): (u32, u32, u32, u32);
     unsafe {
         core::arch::asm!(
+            "push rbx",
             "cpuid",
+            "mov esi, ebx",
+            "pop rbx",
             inout("eax") leaf => eax,
-            out("ebx") ebx,
+            out("esi") ebx,
             out("ecx") ecx,
             out("edx") edx,
             options(nostack)

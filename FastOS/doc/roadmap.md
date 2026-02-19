@@ -24,30 +24,30 @@
 
 ---
 
-## Fase 1 — Boot System Enhancement
+## Fase 1 — Boot System Enhancement (COMPLETADA)
 
 **Objetivo:** Stage2 realiza mode switch completo y carga kernel real.
 
 ```text
 Tareas:
-  [ ] Enable A20 line (port 0x92 fast method + keyboard controller fallback)
-  [ ] Set up temporary GDT (code32, data32, code64, data64)
-  [ ] Switch from Real Mode (16-bit) to Protected Mode (32-bit)
-  [ ] Set up identity-mapped page tables (PML4 → PDPT → PD)
-  [ ] Enable PAE + Long Mode via MSR
-  [ ] Switch to Long Mode (64-bit)
-  [ ] Set VBE video mode (1024x768x32 via INT 10h AX=4F02h)
-  [ ] Load kernel binary from disk sectors
-  [ ] Jump to kernel_main in 64-bit mode
+  ✅ Enable A20 line (port 0x92 fast method + keyboard controller fallback)
+  ✅ Set up temporary GDT (code32, data32, code64, data64)
+  ✅ Switch from Real Mode (16-bit) to Protected Mode (32-bit)
+  ✅ Set up identity-mapped page tables (PML4 → PDPT → PD)
+  ✅ Enable PAE + Long Mode via MSR
+  ✅ Switch to Long Mode (64-bit)
+  ✅ Set VBE video mode (1024x768x32 via INT 10h AX=4F02h)
+  ✅ Load kernel binary from disk sectors
+  ✅ Jump to kernel_main in 64-bit mode
   ✅ kernel/linker.ld — Kernel binary layout at 0x100000
   ✅ kernel/rust-toolchain.toml — Nightly + rust-src + llvm-tools
   ✅ kernel/x86_64-fastos.json — Updated with linker script reference
   ✅ build.ps1 — Updated with Rust kernel compilation step (5 steps)
   ✅ kernel/src/main.rs — Wired all new modules (arch, boot, kernel_core, drivers)
+  ✅ boot/stage2.adB — Full rewrite: A20→GDT→PM→Paging→LM→VBE→kernel→jump
+  ✅ kernel/src/main.rs — Replaced extern C with inline asm (hlt, inb, outb, cli, sti)
+  ✅ kernel/x86_64-fastos.json — Fixed target-pointer-width, SSE2 ABI, features
 
-Archivos:
-  boot/stage2.adB — Rewrite completo para mode switch (PENDIENTE)
-  
 Resultado:
   BIOS → Stage1 → Stage2 → 64-bit kernel con framebuffer
 ```
@@ -62,7 +62,7 @@ Resultado:
 Tareas:
   ✅ kernel/src/kernel_core/memory.rs — Physical frame allocator (bitmap, 4GB max)
   ✅ kernel/src/kernel_core/memory.rs — Kernel heap allocator (bump, 1MB)
-  [ ] kernel/src/kernel_core/memory.rs — Virtual memory manager (4-level paging)
+  ✅ kernel/src/kernel_core/memory.rs — Virtual memory manager (4-level paging)
   ✅ kernel/src/kernel_core/interrupts.rs — High-level interrupt management
   ✅ kernel/src/arch/x86_64/gdt.rs — GDT with TSS (5 segments)
   ✅ kernel/src/arch/x86_64/idt.rs — IDT (256 entries) + PIC remap (32-47)
@@ -132,34 +132,33 @@ Tareas:
   ✅ kernel/src/kernel_core/scheduler.rs — yield, block, unblock, sleep
   ✅ kernel/src/kernel_core/memory.rs — Virtual memory (map/unmap/virt_to_phys)
   ✅ kernel/src/kernel_core/memory.rs — User page table creation (kernel half shared)
-  [ ] ADead-BIB context switch stub (actual register save/restore in asm)
+  ✅ Context switch stub — inline asm register save/restore in scheduler.rs
 
 Resultado:
-  Process table, scheduler, y virtual memory funcionales.
-  Context switch real pendiente de stub ASM.
+  Process table, scheduler, virtual memory, y context switch funcionales.
 ```
 
 ---
 
-## Fase 5 — Desktop Engine
+## Fase 5 — Desktop Engine (COMPLETADA)
 
 **Objetivo:** Desktop gráfico real con compositor.
 
 ```text
 Tareas:
-  [ ] desktop/compositor.rs — Window compositing engine
-  [ ] desktop/compositor.rs — Alpha blending
-  [ ] desktop/compositor.rs — Damage tracking (dirty rects)
-  [ ] desktop/compositor.rs — Z-order management
-  [ ] desktop/window_manager.rs — Window create/destroy
-  [ ] desktop/window_manager.rs — Window move/resize (mouse drag)
-  [ ] desktop/window_manager.rs — Window focus + title bar
-  [ ] desktop/window_manager.rs — Window decorations (close, minimize, maximize)
-  [ ] desktop/shell.rs — Taskbar rendering
-  [ ] desktop/shell.rs — Desktop icons (from SVG rasterized)
-  [ ] desktop/shell.rs — Wallpaper rendering
-  [ ] desktop/shell.rs — Start menu
-  [ ] desktop/cursor.rs — Hardware/software cursor
+  ✅ desktop_engine/compositor.rs — Window compositing engine
+  ✅ desktop_engine/compositor.rs — Alpha blending
+  ✅ desktop_engine/compositor.rs — Damage tracking (dirty rects)
+  ✅ desktop_engine/compositor.rs — Z-order management (layer sort)
+  ✅ desktop_engine/wm.rs — Window create/destroy
+  ✅ desktop_engine/wm.rs — Window move/resize
+  ✅ desktop_engine/wm.rs — Window focus + title bar + decorations
+  ✅ desktop_engine/wm.rs — Close button hit detection
+  ✅ desktop_engine/shell.rs — Taskbar rendering (Win11 style)
+  ✅ desktop_engine/shell.rs — Desktop icons (6 default apps)
+  ✅ desktop_engine/shell.rs — Wallpaper (vertical gradient)
+  ✅ desktop_engine/shell.rs — Start menu (pinned apps grid)
+  ✅ desktop_engine/cursor.rs — Software cursor (sprite + bg save/restore)
 
 Resultado:
   Desktop gráfico completo estilo Windows 11
@@ -189,21 +188,21 @@ Resultado:
 
 ---
 
-## Fase 7 — Apps
+## Fase 7 — Apps (COMPLETADA)
 
 **Objetivo:** Aplicaciones nativas completas.
 
 ```text
 Tareas:
-  [ ] apps/terminal/ — Terminal emulator (gráfico)
-  [ ] apps/file_manager/ — File explorer (gráfico)
-  [ ] apps/settings/ — System settings (gráfico)
-  [ ] apps/calculator/ — Calculator (gráfico)
-  [ ] apps/editor/ — Text editor (gráfico)
-  [ ] apps/sysinfo/ — System info (gráfico)
+  ✅ gfx_apps/terminal.rs — Terminal emulator (framebuffer, command execution)
+  ✅ gfx_apps/file_manager.rs — File explorer (toolbar, path bar, file list)
+  ✅ gfx_apps/settings.rs — System settings (display, theme, brightness)
+  ✅ gfx_apps/calculator.rs — Calculator (4-function, button grid)
+  ✅ gfx_apps/editor.rs — Text editor (line numbers, cursor, scrolling)
+  ✅ gfx_apps/sysinfo.rs — System info (CPU, memory, heap, progress bar)
 
 Resultado:
-  Suite completa de aplicaciones nativas
+  Suite completa de 6 aplicaciones gráficas nativas
 ```
 
 ---
@@ -238,12 +237,12 @@ Resultado:
 | Fase | Nombre              | Duración estimada |
 |------|---------------------|-------------------|
 | 0    | Foundation          | ✅ Completada     |
-| 1    | Boot Enhancement    | 🔧 En progreso    |
+| 1    | Boot Enhancement    | ✅ Completada     |
 | 2    | Kernel Minimal      | ✅ Completada     |
 | 3    | Drivers             | ✅ Completada     |
 | 4    | Multitasking        | ✅ Completada     |
-| 5    | Desktop Engine      | 3-4 semanas       |
+| 5    | Desktop Engine      | ✅ Completada     |
 | 6    | System Services     | ✅ Completada     |
-| 7    | Apps                | 2-3 semanas       |
+| 7    | Apps                | ✅ Completada     |
 | 8    | UEFI Boot           | 2-3 semanas       |
 | 9    | Advanced            | Ongoing           |

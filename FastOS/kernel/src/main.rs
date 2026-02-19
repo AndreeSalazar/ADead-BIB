@@ -23,6 +23,12 @@ pub mod boot;
 pub mod kernel_core;
 pub mod drivers;
 
+// ---- Desktop Engine (Fase 5) ----
+pub mod desktop_engine;
+
+// ---- Graphical Apps (Fase 7) ----
+pub mod gfx_apps;
+
 // ---- Legacy / existing modules ----
 mod vga;
 mod keyboard;
@@ -38,15 +44,8 @@ pub mod apps;
 use vga::{VgaWriter, Color};
 
 // ============================================================
-// ADead-BIB hardware functions (extern "C")
+// Hardware functions — inline assembly (bare-metal, no C runtime)
 // ============================================================
-extern "C" {
-    fn fastos_cli();
-    fn fastos_sti();
-    fn fastos_hlt();
-    fn fastos_outb(port: u16, value: u8);
-    fn fastos_inb(port: u16) -> u8;
-}
 
 // ============================================================
 // Kernel Entry Point
@@ -147,16 +146,31 @@ pub extern "C" fn kernel_main() -> ! {
 }
 
 // ============================================================
-// Safe wrappers for ADead-BIB hardware functions
+// Hardware functions — inline assembly (bare-metal)
 // ============================================================
+#[inline(always)]
 pub fn hlt() {
-    unsafe { fastos_hlt(); }
+    unsafe { core::arch::asm!("hlt", options(nomem, nostack)); }
 }
 
+#[inline(always)]
 pub fn outb(port: u16, value: u8) {
-    unsafe { fastos_outb(port, value); }
+    unsafe { core::arch::asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack)); }
 }
 
+#[inline(always)]
 pub fn inb(port: u16) -> u8 {
-    unsafe { fastos_inb(port) }
+    let value: u8;
+    unsafe { core::arch::asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack)); }
+    value
+}
+
+#[inline(always)]
+pub fn cli() {
+    unsafe { core::arch::asm!("cli", options(nomem, nostack)); }
+}
+
+#[inline(always)]
+pub fn sti() {
+    unsafe { core::arch::asm!("sti", options(nomem, nostack)); }
 }
