@@ -283,7 +283,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        "flat" => {
+        "flat" | "raw" => {
             // Genera flat binary desde código ADead-BIB (v3.1-OS)
             if args.len() < 3 {
                 eprintln!("❌ Error: Missing input file");

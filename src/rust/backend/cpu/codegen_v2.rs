@@ -1364,6 +1364,12 @@ impl CodeGeneratorV2 {
                 self.emit_bytes(&[0x0F, 0xA2]); // cpuid
                                                 // eax already contains result
             }
+            Expr::LabelAddr { .. } => {
+                // Label address — not supported in legacy codegen_v2
+                // Use ISA compiler for bootloader code
+                eprintln!("⚠️  label_addr() not supported in codegen_v2, use ISA compiler");
+                self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
+            }
         }
     }
 

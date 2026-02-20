@@ -1567,6 +1567,146 @@ impl Parser {
                 let value = self.parse_expression()?;
                 Ok(Stmt::RegAssign { reg_name, value })
             }
+            // ========== LABELS Y JUMPS (v3.3-Boot) ==========
+            // label name:
+            Some(Token::LabelKw) => {
+                self.advance();
+                let name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                // Optional colon after label name
+                if matches!(self.peek(), Some(Token::Colon)) {
+                    self.advance();
+                }
+                Ok(Stmt::LabelDef { name })
+            }
+            // jmp label_name
+            Some(Token::JmpKw) => {
+                self.advance();
+                let label = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                Ok(Stmt::JumpTo { label })
+            }
+            // jz label_name
+            Some(Token::JzKw) => {
+                self.advance();
+                let label = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                Ok(Stmt::JumpIfZero { label })
+            }
+            // jnz label_name
+            Some(Token::JnzKw) => {
+                self.advance();
+                let label = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                Ok(Stmt::JumpIfNotZero { label })
+            }
+            // jc label_name
+            Some(Token::JcKw) => {
+                self.advance();
+                let label = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                Ok(Stmt::JumpIfCarry { label })
+            }
+            // jnc label_name
+            Some(Token::JncKw) => {
+                self.advance();
+                let label = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                Ok(Stmt::JumpIfNotCarry { label })
+            }
+            // db 0x55, 0xAA or db "string"
+            Some(Token::DbKw) => {
+                self.advance();
+                let mut bytes = Vec::new();
+                // Check if it's a string
+                if let Some(Token::String(s)) = self.peek().cloned() {
+                    self.advance();
+                    bytes.extend(s.as_bytes());
+                } else {
+                    // Parse comma-separated bytes
+                    loop {
+                        let byte_expr = self.parse_expression()?;
+                        if let Expr::Number(n) = byte_expr {
+                            bytes.push(n as u8);
+                        }
+                        if matches!(self.peek(), Some(Token::Comma)) {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                Ok(Stmt::DataBytes { bytes })
+            }
+            // dw 0x1234, 0x5678
+            Some(Token::DwKw) => {
+                self.advance();
+                let mut words = Vec::new();
+                loop {
+                    let word_expr = self.parse_expression()?;
+                    if let Expr::Number(n) = word_expr {
+                        words.push(n as u16);
+                    }
+                    if matches!(self.peek(), Some(Token::Comma)) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                Ok(Stmt::DataWords { words })
+            }
+            // dd 0x12345678
+            Some(Token::DdKw) => {
+                self.advance();
+                let mut dwords = Vec::new();
+                loop {
+                    let dword_expr = self.parse_expression()?;
+                    if let Expr::Number(n) = dword_expr {
+                        dwords.push(n as u32);
+                    }
+                    if matches!(self.peek(), Some(Token::Comma)) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                Ok(Stmt::DataDwords { dwords })
+            }
+            // times 510 db 0
+            Some(Token::TimesKw) => {
+                self.advance();
+                let count_expr = self.parse_expression()?;
+                let count = match count_expr {
+                    Expr::Number(n) => n as usize,
+                    _ => 1,
+                };
+                // Expect 'db'
+                self.expect(Token::DbKw)?;
+                let byte_expr = self.parse_expression()?;
+                let byte = match byte_expr {
+                    Expr::Number(n) => n as u8,
+                    _ => 0,
+                };
+                Ok(Stmt::TimesDirective { count, byte })
+            }
             _ => {
                 // Try parse expression
                 let expr = self.parse_expression()?;
@@ -1935,6 +2075,18 @@ impl Parser {
             Some(Token::CpuidKw) => {
                 // cpuid as expression
                 Ok(Expr::CpuidExpr)
+            }
+            // ========== LABEL ADDRESS (v3.3-Boot) ==========
+            Some(Token::LabelAddrKw) => {
+                // label_addr(name) — get absolute address of a label
+                self.expect(Token::LParen)?;
+                let label_name = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(token) => return Err(ParseError::UnexpectedToken(token)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                self.expect(Token::RParen)?;
+                Ok(Expr::LabelAddr { label_name })
             }
             Some(t) => Err(ParseError::UnexpectedToken(t)),
             None => Err(ParseError::UnexpectedEof),

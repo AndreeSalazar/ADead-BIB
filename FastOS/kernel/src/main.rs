@@ -61,8 +61,14 @@ fn serial_init() {
 }
 
 fn serial_putc(c: u8) {
-    while inb(0x3F8 + 5) & 0x20 == 0 {}
-    outb(0x3F8, c);
+    // Avoid hard lock if UART never reports TX-ready in some QEMU/host setups.
+    // Best effort: if timeout expires, drop the byte and continue boot.
+    for _ in 0..1_000_000 {
+        if inb(0x3F8 + 5) & 0x20 != 0 {
+            outb(0x3F8, c);
+            return;
+        }
+    }
 }
 
 pub fn serial_print(s: &str) {
@@ -107,6 +113,12 @@ pub extern "C" fn kernel_main() -> ! {
     // Serial debug output first (visible via -serial stdio)
     serial_init();
     serial_print("[FastOS] kernel_main reached!\r\n");
+
+        // Stage2 may leave IF=1. Until we install a valid IDT, any hardware IRQ
+    // can cause #GP -> double fault -> triple fault reset. Keep interrupts
+    // disabled during early boot and the current static graphical shell.
+    cli();
+    serial_print("[FastOS] Interrupts disabled (no IDT yet)\r\n");
 
     // ---- Phase 1: Read BootInfo FIRST (before touching anything else) ----
     serial_print("[FastOS] Reading BootInfo at 0x9000...\r\n");
@@ -204,10 +216,11 @@ fn run_graphical_desktop() -> ! {
 
     serial_print("[FastOS] GFX: desktop rendered!\r\n");
 
-    // Simple idle loop — no cursor/mouse/keyboard (no interrupts set up yet)
-    serial_print("[FastOS] GFX: entering idle loop\r\n");
+    // Simple idle loop — no cursor/mouse/keyboard yet.
+    // With IF=0 (interrupts disabled), HLT would freeze the VM forever.
+    serial_print("[FastOS] GFX: entering idle loop (spin)\r\n");
     loop {
-        hlt();
+        core::hint::spin_loop();
     }
 }
 

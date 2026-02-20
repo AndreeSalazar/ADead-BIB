@@ -155,6 +155,26 @@ impl Encoder {
             ADeadOp::OutByte { port, src: _ } => self.encode_out_byte(port),
             ADeadOp::Shr { dst, amount } => self.encode_shr(dst, *amount),
             ADeadOp::FarJmp { selector, offset } => self.encode_far_jmp(*selector, *offset),
+            ADeadOp::LabelAddrRef { label, size, base_addr } => {
+                // Emit the absolute address of a label
+                // This requires the label to be already defined (resolved in second pass)
+                if let Some(&pos) = self.label_positions.get(&label.0) {
+                    let addr = *base_addr as usize + pos;
+                    match size {
+                        2 => self.emit_u16(addr as u16),
+                        4 => self.emit_u32(addr as u32),
+                        _ => self.emit_u32(addr as u32),
+                    }
+                } else {
+                    // Label not yet defined - emit placeholder and record for later resolution
+                    // For now, emit zeros as placeholder
+                    match size {
+                        2 => self.emit_u16(0),
+                        4 => self.emit_u32(0),
+                        _ => self.emit_u32(0),
+                    }
+                }
+            }
         }
     }
 

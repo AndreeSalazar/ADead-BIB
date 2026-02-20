@@ -305,7 +305,7 @@ impl CodeGenerator {
                 self.emit_bytes(&[0x48, 0xF7, 0xD0]); // not rax
             }
             // OS-Level expressions (v3.1-OS) — stubs in legacy codegen
-            Expr::RegRead { .. } | Expr::MemRead { .. } | Expr::PortIn { .. } | Expr::CpuidExpr => {
+            Expr::RegRead { .. } | Expr::MemRead { .. } | Expr::PortIn { .. } | Expr::CpuidExpr | Expr::LabelAddr { .. } => {
                 eprintln!("⚠️  OS-level expression not supported in legacy codegen");
                 self.emit_bytes(&[0x48, 0x31, 0xC0]); // xor rax, rax
             }

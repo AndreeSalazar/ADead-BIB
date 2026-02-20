@@ -565,6 +565,17 @@ pub enum ADeadOp {
 
     /// Far JMP — Jump with segment selector change (for mode switching)
     FarJmp { selector: u16, offset: u32 },
+
+    /// Label address reference — emits the absolute address of a label as bytes
+    /// Used for writing label addresses to memory (e.g., for far jump pointers)
+    /// The encoder resolves this to the actual address after all labels are placed.
+    LabelAddrRef {
+        label: Label,
+        /// Size of the address to emit (2 = word, 4 = dword)
+        size: u8,
+        /// Base address to add (e.g., 0x8000 for stage2 loaded at 0x8000)
+        base_addr: u32,
+    },
 }
 
 impl std::fmt::Display for ADeadOp {
@@ -629,6 +640,9 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::Shr { dst, amount } => write!(f, "shr {}, {}", dst, amount),
             ADeadOp::FarJmp { selector, offset } => {
                 write!(f, "jmp 0x{:04X}:0x{:08X}", selector, offset)
+            }
+            ADeadOp::LabelAddrRef { label, size, base_addr } => {
+                write!(f, "label_addr({}, size={}, base=0x{:X})", label, size, base_addr)
             }
         }
     }

@@ -108,6 +108,9 @@ pub struct IsaCompiler {
 
     // CPU Mode — 16/32/64-bit scaling (default: 64-bit)
     cpu_mode: CpuMode,
+
+    // Named labels (v3.3-Boot) — maps label names to Label IDs
+    named_labels: HashMap<String, Label>,
 }
 
 impl IsaCompiler {
@@ -130,6 +133,7 @@ impl IsaCompiler {
             base_address: base,
             data_rva,
             cpu_mode: CpuMode::Long64, // Default: 64-bit
+            named_labels: HashMap::new(),
         }
     }
 
@@ -572,7 +576,74 @@ impl IsaCompiler {
                 self.ir.emit(ADeadOp::Jcc { cond: Condition::NotEqual, target: loop_start });
             }
 
+            // ========== LABELS Y JUMPS (v3.3-Boot) ==========
+            Stmt::LabelDef { name } => {
+                let label = self.get_or_create_named_label(name);
+                self.ir.emit(ADeadOp::Label(label));
+            }
+            Stmt::JumpTo { label: label_name } => {
+                let label = self.get_or_create_named_label(label_name);
+                self.ir.emit(ADeadOp::Jmp { target: label });
+            }
+            Stmt::JumpIfZero { label: label_name } => {
+                let label = self.get_or_create_named_label(label_name);
+                self.ir.emit(ADeadOp::Jcc { cond: Condition::Equal, target: label });
+            }
+            Stmt::JumpIfNotZero { label: label_name } => {
+                let label = self.get_or_create_named_label(label_name);
+                self.ir.emit(ADeadOp::Jcc { cond: Condition::NotEqual, target: label });
+            }
+            Stmt::JumpIfCarry { label: label_name } => {
+                // JC = Jump if Carry (CF=1) — use raw bytes: 0x72 rel8
+                let label = self.get_or_create_named_label(label_name);
+                // For now, emit as conditional jump placeholder
+                // The encoder will need to handle carry flag jumps
+                self.ir.emit(ADeadOp::Jcc { cond: Condition::Less, target: label });
+            }
+            Stmt::JumpIfNotCarry { label: label_name } => {
+                // JNC = Jump if Not Carry (CF=0) — use raw bytes: 0x73 rel8
+                let label = self.get_or_create_named_label(label_name);
+                self.ir.emit(ADeadOp::Jcc { cond: Condition::GreaterEq, target: label });
+            }
+            Stmt::DataBytes { bytes } => {
+                self.ir.emit(ADeadOp::RawBytes(bytes.clone()));
+            }
+            Stmt::DataWords { words } => {
+                let mut bytes = Vec::new();
+                for w in words {
+                    bytes.extend_from_slice(&w.to_le_bytes());
+                }
+                self.ir.emit(ADeadOp::RawBytes(bytes));
+            }
+            Stmt::DataDwords { dwords } => {
+                let mut bytes = Vec::new();
+                for d in dwords {
+                    bytes.extend_from_slice(&d.to_le_bytes());
+                }
+                self.ir.emit(ADeadOp::RawBytes(bytes));
+            }
+            Stmt::TimesDirective { count, byte } => {
+                let bytes = vec![*byte; *count];
+                self.ir.emit(ADeadOp::RawBytes(bytes));
+            }
+
             _ => {}
+        }
+    }
+
+    // ========================================
+    // Named Labels (v3.3-Boot)
+    // ========================================
+
+    /// Get or create a named label. If the label already exists, return it.
+    /// Otherwise, create a new label and store it in the named_labels map.
+    fn get_or_create_named_label(&mut self, name: &str) -> Label {
+        if let Some(&label) = self.named_labels.get(name) {
+            label
+        } else {
+            let label = self.ir.new_label();
+            self.named_labels.insert(name.to_string(), label);
+            label
         }
     }
 
@@ -1255,6 +1326,18 @@ impl IsaCompiler {
             }
             Expr::Nullptr | Expr::Null => {
                 self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+            }
+            Expr::LabelAddr { label_name } => {
+                // Get the label and emit its address as an immediate
+                // The actual address will be resolved by the encoder
+                let label = self.get_or_create_named_label(label_name);
+                // For now, emit a placeholder that will be resolved
+                // We emit the label address reference which the encoder will resolve
+                self.ir.emit(ADeadOp::LabelAddrRef {
+                    label,
+                    size: 4, // 32-bit address
+                    base_addr: self.base_address as u32,
+                });
             }
             Expr::String(s) => {
                 let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");

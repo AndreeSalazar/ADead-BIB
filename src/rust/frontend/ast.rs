@@ -215,6 +215,13 @@ pub enum Expr {
 
     /// CPUID result (returns conceptual value)
     CpuidExpr,
+
+    // ========== LABEL ADDRESS (v3.3-Boot) ==========
+    /// label_addr(name) — Returns the absolute address of a named label
+    /// Used for writing label addresses to memory (e.g., for far jump pointers)
+    LabelAddr {
+        label_name: String,
+    },
 }
 
 /// Argumento de sizeof
@@ -426,6 +433,58 @@ pub enum Stmt {
 
     /// cpuid — Execute CPUID instruction
     Cpuid,
+
+    // ========== LABELS Y JUMPS (v3.3-Boot) ==========
+    /// label_name: — Define a named label at current position
+    LabelDef {
+        name: String,
+    },
+
+    /// jmp label_name — Jump to a named label
+    JumpTo {
+        label: String,
+    },
+
+    /// jz label_name — Jump if zero to a named label
+    JumpIfZero {
+        label: String,
+    },
+
+    /// jnz label_name — Jump if not zero to a named label
+    JumpIfNotZero {
+        label: String,
+    },
+
+    /// jc label_name — Jump if carry to a named label
+    JumpIfCarry {
+        label: String,
+    },
+
+    /// jnc label_name — Jump if not carry to a named label
+    JumpIfNotCarry {
+        label: String,
+    },
+
+    /// Data definition: db "string" or db 0x55, 0xAA
+    DataBytes {
+        bytes: Vec<u8>,
+    },
+
+    /// Data definition: dw 0x1234 (16-bit words)
+    DataWords {
+        words: Vec<u16>,
+    },
+
+    /// Data definition: dd 0x12345678 (32-bit dwords)
+    DataDwords {
+        dwords: Vec<u32>,
+    },
+
+    /// times N db 0 — Repeat byte N times
+    TimesDirective {
+        count: usize,
+        byte: u8,
+    },
 }
 
 /// Case de switch

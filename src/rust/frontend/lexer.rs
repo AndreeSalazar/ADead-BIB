@@ -151,6 +151,19 @@ pub enum Token {
     RegKw,       // reg — register access
     SegmentKw,   // segment — segment register access
 
+    // Labels and Jumps (NEW v3.3-Boot)
+    LabelKw,     // label — define a label
+    LabelAddrKw, // label_addr — get absolute address of a label
+    JmpKw,       // jmp — unconditional jump
+    JzKw,        // jz — jump if zero
+    JnzKw,       // jnz — jump if not zero
+    JcKw,        // jc — jump if carry
+    JncKw,       // jnc — jump if not carry
+    DbKw,        // db — define bytes
+    DwKw,        // dw — define words (16-bit)
+    DdKw,        // dd — define dwords (32-bit)
+    TimesKw,     // times — repeat directive
+
     // Operators adicionales
     PlusPlus,     // ++
     MinusMinus,   // --
@@ -838,6 +851,19 @@ impl Lexer {
                     "align" => Token::AlignKw,
                     "reg" => Token::RegKw,
                     "segment" => Token::SegmentKw,
+
+                    // Labels and Jumps (NEW v3.3-Boot)
+                    "label" => Token::LabelKw,
+                    "label_addr" => Token::LabelAddrKw,
+                    "jmp" => Token::JmpKw,
+                    "jz" | "je" => Token::JzKw,
+                    "jnz" | "jne" => Token::JnzKw,
+                    "jc" => Token::JcKw,
+                    "jnc" => Token::JncKw,
+                    "db" => Token::DbKw,
+                    "dw" => Token::DwKw,
+                    "dd" => Token::DdKw,
+                    "times" => Token::TimesKw,
 
                     _ => Token::Identifier(ident),
                 }
