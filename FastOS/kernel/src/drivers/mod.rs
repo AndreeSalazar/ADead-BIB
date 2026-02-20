@@ -10,11 +10,30 @@ pub mod keyboard;
 pub mod mouse;
 pub mod disk;
 
+// Fase 9 — Advanced drivers
+pub mod ahci;
+pub mod usb;
+pub mod network;
+pub mod audio;
+
 /// Initialize all hardware drivers
 pub fn init(boot_info: &crate::boot::BootInfo) {
+    crate::serial_print("[FastOS]   framebuffer...\r\n");
     framebuffer::init(boot_info);
-    timer::init(1000); // 1000 Hz tick rate
+    crate::serial_print("[FastOS]   timer...\r\n");
+    timer::init(1000);
+    crate::serial_print("[FastOS]   keyboard...\r\n");
     keyboard::init();
+    crate::serial_print("[FastOS]   mouse...\r\n");
     mouse::init(boot_info.framebuffer_width, boot_info.framebuffer_height);
+    crate::serial_print("[FastOS]   disk...\r\n");
     disk::init();
+    crate::serial_print("[FastOS]   basic drivers done\r\n");
+
+    // Fase 9 — Advanced drivers DISABLED for now (PCI scans crash in QEMU)
+    // ahci::init();
+    // usb::init();
+    // network::init();
+    // audio::init();
+    crate::serial_print("[FastOS]   all drivers done\r\n");
 }

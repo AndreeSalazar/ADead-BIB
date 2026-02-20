@@ -18,7 +18,7 @@ param(
     [switch]$Clean
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ADeadRoot = Split-Path -Parent $ProjectRoot
 $BuildDir = Join-Path $ProjectRoot "build"
@@ -118,7 +118,7 @@ $KernelBin = Join-Path $BuildDir "kernel.bin"
 Push-Location $KernelDir
 try {
     # Build kernel with custom target
-    $kernelOutput = cargo build --release --target x86_64-fastos.json -Zbuild-std=core,compiler_builtins -Zbuild-std-features=compiler-builtins-mem 2>&1
+    $kernelOutput = cargo build --release --target x86_64-fastos.json "-Zbuild-std=core,compiler_builtins" "-Zbuild-std-features=compiler-builtins-mem" 2>&1
     if ($LASTEXITCODE -ne 0) {
         $errors = $kernelOutput | Select-String "^error"
         if ($errors) {
@@ -210,7 +210,7 @@ Write-Host "  Stage2:  $($stage2Bytes.Length) bytes (mode switch)" -ForegroundCo
 if ($kernelBytes) {
     Write-Host "  Kernel:  $($kernelBytes.Length) bytes (Rust x86_64)" -ForegroundColor White
 } else {
-    Write-Host "  Kernel:  (not included — VGA text mode only)" -ForegroundColor Yellow
+    Write-Host "  Kernel:  (not included - VGA text mode only)" -ForegroundColor Yellow
 }
 Write-Host "  Image:   $totalSize bytes total" -ForegroundColor White
 Write-Host "  Output:  $FastOSBin" -ForegroundColor White
@@ -225,6 +225,7 @@ if ($Run) {
         Write-Host "Launching QEMU..." -ForegroundColor Cyan
         & $QEMU -drive "format=raw,file=$FastOSBin" `
                 -m 256M `
+                -vga std `
                 -serial stdio `
                 -no-reboot -no-shutdown
     } else {

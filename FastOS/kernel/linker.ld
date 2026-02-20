@@ -13,9 +13,10 @@ SECTIONS
     /* Kernel starts at 1MB */
     . = 0x100000;
 
-    /* Code section */
+    /* Entry point MUST be first */
     .text ALIGN(4K) :
     {
+        KEEP(*(.text.entry))
         *(.text .text.*)
     }
 

@@ -81,9 +81,17 @@ pub fn is_initialized() -> bool { unsafe { FB.initialized } }
 pub fn put_pixel(x: u32, y: u32, col: u32) {
     unsafe {
         if !FB.initialized || x >= FB.width || y >= FB.height { return; }
-        let offset = (y * FB.pitch + x * (FB.bpp / 8)) as u64;
-        let ptr = (FB.addr + offset) as *mut u32;
-        core::ptr::write_volatile(ptr, col);
+        let bpp_bytes = FB.bpp / 8;
+        let offset = (y * FB.pitch + x * bpp_bytes) as u64;
+        let ptr = (FB.addr + offset) as *mut u8;
+        if bpp_bytes == 4 {
+            core::ptr::write_volatile(ptr as *mut u32, col);
+        } else if bpp_bytes == 3 {
+            // 24bpp: write 3 bytes (BGR)
+            core::ptr::write_volatile(ptr, col as u8);           // B
+            core::ptr::write_volatile(ptr.add(1), (col >> 8) as u8);  // G
+            core::ptr::write_volatile(ptr.add(2), (col >> 16) as u8); // R
+        }
     }
 }
 
@@ -92,9 +100,19 @@ pub fn put_pixel(x: u32, y: u32, col: u32) {
 pub fn get_pixel(x: u32, y: u32) -> u32 {
     unsafe {
         if !FB.initialized || x >= FB.width || y >= FB.height { return 0; }
-        let offset = (y * FB.pitch + x * (FB.bpp / 8)) as u64;
-        let ptr = (FB.addr + offset) as *const u32;
-        core::ptr::read_volatile(ptr)
+        let bpp_bytes = FB.bpp / 8;
+        let offset = (y * FB.pitch + x * bpp_bytes) as u64;
+        let ptr = (FB.addr + offset) as *const u8;
+        if bpp_bytes == 4 {
+            core::ptr::read_volatile(ptr as *const u32)
+        } else if bpp_bytes == 3 {
+            let b = core::ptr::read_volatile(ptr) as u32;
+            let g = core::ptr::read_volatile(ptr.add(1)) as u32;
+            let r = core::ptr::read_volatile(ptr.add(2)) as u32;
+            0xFF000000 | (r << 16) | (g << 8) | b
+        } else {
+            0
+        }
     }
 }
 
@@ -447,11 +465,10 @@ pub fn draw_string_transparent(x: u32, y: u32, s: &str, fg: u32) {
 pub fn clear(col: u32) {
     unsafe {
         if !FB.initialized { return; }
-        // Fast fill using 32-bit writes
-        let total_pixels = (FB.height * FB.width) as usize;
-        let ptr = FB.addr as *mut u32;
-        for i in 0..total_pixels {
-            core::ptr::write_volatile(ptr.add(i), col);
+        for y in 0..FB.height {
+            for x in 0..FB.width {
+                put_pixel(x, y, col);
+            }
         }
     }
 }

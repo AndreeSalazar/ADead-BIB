@@ -91,25 +91,61 @@ pub fn add_icon(label: &str, icon_char: u8, icon_color: u32) {
     }
 }
 
-/// Draw the wallpaper (solid color gradient)
+/// Draw the wallpaper — dragon-themed gradient
+/// Fast: vertical gradient + grid accents
 pub fn draw_wallpaper() {
     unsafe {
         let w = SHELL.screen_w;
         let h = SHELL.screen_h;
-        let base_r = 0x1A_u32;
-        let base_g = 0x1A_u32;
-        let base_b = 0x2E_u32;
+        if w == 0 || h == 0 { return; }
 
-        // Simple vertical gradient
+        // Vertical gradient: medium blue top → dark navy bottom
         for y in 0..h {
-            let factor = y * 40 / h;
-            let r = base_r + factor;
-            let g = base_g + factor / 2;
-            let b = base_b + factor;
-            let col = 0xFF000000 | (r << 16) | (g << 8) | b;
-            framebuffer::draw_hline(0, y, w, col);
+            let t = y * 255 / h;
+            let r = (0x20 + t * 0x08 / 255).min(255);
+            let g = (0x40 + t * 0x30 / 255).min(255);
+            let b = (0x80 + t * 0x40 / 255).min(255);
+
+            let base_color = 0xFF000000 | (r << 16) | (g << 8) | b;
+
+            for x in 0..w {
+                let mut color = base_color;
+
+                // Grid lines
+                if x % 64 == 0 || y % 64 == 0 {
+                    let gr = (r + 15).min(255);
+                    let gg = (g + 20).min(255);
+                    let gb = (b + 15).min(255);
+                    color = 0xFF000000 | (gr << 16) | (gg << 8) | gb;
+                }
+
+                // Diagonal cyan streaks
+                let diag = (x + y * 2) % 120;
+                if diag < 2 && y > h / 4 && y < h * 3 / 4 {
+                    let gg = (g + 60).min(255);
+                    let gb = (b + 30).min(255);
+                    color = 0xFF000000 | (r << 16) | (gg << 8) | gb;
+                }
+
+                framebuffer::put_pixel(x, y, color);
+            }
         }
+
+        // "FastOS" branding top-left
+        framebuffer::draw_string_transparent(16, 12, "FastOS", 0xFF00E5CC);
     }
+}
+
+/// Integer square root (no floating point in kernel)
+fn isqrt(n: u32) -> u32 {
+    if n == 0 { return 0; }
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
 }
 
 /// Draw desktop icons

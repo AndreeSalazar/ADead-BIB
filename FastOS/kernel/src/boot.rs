@@ -12,6 +12,7 @@ pub const BOOT_INFO_MAGIC: u32 = 0x464F5321;
 #[repr(C)]
 pub struct BootInfo {
     pub magic: u32,
+    pub _pad0: u32,                 // explicit padding (repr(C) would insert this anyway)
     pub framebuffer_addr: u64,
     pub framebuffer_width: u32,
     pub framebuffer_height: u32,
@@ -37,6 +38,7 @@ impl BootInfo {
     pub fn vga_fallback() -> BootInfo {
         BootInfo {
             magic: BOOT_INFO_MAGIC,
+            _pad0: 0,
             framebuffer_addr: 0xB8000,
             framebuffer_width: 80,
             framebuffer_height: 25,

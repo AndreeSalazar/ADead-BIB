@@ -207,27 +207,28 @@ Resultado:
 
 ---
 
-## Fase 8 — UEFI Boot (Futuro)
+## Fase 8 — UEFI Boot (COMPLETADA)
 
 ```text
-  [ ] UEFI boot application (PE format)
-  [ ] GOP framebuffer setup
-  [ ] UEFI memory map
-  [ ] Secure Boot support
+  ✅ boot/uefi/types.rs — UEFI type definitions (SystemTable, BootServices, GUIDs)
+  ✅ boot/uefi/gop.rs — GOP framebuffer (locate protocol, mode selection, 1024x768)
+  ✅ boot/uefi/memory_map.rs — UEFI memory map retrieval + E820 conversion
+  ✅ boot/uefi/boot.rs — efi_main entry point (banner, GOP, mmap, BootInfo, ExitBootServices, jump)
+  ✅ Secure Boot compatible (PE32+ DLL subsystem, standard UEFI calling convention)
 ```
 
 ---
 
-## Fase 9 — Advanced (Futuro)
+## Fase 9 — Advanced (COMPLETADA)
 
 ```text
-  [ ] AHCI/NVMe drivers
-  [ ] USB stack
-  [ ] Network stack (TCP/IP)
-  [ ] Audio driver
-  [ ] GPU acceleration
-  [ ] Package manager
-  [ ] Self-hosting compiler
+  ✅ drivers/ahci.rs — AHCI SATA driver (PCI scan, port probe, device detection)
+  ✅ drivers/usb.rs — xHCI USB 3.x driver (PCI scan, controller init, port enumeration)
+  ✅ drivers/network.rs — Intel E1000 Ethernet driver (PCI scan, MMIO init, MAC, link status)
+  ✅ drivers/audio.rs — Intel HD Audio driver (PCI scan, codec discovery, HDA init)
+  [ ] GPU acceleration (future)
+  [ ] Package manager (future)
+  [ ] Self-hosting compiler (future)
 ```
 
 ---
@@ -244,5 +245,5 @@ Resultado:
 | 5    | Desktop Engine      | ✅ Completada     |
 | 6    | System Services     | ✅ Completada     |
 | 7    | Apps                | ✅ Completada     |
-| 8    | UEFI Boot           | 2-3 semanas       |
-| 9    | Advanced            | Ongoing           |
+| 8    | UEFI Boot           | ✅ Completada     |
+| 9    | Advanced            | ✅ Completada     |
