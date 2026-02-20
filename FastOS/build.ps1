@@ -89,10 +89,10 @@ try {
 }
 
 # ============================================================
-# Step 3: Compile Stage2 bootloader (v2 with labels)
+# Step 3: Compile Stage2 bootloader (rewritten v3.3)
 # ============================================================
-Write-Host "[3/4] Compiling Stage2 bootloader (v2 with labels)..." -ForegroundColor Cyan
-$Stage2Src = Join-Path $ProjectRoot "boot\stage2_v2.adB"
+Write-Host "[3/4] Compiling Stage2 bootloader..." -ForegroundColor Cyan
+$Stage2Src = Join-Path $ProjectRoot "boot\stage2.adB"
 $Stage2Bin = Join-Path $BuildDir "stage2.bin"
 
 Push-Location $ADeadRoot

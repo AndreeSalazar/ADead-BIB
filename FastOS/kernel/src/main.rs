@@ -114,6 +114,20 @@ pub extern "C" fn kernel_main() -> ! {
     serial_init();
     serial_print("[FastOS] kernel_main reached!\r\n");
 
+    // IMMEDIATELY clear VGA screen to show we reached the kernel
+    // This helps debug if we're stuck in stage2 or kernel
+    {
+        let vga_buffer = 0xB8000 as *mut u16;
+        for i in 0..(80 * 25) {
+            unsafe { *vga_buffer.add(i) = 0x0F00 | b' ' as u16; } // white on black
+        }
+        // Write "KERNEL OK" at top-left
+        let msg = b"KERNEL OK - Initializing...";
+        for (i, &c) in msg.iter().enumerate() {
+            unsafe { *vga_buffer.add(i) = 0x0A00 | c as u16; } // green on black
+        }
+    }
+
         // Stage2 may leave IF=1. Until we install a valid IDT, any hardware IRQ
     // can cause #GP -> double fault -> triple fault reset. Keep interrupts
     // disabled during early boot and the current static graphical shell.
@@ -173,27 +187,92 @@ pub extern "C" fn kernel_main() -> ! {
     } else {
         serial_print("[FastOS] Launching VGA TEXT desktop\r\n");
 
-        // VGA text mode
-        let mut vga = VgaWriter::new();
-        vga.set_color(Color::LightGreen, Color::Black);
-        vga.clear();
-        vga.write_str("============================================\n");
-        vga.write_str("       FastOS v1.0 - 64-bit Kernel\n");
-        vga.write_str("============================================\n");
-        vga.write_str("  [OK] All subsystems initialized.\n\n");
-
-        installer::run_installer(&mut vga);
-
-        let logged_in = login::run_login(&mut vga);
-        if !logged_in {
-            vga.set_color(Color::Red, Color::Black);
-            vga.clear();
-            vga.write_str("\n  Login failed. Rebooting...\n");
-            outb(0x64, 0xFE);
-            loop { hlt(); }
+        // VGA text mode - simple direct write
+        let vga_buffer = 0xB8000 as *mut u16;
+        
+        // Clear screen (white on black)
+        for i in 0..(80 * 25) {
+            unsafe { core::ptr::write_volatile(vga_buffer.add(i), 0x0F20); }
         }
-
-        desktop::run_desktop(&mut vga);
+        
+        // Write banner
+        let banner = b"============================================";
+        let title  = b"       FastOS v1.0 - 64-bit Kernel";
+        let line2  = b"============================================";
+        let status = b"  [OK] All subsystems initialized.";
+        let help   = b"  Press keys: W/A/S/D to navigate, Q to quit";
+        
+        // Row 0
+        for (i, &c) in banner.iter().enumerate() {
+            unsafe { core::ptr::write_volatile(vga_buffer.add(i), 0x0A00 | c as u16); }
+        }
+        // Row 1
+        for (i, &c) in title.iter().enumerate() {
+            unsafe { core::ptr::write_volatile(vga_buffer.add(80 + i), 0x0B00 | c as u16); }
+        }
+        // Row 2
+        for (i, &c) in line2.iter().enumerate() {
+            unsafe { core::ptr::write_volatile(vga_buffer.add(160 + i), 0x0A00 | c as u16); }
+        }
+        // Row 3
+        for (i, &c) in status.iter().enumerate() {
+            unsafe { core::ptr::write_volatile(vga_buffer.add(240 + i), 0x0F00 | c as u16); }
+        }
+        // Row 5
+        for (i, &c) in help.iter().enumerate() {
+            unsafe { core::ptr::write_volatile(vga_buffer.add(400 + i), 0x0E00 | c as u16); }
+        }
+        
+        serial_print("[FastOS] VGA: Desktop displayed, entering input loop\r\n");
+        
+        // Simple keyboard polling loop
+        let mut cursor_pos: usize = 80 * 7; // Row 7
+        loop {
+            // Check keyboard status
+            let status: u8;
+            unsafe { core::arch::asm!("in al, dx", in("dx") 0x64u16, out("al") status, options(nomem, nostack)); }
+            
+            if status & 0x01 != 0 {
+                // Read scancode
+                let scancode: u8;
+                unsafe { core::arch::asm!("in al, dx", in("dx") 0x60u16, out("al") scancode, options(nomem, nostack)); }
+                
+                // Only process key press (not release)
+                if scancode & 0x80 == 0 {
+                    // Simple scancode to char
+                    let ch = match scancode {
+                        0x10 => b'q', 0x11 => b'w', 0x12 => b'e', 0x13 => b'r',
+                        0x1E => b'a', 0x1F => b's', 0x20 => b'd', 0x21 => b'f',
+                        0x39 => b' ',
+                        _ => 0,
+                    };
+                    
+                    if ch == b'q' {
+                        // Quit - halt
+                        serial_print("[FastOS] User pressed Q - halting\r\n");
+                        loop {
+                            unsafe { core::arch::asm!("hlt", options(nomem, nostack)); }
+                        }
+                    }
+                    
+                    if ch != 0 {
+                        // Echo character to screen
+                        unsafe { 
+                            core::ptr::write_volatile(vga_buffer.add(cursor_pos), 0x0F00 | ch as u16);
+                        }
+                        cursor_pos += 1;
+                        if cursor_pos >= 80 * 24 {
+                            cursor_pos = 80 * 7;
+                        }
+                    }
+                }
+            }
+            
+            // Small delay
+            for _ in 0..1000 {
+                core::hint::spin_loop();
+            }
+        }
     }
 
     // Should never reach here

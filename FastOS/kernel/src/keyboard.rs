@@ -78,15 +78,71 @@ pub struct Keyboard {
 
 impl Keyboard {
     pub fn new() -> Self {
+        // Flush any pending data in the PS/2 buffer
+        for _ in 0..16 {
+            let status = inb(PS2_STATUS);
+            if status & 0x01 != 0 {
+                let _ = inb(PS2_DATA);
+            }
+        }
         Self { shift_held: false }
     }
 
-    /// Read a single keypress (blocking). Returns ASCII char or 0 for special keys.
+    /// Try to read a keypress without blocking. Returns Some(char) or None.
+    pub fn try_read_char(&mut self) -> Option<u8> {
+        // Check if data is available
+        let status = inb(PS2_STATUS);
+        if status & 0x01 == 0 {
+            return None;
+        }
+
+        let scancode = inb(PS2_DATA);
+
+        // Key release (bit 7 set)
+        if scancode & 0x80 != 0 {
+            let released = scancode & 0x7F;
+            if released == 0x2A || released == 0x36 {
+                self.shift_held = false;
+            }
+            return None;
+        }
+
+        // Shift press
+        if scancode == 0x2A || scancode == 0x36 {
+            self.shift_held = true;
+            return None;
+        }
+
+        // Translate scancode to ASCII
+        let idx = scancode as usize;
+        if idx >= 128 {
+            return None;
+        }
+
+        let ch = if self.shift_held {
+            SCANCODE_SHIFT[idx]
+        } else {
+            SCANCODE_TABLE[idx]
+        };
+
+        if ch != 0 {
+            Some(ch)
+        } else {
+            None
+        }
+    }
+
+    /// Read a single keypress (blocking with timeout). Returns ASCII char or 0 for special keys.
     pub fn read_char(&mut self) -> u8 {
-        loop {
+        // Use a timeout to prevent infinite blocking
+        for _ in 0..10_000_000 {
             // Wait for data available
             let status = inb(PS2_STATUS);
             if status & 0x01 == 0 {
+                // Small delay
+                for _ in 0..100 {
+                    core::hint::spin_loop();
+                }
                 continue;
             }
 
@@ -123,6 +179,8 @@ impl Keyboard {
                 return ch;
             }
         }
+        // Timeout reached, return 0
+        0
     }
 
     /// Read a line of input into a buffer. Returns number of chars read.

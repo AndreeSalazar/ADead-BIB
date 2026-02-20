@@ -55,11 +55,24 @@ pub fn run_desktop(vga: &mut VgaWriter) {
     let mut selected: usize = 0;
     let mut wm = WindowManager::new();
 
+    // Initial draw
+    draw_desktop(vga, selected);
+    draw_taskbar(vga);
+
     loop {
+        // Non-blocking keyboard check
+        let ch = match kb.try_read_char() {
+            Some(c) => c,
+            None => {
+                // No key pressed, just spin and continue
+                core::hint::spin_loop();
+                continue;
+            }
+        };
+
+        // Redraw after input
         draw_desktop(vga, selected);
         draw_taskbar(vga);
-
-        let ch = kb.read_char();
         match ch {
             // Arrow keys come as escape sequences in scancode
             // We handle raw scancodes in keyboard.rs, but for simplicity
