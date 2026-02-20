@@ -19,6 +19,8 @@ pub mod audio;
 // Fase 10 — GPU driver (NVIDIA/AMD via PCI + SPIR-V)
 pub mod gpu;
 pub mod spirv;
+pub mod aexe;   // AEXE format (PE → FastOS native)
+pub mod hdmi;   // HDMI output via GPU
 
 /// Initialize all hardware drivers
 pub fn init(boot_info: &crate::boot::BootInfo) {
@@ -40,6 +42,10 @@ pub fn init(boot_info: &crate::boot::BootInfo) {
         crate::serial_print("[FastOS]   GPU detected!\r\n");
         // Test SPIR-V parser
         spirv::test_spirv();
+        // Test AEXE format
+        aexe::test_aexe();
+        // Test HDMI output
+        hdmi::test_hdmi();
     }
 
     // Fase 9 — Advanced drivers DISABLED for now (PCI scans crash in QEMU)
