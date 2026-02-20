@@ -253,6 +253,7 @@ impl Builder {
                     name: func_name,
                     params: method.params.clone(),
                     return_type: method.return_type.clone(),
+                    resolved_return_type: method.resolved_return_type.clone(),
                     body: method.body.clone(),
                     attributes: FunctionAttributes::default(),
                 };
@@ -266,6 +267,7 @@ impl Builder {
                     name: func_name,
                     params: constructor.params.clone(),
                     return_type: constructor.return_type.clone(),
+                    resolved_return_type: constructor.resolved_return_type.clone(),
                     body: constructor.body.clone(),
                     attributes: FunctionAttributes::default(),
                 };

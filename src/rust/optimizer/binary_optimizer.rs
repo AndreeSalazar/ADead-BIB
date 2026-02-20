@@ -12,6 +12,7 @@
 // Autor: Eddi Andreé Salazar Matos
 // Email: eddi.salazar.dev@gmail.com
 
+#[allow(unused_imports)]
 use std::collections::HashMap;
 
 /// Nivel de optimización

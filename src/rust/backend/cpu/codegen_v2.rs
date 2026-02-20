@@ -1,3 +1,16 @@
+#![allow(dead_code)]
+// ============================================================
+// DEPRECATED — ADead-BIB CodeGen v2
+// ============================================================
+// This file is DEPRECATED. Use isa_compiler.rs instead.
+// The ISA-based compiler provides:
+//   - Typed instructions (ADeadOp) instead of raw bytes
+//   - Optimization at IR level
+//   - Multi-mode support (16/32/64-bit)
+//
+// Kept for reference only. Will be removed in v4.0.
+// ============================================================
+//
 // ADead-BIB CodeGen v2.0 - Sin Límites
 // Generación de código mejorada con:
 // - Múltiples funciones

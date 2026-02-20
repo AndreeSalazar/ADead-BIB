@@ -1,61 +1,9 @@
 // AST (Abstract Syntax Tree) para ADead-BIB
 // Lenguaje de uso general con OOP - Binario + HEX
 
-/// Tipos de datos del lenguaje
-#[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    // Primitivos
-    Int,
-    Long,
-    Short,
-    Char,
-    Float,
-    Double,
-    Bool,
-    Void,
-
-    // Punteros
-    Pointer(Box<Type>),   // int* -> Pointer(Int)
-    Reference(Box<Type>), // int& -> Reference(Int)
-
-    // Arrays
-    Array(Box<Type>, Option<usize>), // int[10] -> Array(Int, Some(10))
-
-    // Tipos definidos por usuario
-    Named(String), // struct/class name
-
-    // Auto (inferencia)
-    Auto,
-}
-
-impl Type {
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "int" => Type::Int,
-            "long" => Type::Long,
-            "short" => Type::Short,
-            "char" => Type::Char,
-            "float" => Type::Float,
-            "double" => Type::Double,
-            "bool" => Type::Bool,
-            "void" => Type::Void,
-            "auto" => Type::Auto,
-            other => Type::Named(other.to_string()),
-        }
-    }
-
-    pub fn pointer_to(self) -> Self {
-        Type::Pointer(Box::new(self))
-    }
-
-    pub fn reference_to(self) -> Self {
-        Type::Reference(Box::new(self))
-    }
-
-    pub fn array_of(self, size: Option<usize>) -> Self {
-        Type::Array(Box::new(self), size)
-    }
-}
+// Use unified type system
+pub use super::types::Type;
+pub use super::types::RegSize;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -513,21 +461,15 @@ pub enum CompoundOp {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
-    pub type_name: Option<String>,
-    pub param_type: Option<Type>,    // Tipo completo (v3.2)
-    pub is_pointer: bool,            // Es puntero?
-    pub is_reference: bool,          // Es referencia?
-    pub default_value: Option<Expr>, // Valor por defecto
+    pub param_type: Type,              // Unified type (always present)
+    pub default_value: Option<Expr>,   // Default value
 }
 
 impl Param {
     pub fn new(name: String) -> Self {
         Self {
             name,
-            type_name: None,
-            param_type: None,
-            is_pointer: false,
-            is_reference: false,
+            param_type: Type::Auto,
             default_value: None,
         }
     }
@@ -535,10 +477,15 @@ impl Param {
     pub fn with_type(name: String, type_name: String) -> Self {
         Self {
             name,
-            type_name: Some(type_name.clone()),
-            param_type: Some(Type::from_str(&type_name)),
-            is_pointer: false,
-            is_reference: false,
+            param_type: Type::from_c_name(&type_name),
+            default_value: None,
+        }
+    }
+
+    pub fn typed(name: String, param_type: Type) -> Self {
+        Self {
+            name,
+            param_type,
             default_value: None,
         }
     }
@@ -562,6 +509,7 @@ pub struct Function {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<String>,
+    pub resolved_return_type: Type,
     pub body: Vec<Stmt>,
     pub attributes: FunctionAttributes,
 }
@@ -578,6 +526,7 @@ pub struct MethodSignature {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<String>,
+    pub resolved_return_type: Type,
 }
 
 // OOP: Clase con herencia y polimorfismo
@@ -596,6 +545,7 @@ pub struct Class {
 pub struct Field {
     pub name: String,
     pub type_name: Option<String>,
+    pub field_type: Type,
     pub default_value: Option<Expr>,
 }
 
@@ -604,6 +554,7 @@ pub struct Method {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<String>,
+    pub resolved_return_type: Type,
     pub body: Vec<Stmt>,
     pub is_virtual: bool,  // Para polimorfismo
     pub is_override: bool, // Override de método padre
@@ -622,7 +573,7 @@ pub struct Struct {
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub name: String,
-    pub type_name: Option<String>,
+    pub field_type: Type,
 }
 
 // Rust-style impl block
@@ -645,6 +596,7 @@ pub struct TraitMethod {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<String>,
+    pub resolved_return_type: Type,
     pub default_body: Option<Vec<Stmt>>, // Default implementation (optional)
 }
 

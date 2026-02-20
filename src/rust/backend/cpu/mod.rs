@@ -18,8 +18,8 @@
 // Flujo: AST → binary_emitter → bytes → PE/ELF/RAW
 // ============================================================
 
-pub mod codegen;
-pub mod codegen_v2;
+pub mod codegen;       // DEPRECATED: use isa_compiler (via isa module)
+pub mod codegen_v2;    // DEPRECATED: use isa_compiler (via isa module)
 pub mod microvm;
 pub mod pe;
 pub mod pe_compact;

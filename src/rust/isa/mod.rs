@@ -22,6 +22,7 @@ pub mod decoder;
 pub mod encoder;
 pub mod isa_compiler;
 pub mod optimizer;
+pub mod reg_alloc;
 
 // ============================================================
 // Registers
@@ -255,10 +256,11 @@ impl std::fmt::Display for Reg {
 
 /// Operandos de instrucciones x86-64.
 ///
-/// Cubre todos los modos de direccionamiento que usa codegen_v2:
+/// Cubre todos los modos de direccionamiento:
 /// - Registro directo
-/// - Inmediatos (8, 32, 64 bits)
+/// - Inmediatos (8, 16, 32, 64 bits)
 /// - Memoria con base + desplazamiento: `[rbp + disp]`
+/// - Memoria con index y scale: `[base + index*scale + disp]` (arrays)
 /// - RIP-relative: `[rip + disp]` (para IAT/tablas)
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operand {
@@ -268,10 +270,15 @@ pub enum Operand {
     Imm64(u64),
     /// Inmediato de 32 bits (mov eax, imm32 / sub rsp, imm32)
     Imm32(i32),
+    /// Inmediato de 16 bits (mov ax, imm16)
+    Imm16(i16),
     /// Inmediato de 8 bits (shl rax, 3 / sub rsp, 32)
     Imm8(i8),
-    /// Memoria: [base + disp] (ej: [rbp - 8])
+    /// Memoria simple: [base + disp] (ej: [rbp - 8])
     Mem { base: Reg, disp: i32 },
+    /// Memoria con SIB: [base + index*scale + disp] (arrays, structs)
+    /// scale must be 1, 2, 4, or 8
+    MemSIB { base: Reg, index: Reg, scale: u8, disp: i32 },
     /// RIP-relative: [rip + disp] (para call indirecto via IAT)
     RipRel(i32),
 }
@@ -282,12 +289,20 @@ impl std::fmt::Display for Operand {
             Operand::Reg(r) => write!(f, "{}", r),
             Operand::Imm64(v) => write!(f, "0x{:X}", v),
             Operand::Imm32(v) => write!(f, "{}", v),
+            Operand::Imm16(v) => write!(f, "{}", v),
             Operand::Imm8(v) => write!(f, "{}", v),
             Operand::Mem { base, disp } => {
                 if *disp >= 0 {
                     write!(f, "[{}+{}]", base, disp)
                 } else {
                     write!(f, "[{}{}]", base, disp)
+                }
+            }
+            Operand::MemSIB { base, index, scale, disp } => {
+                if *disp >= 0 {
+                    write!(f, "[{}+{}*{}+{}]", base, index, scale, disp)
+                } else {
+                    write!(f, "[{}+{}*{}{}]", base, index, scale, disp)
                 }
             }
             Operand::RipRel(disp) => write!(f, "[rip+{}]", disp),
@@ -563,6 +578,15 @@ pub enum ADeadOp {
     /// SHR dst, amount — Shift right logical
     Shr { dst: Reg, amount: u8 },
 
+    /// Bitwise NOT: ~x (NOT dst — one's complement)
+    BitwiseNot { dst: Reg },
+
+    /// SHL dst, CL — Shift left by variable amount in CL register
+    ShlCl { dst: Reg },
+
+    /// SHR dst, CL — Shift right by variable amount in CL register
+    ShrCl { dst: Reg },
+
     /// Far JMP — Jump with segment selector change (for mode switching)
     FarJmp { selector: u16, offset: u32 },
 
@@ -638,6 +662,9 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::InByte { port } => write!(f, "in al, {}", port),
             ADeadOp::OutByte { port, src } => write!(f, "out {}, {}", port, src),
             ADeadOp::Shr { dst, amount } => write!(f, "shr {}, {}", dst, amount),
+            ADeadOp::BitwiseNot { dst } => write!(f, "not {}", dst),
+            ADeadOp::ShlCl { dst } => write!(f, "shl {}, cl", dst),
+            ADeadOp::ShrCl { dst } => write!(f, "shr {}, cl", dst),
             ADeadOp::FarJmp { selector, offset } => {
                 write!(f, "jmp 0x{:04X}:0x{:08X}", selector, offset)
             }

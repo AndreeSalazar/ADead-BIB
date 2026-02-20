@@ -121,9 +121,12 @@ impl Encoder {
             ADeadOp::Jcc { cond, target } => self.encode_jcc(cond, target),
             ADeadOp::Ret => self.emit(&[0xC3]),
             ADeadOp::Syscall => self.emit(&[0x0F, 0x05]),
-            ADeadOp::CvtSi2Sd { dst: _, src: _ } => {
-                // cvtsi2sd xmm0, rax
-                self.emit(&[0xF2, 0x48, 0x0F, 0x2A, 0xC0]);
+            ADeadOp::CvtSi2Sd { dst, src } => {
+                let (src_idx, src_ext) = reg_index(src);
+                let (dst_idx, _) = reg_index(dst);
+                let rex = 0x48 | if src_ext { 0x01 } else { 0x00 };
+                let modrm = 0xC0 | (dst_idx << 3) | src_idx;
+                self.emit(&[0xF2, rex, 0x0F, 0x2A, modrm]);
             }
             ADeadOp::MovQ { dst, src } => self.encode_movq(dst, src),
             ADeadOp::Label(label) => {
@@ -154,6 +157,9 @@ impl Encoder {
             ADeadOp::InByte { port } => self.encode_in_byte(port),
             ADeadOp::OutByte { port, src: _ } => self.encode_out_byte(port),
             ADeadOp::Shr { dst, amount } => self.encode_shr(dst, *amount),
+            ADeadOp::BitwiseNot { dst } => self.encode_bitwise_not(dst),
+            ADeadOp::ShlCl { dst } => self.encode_shl_cl(dst),
+            ADeadOp::ShrCl { dst } => self.encode_shr_cl(dst),
             ADeadOp::FarJmp { selector, offset } => self.encode_far_jmp(*selector, *offset),
             ADeadOp::LabelAddrRef { label, size, base_addr } => {
                 // Emit the absolute address of a label
@@ -219,7 +225,13 @@ impl Encoder {
                         self.emit(&[0x49, 0xB9]);
                         self.emit_u64(*v);
                     }
-                    _ => self.emit(&[0x90]), // fallback nop
+                    _ => {
+                        // Generic MOV r64, imm64 using reg_index
+                        let (idx, ext) = reg_index(r);
+                        let rex = 0x48 | if ext { 0x01 } else { 0x00 };
+                        self.emit(&[rex, 0xB8 + idx]);
+                        self.emit_u64(*v);
+                    }
                 }
             }
             // mov reg32, imm32
@@ -345,6 +357,22 @@ impl Encoder {
                 },
             ) => {
                 self.emit(&[0x48, 0x8B, 0x03]);
+            }
+            // mov [reg64], reg64 (base sin desplazamiento)
+            (
+                Operand::Mem {
+                    base,
+                    disp: 0,
+                },
+                Operand::Reg(src_r),
+            ) => {
+                let (base_idx, base_ext) = reg_index(base);
+                let (src_idx, src_ext) = reg_index(src_r);
+                let mut rex: u8 = 0x48;
+                if src_ext { rex |= 0x04; }
+                if base_ext { rex |= 0x01; }
+                let modrm = (src_idx << 3) | base_idx;
+                self.emit(&[rex, 0x89, modrm]);
             }
             // mov reg64, reg64
             (Operand::Reg(dst_r), Operand::Reg(src_r)) => {
@@ -926,6 +954,39 @@ impl Encoder {
         self.emit(&[0xEA]);
         self.emit_u32(offset);
         self.emit_u16(selector);
+    }
+
+    fn encode_bitwise_not(&mut self, dst: &Reg) {
+        if dst.is_64bit() {
+            let (idx, ext) = reg_index(dst);
+            let rex = 0x48 | if ext { 0x01 } else { 0x00 };
+            self.emit(&[rex, 0xF7, 0xD0 | idx]);
+        } else if dst.is_32bit() {
+            let (idx, _) = reg_index(dst);
+            self.emit(&[0xF7, 0xD0 | idx]);
+        } else {
+            self.emit(&[0x48, 0xF7, 0xD0]); // fallback RAX
+        }
+    }
+
+    fn encode_shl_cl(&mut self, dst: &Reg) {
+        if dst.is_64bit() {
+            let (idx, ext) = reg_index(dst);
+            let rex = 0x48 | if ext { 0x01 } else { 0x00 };
+            self.emit(&[rex, 0xD3, 0xE0 | idx]); // SHL r64, CL
+        } else {
+            self.emit(&[0x48, 0xD3, 0xE0]); // fallback SHL RAX, CL
+        }
+    }
+
+    fn encode_shr_cl(&mut self, dst: &Reg) {
+        if dst.is_64bit() {
+            let (idx, ext) = reg_index(dst);
+            let rex = 0x48 | if ext { 0x01 } else { 0x00 };
+            self.emit(&[rex, 0xD3, 0xE8 | idx]); // SHR r64, CL
+        } else {
+            self.emit(&[0x48, 0xD3, 0xE8]); // fallback SHR RAX, CL
+        }
     }
 }
 

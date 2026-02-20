@@ -777,11 +777,18 @@ impl IsaCompiler {
                 CompoundOp::OrAssign  => self.ir.emit(ADeadOp::Or  { dst: Reg::RAX, src: Reg::RBX }),
                 CompoundOp::XorAssign => self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RBX }),
                 CompoundOp::ShlAssign => {
-                    // Move shift amount to CL, then SHL
-                    self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 1 }); // simplified
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RCX),
+                        src: Operand::Reg(Reg::RBX),
+                    });
+                    self.ir.emit(ADeadOp::ShlCl { dst: Reg::RAX });
                 }
                 CompoundOp::ShrAssign => {
-                    self.ir.emit(ADeadOp::Shr { dst: Reg::RAX, amount: 1 });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RCX),
+                        src: Operand::Reg(Reg::RBX),
+                    });
+                    self.ir.emit(ADeadOp::ShrCl { dst: Reg::RAX });
                 }
                 CompoundOp::ModAssign => {
                     self.ir.emit(ADeadOp::Div { src: Reg::RBX });
@@ -939,6 +946,26 @@ impl IsaCompiler {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Imm8(32),
         });
+    }
+
+    /// Returns the register for argument `index` based on target calling convention
+    fn arg_register(&self, index: usize) -> Reg {
+        match self.target {
+            Target::Windows => match index {
+                0 => Reg::RCX,
+                1 => Reg::RDX,
+                2 => Reg::R8,
+                3 => Reg::R9,
+                _ => Reg::RCX,
+            },
+            Target::Linux | Target::Raw => match index {
+                0 => Reg::RDI,
+                1 => Reg::RSI,
+                2 => Reg::RDX,
+                3 => Reg::RCX,
+                _ => Reg::RDI,
+            },
+        }
     }
 
     // ========================================
@@ -1307,14 +1334,26 @@ impl IsaCompiler {
                     BitwiseOp::And => self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RBX }),
                     BitwiseOp::Or  => self.ir.emit(ADeadOp::Or  { dst: Reg::RAX, src: Reg::RBX }),
                     BitwiseOp::Xor => self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RBX }),
-                    BitwiseOp::LeftShift  => self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 1 }),
-                    BitwiseOp::RightShift => self.ir.emit(ADeadOp::Shr { dst: Reg::RAX, amount: 1 }),
+                    BitwiseOp::LeftShift => {
+                        // RBX has the shift amount from right expression
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RCX),
+                            src: Operand::Reg(Reg::RBX),
+                        });
+                        self.ir.emit(ADeadOp::ShlCl { dst: Reg::RAX });
+                    }
+                    BitwiseOp::RightShift => {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RCX),
+                            src: Operand::Reg(Reg::RBX),
+                        });
+                        self.ir.emit(ADeadOp::ShrCl { dst: Reg::RAX });
+                    }
                 }
             }
             Expr::BitwiseNot(inner) => {
                 self.emit_expression(inner);
-                // Bitwise NOT: not rax (F7 /2)
-                self.ir.emit(ADeadOp::RawBytes(vec![0x48, 0xF7, 0xD0]));
+                self.ir.emit(ADeadOp::BitwiseNot { dst: Reg::RAX });
             }
             Expr::PreIncrement(inner) | Expr::PostIncrement(inner) => {
                 self.emit_expression(inner);
@@ -1359,13 +1398,7 @@ impl IsaCompiler {
     fn emit_call(&mut self, name: &str, args: &[Expr]) {
         for (i, arg) in args.iter().enumerate().take(4) {
             self.emit_expression(arg);
-            let dst = match i {
-                0 => Reg::RCX,
-                1 => Reg::RDX,
-                2 => Reg::R8,
-                3 => Reg::R9,
-                _ => unreachable!(),
-            };
+            let dst = self.arg_register(i);
             self.ir.emit(ADeadOp::Mov {
                 dst: Operand::Reg(dst),
                 src: Operand::Reg(Reg::RAX),

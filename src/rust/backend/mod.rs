@@ -16,6 +16,7 @@ pub mod gpu;
 // Re-exports para compatibilidad
 pub use cpu::pe;
 pub use cpu::elf;
+// DEPRECATED re-exports (use adead_bib::isa::isa_compiler instead)
 pub use cpu::codegen;
 pub use cpu::codegen_v2;
 pub use cpu::syscalls;

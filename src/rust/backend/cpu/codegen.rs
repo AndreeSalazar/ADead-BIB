@@ -1,3 +1,13 @@
+#![allow(dead_code)]
+// ============================================================
+// DEPRECATED — ADead-BIB Legacy CodeGen v1
+// ============================================================
+// This file is DEPRECATED. Use isa_compiler.rs instead.
+// Pipeline: AST → IsaCompiler → ADeadIR → Encoder → bytes
+//
+// Kept for reference only. Will be removed in v4.0.
+// ============================================================
+
 use crate::frontend::ast::{BinOp, CmpOp, Expr, Stmt, UnaryOp};
 use std::collections::HashMap;
 

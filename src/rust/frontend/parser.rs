@@ -296,10 +296,7 @@ impl Parser {
 
                         params.push(Param {
                             name: param_name,
-                            type_name,
-                            param_type: None,
-                            is_pointer: false,
-                            is_reference: false,
+                            param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
                             default_value: None,
                         });
 
@@ -323,10 +320,12 @@ impl Parser {
                 };
 
                 self.skip_newlines();
+                let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
                 methods.push(MethodSignature {
                     name: method_name,
                     params,
                     return_type,
+                    resolved_return_type,
                 });
             } else {
                 break;
@@ -364,10 +363,7 @@ impl Parser {
                                         // Add self as implicit first parameter
                         params.push(Param {
                             name: "self".to_string(),
-                            type_name: Some("Self".to_string()),
-                            param_type: None,
-                            is_pointer: false,
-                            is_reference: true,
+                            param_type: Type::Named("Self".to_string()),
                             default_value: None,
                         });
                         if matches!(self.peek(), Some(Token::Comma)) {
@@ -384,10 +380,7 @@ impl Parser {
                     self.advance();
                     params.push(Param {
                         name: "self".to_string(),
-                        type_name: Some("Self".to_string()),
-                        param_type: None,
-                        is_pointer: false,
-                        is_reference: false,
+                        param_type: Type::Named("Self".to_string()),
                         default_value: None,
                     });
                     if matches!(self.peek(), Some(Token::Comma)) {
@@ -420,10 +413,7 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    type_name,
-                    param_type: None,
-                    is_pointer: false,
-                    is_reference: false,
+                    param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -465,10 +455,12 @@ impl Parser {
 
         self.expect(Token::RBrace)?;
 
+        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
         Ok(Function {
             name,
             params,
             return_type,
+            resolved_return_type,
             body,
             attributes: FunctionAttributes::default(),
         })
@@ -564,10 +556,7 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    type_name: param_type,
-                    param_type: None,
-                    is_pointer: false,
-                    is_reference: false,
+                    param_type: param_type.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -599,10 +588,12 @@ impl Parser {
 
         self.expect(Token::RBrace)?;
 
+        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
         Ok(Function {
             name,
             params,
             return_type,
+            resolved_return_type,
             body,
             attributes: FunctionAttributes::default(),
         })
@@ -764,7 +755,8 @@ impl Parser {
 
             fields.push(Field {
                 name: field_name,
-                type_name,
+                type_name: type_name.clone(),
+                field_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
                 default_value: None,
             });
 
@@ -910,10 +902,7 @@ impl Parser {
 
                         params.push(Param {
                             name: param_name,
-                            type_name,
-                            param_type: None,
-                            is_pointer: false,
-                            is_reference: false,
+                            param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
                             default_value: None,
                         });
 
@@ -954,10 +943,12 @@ impl Parser {
                     None
                 };
 
+                let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
                 methods.push(TraitMethod {
                     name: method_name,
                     params,
                     return_type,
+                    resolved_return_type,
                     default_body,
                 });
             } else {
@@ -1003,10 +994,7 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    type_name,
-                    param_type: None,
-                    is_pointer: false,
-                    is_reference: false,
+                    param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -1067,10 +1055,12 @@ impl Parser {
             }
         }
 
+        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
         Ok(Function {
             name,
             params,
             return_type,
+            resolved_return_type,
             body,
             attributes: FunctionAttributes::default(),
         })
@@ -1198,10 +1188,7 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    type_name,
-                    param_type: None,
-                    is_pointer: false,
-                    is_reference: false,
+                    param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -1254,10 +1241,12 @@ impl Parser {
             }
         }
 
+        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
         Ok(Method {
             name: method_name,
             params,
             return_type,
+            resolved_return_type,
             body,
             is_virtual: false,
             is_override: false,
@@ -1282,6 +1271,7 @@ impl Parser {
         Ok(Field {
             name,
             type_name: None,
+            field_type: Type::Auto,
             default_value,
         })
     }

@@ -20,7 +20,7 @@ impl TypeChecker {
         
         // Primero registrar funciones
         for func in &program.functions {
-            let ret_type = self.parse_type_name(func.return_type.as_deref().unwrap_or("void"));
+            let ret_type = Type::from_c_name(func.return_type.as_deref().unwrap_or("void"));
             types.insert(func.name.clone(), ret_type);
         }
         
@@ -36,13 +36,12 @@ impl TypeChecker {
     fn check_function(&mut self, func: &Function) {
         self.symbol_table.clear();
         
-        // Registrar parámetros
+        // Registrar parámetros — use unified param_type directly
         for param in &func.params {
-            let type_ = self.parse_type_name(param.type_name.as_deref().unwrap_or("var"));
-            self.symbol_table.insert(param.name.clone(), type_);
+            self.symbol_table.insert(param.name.clone(), param.param_type.clone());
         }
         
-        self.current_return_type = self.parse_type_name(func.return_type.as_deref().unwrap_or("void"));
+        self.current_return_type = Type::from_c_name(func.return_type.as_deref().unwrap_or("void"));
         
         // Verificar statements
         for stmt in &func.body {
@@ -90,9 +89,9 @@ impl TypeChecker {
     
     fn infer_expr(&self, expr: &Expr) -> Type {
         match expr {
-            Expr::Number(_) => Type::Int,
-            Expr::Float(_) => Type::Float,
-            Expr::String(_) => Type::String,
+            Expr::Number(_) => Type::I64,
+            Expr::Float(_) => Type::F64,
+            Expr::String(_) => Type::Str,
             Expr::Bool(_) => Type::Bool,
             Expr::Null => Type::Unknown,
             Expr::Variable(name) => {
@@ -108,24 +107,24 @@ impl TypeChecker {
                 // Validar tipos compatibles
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                        if l == Type::String || r == Type::String {
+                        if l == Type::Str || r == Type::Str {
                             eprintln!("⚠️  Warning: Cannot perform arithmetic on string types");
                             return Type::Unknown;
                         }
-                        if l == Type::Float || r == Type::Float {
-                            Type::Float
-                        } else if l == Type::Int && r == Type::Int {
-                            Type::Int
+                        if l == Type::F64 || r == Type::F64 || l == Type::F32 || r == Type::F32 {
+                            Type::F64
+                        } else if l.is_numeric() && r.is_numeric() {
+                            Type::I64
                         } else {
                             Type::Unknown
                         }
                     }
                     BinOp::Mod => {
-                        if l != Type::Int || r != Type::Int {
+                        if !l.is_numeric() || !r.is_numeric() || l.is_float() || r.is_float() {
                             eprintln!("⚠️  Warning: Modulo operator requires integer operands");
                             return Type::Unknown;
                         }
-                        Type::Int
+                        Type::I64
                     }
                     BinOp::And | BinOp::Or => {
                         if l != Type::Bool || r != Type::Bool {
@@ -148,19 +147,6 @@ impl TypeChecker {
                 Type::Unknown
             }
             _ => Type::Unknown,
-        }
-    }
-    
-    fn parse_type_name(&self, name: &str) -> Type {
-        match name {
-            "int" => Type::Int,
-            "float" => Type::Float,
-            "bool" => Type::Bool,
-            "string" => Type::String,
-            "void" => Type::Void,
-            "vec4" => Type::Vec4,
-            "vec8" => Type::Vec8,
-            _ => Type::Unknown, // O Class(name)
         }
     }
 }
