@@ -225,51 +225,107 @@ pub extern "C" fn kernel_main() -> ! {
         
         serial_print("[FastOS] VGA: Desktop displayed, entering input loop\r\n");
         
-        // Simple keyboard polling loop
-        let mut cursor_pos: usize = 80 * 7; // Row 7
+        // Desktop state
+        let mut selected_icon: usize = 0;
+        let icons = [
+            (10, 5, "Terminal"),
+            (10, 20, "Files"),
+            (10, 35, "Editor"),
+            (10, 50, "Settings"),
+        ];
+        
+        // Draw icons
+        fn draw_icons(vga: *mut u16, icons: &[(usize, usize, &str)], selected: usize) {
+            for (idx, &(row, col, name)) in icons.iter().enumerate() {
+                let attr: u16 = if idx == selected { 0x70 } else { 0x1F }; // Selected: black on white
+                let pos = row * 80 + col;
+                for (i, &c) in name.as_bytes().iter().enumerate() {
+                    unsafe { core::ptr::write_volatile(vga.add(pos + i), (attr << 8) | c as u16); }
+                }
+            }
+        }
+        
+        // Draw taskbar
+        fn draw_taskbar(vga: *mut u16) {
+            let taskbar_row = 24;
+            let pos = taskbar_row * 80;
+            // Dark grey background
+            for i in 0..80 {
+                unsafe { core::ptr::write_volatile(vga.add(pos + i), 0x7020); }
+            }
+            // Start button
+            let start = b"[Start]";
+            for (i, &c) in start.iter().enumerate() {
+                unsafe { core::ptr::write_volatile(vga.add(pos + 1 + i), 0x7000 | c as u16); }
+            }
+            // Clock
+            let clock = b"FastOS 1.0";
+            for (i, &c) in clock.iter().enumerate() {
+                unsafe { core::ptr::write_volatile(vga.add(pos + 70 + i), 0x7000 | c as u16); }
+            }
+        }
+        
+        draw_icons(vga_buffer, &icons, selected_icon);
+        draw_taskbar(vga_buffer);
+        
+        // Main loop
         loop {
-            // Check keyboard status
-            let status: u8;
-            unsafe { core::arch::asm!("in al, dx", in("dx") 0x64u16, out("al") status, options(nomem, nostack)); }
+            // Check keyboard
+            let kb_status: u8;
+            unsafe { core::arch::asm!("in al, dx", in("dx") 0x64u16, out("al") kb_status, options(nomem, nostack)); }
             
-            if status & 0x01 != 0 {
-                // Read scancode
+            if kb_status & 0x01 != 0 {
                 let scancode: u8;
                 unsafe { core::arch::asm!("in al, dx", in("dx") 0x60u16, out("al") scancode, options(nomem, nostack)); }
                 
-                // Only process key press (not release)
                 if scancode & 0x80 == 0 {
-                    // Simple scancode to char
-                    let ch = match scancode {
-                        0x10 => b'q', 0x11 => b'w', 0x12 => b'e', 0x13 => b'r',
-                        0x1E => b'a', 0x1F => b's', 0x20 => b'd', 0x21 => b'f',
-                        0x39 => b' ',
-                        _ => 0,
-                    };
+                    let mut redraw = false;
                     
-                    if ch == b'q' {
-                        // Quit - halt
-                        serial_print("[FastOS] User pressed Q - halting\r\n");
-                        loop {
-                            unsafe { core::arch::asm!("hlt", options(nomem, nostack)); }
+                    match scancode {
+                        0x4B => { // Left arrow
+                            if selected_icon > 0 { selected_icon -= 1; redraw = true; }
                         }
+                        0x4D => { // Right arrow
+                            if selected_icon < icons.len() - 1 { selected_icon += 1; redraw = true; }
+                        }
+                        0x1E => { // A - left
+                            if selected_icon > 0 { selected_icon -= 1; redraw = true; }
+                        }
+                        0x20 => { // D - right
+                            if selected_icon < icons.len() - 1 { selected_icon += 1; redraw = true; }
+                        }
+                        0x1C => { // Enter - open app
+                            let pos = 15 * 80 + 10;
+                            let msg: &[u8] = match selected_icon {
+                                0 => b"Opening Terminal...  ",
+                                1 => b"Opening Files...     ",
+                                2 => b"Opening Editor...    ",
+                                _ => b"Opening Settings...  ",
+                            };
+                            for (i, &c) in msg.iter().enumerate() {
+                                unsafe { core::ptr::write_volatile(vga_buffer.add(pos + i), 0x0E00 | c as u16); }
+                            }
+                        }
+                        0x01 => { // ESC - shutdown
+                            serial_print("[FastOS] ESC pressed - shutting down\r\n");
+                            let msg = b"Shutting down...";
+                            let pos = 12 * 80 + 30;
+                            for (i, &c) in msg.iter().enumerate() {
+                                unsafe { core::ptr::write_volatile(vga_buffer.add(pos + i), 0x4F00 | c as u16); }
+                            }
+                            loop { unsafe { core::arch::asm!("hlt"); } }
+                        }
+                        _ => {}
                     }
                     
-                    if ch != 0 {
-                        // Echo character to screen
-                        unsafe { 
-                            core::ptr::write_volatile(vga_buffer.add(cursor_pos), 0x0F00 | ch as u16);
-                        }
-                        cursor_pos += 1;
-                        if cursor_pos >= 80 * 24 {
-                            cursor_pos = 80 * 7;
-                        }
+                    if redraw {
+                        draw_icons(vga_buffer, &icons, selected_icon);
                     }
                 }
             }
             
             // Small delay
-            for _ in 0..1000 {
+            for _ in 0..500 {
                 core::hint::spin_loop();
             }
         }

@@ -16,6 +16,10 @@ pub mod usb;
 pub mod network;
 pub mod audio;
 
+// Fase 10 — GPU driver (NVIDIA/AMD via PCI + SPIR-V)
+pub mod gpu;
+pub mod spirv;
+
 /// Initialize all hardware drivers
 pub fn init(boot_info: &crate::boot::BootInfo) {
     crate::serial_print("[FastOS]   framebuffer...\r\n");
@@ -29,6 +33,14 @@ pub fn init(boot_info: &crate::boot::BootInfo) {
     crate::serial_print("[FastOS]   disk...\r\n");
     disk::init();
     crate::serial_print("[FastOS]   basic drivers done\r\n");
+
+    // Fase 10 — GPU driver
+    crate::serial_print("[FastOS]   gpu...\r\n");
+    if gpu::init() {
+        crate::serial_print("[FastOS]   GPU detected!\r\n");
+        // Test SPIR-V parser
+        spirv::test_spirv();
+    }
 
     // Fase 9 — Advanced drivers DISABLED for now (PCI scans crash in QEMU)
     // ahci::init();
