@@ -118,15 +118,10 @@ adeadc MODE2_app_typed.adB -o app.exe -O2
 ### Sintaxis Modo 2
 
 ```adB
-// Tipos C
+// Tipos C (sin punto y coma)
 int main() {
-    char c = 65           // 1 byte
-    short s = 1000        // 2 bytes
-    int i = 42            // 4 bytes
-    long l = 100000       // 8 bytes
-    float f = 3.14        // 4 bytes
-    double d = 2.71828    // 8 bytes
-    bool flag = true      // 1 byte
+    int i = 42
+    int l = 100000
     
     printf("Hello, World!\n")
     return 0
@@ -137,41 +132,51 @@ int add(int a, int b) {
     return a + b
 }
 
-// Punteros
-void swap(int* a, int* b) {
-    int temp = *a
-    *a = *b
-    *b = temp
-}
-
-// Arrays
-int sum_array(int* arr, int len) {
-    int sum = 0
-    for (int i = 0; i < len; i = i + 1) {
-        sum = sum + arr[i]
+int factorial(int n) {
+    if n <= 1 {
+        return 1
     }
-    return sum
+    return n * factorial(n - 1)
 }
 
-// Clases (sintaxis Python)
-class Point:
-    x: int
-    y: int
+// Control de flujo (sin paréntesis en condición)
+void demo() {
+    int x = 10
+    if x > 5 {
+        printf("x > 5\n")
+    } else {
+        printf("x <= 5\n")
+    }
     
-    def __init__(self, x: int, y: int):
-        self.x = x
-        self.y = y
-    
-    def distance(self) -> int:
-        return self.x * self.x + self.y * self.y
+    int count = 0
+    while count < 3 {
+        printf(count)
+        count = count + 1
+    }
+}
+
+// Funciones matemáticas
+int max(int a, int b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+int abs_val(int x) {
+    if x < 0 {
+        return 0 - x
+    }
+    return x
+}
 ```
 
 ### Ejemplos Modo 2
 
 | Archivo | Descripción |
 |---------|-------------|
-| `MODE2_app_typed.adB` | Aplicación con tipos, arrays, bitwise |
-| `MODE2_oop_classes.adB` | OOP con clases, herencia, interfaces |
+| `MODE2_app_typed.adB` | Aplicación con tipos C, funciones, control de flujo |
+| `MODE2_oop_classes.adB` | Funciones para geometría (punto, rectángulo, círculo) |
 | `01_hello.adB` | Hello World básico |
 | `05_functions.adB` | Funciones y recursión |
 | `11_pointers_real.adB` | Punteros y operaciones bitwise |
