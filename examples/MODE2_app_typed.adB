@@ -77,9 +77,60 @@ void math_demo() {
     printf("\n")
 }
 
+// ---- Demo de nuevas características v3.4 ----
+void new_features_demo() {
+    printf("\nNew Features v3.4:\n")
+    
+    // Compound assignments (+=, -=, *=, /=)
+    int counter = 100
+    counter += 50
+    printf("100 += 50 = ")
+    printf(counter)
+    printf("\n")
+    
+    counter -= 30
+    printf("150 -= 30 = ")
+    printf(counter)
+    printf("\n")
+    
+    counter *= 2
+    printf("120 *= 2 = ")
+    printf(counter)
+    printf("\n")
+    
+    counter /= 4
+    printf("240 /= 4 = ")
+    printf(counter)
+    printf("\n")
+    
+    // else if chains
+    int score = 85
+    printf("\nScore ")
+    printf(score)
+    if score >= 90 {
+        printf(" = A\n")
+    } else if score >= 80 {
+        printf(" = B\n")
+    } else if score >= 70 {
+        printf(" = C\n")
+    } else {
+        printf(" = F\n")
+    }
+    
+    // do-while loop
+    printf("\ndo-while countdown: ")
+    int n = 5
+    do {
+        printf(n)
+        printf(" ")
+        n -= 1
+    } while n > 0
+    printf("\n")
+}
+
 // ---- Función principal ----
 int main() {
-    printf("=== ADead-BIB v3.2 - Tipos C ===\n\n")
+    printf("=== ADead-BIB v3.4 - Tipos C ===\n\n")
     
     // Variables con tipos
     int i = 42
@@ -111,6 +162,7 @@ int main() {
     // Demos
     control_flow_demo()
     math_demo()
+    new_features_demo()
     
     printf("\n=== Compilado sin NASM, sin LLVM ===\n")
     return 0

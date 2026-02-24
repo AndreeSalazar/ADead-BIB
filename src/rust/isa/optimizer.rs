@@ -249,6 +249,43 @@ impl IsaOptimizer {
                 }
             }
 
+            // Pattern: mov reg, rax; ... use reg → optimize when reg == rax (self-move)
+            // Pattern: mov rax, imm; mov reg, rax; → mov reg, imm (fuse load+move)
+            if i + 1 < ops.len() {
+                if let (
+                    ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(v) },
+                    ADeadOp::Mov { dst: Operand::Reg(dst_reg), src: Operand::Reg(Reg::RAX) }
+                ) = (&ops[i], &ops[i + 1]) {
+                    // Fuse: mov rax, imm64; mov reg, rax → mov reg, imm64
+                    result.push(ADeadOp::Mov {
+                        dst: Operand::Reg(*dst_reg),
+                        src: Operand::Imm64(*v),
+                    });
+                    self.stats.peephole_applied += 1;
+                    self.stats.instructions_fused += 1;
+                    i += 2;
+                    continue;
+                }
+            }
+
+            // Pattern: mov temp, rax; mov rax, temp → eliminate (register round-trip)
+            if i + 1 < ops.len() {
+                if let (
+                    ADeadOp::Mov { dst: Operand::Reg(r1), src: Operand::Reg(Reg::RAX) },
+                    ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Reg(r2) }
+                ) = (&ops[i], &ops[i + 1]) {
+                    if r1 == r2 && *r1 != Reg::RAX {
+                        // This is a no-op round-trip, skip both
+                        self.stats.peephole_applied += 1;
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+
+            // Pattern: xor eax, eax; mov [rbp+off], rax → mov qword [rbp+off], 0
+            // (Keep as-is; xor+mov is already efficient)
+
             // No pattern matched, keep instruction
             result.push(ops[i].clone());
             i += 1;

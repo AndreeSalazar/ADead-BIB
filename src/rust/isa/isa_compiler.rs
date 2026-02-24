@@ -15,6 +15,7 @@
 use crate::frontend::ast::*;
 use super::{ADeadIR, ADeadOp, Reg, Operand, Condition, Label, CallTarget};
 use super::encoder::Encoder;
+use super::reg_alloc::TempAllocator;
 use std::collections::HashMap;
 
 /// Target de compilación
@@ -111,6 +112,12 @@ pub struct IsaCompiler {
 
     // Named labels (v3.3-Boot) — maps label names to Label IDs
     named_labels: HashMap<String, Label>,
+
+    // Register allocator for temporaries — eliminates push/pop in expressions
+    temp_alloc: TempAllocator,
+
+    // Track prologue sub rsp index for patching dynamic stack frame
+    prologue_sub_index: Option<usize>,
 }
 
 impl IsaCompiler {
@@ -134,6 +141,8 @@ impl IsaCompiler {
             data_rva,
             cpu_mode: CpuMode::Long64, // Default: 64-bit
             named_labels: HashMap::new(),
+            temp_alloc: TempAllocator::new(),
+            prologue_sub_index: None,
         }
     }
 
@@ -273,6 +282,7 @@ impl IsaCompiler {
                     }
                 }
                 Stmt::While { body, .. } => self.collect_strings_from_stmts(body),
+                Stmt::DoWhile { body, .. } => self.collect_strings_from_stmts(body),
                 Stmt::For { body, .. } => self.collect_strings_from_stmts(body),
                 Stmt::ForEach { body, .. } => self.collect_strings_from_stmts(body),
                 _ => {}
@@ -361,6 +371,8 @@ impl IsaCompiler {
             // @interrupt / @exception: pop all registers + iretq
             self.emit_interrupt_epilogue();
         } else if !is_naked {
+            // Patch prologue with actual stack frame size
+            self.patch_prologue();
             // Normal function epilogue
             self.emit_epilogue();
         }
@@ -387,6 +399,7 @@ impl IsaCompiler {
         }
 
         if !is_raw {
+            self.patch_prologue();
             self.emit_epilogue();
         }
         self.current_function = None;
@@ -402,11 +415,35 @@ impl IsaCompiler {
             dst: Operand::Reg(Reg::RBP),
             src: Operand::Reg(Reg::RSP),
         });
-        // sub rsp, 128 (espacio fijo para locales — se puede optimizar después)
+        // Dynamic stack frame: emit placeholder, patch after function body
+        self.prologue_sub_index = Some(self.ir.len());
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm32(128),
+            src: Operand::Imm32(0), // placeholder — patched in patch_prologue()
         });
+        // Reset temp allocator for this function
+        self.temp_alloc = TempAllocator::new();
+    }
+
+    /// Patch the prologue's sub rsp with the actual stack frame size
+    fn patch_prologue(&mut self) {
+        if let Some(idx) = self.prologue_sub_index.take() {
+            // Calculate actual frame size: locals + shadow space (32 for Windows) + alignment
+            let locals_size = (-self.stack_offset) as i32; // stack_offset is negative
+            let shadow_space = if self.target == Target::Windows { 32 } else { 0 };
+            let raw_size = locals_size + shadow_space;
+            // Align to 16 bytes (required by x64 ABI)
+            let aligned_size = ((raw_size + 15) / 16) * 16;
+            // Minimum 32 bytes for small functions (Windows shadow space)
+            let final_size = if aligned_size < 32 { 32 } else { aligned_size };
+
+            if let Some(op) = self.ir.ops_mut().get_mut(idx) {
+                *op = ADeadOp::Sub {
+                    dst: Operand::Reg(Reg::RSP),
+                    src: Operand::Imm32(final_size),
+                };
+            }
+        }
     }
 
     fn emit_epilogue(&mut self) {
@@ -567,13 +604,24 @@ impl IsaCompiler {
             }
             Stmt::DoWhile { body, condition } => {
                 let loop_start = self.ir.new_label();
+                let loop_end = self.ir.new_label();
+
                 self.ir.emit(ADeadOp::Label(loop_start));
+
                 for s in body {
                     self.emit_statement(s);
                 }
-                self.emit_condition(condition);
-                self.ir.emit(ADeadOp::Test { left: Reg::RAX, right: Reg::RAX });
-                self.ir.emit(ADeadOp::Jcc { cond: Condition::NotEqual, target: loop_start });
+
+                self.emit_expression(condition);
+                self.ir.emit(ADeadOp::Cmp {
+                    left: Operand::Reg(Reg::RAX),
+                    right: Operand::Imm32(0),
+                });
+                self.ir.emit(ADeadOp::Jcc {
+                    cond: Condition::NotEqual,
+                    target: loop_start,
+                });
+                self.ir.emit(ADeadOp::Label(loop_end));
             }
 
             // ========== LABELS Y JUMPS (v3.3-Boot) ==========
@@ -1134,13 +1182,33 @@ impl IsaCompiler {
         match expr {
             Expr::Comparison { op, left, right } => {
                 self.emit_expression(left);
-                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                self.emit_expression(right);
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(Reg::RBX),
-                    src: Operand::Reg(Reg::RAX),
-                });
-                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+
+                // Use register allocation instead of push/pop for comparisons
+                if let Some(temp) = self.temp_alloc.alloc() {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(temp),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(temp),
+                    });
+                    self.temp_alloc.free(temp);
+                } else {
+                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                }
+
                 self.ir.emit(ADeadOp::Cmp {
                     left: Operand::Reg(Reg::RAX),
                     right: Operand::Reg(Reg::RBX),
@@ -1205,14 +1273,37 @@ impl IsaCompiler {
                 }
             }
             Expr::BinaryOp { op, left, right } => {
+                // Optimization: use register allocation instead of push/pop
+                // This eliminates 2 bytes per push + 1 byte per pop = 3 bytes saved per binop
+                // and avoids RSP mutation which can break stack alignment
                 self.emit_expression(left);
-                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                self.emit_expression(right);
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(Reg::RBX),
-                    src: Operand::Reg(Reg::RAX),
-                });
-                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+
+                if let Some(temp) = self.temp_alloc.alloc() {
+                    // Fast path: save left in a temp register (no stack ops!)
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(temp),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(temp),
+                    });
+                    self.temp_alloc.free(temp);
+                } else {
+                    // Spill path: all temp regs in use, fall back to push/pop
+                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                }
 
                 match op {
                     BinOp::Add => self.ir.emit(ADeadOp::Add {
@@ -1227,7 +1318,6 @@ impl IsaCompiler {
                     BinOp::Div => self.ir.emit(ADeadOp::Div { src: Reg::RBX }),
                     BinOp::Mod => {
                         self.ir.emit(ADeadOp::Div { src: Reg::RBX });
-                        // Remainder is in RDX after idiv
                         self.ir.emit(ADeadOp::Mov {
                             dst: Operand::Reg(Reg::RAX),
                             src: Operand::Reg(Reg::RDX),
@@ -1320,16 +1410,34 @@ impl IsaCompiler {
                 self.ir.emit(ADeadOp::Cpuid);
                 // EAX already has result
             }
-            // Bitwise operations
+            // Bitwise operations — using register allocation
             Expr::BitwiseOp { op, left, right } => {
                 self.emit_expression(left);
-                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                self.emit_expression(right);
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(Reg::RBX),
-                    src: Operand::Reg(Reg::RAX),
-                });
-                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+
+                if let Some(temp) = self.temp_alloc.alloc() {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(temp),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(temp),
+                    });
+                    self.temp_alloc.free(temp);
+                } else {
+                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                }
                 match op {
                     BitwiseOp::And => self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RBX }),
                     BitwiseOp::Or  => self.ir.emit(ADeadOp::Or  { dst: Reg::RAX, src: Reg::RBX }),

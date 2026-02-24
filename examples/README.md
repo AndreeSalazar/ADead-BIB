@@ -91,6 +91,9 @@ let val = port_in(0x60) // Leer de puerto
 - Arrays: `int arr[10]`
 - Clases y OOP (sintaxis Python)
 - Control de flujo completo
+- Compound assignments: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`
+- `else if` chains
+- `do-while` loops
 
 ### Compilar
 
@@ -139,6 +142,14 @@ int factorial(int n) {
     return n * factorial(n - 1)
 }
 
+// Compound assignments
+void demo_compound() {
+    int x = 10
+    x += 10
+    y -= 5
+    z *= 2
+}
+
 // Control de flujo (sin paréntesis en condición)
 void demo() {
     int x = 10
@@ -148,11 +159,29 @@ void demo() {
         printf("x <= 5\n")
     }
     
+    // else if chains
+    int score = 85
+    if score >= 90 {
+        printf("A\n")
+    } else if score >= 80 {
+        printf("B\n")
+    } else {
+        printf("F\n")
+    }
+    
+    // while loop
     int count = 0
     while count < 3 {
         printf(count)
         count = count + 1
     }
+    
+    // do-while loop
+    int n = 5
+    do {
+        printf(n)
+        n -= 1
+    } while n > 0
 }
 
 // Funciones matemáticas
@@ -266,5 +295,5 @@ Código .adB → Parser → AST → ISA (ADeadOp) → Encoder → Bytes
 ---
 
 **Autor:** Eddi Andreé Salazar Matos  
-**Versión:** ADead-BIB v3.2  
+**Versión:** ADead-BIB v3.4  
 **Licencia:** MIT

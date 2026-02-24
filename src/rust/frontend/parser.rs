@@ -1284,6 +1284,18 @@ impl Parser {
             Some(Token::If) => self.parse_if_statement(),
             Some(Token::While) => self.parse_while_statement(),
             Some(Token::For) => self.parse_for_statement(),
+            Some(Token::Do) => {
+                self.advance(); // consume 'do'
+                self.expect(Token::LBrace)?;
+                let body = self.parse_block()?;
+                self.expect(Token::RBrace)?;
+                self.expect(Token::While)?;
+                let has_paren = matches!(self.peek(), Some(Token::LParen));
+                if has_paren { self.advance(); }
+                let condition = self.parse_comparison()?;
+                if has_paren { self.expect(Token::RParen)?; }
+                Ok(Stmt::DoWhile { body, condition })
+            }
             Some(Token::Break) => {
                 self.advance();
                 Ok(Stmt::Break)
@@ -1404,6 +1416,46 @@ impl Parser {
                     let value = Expr::BinaryOp {
                         left: Box::new(Expr::Variable(name.clone())),
                         op: BinOp::Div,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::PercentEq)) {
+                    // counter %= 2 -> counter = counter % 2
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BinaryOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BinOp::Mod,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::AmpEq)) {
+                    // x &= mask -> x = x & mask
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BitwiseOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BitwiseOp::And,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::PipeEq)) {
+                    // x |= mask -> x = x | mask
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BitwiseOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BitwiseOp::Or,
+                        right: Box::new(right),
+                    };
+                    Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::CaretEq)) {
+                    // x ^= mask -> x = x ^ mask
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    let value = Expr::BitwiseOp {
+                        left: Box::new(Expr::Variable(name.clone())),
+                        op: BitwiseOp::Xor,
                         right: Box::new(right),
                     };
                     Ok(Stmt::Assign { name, value })
@@ -1729,13 +1781,19 @@ impl Parser {
         let then_body = self.parse_block()?;
         self.expect(Token::RBrace)?;
 
-        // else opcional
+        // else opcional (supports else if chains)
         let else_body = if matches!(self.peek(), Some(Token::Else)) {
             self.advance();
-            self.expect(Token::LBrace)?;
-            let body = self.parse_block()?;
-            self.expect(Token::RBrace)?;
-            Some(body)
+            if matches!(self.peek(), Some(Token::If)) {
+                // else if chain: parse nested if as single statement in else body
+                let nested_if = self.parse_if_statement()?;
+                Some(vec![nested_if])
+            } else {
+                self.expect(Token::LBrace)?;
+                let body = self.parse_block()?;
+                self.expect(Token::RBrace)?;
+                Some(body)
+            }
         } else {
             None
         };

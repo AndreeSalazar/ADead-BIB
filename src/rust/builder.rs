@@ -74,6 +74,11 @@ impl Builder {
         // Check types (ignoring errors for now, just inference)
         let _types = type_checker.check_program(&program);
 
+        // 2.5. Constant Folding (always on — safe and always beneficial)
+        if options.verbose { println!("Step 2.5: Constant Folding..."); }
+        let folder = crate::optimizer::const_fold::ConstFolder::new();
+        folder.fold_program(&mut program);
+
         // 3. Optimization
         if options.optimize {
             if options.verbose { println!("Step 3: Optimizing..."); }

@@ -77,7 +77,7 @@ int abs_val(int x) {
 
 // ---- Main ----
 int main() {
-    printf("=== ADead-BIB OOP Demo ===\n\n")
+    printf("=== ADead-BIB v3.4 OOP Demo ===\n\n")
     
     // Demo Punto
     printf("Punto(3, 4):\n")
