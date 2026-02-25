@@ -4,9 +4,11 @@
 // Herramienta de línea de comandos para análisis de binarios.
 //
 // Uso:
-//   bg analyze <binary> [--policy user|service|driver|kernel|sandbox]
-//   bg inspect <binary>
-//   bg check   <binary> --level user|service|driver|kernel
+//   bg analyze  <binary> [--policy user|service|driver|kernel|sandbox]
+//   bg inspect  <binary>
+//   bg check    <binary> --level user|service|driver|kernel
+//   bg info     <binary>
+//   bg hardware <binary> [--policy user|service|driver|kernel]
 //
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
@@ -31,6 +33,7 @@ fn main() {
         "inspect" => cmd_inspect(target),
         "check" => cmd_check(target, &args[3..]),
         "info" => cmd_info(target),
+        "hardware" => cmd_hardware(target, &args[3..]),
         _ => {
             eprintln!("Unknown command: {}", command);
             print_usage();
@@ -41,15 +44,16 @@ fn main() {
 
 fn print_usage() {
     eprintln!("═══════════════════════════════════════════════");
-    eprintln!("  BG — Binary Guardian v0.1.0");
+    eprintln!("  BG — Binary Guardian v0.2.0");
     eprintln!("  Deterministic ISA-Level Capability Guardian");
     eprintln!("═══════════════════════════════════════════════");
     eprintln!();
     eprintln!("Usage:");
-    eprintln!("  bg analyze <binary> [--policy <level>]");
-    eprintln!("  bg inspect <binary>");
-    eprintln!("  bg check   <binary> [--level <level>]");
-    eprintln!("  bg info    <binary>");
+    eprintln!("  bg analyze  <binary> [--policy <level>]");
+    eprintln!("  bg inspect  <binary>");
+    eprintln!("  bg check    <binary> [--level <level>]");
+    eprintln!("  bg info     <binary>");
+    eprintln!("  bg hardware <binary> [--policy <level>]");
     eprintln!();
     eprintln!("Policies/Levels:");
     eprintln!("  kernel   Ring 0 — full hardware access");
@@ -58,12 +62,20 @@ fn print_usage() {
     eprintln!("  user     Ring 3 — safe instructions only (default)");
     eprintln!("  sandbox  Ring 3 — strict, almost nothing allowed");
     eprintln!();
+    eprintln!("Commands:");
+    eprintln!("  analyze   Full analysis with policy evaluation");
+    eprintln!("  inspect   Architecture Map without policy check");
+    eprintln!("  check     Quick pass/fail for a security level");
+    eprintln!("  info      Binary format info (sections, imports)");
+    eprintln!("  hardware  Hardware access report for admin");
+    eprintln!();
     eprintln!("Examples:");
     eprintln!("  bg analyze program.exe");
     eprintln!("  bg analyze kernel.bin --policy kernel");
     eprintln!("  bg check driver.sys --level driver");
     eprintln!("  bg inspect firmware.bin");
     eprintln!("  bg info program.exe");
+    eprintln!("  bg hardware driver.sys --policy driver");
 }
 
 /// Analiza un binario contra una policy y muestra el resultado completo.
@@ -93,10 +105,10 @@ fn cmd_inspect(target: &str) {
             println!("{}", info);
             println!();
 
-            let map = BinaryGuardian::inspect_bytes(&info.code_bytes);
-            println!("{}", map);
+            let result = BinaryGuardian::analyze_loaded(&info, &SecurityPolicy::kernel());
+            println!("{}", result.map);
 
-            let level = bg::PolicyEngine::infer_minimum_level(&map);
+            let level = bg::PolicyEngine::infer_minimum_level(&result.map);
             println!("  Inferred minimum level: {}", level);
         }
         Err(e) => {
@@ -115,9 +127,9 @@ fn cmd_check(target: &str, extra_args: &[String]) {
         Ok(info) => {
             let can = BinaryGuardian::can_execute(&info.code_bytes, level);
             if can {
-                println!("APPROVED — '{}' can execute at {}", target, level);
+                println!("✓ APPROVED — '{}' can execute at {}", target, level);
             } else {
-                println!("DENIED — '{}' cannot execute at {}", target, level);
+                println!("✗ DENIED — '{}' cannot execute at {}", target, level);
                 std::process::exit(2);
             }
         }
@@ -128,12 +140,29 @@ fn cmd_check(target: &str, extra_args: &[String]) {
     }
 }
 
-/// Muestra información del binario (formato, secciones, etc.) sin análisis.
+/// Muestra información del binario (formato, secciones, imports) sin análisis.
 fn cmd_info(target: &str) {
     let path = Path::new(target);
     match BinaryLoader::load_file(path) {
         Ok(info) => {
             println!("{}", info);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Genera un reporte de acceso a hardware para el administrador.
+fn cmd_hardware(target: &str, extra_args: &[String]) {
+    let policy = parse_policy(extra_args, "--policy");
+
+    let path = Path::new(target);
+    match BinaryLoader::load_file(path) {
+        Ok(info) => {
+            let report = BinaryGuardian::hardware_report(&info, &policy);
+            println!("{}", report);
         }
         Err(e) => {
             eprintln!("Error: {}", e);

@@ -13,7 +13,7 @@
 // ============================================================
 
 use adead_bib::isa::{ADeadOp, CallTarget, Operand};
-use crate::arch_map::*;
+use super::arch_map::*;
 
 /// Capability Mapper — Analiza ABIB IR y construye un Architecture Map.
 pub struct CapabilityMapper;
@@ -58,21 +58,29 @@ impl CapabilityMapper {
                 _ => {}
             }
 
-            // IO Map
+            // IO Map + Hardware Access Map
             match op {
                 ADeadOp::InByte { port } => {
+                    let static_port = Self::extract_static_port(port);
                     map.io_map.accesses.push(IOAccess {
-                        port: Self::extract_static_port(port),
+                        port: static_port,
                         direction: IODirection::In,
                         instruction_index: i,
                     });
+                    if let Some(p) = static_port {
+                        map.hardware_map.register_access(p, IODirection::In, i);
+                    }
                 }
                 ADeadOp::OutByte { port, .. } => {
+                    let static_port = Self::extract_static_port(port);
                     map.io_map.accesses.push(IOAccess {
-                        port: Self::extract_static_port(port),
+                        port: static_port,
                         direction: IODirection::Out,
                         instruction_index: i,
                     });
+                    if let Some(p) = static_port {
+                        map.hardware_map.register_access(p, IODirection::Out, i);
+                    }
                 }
                 _ => {}
             }
@@ -152,6 +160,11 @@ impl CapabilityMapper {
                 }
                 ADeadOp::Call { target: CallTarget::RipRelative(_) } => {
                     map.capabilities.indirect_control_flow = true;
+                }
+                // CPUID detection — timing/fingerprinting capability
+                ADeadOp::Cpuid => {
+                    map.capabilities.cpuid_access = true;
+                    map.hardware_map.cpuid_access = true;
                 }
                 _ => {}
             }
@@ -234,7 +247,20 @@ mod tests {
     }
 
     #[test]
-    fn test_io_detection() {
+    fn test_syscall_detection() {
+        let ops = vec![
+            ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(1) },
+            ADeadOp::Syscall,
+            ADeadOp::Int { vector: 0x80 },
+        ];
+        let map = CapabilityMapper::analyze(&ops);
+        assert_eq!(map.syscall_map.syscall_count, 2);
+        assert!(map.syscall_map.uses_syscall_instruction);
+        assert!(map.syscall_map.interrupt_vectors.contains(&0x80));
+    }
+
+    #[test]
+    fn test_io_detection_with_hardware_map() {
         let ops = vec![
             ADeadOp::InByte { port: Operand::Imm8(0x60) },
             ADeadOp::OutByte { port: Operand::Imm8(0x20), src: Operand::Reg(Reg::AL) },
@@ -243,5 +269,41 @@ mod tests {
         assert_eq!(map.io_map.accesses.len(), 2);
         assert!(map.io_map.unique_ports().contains(&0x60));
         assert!(map.io_map.unique_ports().contains(&0x20));
+        // Hardware map should classify these
+        assert!(map.hardware_map.devices_accessed.iter().any(|d| *d == HardwareDevice::KeyboardPS2));
+        assert!(map.hardware_map.devices_accessed.iter().any(|d| *d == HardwareDevice::PicMaster));
+    }
+
+    #[test]
+    fn test_control_flow_analysis() {
+        let ops = vec![
+            ADeadOp::Call { target: CallTarget::Relative(Label(100)) },
+            ADeadOp::Call { target: CallTarget::RipRelative(200) },
+            ADeadOp::Jmp { target: Label(50) },
+            ADeadOp::Jcc { cond: Condition::Equal, target: Label(30) },
+        ];
+        let map = CapabilityMapper::analyze(&ops);
+        assert_eq!(map.control_flow_map.direct_calls, 1);
+        assert_eq!(map.control_flow_map.indirect_calls, 1);
+        assert_eq!(map.control_flow_map.direct_jumps, 1);
+        assert_eq!(map.control_flow_map.conditional_branches, 1);
+        assert!(map.capabilities.indirect_control_flow);
+    }
+
+    #[test]
+    fn test_cpuid_detection() {
+        let ops = vec![ADeadOp::Cpuid];
+        let map = CapabilityMapper::analyze(&ops);
+        assert!(map.capabilities.cpuid_access);
+        assert!(map.hardware_map.cpuid_access);
+    }
+
+    #[test]
+    fn test_hardware_port_classification() {
+        assert_eq!(HardwareAccessMap::classify_port(0x60), HardwareDevice::KeyboardPS2);
+        assert_eq!(HardwareAccessMap::classify_port(0x3F8), HardwareDevice::Com1);
+        assert_eq!(HardwareAccessMap::classify_port(0xCF8), HardwareDevice::PciConfigSpace);
+        assert_eq!(HardwareAccessMap::classify_port(0x1F0), HardwareDevice::IdePrimary);
+        assert_eq!(HardwareAccessMap::classify_port(0x40), HardwareDevice::PitTimer);
     }
 }
