@@ -1,0 +1,21 @@
+[package]
+name = "bg-binary-guardian"
+version = "0.1.0"
+edition = "2021"
+description = "BG — Binary Guardian: Deterministic ISA-Level Capability Guardian"
+authors = ["Eddi Andreé Salazar Matos <eddi.salazar.dev@gmail.com>"]
+
+[dependencies]
+# ADead-BIB core — ISA types (ADeadOp, Decoder, Encoder)
+adead-bib = { path = ".." }
+
+# PE/ELF binary parsing
+goblin = "0.7"
+
+[lib]
+name = "bg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bg"
+path = "src/main.rs"
