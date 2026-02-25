@@ -1,199 +1,272 @@
 // ============================================================
-// BG — Binary Guardian: Full Binary Analyzer
+// BG — Binary Guardian: Analyzer
 // ============================================================
-// Complete pipeline: raw bytes → Architecture Map → Verdict
+// Pipeline completo de análisis pre-execution.
 //
-// Pipeline:
-//   External Binary
-//       ↓
-//   ISA Decoder (bytes → ADeadOp)
-//       ↓
-//   Capability Mapper (ADeadOp → ArchitectureMap)
-//       ↓
-//   Policy Engine (ArchitectureMap × Policy → Verdict)
-//       ↓
-//   APPROVE / DENY
+//   Binary → Loader → ISA Decoder → ABIB IR
+//     → Capability Mapper → Architecture Map
+//       → Policy Engine → Verdict
 //
-// Pre-execution, single-pass, deterministic.
-// Designed for FastOS loader integration.
+// O(n) para generar el mapa. O(1) para evaluar.
+// Determinista: mismo input + misma policy = mismo output.
 //
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use crate::isa::decoder::Decoder;
+use std::path::Path;
+use std::fmt;
 use crate::isa::ADeadOp;
+use crate::isa::decoder::Decoder;
 use super::arch_map::ArchitectureMap;
+use super::binary_loader::{BinaryLoader, BinaryInfo};
 use super::capability::CapabilityMapper;
 use super::policy::{PolicyEngine, SecurityPolicy, SecurityLevel, Verdict};
 
-/// Result of analyzing a binary.
-#[derive(Debug)]
+// ============================================================
+// Analysis Result
+// ============================================================
+
+/// Resultado completo de un análisis BG.
+#[derive(Debug, Clone)]
 pub struct AnalysisResult {
-    /// The complete architecture map of the binary
+    /// Información del binario (si fue cargado desde archivo/bytes)
+    pub binary_info: Option<BinaryInfo>,
+    /// Architecture Map — perfil estructural completo
     pub map: ArchitectureMap,
-    /// The security verdict (APPROVED/DENIED)
+    /// Veredicto: APPROVED o DENIED
     pub verdict: Verdict,
-    /// The inferred minimum security level required
+    /// Nivel mínimo de seguridad inferido para ejecutar
     pub minimum_level: SecurityLevel,
-    /// Number of instructions decoded
+    /// Total de instrucciones analizadas
     pub instruction_count: usize,
+    /// Nombre de la policy usada
+    pub policy_name: String,
 }
 
-/// Binary Guardian — Deterministic ISA-Level Capability Guardian.
-///
-/// Analyzes binaries before execution. Not an antivirus.
-/// Not a sandbox. A structural control architecture.
-///
-/// # Usage
-/// ```rust,no_run
-/// use adead_bib::bg::{BinaryGuardian, SecurityPolicy};
-///
-/// let binary_code: Vec<u8> = vec![0x55, 0x48, 0x89, 0xE5, 0xC3];
-/// let policy = SecurityPolicy::user();
-/// let result = BinaryGuardian::analyze_bytes(&binary_code, &policy);
-///
-/// if result.verdict.is_approved() {
-///     // Safe to execute
-/// } else {
-///     // Block execution
-/// }
-/// ```
+impl fmt::Display for AnalysisResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "═══════════════════════════════════════════════")?;
+        writeln!(f, "  BG — Binary Guardian: Analysis Result")?;
+        writeln!(f, "═══════════════════════════════════════════════")?;
+        writeln!(f)?;
+        if let Some(ref info) = self.binary_info {
+            writeln!(f, "  Binary:     {}", info.path)?;
+            writeln!(f, "  Format:     {}", info.format)?;
+            writeln!(f, "  Size:       {} bytes", info.total_size)?;
+        }
+        writeln!(f, "  Policy:     {}", self.policy_name)?;
+        writeln!(f, "  Min level:  {}", self.minimum_level)?;
+        writeln!(f, "  Opcodes:    {}", self.instruction_count)?;
+        writeln!(f)?;
+        writeln!(f, "{}", self.map)?;
+        writeln!(f, "  ┌─ Verdict ──────────────────────────────┐")?;
+        match &self.verdict {
+            Verdict::Approved => {
+                writeln!(f, "  │              ✓  APPROVED                │")?;
+            }
+            Verdict::Denied { violations } => {
+                writeln!(f, "  │              ✗  DENIED                  │")?;
+                writeln!(f, "  │  {} violation(s):                       │", violations.len())?;
+                for v in violations {
+                    writeln!(f, "  │    {}", v)?;
+                }
+            }
+        }
+        writeln!(f, "  └────────────────────────────────────────┘")?;
+        writeln!(f, "═══════════════════════════════════════════════")?;
+        Ok(())
+    }
+}
+
+// ============================================================
+// BinaryGuardian — API principal
+// ============================================================
+
+/// BinaryGuardian — Punto de entrada principal para análisis.
 pub struct BinaryGuardian;
 
 impl BinaryGuardian {
-    /// Analyze raw x86-64 bytes against a security policy.
-    ///
-    /// Full pipeline: Decode → Map → Evaluate
-    pub fn analyze_bytes(code: &[u8], policy: &SecurityPolicy) -> AnalysisResult {
-        // Step 1: Decode bytes → ADeadOp
-        let mut decoder = Decoder::new();
-        let ops = decoder.decode_all(code);
-
-        // Step 2-4: Analyze the decoded instructions
-        Self::analyze_ops(&ops, policy)
+    /// Analiza un archivo binario completo (PE/ELF/Raw).
+    /// Pipeline: Load → Decode → Map → Validate → Evaluate.
+    pub fn analyze_file(path: &Path, policy: &SecurityPolicy) -> Result<AnalysisResult, String> {
+        let info = BinaryLoader::load_file(path)?;
+        let result = Self::analyze_loaded(&info, policy);
+        Ok(result)
     }
 
-    /// Analyze already-decoded ADeadOp instructions against a security policy.
-    ///
-    /// Use this when you already have the IR (e.g., from the compiler pipeline).
-    pub fn analyze_ops(ops: &[ADeadOp], policy: &SecurityPolicy) -> AnalysisResult {
-        // Step 2: Capability Mapper → ArchitectureMap
-        let map = CapabilityMapper::analyze(ops);
+    /// Analiza un binario ya cargado en memoria.
+    pub fn analyze_loaded(info: &BinaryInfo, policy: &SecurityPolicy) -> AnalysisResult {
+        let mut decoder = Decoder::new();
+        let ops = decoder.decode_all(&info.code_bytes);
+        let mut map = CapabilityMapper::analyze(&ops);
 
-        // Step 3: Infer minimum level
+        // Poblar metadata del binario
+        map.binary_name = Some(info.path.clone());
+        map.binary_size = info.total_size;
+
+        // ==== Memory Map desde BinaryInfo ====
+        for section in &info.sections {
+            let region_type = match section.kind {
+                super::binary_loader::SectionKind::Code => super::arch_map::RegionType::Code,
+                super::binary_loader::SectionKind::Data => super::arch_map::RegionType::Data,
+                super::binary_loader::SectionKind::ReadOnly => super::arch_map::RegionType::ReadOnly,
+                super::binary_loader::SectionKind::RWX => super::arch_map::RegionType::RWX,
+                super::binary_loader::SectionKind::Unknown => super::arch_map::RegionType::Data,
+            };
+
+            if section.executable {
+                map.memory_map.total_code_size += section.size;
+            } else {
+                map.memory_map.total_data_size += section.size;
+            }
+
+            map.memory_map.regions.push(super::arch_map::MemoryRegion {
+                region_type,
+                offset: section.offset,
+                size: section.size,
+                name: section.name.clone(),
+            });
+        }
+        map.memory_map.rwx_count = info.rwx_count;
+
+        // ==== Structural Integrity — NUEVO ====
+        let (entry_valid, overlapping, anomalous) = BinaryLoader::validate_structure(info);
+        map.integrity.entry_point_valid = entry_valid;
+        map.integrity.entry_point_checked = true;
+        map.integrity.overlapping_sections = overlapping;
+        map.integrity.anomalous_permissions = anomalous;
+
+        // Code-to-data ratio
+        let total_content = map.memory_map.total_code_size + map.memory_map.total_data_size;
+        if total_content > 0 {
+            map.integrity.code_to_data_ratio =
+                map.memory_map.total_code_size as f64 / total_content as f64;
+        }
+
+        // Header ratio
+        if info.total_size > 0 {
+            map.integrity.header_ratio = info.header_size as f64 / info.total_size as f64;
+        }
+
+        // Entry at section start
+        map.integrity.entry_at_section_start = info.sections.iter().any(|s| {
+            s.executable && info.entry_point == s.virtual_address
+        });
+
+        // ==== Import/Export Map — NUEVO ====
+        for imp in &info.imports {
+            let lib = if imp.library.is_empty() { "unknown".to_string() } else { imp.library.clone() };
+            map.import_export_map.imports_by_library
+                .entry(lib)
+                .or_insert_with(Vec::new)
+                .push(imp.function.clone());
+            map.import_export_map.import_count += 1;
+
+            // Categorizar determinísticamente
+            map.import_export_map.categorize_import(&imp.function);
+        }
+        map.import_export_map.exports = info.exports.clone();
+        map.import_export_map.export_count = info.exports.len();
+
+        // ==== Evaluate ====
         let minimum_level = PolicyEngine::infer_minimum_level(&map);
-
-        // Step 4: Policy Engine → Verdict
         let verdict = PolicyEngine::evaluate(&map, policy);
 
         AnalysisResult {
-            instruction_count: map.instruction_map.total,
+            binary_info: Some(info.clone()),
             map,
             verdict,
             minimum_level,
+            instruction_count: ops.len(),
+            policy_name: policy.name.clone(),
         }
     }
 
-    /// Quick check: can this binary run at the given security level?
-    /// Returns true if approved, false if denied.
-    pub fn can_execute(code: &[u8], level: SecurityLevel) -> bool {
-        let policy = match level {
-            SecurityLevel::Kernel => SecurityPolicy::kernel(),
-            SecurityLevel::Driver => SecurityPolicy::driver(),
-            SecurityLevel::Service => SecurityPolicy::service(),
-            SecurityLevel::User => SecurityPolicy::user(),
-        };
-        let result = Self::analyze_bytes(code, &policy);
-        result.verdict.is_approved()
-    }
-
-    /// Analyze and return only the architecture map (no policy check).
-    /// Useful for inspection and debugging.
-    pub fn inspect_bytes(code: &[u8]) -> ArchitectureMap {
+    /// Analiza bytes crudos como código (sin formato de contenedor).
+    pub fn analyze_bytes(bytes: &[u8], policy: &SecurityPolicy) -> AnalysisResult {
         let mut decoder = Decoder::new();
-        let ops = decoder.decode_all(code);
-        CapabilityMapper::analyze(&ops)
+        let ops = decoder.decode_all(bytes);
+        Self::analyze_ops(&ops, policy)
     }
 
-    /// Analyze compiler output (ADeadOp IR) and return the architecture map.
-    /// This is the zero-cost path when BG is integrated in the compiler pipeline.
-    pub fn inspect_ir(ops: &[ADeadOp]) -> ArchitectureMap {
+    /// Analiza un vector de instrucciones ya decodificadas.
+    pub fn analyze_ops(ops: &[ADeadOp], policy: &SecurityPolicy) -> AnalysisResult {
+        let map = CapabilityMapper::analyze(ops);
+        let minimum_level = PolicyEngine::infer_minimum_level(&map);
+        let verdict = PolicyEngine::evaluate(&map, policy);
+
+        AnalysisResult {
+            binary_info: None,
+            map,
+            verdict,
+            minimum_level,
+            instruction_count: ops.len(),
+            policy_name: policy.name.clone(),
+        }
+    }
+
+    /// Quick check: ¿aprobaría este binario bajo la policy dada?
+    pub fn quick_check(ops: &[ADeadOp], policy: &SecurityPolicy) -> bool {
+        let map = CapabilityMapper::analyze(ops);
+        PolicyEngine::evaluate(&map, policy).is_approved()
+    }
+
+    /// Inspect: retorna solo el ArchitectureMap sin evaluar policy.
+    pub fn inspect(ops: &[ADeadOp]) -> ArchitectureMap {
         CapabilityMapper::analyze(ops)
-    }
-}
-
-impl std::fmt::Display for AnalysisResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}", self.map)?;
-        writeln!(f, "  Minimum level:  {}", self.minimum_level)?;
-        writeln!(f, "  Verdict:        {}", self.verdict)?;
-        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::isa::*;
 
     #[test]
-    fn test_analyze_safe_prologue() {
-        // push rbp; mov rbp, rsp; pop rbp; ret
-        let code = vec![0x55, 0x48, 0x89, 0xE5, 0x5D, 0xC3];
-        let result = BinaryGuardian::analyze_bytes(&code, &SecurityPolicy::user());
-
-        assert!(result.verdict.is_approved());
-        assert_eq!(result.minimum_level, SecurityLevel::User);
-        assert_eq!(result.map.instruction_map.privileged_count, 0);
-    }
-
-    #[test]
-    fn test_quick_check_safe() {
-        let code = vec![0x55, 0x48, 0x89, 0xE5, 0xC3];
-        assert!(BinaryGuardian::can_execute(&code, SecurityLevel::User));
-    }
-
-    #[test]
-    fn test_inspect_bytes() {
-        let code = vec![0x55, 0x48, 0x89, 0xE5, 0xC3];
-        let map = BinaryGuardian::inspect_bytes(&code);
-        assert!(map.capabilities.is_pure_userspace());
-        assert!(map.instruction_map.is_unprivileged());
-    }
-
-    #[test]
-    fn test_compiler_integration() {
-        use crate::isa::*;
-
-        // Simulate compiler output
+    fn test_analyze_safe_ops() {
         let ops = vec![
             ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
-            ADeadOp::Mov {
-                dst: Operand::Reg(Reg::RBP),
-                src: Operand::Reg(Reg::RSP),
-            },
-            ADeadOp::Mov {
-                dst: Operand::Reg(Reg::RAX),
-                src: Operand::Imm64(42),
-            },
+            ADeadOp::Mov { dst: Operand::Reg(Reg::RBP), src: Operand::Reg(Reg::RSP) },
+            ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX },
             ADeadOp::Pop { dst: Reg::RBP },
             ADeadOp::Ret,
         ];
-
         let result = BinaryGuardian::analyze_ops(&ops, &SecurityPolicy::user());
         assert!(result.verdict.is_approved());
         assert_eq!(result.instruction_count, 5);
-
-        // Also works via inspect
-        let map = BinaryGuardian::inspect_ir(&ops);
-        assert!(map.capabilities.is_pure_userspace());
+        assert_eq!(result.minimum_level, SecurityLevel::User);
     }
 
     #[test]
-    fn test_display_result() {
-        let code = vec![0x55, 0x48, 0x89, 0xE5, 0xC3];
-        let result = BinaryGuardian::analyze_bytes(&code, &SecurityPolicy::user());
+    fn test_quick_check() {
+        let safe = vec![ADeadOp::Nop, ADeadOp::Ret];
+        assert!(BinaryGuardian::quick_check(&safe, &SecurityPolicy::user()));
+
+        let priv_ops = vec![ADeadOp::Cli, ADeadOp::Hlt];
+        assert!(!BinaryGuardian::quick_check(&priv_ops, &SecurityPolicy::user()));
+    }
+
+    #[test]
+    fn test_raw_bytes_analysis() {
+        // Empty bytes should produce empty but approved result
+        let result = BinaryGuardian::analyze_bytes(&[], &SecurityPolicy::user());
+        assert!(result.verdict.is_approved());
+        assert_eq!(result.instruction_count, 0);
+    }
+
+    #[test]
+    fn test_inspect() {
+        let ops = vec![ADeadOp::Syscall, ADeadOp::InByte { port: Operand::Imm8(0x60) }];
+        let map = BinaryGuardian::inspect(&ops);
+        assert!(map.capabilities.syscalls);
+        assert!(map.capabilities.io_port_access);
+    }
+
+    #[test]
+    fn test_display() {
+        let ops = vec![ADeadOp::Nop, ADeadOp::Ret];
+        let result = BinaryGuardian::analyze_ops(&ops, &SecurityPolicy::user());
         let display = format!("{}", result);
         assert!(display.contains("APPROVED"));
-        assert!(display.contains("Binary Architecture Map"));
     }
 }
