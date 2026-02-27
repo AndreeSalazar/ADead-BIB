@@ -1,42 +1,41 @@
-// ADead-BIB v3.1 - Arrays
-// Declaración y uso de arrays
+// ADead-BIB v3.4 - Arrays
+// Declaración y uso de arrays con tipo e índice
 
 int main() {
     printf("=== Arrays ===\n")
-    
-    // Simulación de array con variables indexadas
-    int arr0 = 10
-    int arr1 = 20
-    int arr2 = 30
-    int arr3 = 40
-    int arr4 = 50
-    
+
+    // Declaración de array con tipo y tamaño
+    int arr[5] = [10, 20, 30, 40, 50]
+
+    // Acceso por índice
     printf("Array de 5 elementos:\n")
-    printf("  arr[0] = ")
-    printf(arr0)
-    printf("\n")
-    
-    printf("  arr[1] = ")
-    printf(arr1)
-    printf("\n")
-    
-    printf("  arr[2] = ")
-    printf(arr2)
-    printf("\n")
-    
-    printf("  arr[3] = ")
-    printf(arr3)
-    printf("\n")
-    
-    printf("  arr[4] = ")
-    printf(arr4)
-    printf("\n")
-    
-    // Suma de elementos
-    int suma = arr0 + arr1 + arr2 + arr3 + arr4
+    int i = 0
+    while i < 5 {
+        printf("  arr[")
+        printf(i)
+        printf("] = ")
+        printf(arr[i])
+        printf("\n")
+        i += 1
+    }
+
+    // Suma de elementos con loop
+    int suma = 0
+    int j = 0
+    while j < 5 {
+        suma += arr[j]
+        j += 1
+    }
     printf("Suma total: ")
     printf(suma)
     printf("\n")
-    
+
+    // Modificar elemento
+    arr[2] = 99
+    printf("\nDespues de arr[2] = 99:\n")
+    printf("  arr[2] = ")
+    printf(arr[2])
+    printf("\n")
+
     return 0
 }

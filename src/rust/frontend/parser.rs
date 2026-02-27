@@ -73,6 +73,34 @@ impl Parser {
         }
     }
 
+    /// Check if identifier looks like a type name (starts with uppercase)
+    /// Used to disambiguate struct literals from block-delimited constructs
+    fn is_type_ident(name: &str) -> bool {
+        name.rsplit("::")
+            .next()
+            .and_then(|seg| seg.chars().next())
+            .is_some_and(|c| c.is_ascii_uppercase())
+    }
+
+    fn parse_type_name(&mut self) -> Option<String> {
+        match self.peek() {
+            Some(Token::Identifier(_)) => match self.advance() {
+                Some(Token::Identifier(t)) => Some(t),
+                _ => None,
+            },
+            Some(Token::IntType) => { self.advance(); Some("int".to_string()) }
+            Some(Token::CharType) => { self.advance(); Some("char".to_string()) }
+            Some(Token::VoidType) => { self.advance(); Some("void".to_string()) }
+            Some(Token::LongType) => { self.advance(); Some("long".to_string()) }
+            Some(Token::ShortType) => { self.advance(); Some("short".to_string()) }
+            Some(Token::DoubleType) => { self.advance(); Some("double".to_string()) }
+            Some(Token::FloatType) => { self.advance(); Some("float".to_string()) }
+            Some(Token::Bool) => { self.advance(); Some("bool".to_string()) }
+            Some(Token::Str) => { self.advance(); Some("str".to_string()) }
+            _ => { self.advance(); None }
+        }
+    }
+
     pub fn parse_program(source: &str) -> Result<Program, ParseError> {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize();
@@ -112,8 +140,15 @@ impl Parser {
                     program.add_function(func);
                     self.skip_newlines();
                 }
-                // C-style: int/void/char function (NEW v3.0)
-                Some(Token::IntType) | Some(Token::VoidType) | Some(Token::CharType) => {
+                // C-style: int/void/char/bool/long/short/double/float function (NEW v3.0)
+                Some(Token::IntType)
+                | Some(Token::VoidType)
+                | Some(Token::CharType)
+                | Some(Token::Bool)
+                | Some(Token::LongType)
+                | Some(Token::ShortType)
+                | Some(Token::DoubleType)
+                | Some(Token::FloatType) => {
                     let func = self.parse_c_function()?;
                     program.add_function(func);
                     self.skip_newlines();
@@ -286,10 +321,7 @@ impl Parser {
 
                         let type_name = if matches!(self.peek(), Some(Token::Colon)) {
                             self.advance();
-                            match self.advance() {
-                                Some(Token::Identifier(t)) => Some(t),
-                                _ => None,
-                            }
+                            self.parse_type_name()
                         } else {
                             None
                         };
@@ -311,10 +343,7 @@ impl Parser {
 
                 let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
                     self.advance();
-                    match self.advance() {
-                        Some(Token::Identifier(t)) => Some(t),
-                        _ => None,
-                    }
+                    self.parse_type_name()
                 } else {
                     None
                 };
@@ -403,10 +432,7 @@ impl Parser {
 
                 let type_name = if matches!(self.peek(), Some(Token::Colon)) {
                     self.advance();
-                    match self.advance() {
-                        Some(Token::Identifier(t)) => Some(t),
-                        _ => None,
-                    }
+                    self.parse_type_name()
                 } else {
                     None
                 };
@@ -429,10 +455,7 @@ impl Parser {
 
         let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
             self.advance();
-            match self.advance() {
-                Some(Token::Identifier(t)) => Some(t),
-                _ => None,
-            }
+            self.parse_type_name()
         } else {
             None
         };
@@ -478,6 +501,8 @@ impl Parser {
             Some(Token::ShortType) => Some("short".to_string()),
             Some(Token::DoubleType) => Some("double".to_string()),
             Some(Token::FloatType) => Some("float".to_string()),
+            Some(Token::Bool) => Some("bool".to_string()),
+            Some(Token::Identifier(t)) => Some(t), // user-defined types (e.g. struct names)
             Some(token) => return Err(ParseError::UnexpectedToken(token)),
             None => return Err(ParseError::UnexpectedEof),
         };
@@ -635,13 +660,14 @@ impl Parser {
                     Ok(Stmt::Return(Some(value)))
                 }
             }
-            // int x = ...; or int* p = ...;
+            // int x = ...; or int* p = ...; or bool flag = ...;
             Some(Token::IntType)
             | Some(Token::CharType)
             | Some(Token::LongType)
             | Some(Token::ShortType)
             | Some(Token::DoubleType)
-            | Some(Token::FloatType) => {
+            | Some(Token::FloatType)
+            | Some(Token::Bool) => {
                 self.advance(); // consume type
 
                 // Check for pointer
@@ -658,6 +684,15 @@ impl Parser {
                     None => return Err(ParseError::UnexpectedEof),
                 };
 
+                // Skip optional array size: int arr[5]
+                if matches!(self.peek(), Some(Token::LBracket)) {
+                    self.advance(); // [
+                    while !matches!(self.peek(), Some(Token::RBracket) | None) {
+                        self.advance();
+                    }
+                    if matches!(self.peek(), Some(Token::RBracket)) { self.advance(); } // ]
+                }
+
                 if matches!(self.peek(), Some(Token::Equals)) {
                     self.advance();
                     let value = self.parse_expression()?;
@@ -668,6 +703,25 @@ impl Parser {
                         name,
                         value: Expr::Number(0),
                     })
+                }
+            }
+            // *ptr = val — deref assignment
+            Some(Token::Star) => {
+                self.advance(); // consume *
+                let target = self.parse_primary()?;
+                if matches!(self.peek(), Some(Token::Equals)) {
+                    self.advance();
+                    let value = self.parse_expression()?;
+                    Ok(Stmt::Assign {
+                        name: "*deref".to_string(),
+                        value: Expr::BinaryOp {
+                            op: BinOp::Add,
+                            left: Box::new(Expr::Deref(Box::new(target))),
+                            right: Box::new(value),
+                        },
+                    })
+                } else {
+                    Ok(Stmt::Expr(Expr::Deref(Box::new(target))))
                 }
             }
             // if, while, for
@@ -701,10 +755,7 @@ impl Parser {
         // Optional type annotation
         let _type_name = if matches!(self.peek(), Some(Token::Colon)) {
             self.advance();
-            match self.advance() {
-                Some(Token::Identifier(t)) => Some(t),
-                _ => None,
-            }
+            self.parse_type_name()
         } else {
             None
         };
@@ -748,10 +799,7 @@ impl Parser {
 
             self.expect(Token::Colon)?;
 
-            let type_name = match self.advance() {
-                Some(Token::Identifier(t)) => Some(t),
-                _ => None,
-            };
+            let type_name = self.parse_type_name();
 
             fields.push(Field {
                 name: field_name,
@@ -892,10 +940,7 @@ impl Parser {
 
                         let type_name = if matches!(self.peek(), Some(Token::Colon)) {
                             self.advance();
-                            match self.advance() {
-                                Some(Token::Identifier(t)) => Some(t),
-                                _ => None,
-                            }
+                            self.parse_type_name()
                         } else {
                             None
                         };
@@ -917,10 +962,7 @@ impl Parser {
 
                 let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
                     self.advance();
-                    match self.advance() {
-                        Some(Token::Identifier(t)) => Some(t),
-                        _ => None,
-                    }
+                    self.parse_type_name()
                 } else {
                     None
                 };
@@ -984,10 +1026,7 @@ impl Parser {
 
                 let type_name = if matches!(self.peek(), Some(Token::Colon)) {
                     self.advance();
-                    match self.advance() {
-                        Some(Token::Identifier(t)) => Some(t),
-                        _ => None,
-                    }
+                    self.parse_type_name()
                 } else {
                     None
                 };
@@ -1010,10 +1049,7 @@ impl Parser {
 
         let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
             self.advance();
-            match self.advance() {
-                Some(Token::Identifier(t)) => Some(t),
-                _ => None,
-            }
+            self.parse_type_name()
         } else {
             None
         };
@@ -1178,10 +1214,7 @@ impl Parser {
 
                 let type_name = if matches!(self.peek(), Some(Token::Colon)) {
                     self.advance();
-                    match self.advance() {
-                        Some(Token::Identifier(t)) => Some(t),
-                        _ => None,
-                    }
+                    self.parse_type_name()
                 } else {
                     None
                 };
@@ -1205,10 +1238,7 @@ impl Parser {
         // Optional return type
         let return_type = if matches!(self.peek(), Some(Token::Arrow)) {
             self.advance();
-            match self.advance() {
-                Some(Token::Identifier(t)) => Some(t),
-                _ => None,
-            }
+            self.parse_type_name()
         } else {
             None
         };
@@ -1323,9 +1353,10 @@ impl Parser {
             | Some(Token::LongType)
             | Some(Token::ShortType)
             | Some(Token::DoubleType)
-            | Some(Token::FloatType) => {
+            | Some(Token::FloatType)
+            | Some(Token::Bool) => {
                 self.advance(); // consume type
-                                // Check for pointer
+                // Check for pointer
                 if matches!(self.peek(), Some(Token::Star)) {
                     self.advance();
                 }
@@ -1334,6 +1365,14 @@ impl Parser {
                     Some(token) => return Err(ParseError::UnexpectedToken(token)),
                     None => return Err(ParseError::UnexpectedEof),
                 };
+                // Skip optional array size bracket: int arr[5]
+                if matches!(self.peek(), Some(Token::LBracket)) {
+                    self.advance(); // [
+                    while !matches!(self.peek(), Some(Token::RBracket) | None) {
+                        self.advance();
+                    }
+                    if matches!(self.peek(), Some(Token::RBracket)) { self.advance(); } // ]
+                }
                 if matches!(self.peek(), Some(Token::Equals)) {
                     self.advance();
                     let value = self.parse_expression()?;
@@ -1372,9 +1411,182 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 Ok(Stmt::Println(expr))
             }
+            // ========== SELF (this) MEMBER ACCESS / ASSIGNMENT ==========
+            Some(Token::This) => {
+                self.advance(); // consume 'self'
+
+                if matches!(self.peek(), Some(Token::Dot)) {
+                    self.advance(); // consume '.'
+                    let member = match self.advance() {
+                        Some(Token::Identifier(m)) => m,
+                        Some(tok) => return Err(ParseError::UnexpectedToken(tok)),
+                        None => return Err(ParseError::UnexpectedEof),
+                    };
+
+                    // self.method(args)
+                    if matches!(self.peek(), Some(Token::LParen)) {
+                        self.advance();
+                        let mut args = Vec::new();
+                        if !matches!(self.peek(), Some(Token::RParen)) {
+                            loop {
+                                args.push(self.parse_expression()?);
+                                if matches!(self.peek(), Some(Token::Comma)) { self.advance(); } else { break; }
+                            }
+                        }
+                        self.expect(Token::RParen)?;
+                        return Ok(Stmt::Expr(Expr::MethodCall {
+                            object: Box::new(Expr::This),
+                            method: member,
+                            args,
+                        }));
+                    }
+
+                    // self.field = value
+                    if matches!(self.peek(), Some(Token::Equals)) {
+                        self.advance();
+                        let value = self.parse_expression()?;
+                        return Ok(Stmt::FieldAssign {
+                            object: Expr::This,
+                            field: member,
+                            value,
+                        });
+                    }
+
+                    // self.field += value
+                    if matches!(self.peek(), Some(Token::PlusEq)) {
+                        self.advance();
+                        let right = self.parse_expression()?;
+                        let value = Expr::BinaryOp {
+                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            op: BinOp::Add,
+                            right: Box::new(right),
+                        };
+                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                    }
+
+                    // self.field -= value
+                    if matches!(self.peek(), Some(Token::MinusEq)) {
+                        self.advance();
+                        let right = self.parse_expression()?;
+                        let value = Expr::BinaryOp {
+                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            op: BinOp::Sub,
+                            right: Box::new(right),
+                        };
+                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                    }
+
+                    // self.field *= value
+                    if matches!(self.peek(), Some(Token::StarEq)) {
+                        self.advance();
+                        let right = self.parse_expression()?;
+                        let value = Expr::BinaryOp {
+                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            op: BinOp::Mul,
+                            right: Box::new(right),
+                        };
+                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                    }
+
+                    // self.field /= value
+                    if matches!(self.peek(), Some(Token::SlashEq)) {
+                        self.advance();
+                        let right = self.parse_expression()?;
+                        let value = Expr::BinaryOp {
+                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            op: BinOp::Div,
+                            right: Box::new(right),
+                        };
+                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                    }
+
+                    // self.field (read-only expression)
+                    return Ok(Stmt::Expr(Expr::FieldAccess {
+                        object: Box::new(Expr::This),
+                        field: member,
+                    }));
+                }
+
+                Ok(Stmt::Expr(Expr::This))
+            }
             Some(Token::Identifier(name)) => {
                 let name = name.clone();
                 self.advance();
+
+                // Handle qualified names: Struct::method
+                let mut name = name;
+                while matches!(self.peek(), Some(Token::DoubleColon)) {
+                    self.advance(); // consume ::
+                    match self.advance() {
+                        Some(Token::Identifier(part)) => name = format!("{}::{}", name, part),
+                        _ => return Err(ParseError::ExpectedToken("identifier after ::")),
+                    }
+                }
+
+                // Handle index assignment: arr[i] = val
+                if matches!(self.peek(), Some(Token::LBracket)) {
+                    self.advance(); // [
+                    let index = self.parse_expression()?;
+                    self.expect(Token::RBracket)?;
+
+                    if matches!(self.peek(), Some(Token::Equals)) {
+                        self.advance();
+                        let value = self.parse_expression()?;
+                        return Ok(Stmt::IndexAssign {
+                            object: Expr::Variable(name),
+                            index,
+                            value,
+                        });
+                    }
+                    // arr[i] as expression (e.g. passed to printf)
+                    let indexed = Expr::Index {
+                        object: Box::new(Expr::Variable(name)),
+                        index: Box::new(index),
+                    };
+                    return Ok(Stmt::Expr(indexed));
+                }
+
+                // Handle member call/access: obj.method() or obj.field
+                if matches!(self.peek(), Some(Token::Dot)) {
+                    self.advance(); // consume '.'
+                    let member = match self.advance() {
+                        Some(Token::Identifier(m)) => m,
+                        Some(Token::This) => "self".to_string(),
+                        Some(tok) => return Err(ParseError::UnexpectedToken(tok)),
+                        None => return Err(ParseError::UnexpectedEof),
+                    };
+                    if matches!(self.peek(), Some(Token::LParen)) {
+                        self.advance();
+                        let mut args = Vec::new();
+                        if !matches!(self.peek(), Some(Token::RParen)) {
+                            loop {
+                                args.push(self.parse_expression()?);
+                                if matches!(self.peek(), Some(Token::Comma)) { self.advance(); } else { break; }
+                            }
+                        }
+                        self.expect(Token::RParen)?;
+                        return Ok(Stmt::Expr(Expr::MethodCall {
+                            object: Box::new(Expr::Variable(name)),
+                            method: member,
+                            args,
+                        }));
+                    } else {
+                        // field assignment: obj.field = val
+                        if matches!(self.peek(), Some(Token::Equals)) {
+                            self.advance();
+                            let value = self.parse_expression()?;
+                            return Ok(Stmt::Assign {
+                                name: format!("{}.{}", name, member),
+                                value,
+                            });
+                        }
+                        return Ok(Stmt::Expr(Expr::FieldAccess {
+                            object: Box::new(Expr::Variable(name)),
+                            field: member,
+                        }));
+                    }
+                }
+
                 if matches!(self.peek(), Some(Token::Equals)) {
                     self.advance();
                     let value = self.parse_expression()?;
@@ -1459,8 +1671,30 @@ impl Parser {
                         right: Box::new(right),
                     };
                     Ok(Stmt::Assign { name, value })
+                } else if matches!(self.peek(), Some(Token::LBrace)) && Self::is_type_ident(&name) {
+                    // Struct literal as statement: MyStruct { field: val }
+                    self.advance(); // consume '{'
+                    self.skip_newlines();
+                    let mut args = Vec::new();
+                    while !matches!(self.peek(), Some(Token::RBrace) | None) {
+                        self.skip_newlines();
+                        let _fname = match self.advance() {
+                            Some(Token::Identifier(n)) => n,
+                            Some(Token::RBrace) => break,
+                            Some(tok) => return Err(ParseError::UnexpectedToken(tok)),
+                            None => return Err(ParseError::UnexpectedEof),
+                        };
+                        self.expect(Token::Colon)?;
+                        args.push(self.parse_expression()?);
+                        if matches!(self.peek(), Some(Token::Comma)) { self.advance(); }
+                        self.skip_newlines();
+                    }
+                    self.expect(Token::RBrace)?;
+                    Ok(Stmt::Expr(Expr::Call {
+                        name: format!("__struct__{}", name),
+                        args,
+                    }))
                 } else if matches!(self.peek(), Some(Token::LParen)) {
-                    // Function call as statement
                     self.advance(); // (
                     let mut args = Vec::new();
                     if !matches!(self.peek(), Some(Token::RParen)) {
@@ -1479,15 +1713,6 @@ impl Parser {
                     // Just an identifier expression?
                     Ok(Stmt::Expr(Expr::Variable(name)))
                 }
-            }
-            Some(Token::Return) => {
-                self.advance();
-                let expr = if !matches!(self.peek(), Some(Token::Newline)) {
-                    Some(self.parse_expression()?)
-                } else {
-                    None
-                };
-                Ok(Stmt::Return(expr))
             }
             // ========== OS-LEVEL STATEMENTS (v3.1-OS) ==========
             Some(Token::CliKw) => {
@@ -1750,7 +1975,31 @@ impl Parser {
                 Ok(Stmt::TimesDirective { count, byte })
             }
             _ => {
-                // Try parse expression
+                // Try parse expression (handles deref assignment: *ptr = val)
+                // Check for *ptr = val
+                if matches!(self.peek(), Some(Token::Star)) {
+                    self.advance(); // consume *
+                    let target = self.parse_primary()?;
+                    if matches!(self.peek(), Some(Token::Equals)) {
+                        self.advance();
+                        let value = self.parse_expression()?;
+                        // Represent deref assignment as Assign to special name
+                        return Ok(Stmt::Assign {
+                            name: format!("*deref"),
+                            value: Expr::BinaryOp {
+                                op: BinOp::Add,
+                                left: Box::new(Expr::Deref(Box::new(target))),
+                                right: Box::new(value),
+                            },
+                        });
+                    }
+                    let expr = self.parse_expression()?;
+                    return Ok(Stmt::Expr(Expr::BinaryOp {
+                        op: BinOp::Mul,
+                        left: Box::new(target),
+                        right: Box::new(expr),
+                    }));
+                }
                 let expr = self.parse_expression()?;
                 Ok(Stmt::Expr(expr))
             }
@@ -1891,7 +2140,7 @@ impl Parser {
     // ========================================
 
     fn parse_expression(&mut self) -> Result<Expr, ParseError> {
-        self.parse_binary_op()
+        self.parse_comparison()
     }
 
     fn parse_comparison(&mut self) -> Result<Expr, ParseError> {
@@ -1940,10 +2189,10 @@ impl Parser {
     }
 
     fn parse_binary_op(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_primary()?;
+        let mut left = self.parse_postfix()?;
 
         while let Some(op) = self.match_binary_op() {
-            let right = self.parse_primary()?;
+            let right = self.parse_postfix()?;
             left = Expr::BinaryOp {
                 op,
                 left: Box::new(left),
@@ -1951,7 +2200,81 @@ impl Parser {
             };
         }
 
+        // Handle bitwise ops at same level
+        while matches!(self.peek(),
+            Some(Token::Ampersand) | Some(Token::Pipe) | Some(Token::Caret) |
+            Some(Token::LeftShift) | Some(Token::RightShift)) {
+            let bop = match self.advance() {
+                Some(Token::Ampersand)  => BitwiseOp::And,
+                Some(Token::Pipe)       => BitwiseOp::Or,
+                Some(Token::Caret)      => BitwiseOp::Xor,
+                Some(Token::LeftShift)  => BitwiseOp::LeftShift,
+                Some(Token::RightShift) => BitwiseOp::RightShift,
+                _ => unreachable!(),
+            };
+            let right = self.parse_postfix()?;
+            left = Expr::BitwiseOp {
+                op: bop,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+
         Ok(left)
+    }
+
+    /// Handle postfix: obj.field, obj.method(...), arr[i]
+    fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_primary()?;
+
+        loop {
+            if matches!(self.peek(), Some(Token::Dot)) {
+                self.advance(); // consume '.'
+                let member = match self.advance() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(Token::This) => "self".to_string(),
+                    Some(tok) => return Err(ParseError::UnexpectedToken(tok)),
+                    None => return Err(ParseError::UnexpectedEof),
+                };
+                if matches!(self.peek(), Some(Token::LParen)) {
+                    // method call: obj.method(args)
+                    self.advance();
+                    let mut args = Vec::new();
+                    if !matches!(self.peek(), Some(Token::RParen)) {
+                        loop {
+                            args.push(self.parse_expression()?);
+                            if matches!(self.peek(), Some(Token::Comma)) { self.advance(); } else { break; }
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    // Build as Call with dotted name for the code-gen to handle
+                    expr = Expr::MethodCall {
+                        object: Box::new(expr),
+                        method: member,
+                        args,
+                    };
+                } else {
+                    // field access: obj.field
+                    expr = Expr::FieldAccess {
+                        object: Box::new(expr),
+                        field: member,
+                    };
+                }
+            } else if matches!(self.peek(), Some(Token::LBracket)) {
+                // array indexing: arr[i]
+                self.advance();
+                let index = self.parse_expression()?;
+                self.expect(Token::RBracket)?;
+                expr = Expr::Index {
+                    object: Box::new(expr),
+                    index: Box::new(index),
+                };
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
     }
 
     fn match_binary_op(&mut self) -> Option<BinOp> {
@@ -1988,12 +2311,41 @@ impl Parser {
             Some(Token::True) => Ok(Expr::Bool(true)),
             Some(Token::False) => Ok(Expr::Bool(false)),
             Some(Token::Minus) => {
-                // Número negativo: -42
-                match self.advance() {
-                    Some(Token::Number(n)) => Ok(Expr::Number(-n)),
-                    Some(Token::Float(f)) => Ok(Expr::Float(-f)),
-                    _ => Err(ParseError::ExpectedToken("number after minus")),
+                // Número negativo: -42, o negación: -expr
+                match self.peek() {
+                    Some(Token::Number(_)) => match self.advance() {
+                        Some(Token::Number(n)) => Ok(Expr::Number(-n)),
+                        _ => unreachable!(),
+                    },
+                    Some(Token::Float(_)) => match self.advance() {
+                        Some(Token::Float(f)) => Ok(Expr::Float(-f)),
+                        _ => unreachable!(),
+                    },
+                    _ => {
+                        // unary minus: -(expr)
+                        let inner = self.parse_primary()?;
+                        Ok(Expr::BinaryOp {
+                            op: BinOp::Sub,
+                            left: Box::new(Expr::Number(0)),
+                            right: Box::new(inner),
+                        })
+                    }
                 }
+            }
+            // Unary NOT / tilde (~x or !x)
+            Some(Token::Not) | Some(Token::Tilde) => {
+                let inner = self.parse_primary()?;
+                Ok(Expr::BitwiseNot(Box::new(inner)))
+            }
+            // Address-of: &var
+            Some(Token::Ampersand) => {
+                let inner = self.parse_primary()?;
+                Ok(Expr::AddressOf(Box::new(inner)))
+            }
+            // Dereference: *ptr
+            Some(Token::Star) => {
+                let inner = self.parse_primary()?;
+                Ok(Expr::Deref(Box::new(inner)))
             }
             Some(Token::Input) => {
                 // input() - lee un número del teclado
@@ -2036,6 +2388,40 @@ impl Parser {
                 let expr = self.parse_expression()?;
                 self.expect(Token::RParen)?;
                 Ok(Expr::BoolCast(Box::new(expr)))
+            }
+            Some(Token::SizeofKw) => {
+                // sizeof(type) or sizeof(expr)
+                self.expect(Token::LParen)?;
+                let arg = match self.peek() {
+                    Some(Token::IntType) | Some(Token::CharType) | Some(Token::VoidType)
+                    | Some(Token::LongType) | Some(Token::ShortType)
+                    | Some(Token::DoubleType) | Some(Token::FloatType)
+                    | Some(Token::Bool) => {
+                        let type_tok = self.advance().unwrap();
+                        // Check for pointer: sizeof(int*)
+                        if matches!(self.peek(), Some(Token::Star)) {
+                            self.advance(); // consume *
+                        }
+                        let type_name = match type_tok {
+                            Token::IntType => "int",
+                            Token::CharType => "char",
+                            Token::VoidType => "void",
+                            Token::LongType => "long",
+                            Token::ShortType => "short",
+                            Token::DoubleType => "double",
+                            Token::FloatType => "float",
+                            Token::Bool => "bool",
+                            _ => "int",
+                        };
+                        SizeOfArg::Type(Type::from_c_name(type_name))
+                    }
+                    _ => {
+                        let e = self.parse_expression()?;
+                        SizeOfArg::Expr(e)
+                    }
+                };
+                self.expect(Token::RParen)?;
+                Ok(Expr::SizeOf(Box::new(arg)))
             }
             Some(Token::LBracket) => {
                 // Array literal: [1, 2, 3]
@@ -2081,6 +2467,30 @@ impl Parser {
                     }
                     self.expect(Token::RParen)?;
                     Ok(Expr::Call { name, args })
+                } else if matches!(self.peek(), Some(Token::LBrace)) && Self::is_type_ident(&name) {
+                    // Struct literal: Name { field: val, ... }
+                    // Only for type-like identifiers (uppercase) to avoid
+                    // ambiguity with block-delimited constructs (while x { ... })
+                    self.advance(); // consume '{'
+                    self.skip_newlines();
+                    let mut fields = Vec::new();
+                    while !matches!(self.peek(), Some(Token::RBrace) | None) {
+                        self.skip_newlines();
+                        let field_name = match self.advance() {
+                            Some(Token::Identifier(n)) => n,
+                            Some(Token::RBrace) => break,
+                            Some(tok) => return Err(ParseError::UnexpectedToken(tok)),
+                            None => return Err(ParseError::UnexpectedEof),
+                        };
+                        self.expect(Token::Colon)?;
+                        let field_val = self.parse_expression()?;
+                        fields.push((field_name, field_val));
+                        if matches!(self.peek(), Some(Token::Comma)) { self.advance(); }
+                        self.skip_newlines();
+                    }
+                    self.expect(Token::RBrace)?;
+                    let args = fields.into_iter().map(|(_, v)| v).collect();
+                    Ok(Expr::Call { name: format!("__struct__{}", name), args })
                 } else {
                     Ok(Expr::Variable(name))
                 }
@@ -2136,6 +2546,7 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 Ok(Expr::LabelAddr { label_name })
             }
+            Some(Token::This) => Ok(Expr::This),
             Some(t) => Err(ParseError::UnexpectedToken(t)),
             None => Err(ParseError::UnexpectedEof),
         }

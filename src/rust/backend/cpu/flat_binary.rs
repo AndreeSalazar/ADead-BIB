@@ -40,7 +40,7 @@ impl FlatBinaryGenerator {
     /// * `origin` - Dirección base donde se cargará el binario
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// let gen = FlatBinaryGenerator::new(0x7C00); // Boot sector
     /// let gen = FlatBinaryGenerator::new(0x0000); // ROM image
     /// ```

@@ -1,34 +1,39 @@
-// ADead-BIB v3.1 - Punteros (Conceptual)
-// Simulación de punteros con referencias
+// ADead-BIB v3.4 - Punteros y Referencias
+// Punteros reales con &, * y tipos puntero
 
 int main() {
-    printf("=== Punteros (Conceptual) ===\n")
-    
+    printf("=== Punteros y Referencias ===\n")
+
     // Variable original
     int valor = 42
     printf("valor = ")
     printf(valor)
     printf("\n")
-    
-    // Simulación de puntero (referencia)
-    // En ADead-BIB, usamos variables para simular
-    int ptr_valor = valor
+
+    // Puntero: int* apunta a int
+    int* ptr = &valor
     printf("*ptr = ")
-    printf(ptr_valor)
+    printf(*ptr)
     printf("\n")
-    
-    // Modificar a través de "puntero"
-    ptr_valor = 100
-    printf("Despues de *ptr = 100:\n")
-    printf("  ptr_valor = ")
-    printf(ptr_valor)
+
+    // Modificar a través del puntero
+    *ptr = 100
+    printf("\nDespues de *ptr = 100:\n")
+    printf("  valor = ")
+    printf(valor)
     printf("\n")
-    
-    // Dirección simulada (offset)
-    int direccion = 1000
-    printf("Direccion simulada: ")
-    printf(direccion)
+    printf("  *ptr  = ")
+    printf(*ptr)
     printf("\n")
-    
+
+    // sizeof
+    printf("\nsizeof(int) = ")
+    printf(sizeof(int))
+    printf(" bytes\n")
+
+    printf("sizeof(int*) = ")
+    printf(sizeof(int*))
+    printf(" bytes\n")
+
     return 0
 }

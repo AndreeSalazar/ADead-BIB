@@ -118,6 +118,9 @@ pub struct IsaCompiler {
 
     // Track prologue sub rsp index for patching dynamic stack frame
     prologue_sub_index: Option<usize>,
+
+    // Loop label stack for break/continue — each entry is (break_label, continue_label)
+    loop_stack: Vec<(Label, Label)>,
 }
 
 impl IsaCompiler {
@@ -143,6 +146,7 @@ impl IsaCompiler {
             named_labels: HashMap::new(),
             temp_alloc: TempAllocator::new(),
             prologue_sub_index: None,
+            loop_stack: Vec::new(),
         }
     }
 
@@ -266,25 +270,118 @@ impl IsaCompiler {
         }
     }
 
+    fn collect_strings_from_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::String(s) => {
+                let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
+                if !self.strings.contains(&processed) {
+                    self.strings.push(processed);
+                }
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                self.collect_strings_from_expr(left);
+                self.collect_strings_from_expr(right);
+            }
+            Expr::UnaryOp { expr: inner, .. } => {
+                self.collect_strings_from_expr(inner);
+            }
+            Expr::Call { args, .. } => {
+                for arg in args {
+                    self.collect_strings_from_expr(arg);
+                }
+            }
+            Expr::Comparison { left, right, .. } => {
+                self.collect_strings_from_expr(left);
+                self.collect_strings_from_expr(right);
+            }
+            Expr::Ternary { condition, then_expr, else_expr } => {
+                self.collect_strings_from_expr(condition);
+                self.collect_strings_from_expr(then_expr);
+                self.collect_strings_from_expr(else_expr);
+            }
+            Expr::MethodCall { object, args, .. } => {
+                self.collect_strings_from_expr(object);
+                for arg in args {
+                    self.collect_strings_from_expr(arg);
+                }
+            }
+            Expr::Index { object, index } => {
+                self.collect_strings_from_expr(object);
+                self.collect_strings_from_expr(index);
+            }
+            Expr::FieldAccess { object, .. } => {
+                self.collect_strings_from_expr(object);
+            }
+            Expr::Array(elems) => {
+                for e in elems {
+                    self.collect_strings_from_expr(e);
+                }
+            }
+            Expr::New { args, .. } => {
+                for arg in args {
+                    self.collect_strings_from_expr(arg);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn collect_strings_from_stmts(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             match stmt {
-                Stmt::Print(Expr::String(s)) | Stmt::Println(Expr::String(s)) => {
-                    let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
-                    if !self.strings.contains(&processed) {
-                        self.strings.push(processed);
+                Stmt::Print(expr) | Stmt::Println(expr) | Stmt::PrintNum(expr) => {
+                    self.collect_strings_from_expr(expr);
+                }
+                Stmt::Assign { value, .. } => {
+                    self.collect_strings_from_expr(value);
+                }
+                Stmt::VarDecl { value, .. } => {
+                    if let Some(val) = value {
+                        self.collect_strings_from_expr(val);
                     }
                 }
-                Stmt::If { then_body, else_body, .. } => {
+                Stmt::If { condition, then_body, else_body } => {
+                    self.collect_strings_from_expr(condition);
                     self.collect_strings_from_stmts(then_body);
                     if let Some(else_stmts) = else_body {
                         self.collect_strings_from_stmts(else_stmts);
                     }
                 }
-                Stmt::While { body, .. } => self.collect_strings_from_stmts(body),
-                Stmt::DoWhile { body, .. } => self.collect_strings_from_stmts(body),
-                Stmt::For { body, .. } => self.collect_strings_from_stmts(body),
-                Stmt::ForEach { body, .. } => self.collect_strings_from_stmts(body),
+                Stmt::While { condition, body } => {
+                    self.collect_strings_from_expr(condition);
+                    self.collect_strings_from_stmts(body);
+                }
+                Stmt::DoWhile { body, condition } => {
+                    self.collect_strings_from_stmts(body);
+                    self.collect_strings_from_expr(condition);
+                }
+                Stmt::For { start, end, body, .. } => {
+                    self.collect_strings_from_expr(start);
+                    self.collect_strings_from_expr(end);
+                    self.collect_strings_from_stmts(body);
+                }
+                Stmt::ForEach { iterable, body, .. } => {
+                    self.collect_strings_from_expr(iterable);
+                    self.collect_strings_from_stmts(body);
+                }
+                Stmt::Return(Some(expr)) => {
+                    self.collect_strings_from_expr(expr);
+                }
+                Stmt::Expr(expr) => {
+                    self.collect_strings_from_expr(expr);
+                }
+                Stmt::CompoundAssign { value, .. } => {
+                    self.collect_strings_from_expr(value);
+                }
+                Stmt::IndexAssign { object, index, value } => {
+                    self.collect_strings_from_expr(object);
+                    self.collect_strings_from_expr(index);
+                    self.collect_strings_from_expr(value);
+                }
+                Stmt::FieldAssign { object, value, .. } => {
+                    self.collect_strings_from_expr(object);
+                    self.collect_strings_from_expr(value);
+                }
                 _ => {}
             }
         }
@@ -447,7 +544,6 @@ impl IsaCompiler {
     }
 
     fn emit_epilogue(&mut self) {
-        self.ir.emit(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
         self.ir.emit(ADeadOp::Mov {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Reg(Reg::RBP),
@@ -570,6 +666,17 @@ impl IsaCompiler {
                 });
             }
 
+            // OOP field assignment: self.field = value or obj.field = value
+            Stmt::FieldAssign { object, field, value } => {
+                // Treat as variable assignment with namespaced key
+                let var_name = match object {
+                    Expr::This => format!("self.{}", field),
+                    Expr::Variable(obj_name) => format!("{}.{}", obj_name, field),
+                    _ => format!("__field.{}", field),
+                };
+                self.emit_assign(&var_name, value);
+            }
+
             // Pointer/memory statements (v3.2)
             Stmt::VarDecl { var_type: _, name, value } => {
                 if let Some(val) = value {
@@ -606,6 +713,8 @@ impl IsaCompiler {
                 let loop_start = self.ir.new_label();
                 let loop_end = self.ir.new_label();
 
+                self.loop_stack.push((loop_end, loop_start));
+
                 self.ir.emit(ADeadOp::Label(loop_start));
 
                 for s in body {
@@ -622,6 +731,8 @@ impl IsaCompiler {
                     target: loop_start,
                 });
                 self.ir.emit(ADeadOp::Label(loop_end));
+
+                self.loop_stack.pop();
             }
 
             // ========== LABELS Y JUMPS (v3.3-Boot) ==========
@@ -673,6 +784,17 @@ impl IsaCompiler {
             Stmt::TimesDirective { count, byte } => {
                 let bytes = vec![*byte; *count];
                 self.ir.emit(ADeadOp::RawBytes(bytes));
+            }
+
+            Stmt::Break => {
+                if let Some(&(break_label, _)) = self.loop_stack.last() {
+                    self.ir.emit(ADeadOp::Jmp { target: break_label });
+                }
+            }
+            Stmt::Continue => {
+                if let Some(&(_, continue_label)) = self.loop_stack.last() {
+                    self.ir.emit(ADeadOp::Jmp { target: continue_label });
+                }
             }
 
             _ => {}
@@ -1099,6 +1221,8 @@ impl IsaCompiler {
         let loop_start = self.ir.new_label();
         let loop_end = self.ir.new_label();
 
+        self.loop_stack.push((loop_end, loop_start));
+
         self.ir.emit(ADeadOp::Label(loop_start));
         self.emit_condition(condition);
         self.ir.emit(ADeadOp::Test { left: Reg::RAX, right: Reg::RAX });
@@ -1110,6 +1234,8 @@ impl IsaCompiler {
 
         self.ir.emit(ADeadOp::Jmp { target: loop_start });
         self.ir.emit(ADeadOp::Label(loop_end));
+
+        self.loop_stack.pop();
     }
 
     fn emit_for(&mut self, var: &str, start: &Expr, end: &Expr, body: &[Stmt]) {
@@ -1131,6 +1257,8 @@ impl IsaCompiler {
 
         let loop_start = self.ir.new_label();
         let loop_end = self.ir.new_label();
+
+        self.loop_stack.push((loop_end, loop_start));
 
         self.ir.emit(ADeadOp::Label(loop_start));
         self.ir.emit(ADeadOp::Cmp {
@@ -1158,6 +1286,8 @@ impl IsaCompiler {
         self.ir.emit(ADeadOp::Inc { dst: Operand::Reg(Reg::RCX) });
         self.ir.emit(ADeadOp::Jmp { target: loop_start });
         self.ir.emit(ADeadOp::Label(loop_end));
+
+        self.loop_stack.pop();
     }
 
     fn emit_return(&mut self, expr: Option<&Expr>) {
@@ -1496,6 +1626,26 @@ impl IsaCompiler {
                     dst: Operand::Reg(Reg::RAX),
                     src: Operand::Imm64(addr),
                 });
+            }
+            // OOP field access: self.field or obj.field → load from namespaced variable
+            Expr::FieldAccess { object, field } => {
+                let var_name = match object.as_ref() {
+                    Expr::This => format!("self.{}", field),
+                    Expr::Variable(obj_name) => format!("{}.{}", obj_name, field),
+                    _ => format!("__field.{}", field),
+                };
+                if let Some(&offset) = self.variables.get(&var_name) {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem { base: Reg::RBP, disp: offset },
+                    });
+                } else {
+                    self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                }
+            }
+            Expr::MethodCall { object: _, method: _, args: _ } => {
+                // Method calls are resolved at parse time as Struct::method functions
+                self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
             }
             _ => {
                 self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });

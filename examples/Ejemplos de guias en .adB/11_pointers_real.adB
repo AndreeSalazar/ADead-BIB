@@ -1,67 +1,85 @@
-// ADead-BIB v3.2 - Punteros Reales y Memoria
-// Demostración de punteros, referencias y memoria dinámica
+// ADead-BIB v3.4 - Punteros + Bitwise + Memoria
+// Punteros reales, operaciones bitwise y sizeof
 
 int main() {
-    printf("=== Punteros Reales v3.2 ===\n")
-    
-    // Variable básica
+    printf("=== Punteros + Bitwise + Memoria ===\n")
+
+    // ---- Punteros ----
     int x = 42
+    int* px = &x
+
     printf("x = ")
     printf(x)
     printf("\n")
-    
-    // Simulación de puntero (dirección)
-    int ptr_x = x
-    printf("*ptr = ")
-    printf(ptr_x)
+
+    *px = 100
+    printf("Despues de *px = 100: x = ")
+    printf(x)
     printf("\n")
-    
-    // Modificar valor
-    ptr_x = 100
-    printf("Despues de *ptr = 100: ")
-    printf(ptr_x)
+
+    // Puntero a otro puntero
+    int y = 7
+    int* py = &y
+    printf("\ny = ")
+    printf(*py)
     printf("\n")
-    
-    // Operaciones bitwise
+
+    // ---- Operaciones Bitwise ----
     int a = 12
     int b = 10
-    
-    printf("\nOperaciones Bitwise:\n")
-    printf("a = 12, b = 10\n")
-    
-    // AND bitwise: 12 & 10 = 8
-    int and_result = 8
-    printf("a & b = ")
-    printf(and_result)
+
+    printf("\nOperaciones Bitwise (a=12, b=10):\n")
+
+    // AND bitwise
+    int and_r = a & b
+    printf("a & b  = ")
+    printf(and_r)
     printf("\n")
-    
-    // OR bitwise: 12 | 10 = 14
-    int or_result = 14
-    printf("a | b = ")
-    printf(or_result)
+
+    // OR bitwise
+    int or_r = a | b
+    printf("a | b  = ")
+    printf(or_r)
     printf("\n")
-    
-    // XOR bitwise: 12 ^ 10 = 6
-    int xor_result = 6
-    printf("a ^ b = ")
-    printf(xor_result)
+
+    // XOR bitwise
+    int xor_r = a ^ b
+    printf("a ^ b  = ")
+    printf(xor_r)
     printf("\n")
-    
-    // Left shift: 12 << 2 = 48
-    int shl_result = 48
+
+    // Left shift
+    int shl_r = a << 2
     printf("a << 2 = ")
-    printf(shl_result)
+    printf(shl_r)
     printf("\n")
-    
-    // Right shift: 12 >> 2 = 3
-    int shr_result = 3
+
+    // Right shift
+    int shr_r = a >> 2
     printf("a >> 2 = ")
-    printf(shr_result)
+    printf(shr_r)
     printf("\n")
-    
+
+    // Bitwise NOT
+    int not_r = ~a
+    printf("~a     = ")
+    printf(not_r)
+    printf("\n")
+
+    // ---- Memory info ----
     printf("\nMemoria y ABI:\n")
-    printf("sizeof(int) = 8 bytes (x86-64)\n")
-    printf("ABI: Windows x64 calling convention\n")
-    
+    printf("sizeof(char)  = ")
+    printf(sizeof(char))
+    printf(" byte\n")
+    printf("sizeof(short) = ")
+    printf(sizeof(short))
+    printf(" bytes\n")
+    printf("sizeof(int)   = ")
+    printf(sizeof(int))
+    printf(" bytes\n")
+    printf("sizeof(long)  = ")
+    printf(sizeof(long))
+    printf(" bytes\n")
+
     return 0
 }

@@ -1,19 +1,19 @@
-// ADead-BIB v3.1 - Funciones
-// Definición y llamada de funciones
+// ADead-BIB v3.4 - Funciones y Recursión
+// Funciones C-style con tipos explícitos
 
-// Función simple sin parámetros
+// Sin parámetros
 void saludar() {
     printf("Hola desde una funcion!\n")
 }
 
-// Función con parámetros
-void mostrar_numero(int n) {
+// Con parámetros
+void mostrar(int n) {
     printf("El numero es: ")
     printf(n)
     printf("\n")
 }
 
-// Función con retorno
+// Con retorno
 int sumar(int a, int b) {
     return a + b
 }
@@ -22,23 +22,56 @@ int multiplicar(int x, int y) {
     return x * y
 }
 
-// Función principal
+// Recursión
+int factorial(int n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+// Función como parámetro de cálculo (valor de retorno usado)
+int cuadrado(int x) {
+    return x * x
+}
+
 int main() {
-    printf("=== Funciones ===\n")
-    
+    printf("=== Funciones ===\n\n")
+
     saludar()
-    
-    mostrar_numero(42)
-    
-    int resultado = sumar(10, 20)
+    mostrar(42)
+
+    int s = sumar(10, 20)
     printf("10 + 20 = ")
-    printf(resultado)
+    printf(s)
     printf("\n")
-    
-    int producto = multiplicar(5, 6)
+
+    int p = multiplicar(5, 6)
     printf("5 * 6 = ")
-    printf(producto)
+    printf(p)
     printf("\n")
-    
+
+    printf("\nRecursion:\n")
+    int i = 1
+    while i <= 6 {
+        printf("factorial(")
+        printf(i)
+        printf(") = ")
+        printf(factorial(i))
+        printf("\n")
+        i += 1
+    }
+
+    printf("\nCuadrados:\n")
+    int j = 1
+    while j <= 5 {
+        printf("cuadrado(")
+        printf(j)
+        printf(") = ")
+        printf(cuadrado(j))
+        printf("\n")
+        j += 1
+    }
+
     return 0
 }

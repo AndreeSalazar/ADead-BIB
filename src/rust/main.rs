@@ -934,7 +934,7 @@ fn check_syntax_json(file_path: &str) -> Result<String, Box<dyn std::error::Erro
 
     // 1. Lexing
     let mut lexer = Lexer::new(&source);
-    let tokens = lexer.tokenize();
+    let _tokens = lexer.tokenize();
 
     // 2. Parsing
     let program = Parser::parse_program(&source)?;
