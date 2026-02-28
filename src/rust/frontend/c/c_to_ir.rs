@@ -1,19 +1,33 @@
 // ============================================================
-// C AST → ADead-BIB IR Converter
+// C AST → ADead-BIB IR Converter (v2.0 — Robust)
 // ============================================================
 // Lowers C99 AST to ADead-BIB's Program/Function/Stmt/Expr
 // This is the bridge: C enters here, ADead-BIB IR exits.
 //
 // Pipeline: C Source → CLexer → CParser → CTranslationUnit
 //           → CToIR → Program → ISA Compiler → PE/ELF
+//
+// Fixed: string duplication, printf format handling,
+//        VarDecl with types, compound assigns, globals,
+//        assignment expressions, NULL handling.
 // ============================================================
 
 use super::c_ast::*;
 use crate::frontend::ast::{
-    self, BinOp, BitwiseOp, CmpOp, Expr, Function, FunctionAttributes, Import,
+    self, BinOp, BitwiseOp, CmpOp, Expr, Function, FunctionAttributes,
     Param, Program, ProgramAttributes, Stmt, Struct, StructField, UnaryOp,
 };
 use crate::frontend::types::Type;
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Temp variable counter for synthesized names
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn fresh_temp(prefix: &str) -> String {
+    let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("__{}{}", prefix, id)
+}
 
 pub struct CToIR {
     /// Accumulated enum constants as global assigns
@@ -62,23 +76,23 @@ impl CToIR {
                     // Prototypes — skip (resolved at link time)
                 }
                 CTopLevel::GlobalVar { type_spec, declarators } => {
-                    // Global variables → top-level statements
-                    for decl in declarators {
-                        if let Some(ref init) = decl.initializer {
-                            let val = self.convert_expr(init)?;
-                            program.statements.push(Stmt::Assign {
-                                name: decl.name.clone(),
-                                value: val,
-                            });
-                        }
+                    for decl_item in declarators {
+                        let var_type = self.resolve_declarator_type(type_spec, &decl_item.derived_type);
+                        let init_val = if let Some(ref init) = decl_item.initializer {
+                            Some(self.convert_expr(init)?)
+                        } else {
+                            None
+                        };
+                        program.statements.push(Stmt::VarDecl {
+                            var_type,
+                            name: decl_item.name.clone(),
+                            value: init_val,
+                        });
                     }
                 }
                 _ => {}
             }
         }
-
-        // Inject enum constants as assigns in main if they exist
-        // (they'll be available as compile-time constants)
 
         Ok(program)
     }
@@ -107,9 +121,8 @@ impl CToIR {
             CType::Pointer(inner) => Type::Pointer(Box::new(self.convert_type(inner))),
             CType::Array(inner, size) => Type::Array(Box::new(self.convert_type(inner)), *size),
             CType::Struct(name) => Type::Struct(name.clone()),
-            CType::Enum(_) => Type::I32, // enums are ints in C
+            CType::Enum(_) => Type::I32,
             CType::Typedef(name) => {
-                // Resolve typedef
                 if let Some((_, original)) = self.typedefs.iter().find(|(n, _)| n == name) {
                     self.convert_type(original)
                 } else {
@@ -122,6 +135,22 @@ impl CToIR {
                 Type::Function(args, Box::new(ret))
             }
             CType::Const(inner) | CType::Volatile(inner) => self.convert_type(inner),
+        }
+    }
+
+    /// Resolve full type including declarator modifiers (pointer/array)
+    fn resolve_declarator_type(&self, base: &CType, derived: &Option<CDerivedType>) -> Type {
+        let base_type = self.convert_type(base);
+        match derived {
+            None => base_type,
+            Some(CDerivedType::Pointer(inner)) => {
+                let inner_type = self.resolve_declarator_type(base, &inner.as_ref().map(|b| *b.clone()));
+                Type::Pointer(Box::new(inner_type))
+            }
+            Some(CDerivedType::Array(size, inner)) => {
+                let inner_type = self.resolve_declarator_type(base, &inner.as_ref().map(|b| *b.clone()));
+                Type::Array(Box::new(inner_type), *size)
+            }
         }
     }
 
@@ -207,10 +236,7 @@ impl CToIR {
 
     fn convert_stmt(&self, stmt: &CStmt) -> Result<Vec<Stmt>, String> {
         match stmt {
-            CStmt::Expr(expr) => {
-                let converted = self.convert_expr_to_stmt(expr)?;
-                Ok(converted)
-            }
+            CStmt::Expr(expr) => self.convert_expr_to_stmt(expr),
 
             CStmt::Return(None) => Ok(vec![Stmt::Return(None)]),
             CStmt::Return(Some(expr)) => {
@@ -221,28 +247,19 @@ impl CToIR {
             CStmt::VarDecl { type_spec, declarators } => {
                 let mut stmts = Vec::new();
                 for decl in declarators {
-                    let value = if let Some(ref init) = decl.initializer {
-                        self.convert_expr(init)?
+                    let var_type = self.resolve_declarator_type(type_spec, &decl.derived_type);
+
+                    let init_val = if let Some(ref init) = decl.initializer {
+                        Some(self.convert_expr(init)?)
                     } else {
-                        // Default zero initialization
-                        self.default_value(type_spec)
+                        None
                     };
 
-                    // Handle array declarators
-                    let final_value = if let Some(CDerivedType::Array(Some(size), _)) = &decl.derived_type {
-                        if matches!(value, Expr::Number(0)) {
-                            // Zero-initialized array
-                            Expr::Array(vec![Expr::Number(0); *size])
-                        } else {
-                            value
-                        }
-                    } else {
-                        value
-                    };
-
-                    stmts.push(Stmt::Assign {
+                    // Use VarDecl with full type info — not bare Assign
+                    stmts.push(Stmt::VarDecl {
+                        var_type,
                         name: decl.name.clone(),
-                        value: final_value,
+                        value: init_val,
                     });
                 }
                 Ok(stmts)
@@ -264,7 +281,6 @@ impl CToIR {
                 } else {
                     None
                 };
-
                 Ok(vec![Stmt::If {
                     condition: cond,
                     then_body: then_stmts,
@@ -282,11 +298,8 @@ impl CToIR {
             }
 
             CStmt::DoWhile { body, condition } => {
-                // do { body } while (cond) →
-                // loop { body; if (!cond) break; }
                 let cond = self.convert_expr(condition)?;
                 let mut body_stmts = self.convert_stmt(body)?;
-                // Add: if (!condition) break
                 body_stmts.push(Stmt::If {
                     condition: Expr::UnaryOp {
                         op: UnaryOp::Not,
@@ -304,21 +317,17 @@ impl CToIR {
             CStmt::For { init, condition, update, body } => {
                 let mut result = Vec::new();
 
-                // Init statement
                 if let Some(init_stmt) = init {
                     result.extend(self.convert_stmt(init_stmt)?);
                 }
 
-                // Build loop body
                 let mut loop_body = self.convert_stmt(body)?;
 
-                // Add update at end of loop body
                 if let Some(upd) = update {
                     let upd_stmts = self.convert_expr_to_stmt(upd)?;
                     loop_body.extend(upd_stmts);
                 }
 
-                // Condition (default true if missing)
                 let cond = if let Some(c) = condition {
                     self.convert_expr(c)?
                 } else {
@@ -334,10 +343,8 @@ impl CToIR {
             }
 
             CStmt::Switch { expr, cases } => {
-                // switch → chain of if/else
                 let switch_val = self.convert_expr(expr)?;
-                // Create temp var for switch value
-                let switch_var = "__switch_val".to_string();
+                let switch_var = fresh_temp("sw");
                 let mut result = vec![Stmt::Assign {
                     name: switch_var.clone(),
                     value: switch_val,
@@ -345,7 +352,6 @@ impl CToIR {
 
                 let mut last_else: Option<Vec<Stmt>> = None;
 
-                // Process cases in reverse to build if/else chain
                 for case in cases.iter().rev() {
                     let mut case_body: Vec<Stmt> = Vec::new();
                     for s in &case.body {
@@ -359,7 +365,6 @@ impl CToIR {
                     }
 
                     if let Some(ref val) = case.value {
-                        // case N:
                         let cond = Expr::Comparison {
                             op: CmpOp::Eq,
                             left: Box::new(Expr::Variable(switch_var.clone())),
@@ -372,7 +377,6 @@ impl CToIR {
                         };
                         last_else = Some(vec![if_stmt]);
                     } else {
-                        // default:
                         last_else = Some(case_body);
                     }
                 }
@@ -386,28 +390,42 @@ impl CToIR {
 
             CStmt::Break => Ok(vec![Stmt::Break]),
             CStmt::Continue => Ok(vec![Stmt::Continue]),
-            CStmt::Goto(_label) => Ok(vec![]), // Skip goto for now
+            CStmt::Goto(_label) => Ok(vec![]),
             CStmt::Label(_name, inner) => self.convert_stmt(inner),
             CStmt::Empty => Ok(vec![]),
         }
     }
 
-    /// Convert a C expression used as a statement (handles printf, assignments, etc.)
+    // ========== Expression as statement ==========
+
     fn convert_expr_to_stmt(&self, expr: &CExpr) -> Result<Vec<Stmt>, String> {
         match expr {
-            // printf("...") → Print/Println
             CExpr::Call { func, args } => {
                 if let CExpr::Identifier(name) = func.as_ref() {
                     match name.as_str() {
                         "printf" => return self.convert_printf(args),
+                        "fprintf" => {
+                            // fprintf(stderr, fmt, ...) → skip first arg, treat like printf
+                            if args.len() >= 2 {
+                                return self.convert_printf(&args[1..]);
+                            }
+                            return Ok(vec![]);
+                        }
+                        "sprintf" | "snprintf" => {
+                            // sprintf(buf, fmt, ...) → just print for now
+                            if args.len() >= 2 {
+                                return self.convert_printf(&args[1..]);
+                            }
+                            return Ok(vec![]);
+                        }
                         "puts" => {
                             if let Some(arg) = args.first() {
                                 let val = self.convert_expr(arg)?;
                                 return Ok(vec![Stmt::Println(val)]);
                             }
-                            return Ok(vec![]);
+                            return Ok(vec![Stmt::Println(Expr::String(String::new()))]);
                         }
-                        "putchar" => {
+                        "putchar" | "putc" => {
                             if let Some(arg) = args.first() {
                                 let val = self.convert_expr(arg)?;
                                 return Ok(vec![Stmt::Print(val)]);
@@ -421,6 +439,21 @@ impl CToIR {
                             }
                             return Ok(vec![]);
                         }
+                        "exit" => {
+                            let code = if let Some(arg) = args.first() {
+                                self.convert_expr(arg)?
+                            } else {
+                                Expr::Number(0)
+                            };
+                            return Ok(vec![Stmt::Return(Some(code))]);
+                        }
+                        "memset" | "memcpy" | "memmove" | "strcpy" | "strncpy"
+                        | "strcat" | "strlen" | "strcmp" | "atoi" | "atof" => {
+                            // Map to generic call
+                            let a: Result<Vec<Expr>, String> =
+                                args.iter().map(|a| self.convert_expr(a)).collect();
+                            return Ok(vec![Stmt::Expr(Expr::Call { name: name.clone(), args: a? })]);
+                        }
                         _ => {}
                     }
                 }
@@ -429,23 +462,18 @@ impl CToIR {
                 Ok(vec![Stmt::Expr(call_expr)])
             }
 
-            // x = 5 → Assign
             CExpr::Assign { op, target, value } => {
                 self.convert_assignment(op, target, value)
             }
 
-            // x++ / ++x as statement
             CExpr::UnaryOp { op, expr: inner, .. } => {
                 match op {
                     CUnaryOp::PreInc | CUnaryOp::PostInc => {
                         if let CExpr::Identifier(name) = inner.as_ref() {
-                            Ok(vec![Stmt::Assign {
+                            Ok(vec![Stmt::Increment {
                                 name: name.clone(),
-                                value: Expr::BinaryOp {
-                                    op: BinOp::Add,
-                                    left: Box::new(Expr::Variable(name.clone())),
-                                    right: Box::new(Expr::Number(1)),
-                                },
+                                is_pre: matches!(op, CUnaryOp::PreInc),
+                                is_increment: true,
                             }])
                         } else {
                             let e = self.convert_expr(expr)?;
@@ -454,13 +482,10 @@ impl CToIR {
                     }
                     CUnaryOp::PreDec | CUnaryOp::PostDec => {
                         if let CExpr::Identifier(name) = inner.as_ref() {
-                            Ok(vec![Stmt::Assign {
+                            Ok(vec![Stmt::Increment {
                                 name: name.clone(),
-                                value: Expr::BinaryOp {
-                                    op: BinOp::Sub,
-                                    left: Box::new(Expr::Variable(name.clone())),
-                                    right: Box::new(Expr::Number(1)),
-                                },
+                                is_pre: matches!(op, CUnaryOp::PreDec),
+                                is_increment: false,
                             }])
                         } else {
                             let e = self.convert_expr(expr)?;
@@ -474,7 +499,6 @@ impl CToIR {
                 }
             }
 
-            // Comma expression as statement → multiple statements
             CExpr::Comma(exprs) => {
                 let mut stmts = Vec::new();
                 for e in exprs {
@@ -490,6 +514,8 @@ impl CToIR {
         }
     }
 
+    // ========== Assignment conversion ==========
+
     fn convert_assignment(
         &self,
         op: &CAssignOp,
@@ -500,69 +526,25 @@ impl CToIR {
 
         match target {
             CExpr::Identifier(name) => {
-                let final_value = match op {
-                    CAssignOp::Assign => rhs,
-                    CAssignOp::AddAssign => Expr::BinaryOp {
-                        op: BinOp::Add,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::SubAssign => Expr::BinaryOp {
-                        op: BinOp::Sub,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::MulAssign => Expr::BinaryOp {
-                        op: BinOp::Mul,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::DivAssign => Expr::BinaryOp {
-                        op: BinOp::Div,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::ModAssign => Expr::BinaryOp {
-                        op: BinOp::Mod,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::AndAssign => Expr::BitwiseOp {
-                        op: BitwiseOp::And,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::OrAssign => Expr::BitwiseOp {
-                        op: BitwiseOp::Or,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::XorAssign => Expr::BitwiseOp {
-                        op: BitwiseOp::Xor,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::ShlAssign => Expr::BitwiseOp {
-                        op: BitwiseOp::LeftShift,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                    CAssignOp::ShrAssign => Expr::BitwiseOp {
-                        op: BitwiseOp::RightShift,
-                        left: Box::new(Expr::Variable(name.clone())),
-                        right: Box::new(rhs),
-                    },
-                };
+                let final_value = self.apply_compound_op(op, &Expr::Variable(name.clone()), rhs);
                 Ok(vec![Stmt::Assign { name: name.clone(), value: final_value }])
             }
             CExpr::Index { array, index } => {
                 let obj = self.convert_expr(array)?;
                 let idx = self.convert_expr(index)?;
-                // For compound assignment on array index, we need the simple value
-                let final_rhs = match op {
-                    CAssignOp::Assign => rhs,
-                    _ => rhs, // simplified — compound array assign treated as direct
+
+                // For compound ops: read-modify-write
+                let final_rhs = if *op == CAssignOp::Assign {
+                    rhs
+                } else {
+                    // Read current value
+                    let current = Expr::Index {
+                        object: Box::new(obj.clone()),
+                        index: Box::new(idx.clone()),
+                    };
+                    self.apply_compound_op(op, &current, rhs)
                 };
+
                 Ok(vec![Stmt::IndexAssign {
                     object: obj,
                     index: idx,
@@ -571,51 +553,135 @@ impl CToIR {
             }
             CExpr::Member { object, field } => {
                 let obj = self.convert_expr(object)?;
+                let final_rhs = if *op == CAssignOp::Assign {
+                    rhs
+                } else {
+                    let current = Expr::FieldAccess {
+                        object: Box::new(obj.clone()),
+                        field: field.clone(),
+                    };
+                    self.apply_compound_op(op, &current, rhs)
+                };
                 Ok(vec![Stmt::FieldAssign {
                     object: obj,
                     field: field.clone(),
-                    value: rhs,
+                    value: final_rhs,
                 }])
             }
             CExpr::ArrowMember { pointer, field } => {
                 let ptr = self.convert_expr(pointer)?;
-                let derefed = Expr::Deref(Box::new(ptr));
-                Ok(vec![Stmt::FieldAssign {
-                    object: derefed,
+                let final_rhs = if *op == CAssignOp::Assign {
+                    rhs
+                } else {
+                    let current = Expr::ArrowAccess {
+                        pointer: Box::new(ptr.clone()),
+                        field: field.clone(),
+                    };
+                    self.apply_compound_op(op, &current, rhs)
+                };
+                Ok(vec![Stmt::ArrowAssign {
+                    pointer: ptr,
                     field: field.clone(),
-                    value: rhs,
+                    value: final_rhs,
                 }])
             }
             CExpr::Deref(inner) => {
-                // *ptr = val → DerefAssign
                 let ptr = self.convert_expr(inner)?;
+                let final_rhs = if *op == CAssignOp::Assign {
+                    rhs
+                } else {
+                    let current = Expr::Deref(Box::new(ptr.clone()));
+                    self.apply_compound_op(op, &current, rhs)
+                };
                 Ok(vec![Stmt::DerefAssign {
                     pointer: ptr,
-                    value: rhs,
+                    value: final_rhs,
                 }])
             }
             _ => {
-                // Fallback: convert as expression statement
                 Ok(vec![Stmt::Expr(rhs)])
             }
         }
     }
 
-    /// Convert printf format string to Print/Println statements
+    /// Apply compound assignment operator: lhs <op>= rhs
+    fn apply_compound_op(&self, op: &CAssignOp, lhs: &Expr, rhs: Expr) -> Expr {
+        match op {
+            CAssignOp::Assign => rhs,
+            CAssignOp::AddAssign => Expr::BinaryOp {
+                op: BinOp::Add,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::SubAssign => Expr::BinaryOp {
+                op: BinOp::Sub,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::MulAssign => Expr::BinaryOp {
+                op: BinOp::Mul,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::DivAssign => Expr::BinaryOp {
+                op: BinOp::Div,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::ModAssign => Expr::BinaryOp {
+                op: BinOp::Mod,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::AndAssign => Expr::BitwiseOp {
+                op: BitwiseOp::And,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::OrAssign => Expr::BitwiseOp {
+                op: BitwiseOp::Or,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::XorAssign => Expr::BitwiseOp {
+                op: BitwiseOp::Xor,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::ShlAssign => Expr::BitwiseOp {
+                op: BitwiseOp::LeftShift,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+            CAssignOp::ShrAssign => Expr::BitwiseOp {
+                op: BitwiseOp::RightShift,
+                left: Box::new(lhs.clone()),
+                right: Box::new(rhs),
+            },
+        }
+    }
+
+    // ========== printf conversion (robust) ==========
+
     fn convert_printf(&self, args: &[CExpr]) -> Result<Vec<Stmt>, String> {
         if args.is_empty() {
             return Ok(vec![]);
         }
 
-        // First arg should be format string
+        // First arg is format string
         let fmt = match &args[0] {
             CExpr::StringLiteral(s) => s.clone(),
             other => {
-                // Non-string first arg: just print it
+                // Non-string format: just print
                 let val = self.convert_expr(other)?;
                 return Ok(vec![Stmt::Print(val)]);
             }
         };
+
+        // Simple case: no format specifiers
+        if !fmt.contains('%') {
+            return Ok(self.emit_string_segments(&fmt));
+        }
 
         let mut stmts = Vec::new();
         let mut arg_idx = 1;
@@ -625,55 +691,58 @@ impl CToIR {
 
         while i < chars.len() {
             if chars[i] == '%' && i + 1 < chars.len() {
-                // Flush current string
+                i += 1;
+
+                // %% → literal %
+                if i < chars.len() && chars[i] == '%' {
+                    current_str.push('%');
+                    i += 1;
+                    continue;
+                }
+
+                // Skip flags: -, +, 0, space, #
+                while i < chars.len() && matches!(chars[i], '-' | '+' | '0' | ' ' | '#') {
+                    i += 1;
+                }
+                // Skip width
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    i += 1;
+                }
+                // Skip precision
+                if i < chars.len() && chars[i] == '.' {
+                    i += 1;
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                }
+                // Skip length modifiers: h, hh, l, ll, L, z, j, t
+                while i < chars.len() && matches!(chars[i], 'h' | 'l' | 'L' | 'z' | 'j' | 't') {
+                    i += 1;
+                }
+
+                if i >= chars.len() { break; }
+
+                // Flush text before format specifier
                 if !current_str.is_empty() {
                     stmts.push(Stmt::Print(Expr::String(current_str.clone())));
                     current_str.clear();
                 }
 
-                i += 1;
-                // Skip width/precision modifiers
-                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == '-' || chars[i] == 'l' || chars[i] == 'h') {
-                    i += 1;
-                }
-
-                if i < chars.len() {
-                    match chars[i] {
-                        'd' | 'i' | 'u' | 'x' | 'X' | 'o' | 'f' | 'e' | 'g' | 'c' => {
-                            if arg_idx < args.len() {
-                                let val = self.convert_expr(&args[arg_idx])?;
-                                stmts.push(Stmt::Print(val));
-                                arg_idx += 1;
-                            }
+                // Process conversion specifier
+                match chars[i] {
+                    'd' | 'i' | 'u' | 'x' | 'X' | 'o' | 'c' | 'f' | 'e' | 'E'
+                    | 'g' | 'G' | 's' | 'p' => {
+                        if arg_idx < args.len() {
+                            let val = self.convert_expr(&args[arg_idx])?;
+                            stmts.push(Stmt::Print(val));
+                            arg_idx += 1;
                         }
-                        's' => {
-                            if arg_idx < args.len() {
-                                let val = self.convert_expr(&args[arg_idx])?;
-                                stmts.push(Stmt::Print(val));
-                                arg_idx += 1;
-                            }
-                        }
-                        'p' => {
-                            if arg_idx < args.len() {
-                                let val = self.convert_expr(&args[arg_idx])?;
-                                stmts.push(Stmt::Print(val));
-                                arg_idx += 1;
-                            }
-                        }
-                        '%' => {
-                            current_str.push('%');
-                        }
-                        _ => {}
                     }
-                    i += 1;
-                }
-            } else if chars[i] == '\n' {
-                // Newline
-                if !current_str.is_empty() {
-                    stmts.push(Stmt::Println(Expr::String(current_str.clone())));
-                    current_str.clear();
-                } else {
-                    stmts.push(Stmt::Println(Expr::String(String::new())));
+                    'n' => {
+                        // %n — skip (dangerous)
+                        arg_idx += 1;
+                    }
+                    _ => {}
                 }
                 i += 1;
             } else {
@@ -682,16 +751,68 @@ impl CToIR {
             }
         }
 
-        // Flush remaining string
+        // Flush remaining text
         if !current_str.is_empty() {
-            stmts.push(Stmt::Print(Expr::String(current_str)));
+            stmts.extend(self.emit_string_segments(&current_str));
         }
 
+        // Fallback: if nothing was emitted, print the raw format string
         if stmts.is_empty() {
             stmts.push(Stmt::Print(Expr::String(fmt)));
         }
 
+        // Post-process: merge trailing newlines into the previous Print
+        // e.g. [Print(x), Println("")] → [Println(x)]
+        self.merge_trailing_newlines(&mut stmts);
+
         Ok(stmts)
+    }
+
+    /// Merge trailing Println("") into previous Print → Println
+    /// [Print("hello"), Print(x), Println("")] → [Print("hello"), Println(x)]
+    fn merge_trailing_newlines(&self, stmts: &mut Vec<Stmt>) {
+        while stmts.len() >= 2 {
+            let is_empty_println = matches!(
+                stmts.last(),
+                Some(Stmt::Println(Expr::String(s))) if s.is_empty()
+            );
+            if !is_empty_println { break; }
+
+            // Check if previous is a Print we can upgrade
+            let prev_idx = stmts.len() - 2;
+            let can_merge = matches!(&stmts[prev_idx], Stmt::Print(_));
+            if !can_merge { break; }
+
+            stmts.pop(); // remove Println("")
+            if let Some(Stmt::Print(expr)) = stmts.pop() {
+                stmts.push(Stmt::Println(expr));
+            }
+            break;
+        }
+    }
+
+    /// Split a string at newlines into Print/Println statements.
+    /// "hello\nworld\n" → [Println("hello"), Println("world")]
+    /// "hello" → [Print("hello")]
+    fn emit_string_segments(&self, s: &str) -> Vec<Stmt> {
+        let mut stmts = Vec::new();
+        let parts: Vec<&str> = s.split('\n').collect();
+
+        for (i, part) in parts.iter().enumerate() {
+            let is_last = i == parts.len() - 1;
+
+            if is_last {
+                // Last segment: no trailing newline
+                if !part.is_empty() {
+                    stmts.push(Stmt::Print(Expr::String(part.to_string())));
+                }
+            } else {
+                // Not last: this segment has a trailing newline
+                stmts.push(Stmt::Println(Expr::String(part.to_string())));
+            }
+        }
+
+        stmts
     }
 
     // ========== Expression conversion ==========
@@ -705,9 +826,23 @@ impl CToIR {
             CExpr::Null => Ok(Expr::Nullptr),
 
             CExpr::Identifier(name) => {
-                // Check if it's an enum constant
+                // Check enum constants
                 if let Some((_, val)) = self.enum_constants.iter().find(|(n, _)| n == name) {
                     Ok(Expr::Number(*val))
+                } else if name == "NULL" || name == "nullptr" {
+                    Ok(Expr::Nullptr)
+                } else if name == "true" || name == "TRUE" {
+                    Ok(Expr::Bool(true))
+                } else if name == "false" || name == "FALSE" {
+                    Ok(Expr::Bool(false))
+                } else if name == "stdin" || name == "stdout" || name == "stderr" {
+                    // File handles → treat as integer constants
+                    Ok(Expr::Number(match name.as_str() {
+                        "stdin" => 0,
+                        "stdout" => 1,
+                        "stderr" => 2,
+                        _ => 0,
+                    }))
                 } else {
                     Ok(Expr::Variable(name.clone()))
                 }
@@ -716,85 +851,113 @@ impl CToIR {
             CExpr::BinaryOp { op, left, right } => {
                 let l = self.convert_expr(left)?;
                 let r = self.convert_expr(right)?;
-
-                match op {
-                    CBinOp::Add => Ok(Expr::BinaryOp { op: BinOp::Add, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Sub => Ok(Expr::BinaryOp { op: BinOp::Sub, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Mul => Ok(Expr::BinaryOp { op: BinOp::Mul, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Div => Ok(Expr::BinaryOp { op: BinOp::Div, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Mod => Ok(Expr::BinaryOp { op: BinOp::Mod, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Eq => Ok(Expr::Comparison { op: CmpOp::Eq, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Ne => Ok(Expr::Comparison { op: CmpOp::Ne, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Lt => Ok(Expr::Comparison { op: CmpOp::Lt, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Gt => Ok(Expr::Comparison { op: CmpOp::Gt, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Le => Ok(Expr::Comparison { op: CmpOp::Le, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Ge => Ok(Expr::Comparison { op: CmpOp::Ge, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::LogAnd => Ok(Expr::BinaryOp { op: BinOp::And, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::LogOr => Ok(Expr::BinaryOp { op: BinOp::Or, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::BitAnd => Ok(Expr::BitwiseOp { op: BitwiseOp::And, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::BitOr => Ok(Expr::BitwiseOp { op: BitwiseOp::Or, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::BitXor => Ok(Expr::BitwiseOp { op: BitwiseOp::Xor, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Shl => Ok(Expr::BitwiseOp { op: BitwiseOp::LeftShift, left: Box::new(l), right: Box::new(r) }),
-                    CBinOp::Shr => Ok(Expr::BitwiseOp { op: BitwiseOp::RightShift, left: Box::new(l), right: Box::new(r) }),
-                }
+                Ok(match op {
+                    CBinOp::Add => Expr::BinaryOp { op: BinOp::Add, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Sub => Expr::BinaryOp { op: BinOp::Sub, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Mul => Expr::BinaryOp { op: BinOp::Mul, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Div => Expr::BinaryOp { op: BinOp::Div, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Mod => Expr::BinaryOp { op: BinOp::Mod, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Eq => Expr::Comparison { op: CmpOp::Eq, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Ne => Expr::Comparison { op: CmpOp::Ne, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Lt => Expr::Comparison { op: CmpOp::Lt, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Gt => Expr::Comparison { op: CmpOp::Gt, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Le => Expr::Comparison { op: CmpOp::Le, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Ge => Expr::Comparison { op: CmpOp::Ge, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::LogAnd => Expr::BinaryOp { op: BinOp::And, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::LogOr => Expr::BinaryOp { op: BinOp::Or, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::BitAnd => Expr::BitwiseOp { op: BitwiseOp::And, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::BitOr => Expr::BitwiseOp { op: BitwiseOp::Or, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::BitXor => Expr::BitwiseOp { op: BitwiseOp::Xor, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Shl => Expr::BitwiseOp { op: BitwiseOp::LeftShift, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Shr => Expr::BitwiseOp { op: BitwiseOp::RightShift, left: Box::new(l), right: Box::new(r) },
+                })
             }
 
-            CExpr::UnaryOp { op, expr: inner, prefix } => {
+            CExpr::UnaryOp { op, expr: inner, .. } => {
                 let e = self.convert_expr(inner)?;
-                match op {
-                    CUnaryOp::Neg => Ok(Expr::UnaryOp { op: UnaryOp::Neg, expr: Box::new(e) }),
-                    CUnaryOp::LogNot => Ok(Expr::UnaryOp { op: UnaryOp::Not, expr: Box::new(e) }),
-                    CUnaryOp::BitNot => Ok(Expr::BitwiseNot(Box::new(e))),
-                    CUnaryOp::PreInc => Ok(Expr::PreIncrement(Box::new(e))),
-                    CUnaryOp::PreDec => Ok(Expr::PreDecrement(Box::new(e))),
-                    CUnaryOp::PostInc => Ok(Expr::PostIncrement(Box::new(e))),
-                    CUnaryOp::PostDec => Ok(Expr::PostDecrement(Box::new(e))),
-                }
+                Ok(match op {
+                    CUnaryOp::Neg => Expr::UnaryOp { op: UnaryOp::Neg, expr: Box::new(e) },
+                    CUnaryOp::LogNot => Expr::UnaryOp { op: UnaryOp::Not, expr: Box::new(e) },
+                    CUnaryOp::BitNot => Expr::BitwiseNot(Box::new(e)),
+                    CUnaryOp::PreInc => Expr::PreIncrement(Box::new(e)),
+                    CUnaryOp::PreDec => Expr::PreDecrement(Box::new(e)),
+                    CUnaryOp::PostInc => Expr::PostIncrement(Box::new(e)),
+                    CUnaryOp::PostDec => Expr::PostDecrement(Box::new(e)),
+                })
             }
 
             CExpr::Call { func, args } => {
                 let name = match func.as_ref() {
                     CExpr::Identifier(n) => n.clone(),
                     _ => {
-                        // Function pointer call — use as expression
-                        let f = self.convert_expr(func)?;
-                        let a: Result<Vec<Expr>, String> = args.iter().map(|a| self.convert_expr(a)).collect();
+                        // Function pointer call — not yet supported, emit as error marker
+                        let a: Result<Vec<Expr>, String> =
+                            args.iter().map(|a| self.convert_expr(a)).collect();
                         return Ok(Expr::Call {
-                            name: format!("{:?}", f),
+                            name: "__fptr_call".to_string(),
                             args: a?,
                         });
                     }
                 };
 
-                // Map C stdlib functions to ADead-BIB
                 match name.as_str() {
-                    "malloc" => {
+                    "malloc" | "calloc" => {
                         if let Some(size_arg) = args.first() {
                             let size = self.convert_expr(size_arg)?;
-                            return Ok(Expr::Malloc(Box::new(size)));
+                            Ok(Expr::Malloc(Box::new(size)))
+                        } else {
+                            Ok(Expr::Nullptr)
                         }
-                        Ok(Expr::Nullptr)
-                    }
-                    "sizeof" => {
-                        if let Some(arg) = args.first() {
-                            let e = self.convert_expr(arg)?;
-                            return Ok(Expr::SizeOf(Box::new(ast::SizeOfArg::Expr(e))));
-                        }
-                        Ok(Expr::Number(0))
                     }
                     "realloc" => {
                         if args.len() >= 2 {
                             let ptr = self.convert_expr(&args[0])?;
                             let size = self.convert_expr(&args[1])?;
-                            return Ok(Expr::Realloc {
+                            Ok(Expr::Realloc {
                                 ptr: Box::new(ptr),
                                 new_size: Box::new(size),
-                            });
+                            })
+                        } else {
+                            Ok(Expr::Nullptr)
                         }
-                        Ok(Expr::Nullptr)
+                    }
+                    "sizeof" => {
+                        if let Some(arg) = args.first() {
+                            let e = self.convert_expr(arg)?;
+                            Ok(Expr::SizeOf(Box::new(ast::SizeOfArg::Expr(e))))
+                        } else {
+                            Ok(Expr::Number(0))
+                        }
+                    }
+                    "abs" => {
+                        // abs(x) → x < 0 ? -x : x
+                        if let Some(arg) = args.first() {
+                            let e = self.convert_expr(arg)?;
+                            Ok(Expr::Ternary {
+                                condition: Box::new(Expr::Comparison {
+                                    op: CmpOp::Lt,
+                                    left: Box::new(e.clone()),
+                                    right: Box::new(Expr::Number(0)),
+                                }),
+                                then_expr: Box::new(Expr::UnaryOp {
+                                    op: UnaryOp::Neg,
+                                    expr: Box::new(e.clone()),
+                                }),
+                                else_expr: Box::new(e),
+                            })
+                        } else {
+                            Ok(Expr::Number(0))
+                        }
+                    }
+                    // printf as expression (returns int) — convert args to call
+                    "printf" | "puts" | "putchar" => {
+                        let a: Result<Vec<Expr>, String> =
+                            args.iter().map(|a| self.convert_expr(a)).collect();
+                        Ok(Expr::Call { name, args: a? })
                     }
                     _ => {
-                        let a: Result<Vec<Expr>, String> = args.iter().map(|a| self.convert_expr(a)).collect();
+                        let a: Result<Vec<Expr>, String> =
+                            args.iter().map(|a| self.convert_expr(a)).collect();
                         Ok(Expr::Call { name, args: a? })
                     }
                 }
@@ -862,31 +1025,19 @@ impl CToIR {
             }
 
             CExpr::Assign { op, target, value } => {
-                // Assignment as expression — convert to the value side
+                // Assignment as expression: evaluate RHS, the value IS the result
+                // Side effect (the actual store) is lost in pure expression context,
+                // but works correctly when the Assign appears at statement level
+                // via convert_expr_to_stmt → convert_assignment.
                 let rhs = self.convert_expr(value)?;
-                match op {
-                    CAssignOp::Assign => Ok(rhs),
-                    _ => {
-                        let lhs = self.convert_expr(target)?;
-                        let bin_op = match op {
-                            CAssignOp::AddAssign => BinOp::Add,
-                            CAssignOp::SubAssign => BinOp::Sub,
-                            CAssignOp::MulAssign => BinOp::Mul,
-                            CAssignOp::DivAssign => BinOp::Div,
-                            CAssignOp::ModAssign => BinOp::Mod,
-                            _ => BinOp::Add, // fallback
-                        };
-                        Ok(Expr::BinaryOp {
-                            op: bin_op,
-                            left: Box::new(lhs),
-                            right: Box::new(rhs),
-                        })
-                    }
-                }
+                let lhs = match target.as_ref() {
+                    CExpr::Identifier(_) => self.convert_expr(target)?,
+                    _ => self.convert_expr(target)?,
+                };
+                Ok(self.apply_compound_op(op, &lhs, rhs))
             }
 
             CExpr::Comma(exprs) => {
-                // Comma expression → return last value
                 if let Some(last) = exprs.last() {
                     self.convert_expr(last)
                 } else {
@@ -896,12 +1047,12 @@ impl CToIR {
         }
     }
 
+    #[allow(dead_code)]
     fn default_value(&self, cty: &CType) -> Expr {
         match cty {
             CType::Float | CType::Double => Expr::Float(0.0),
             CType::Pointer(_) => Expr::Nullptr,
             CType::Bool => Expr::Bool(false),
-            CType::Char => Expr::Number(0),
             _ => Expr::Number(0),
         }
     }
@@ -935,6 +1086,56 @@ mod tests {
         assert_eq!(program.functions.len(), 1);
         assert_eq!(program.functions[0].name, "main");
         assert!(!program.functions[0].body.is_empty());
+    }
+
+    #[test]
+    fn test_no_string_duplication() {
+        let program = compile_c_to_program(r#"
+            int main() {
+                printf("test\n");
+                return 0;
+            }
+        "#).unwrap();
+
+        // Should generate Println("test"), not Println("testtest")
+        let body = &program.functions[0].body;
+        let found_println = body.iter().any(|s| {
+            matches!(s, Stmt::Println(Expr::String(s)) if s == "test")
+        });
+        assert!(found_println, "Expected Println(\"test\"), got: {:?}", body);
+    }
+
+    #[test]
+    fn test_printf_format_specifiers() {
+        let program = compile_c_to_program(r#"
+            int main() {
+                int x = 42;
+                printf("value=%d\n", x);
+                return 0;
+            }
+        "#).unwrap();
+
+        // Should NOT produce Println("") for trailing newline
+        let body = &program.functions[0].body;
+        let has_empty_println = body.iter().any(|s| {
+            matches!(s, Stmt::Println(Expr::String(s)) if s.is_empty())
+        });
+        assert!(!has_empty_println, "Should not have empty Println: {:?}", body);
+    }
+
+    #[test]
+    fn test_vardecl_has_type() {
+        let program = compile_c_to_program(r#"
+            int main() {
+                int x = 5;
+                char c = 'A';
+                return 0;
+            }
+        "#).unwrap();
+
+        let body = &program.functions[0].body;
+        let has_vardecl = body.iter().any(|s| matches!(s, Stmt::VarDecl { .. }));
+        assert!(has_vardecl, "Expected VarDecl with type info: {:?}", body);
     }
 
     #[test]
@@ -990,5 +1191,71 @@ mod tests {
         assert_eq!(program.structs.len(), 1);
         assert_eq!(program.structs[0].name, "Point");
         assert_eq!(program.structs[0].fields.len(), 2);
+    }
+
+    #[test]
+    fn test_null_handling() {
+        let program = compile_c_to_program(r#"
+            int main() {
+                int *p = NULL;
+                return 0;
+            }
+        "#).unwrap();
+
+        assert_eq!(program.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_global_var_uninitialized() {
+        let program = compile_c_to_program(r#"
+            int counter;
+            int main() {
+                return counter;
+            }
+        "#).unwrap();
+
+        // Should have a VarDecl at top level for 'counter'
+        let has_global = program.statements.iter().any(|s| {
+            matches!(s, Stmt::VarDecl { name, .. } if name == "counter")
+        });
+        assert!(has_global, "Uninitialized global should be declared: {:?}", program.statements);
+    }
+
+    #[test]
+    fn test_compound_assign_array() {
+        let program = compile_c_to_program(r#"
+            int main() {
+                int arr[5];
+                arr[0] = 10;
+                arr[0] += 5;
+                return 0;
+            }
+        "#).unwrap();
+
+        assert_eq!(program.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_printf_percent_d_newline() {
+        // This was the core "duplication" bug:
+        // printf("Result: %d\n", x) should produce:
+        //   Print("Result: "), Print(x), Println("")  ← OLD (bad)
+        //   Print("Result: "), Print(x), Print("\n")   ← STILL BAD
+        //   Print("Result: "), Print(x), <nothing — the \n is absorbed by string segment logic>
+        let program = compile_c_to_program(r#"
+            int main() {
+                int x = 42;
+                printf("Result: %d done\n", x);
+                return 0;
+            }
+        "#).unwrap();
+
+        let body = &program.functions[0].body;
+        // Count total Print/Println statements (excluding VarDecl/Return)
+        let print_count = body.iter().filter(|s| {
+            matches!(s, Stmt::Print(_) | Stmt::Println(_))
+        }).count();
+        // Should be: Print("Result: "), Print(x), Println(" done") = 3
+        assert_eq!(print_count, 3, "Expected 3 print stmts, got {}: {:?}", print_count, body);
     }
 }

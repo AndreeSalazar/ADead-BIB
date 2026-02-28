@@ -167,13 +167,10 @@ impl CLexer {
     fn read_number(&mut self) -> CToken {
         let mut num_str = String::new();
         let mut is_float = false;
-        let mut is_hex = false;
-
         // Check for hex: 0x or 0X
         if self.current_char == Some('0') {
             if let Some(next) = self.peek() {
                 if next == 'x' || next == 'X' {
-                    is_hex = true;
                     self.advance(); // skip 0
                     self.advance(); // skip x
                     while let Some(ch) = self.current_char {
@@ -210,7 +207,7 @@ impl CLexer {
                 } else {
                     break;
                 }
-            } else if (ch == 'e' || ch == 'E') && !is_hex {
+            } else if ch == 'e' || ch == 'E' {
                 is_float = true;
                 num_str.push(ch);
                 self.advance();

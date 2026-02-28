@@ -29,6 +29,7 @@ impl CParser {
         self.tokens.get(self.pos + 1).unwrap_or(&CToken::Eof)
     }
 
+    #[allow(dead_code)]
     fn peek_n(&self, n: usize) -> &CToken {
         self.tokens.get(self.pos + n).unwrap_or(&CToken::Eof)
     }
@@ -950,15 +951,18 @@ impl CParser {
             CToken::FloatLiteral(f) => { self.advance(); Ok(CExpr::FloatLiteral(f)) }
             CToken::StringLiteral(s) => {
                 let mut result = s;
+                self.advance(); // consume first string token
                 // Concatenate adjacent string literals: "a" "b" → "ab"
-                while let CToken::StringLiteral(s2) = self.current() {
-                    result.push_str(s2);
+                while let CToken::StringLiteral(s2) = self.current().clone() {
+                    result.push_str(&s2);
                     self.advance();
                 }
                 Ok(CExpr::StringLiteral(result))
             }
             CToken::CharLiteral(c) => { self.advance(); Ok(CExpr::CharLiteral(c)) }
-            CToken::Identifier(name) if name == "NULL" => { self.advance(); Ok(CExpr::Null) }
+            CToken::Identifier(ref name) if name == "NULL" || name == "nullptr" => {
+                self.advance(); Ok(CExpr::Null)
+            }
             CToken::Identifier(name) => { self.advance(); Ok(CExpr::Identifier(name)) }
             CToken::LParen => {
                 self.advance();
