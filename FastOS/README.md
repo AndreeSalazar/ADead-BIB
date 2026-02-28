@@ -4,9 +4,9 @@
 
 ## Architecture: 3 Languages, Zero ASM
 
-| Language  | Role                    | Files                                    |
-|-----------|-------------------------|------------------------------------------|
-| ADead-BIB | Base / Hardware         | `boot/stage1.adB`, `stage2.adB`          |
+| Language  | Role                    | Files                                     |
+|-----------|-------------------------|-------------------------------------------|
+| ADead-BIB | Base / Hardware         | `boot/stage1.adB`, `stage2.adB`           |
 | Rust      | Security / Kernel Logic | `kernel/src/*.rs`, `kernel/src/apps/*.rs` |
 | C         | Compatibility / ABI     | `include/*.h`                             |
 
@@ -80,16 +80,16 @@ BIOS → Stage1 (16-bit, ADead-BIB)
 │ FastOS Desktop                                        ADead-BIB+Rust+C v1.0│  ← Title bar
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │> Terminal │  │░ Files   │  │≡ Editor  │  │# Calc    │  │i SysInfo │      │  ← Desktop icons
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+│  │> Terminal │  │░ Files   │  │≡ Editor  │  │# Calc    │  │i SysInfo │       │  ← Desktop icons
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
 │  ┌──────────┐                                                                │
 │  │■ Settings│                                                                │
 │  └──────────┘                                                                │
 │                                                                              │
-│  WASD:Move  Enter:Open  1-6:Quick  M:Menu  Q:Shutdown                       │
+│  WASD:Move  Enter:Open  1-6:Quick  M:Menu  Q:Shutdown                        │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│[M]Start │ Terminal │                                    │ FsOS 64bit        │  ← Taskbar
+│[M]Start │ Terminal │                                    │ FsOS 64bit         │  ← Taskbar
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 

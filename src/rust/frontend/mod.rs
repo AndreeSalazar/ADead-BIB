@@ -3,6 +3,5 @@ pub mod parser;
 pub mod ast;
 pub mod types;
 pub mod type_checker;
-
-
+pub mod c;
 
