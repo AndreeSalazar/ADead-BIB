@@ -1059,12 +1059,23 @@ impl CToIR {
 }
 
 /// Convenience: parse C source → ADead-BIB Program in one call
+/// Full pipeline: Preprocessor → Lexer → Parser → IR
 pub fn compile_c_to_program(source: &str) -> Result<Program, String> {
     use super::c_lexer::CLexer;
     use super::c_parser::CParser;
+    use super::c_preprocessor::CPreprocessor;
 
-    let tokens = CLexer::new(source).tokenize();
+    // Phase 1: Preprocess — resolve #include, skip #define/#ifdef
+    let mut preprocessor = CPreprocessor::new();
+    let preprocessed = preprocessor.process(source);
+
+    // Phase 2: Lex — tokenize preprocessed source
+    let tokens = CLexer::new(&preprocessed).tokenize();
+
+    // Phase 3: Parse — tokens → C AST
     let unit = CParser::new(tokens).parse_translation_unit()?;
+
+    // Phase 4: Lower — C AST → ADead-BIB IR
     let mut converter = CToIR::new();
     converter.convert(&unit)
 }

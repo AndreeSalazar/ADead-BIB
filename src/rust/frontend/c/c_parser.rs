@@ -321,6 +321,33 @@ impl CParser {
                 break; // variadic — skip for now
             }
 
+            // Function pointer parameter: type (*name)(args)
+            // e.g. int (*compar)(const void *, const void *)
+            //      void (*function)(void)
+            //      void *(*start_routine)(void *)
+            if self.is_function_pointer_param() {
+                let ret_type = self.parse_type()?;
+                self.expect(&CToken::LParen)?;  // (
+                self.eat(&CToken::Star);          // *
+                let name = if let CToken::Identifier(_) = self.current() {
+                    Some(self.expect_identifier()?)
+                } else {
+                    None
+                };
+                self.expect(&CToken::RParen)?;  // )
+                // Skip the parameter list of the function pointer
+                self.expect(&CToken::LParen)?;
+                self.skip_balanced_parens();
+                params.push(CParam {
+                    param_type: CType::Pointer(Box::new(ret_type)),
+                    name,
+                });
+                if !self.eat(&CToken::Comma) {
+                    break;
+                }
+                continue;
+            }
+
             let param_type = self.parse_type()?;
             let name = if let CToken::Identifier(_) = self.current() {
                 Some(self.expect_identifier()?)
@@ -328,11 +355,11 @@ impl CParser {
                 None
             };
 
-            // Handle array parameter: int arr[]
+            // Handle array parameter: int arr[], int arr[N]
             if *self.current() == CToken::LBracket {
                 self.advance();
-                if *self.current() != CToken::RBracket {
-                    self.advance(); // skip size
+                while *self.current() != CToken::RBracket && *self.current() != CToken::Eof {
+                    self.advance();
                 }
                 self.expect(&CToken::RBracket)?;
             }
@@ -345,6 +372,52 @@ impl CParser {
         }
 
         Ok(params)
+    }
+
+    /// Check if current position looks like a function pointer parameter
+    /// Patterns: type (*name)(...), type *(*name)(...)
+    fn is_function_pointer_param(&self) -> bool {
+        // Look ahead for the pattern: [type tokens...] ( * [name] ) (
+        // Simple heuristic: after consuming type, we'd see LParen Star
+        let mut i = self.pos;
+        // Skip type specifiers and qualifiers
+        while i < self.tokens.len() {
+            match &self.tokens[i] {
+                CToken::Const | CToken::Volatile | CToken::Void | CToken::Char |
+                CToken::Short | CToken::Int | CToken::Long | CToken::Float |
+                CToken::Double | CToken::Signed | CToken::Unsigned |
+                CToken::Struct | CToken::Enum | CToken::Bool |
+                CToken::Star => { i += 1; }
+                CToken::Identifier(_) => {
+                    // Could be typedef name or struct name after struct keyword
+                    i += 1;
+                }
+                CToken::LParen => {
+                    // Check if next is * — that's the function pointer indicator
+                    if i + 1 < self.tokens.len() && self.tokens[i + 1] == CToken::Star {
+                        return true;
+                    }
+                    return false;
+                }
+                _ => return false,
+            }
+        }
+        false
+    }
+
+    /// Skip tokens inside balanced parentheses (including the closing paren)
+    fn skip_balanced_parens(&mut self) {
+        let mut depth = 1;
+        while depth > 0 && *self.current() != CToken::Eof {
+            match self.current() {
+                CToken::LParen => { depth += 1; self.advance(); }
+                CToken::RParen => {
+                    depth -= 1;
+                    self.advance();
+                }
+                _ => { self.advance(); }
+            }
+        }
     }
 
     fn parse_struct_def(&mut self) -> Result<CTopLevel, String> {
@@ -416,7 +489,7 @@ impl CParser {
     fn parse_typedef(&mut self) -> Result<CTopLevel, String> {
         self.advance(); // skip typedef
 
-        // typedef struct { ... } Name;
+        // typedef struct { ... } Name;  (anonymous struct)
         if *self.current() == CToken::Struct && *self.peek() == CToken::LBrace {
             self.advance(); // skip struct
             self.advance(); // skip {
@@ -433,7 +506,154 @@ impl CParser {
             return Ok(CTopLevel::StructDef { name: new_name, fields });
         }
 
+        // typedef struct Name { ... } Alias;  (named struct with alias)
+        if *self.current() == CToken::Struct {
+            if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
+                if self.tokens.get(self.pos + 2) == Some(&CToken::LBrace) {
+                    self.advance(); // skip struct
+                    let struct_name = self.expect_identifier()?;
+                    self.advance(); // skip {
+                    let mut fields = Vec::new();
+                    while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+                        let ft = self.parse_type()?;
+                        let fn_ = self.expect_identifier()?;
+                        // Handle array fields in typedef struct
+                        if *self.current() == CToken::LBracket {
+                            self.advance();
+                            if *self.current() != CToken::RBracket {
+                                self.advance(); // skip size
+                            }
+                            self.expect(&CToken::RBracket)?;
+                        }
+                        self.expect(&CToken::Semicolon)?;
+                        fields.push(CStructField { field_type: ft, name: fn_ });
+                    }
+                    self.expect(&CToken::RBrace)?;
+                    // Check if there's an alias name after }
+                    if let CToken::Identifier(_) = self.current() {
+                        let alias = self.expect_identifier()?;
+                        self.expect(&CToken::Semicolon)?;
+                        // Emit struct def with the alias name (more useful)
+                        return Ok(CTopLevel::StructDef { name: alias, fields });
+                    } else {
+                        self.expect(&CToken::Semicolon)?;
+                        return Ok(CTopLevel::StructDef { name: struct_name, fields });
+                    }
+                }
+            }
+        }
+
+        // typedef union Name { ... } Alias;
+        if *self.current() == CToken::Union {
+            if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
+                if self.tokens.get(self.pos + 2) == Some(&CToken::LBrace) {
+                    self.advance(); // skip union
+                    let _union_name = self.expect_identifier()?;
+                    self.advance(); // skip {
+                    let mut fields = Vec::new();
+                    while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+                        let ft = self.parse_type()?;
+                        let fn_ = self.expect_identifier()?;
+                        self.expect(&CToken::Semicolon)?;
+                        fields.push(CStructField { field_type: ft, name: fn_ });
+                    }
+                    self.expect(&CToken::RBrace)?;
+                    if let CToken::Identifier(_) = self.current() {
+                        let alias = self.expect_identifier()?;
+                        self.expect(&CToken::Semicolon)?;
+                        return Ok(CTopLevel::StructDef { name: alias, fields });
+                    } else {
+                        self.expect(&CToken::Semicolon)?;
+                        return Ok(CTopLevel::StructDef { name: _union_name, fields });
+                    }
+                }
+            }
+        }
+
+        // typedef enum { ... } Name;
+        if *self.current() == CToken::Enum {
+            if *self.peek() == CToken::LBrace {
+                self.advance(); // skip enum
+                self.advance(); // skip {
+                let mut values = Vec::new();
+                while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+                    let ident = self.expect_identifier()?;
+                    let val = if self.eat(&CToken::Assign) {
+                        if let CToken::IntLiteral(n) = self.current().clone() {
+                            self.advance();
+                            Some(n)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    values.push((ident, val));
+                    if !self.eat(&CToken::Comma) {
+                        break;
+                    }
+                }
+                self.expect(&CToken::RBrace)?;
+                let alias = self.expect_identifier()?;
+                self.expect(&CToken::Semicolon)?;
+                return Ok(CTopLevel::EnumDef { name: alias, values });
+            }
+            // typedef enum Name { ... } Alias;
+            if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
+                if self.tokens.get(self.pos + 2) == Some(&CToken::LBrace) {
+                    self.advance(); // skip enum
+                    let _enum_name = self.expect_identifier()?;
+                    self.advance(); // skip {
+                    let mut values = Vec::new();
+                    while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+                        let ident = self.expect_identifier()?;
+                        let val = if self.eat(&CToken::Assign) {
+                            if let CToken::IntLiteral(n) = self.current().clone() {
+                                self.advance();
+                                Some(n)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        values.push((ident, val));
+                        if !self.eat(&CToken::Comma) {
+                            break;
+                        }
+                    }
+                    self.expect(&CToken::RBrace)?;
+                    if let CToken::Identifier(_) = self.current() {
+                        let alias = self.expect_identifier()?;
+                        self.expect(&CToken::Semicolon)?;
+                        return Ok(CTopLevel::EnumDef { name: alias, values });
+                    } else {
+                        self.expect(&CToken::Semicolon)?;
+                        return Ok(CTopLevel::EnumDef { name: _enum_name, values });
+                    }
+                }
+            }
+        }
+
+        // typedef type (*name)(args);  — function pointer typedef
+        // e.g. typedef void (*sighandler_t)(int);
+        //      typedef void (*sqlite3_destructor_type)(void *);
         let original = self.parse_type()?;
+        if *self.current() == CToken::LParen && *self.peek() == CToken::Star {
+            self.advance(); // skip (
+            self.advance(); // skip *
+            let new_name = self.expect_identifier()?;
+            self.expect(&CToken::RParen)?;
+            // Skip the parameter list
+            self.expect(&CToken::LParen)?;
+            self.skip_balanced_parens();
+            self.expect(&CToken::Semicolon)?;
+            return Ok(CTopLevel::TypedefDecl {
+                original: CType::Pointer(Box::new(original)),
+                new_name,
+            });
+        }
+
         let new_name = self.expect_identifier()?;
         self.expect(&CToken::Semicolon)?;
 
