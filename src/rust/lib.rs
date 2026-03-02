@@ -24,8 +24,6 @@ pub use bg::{BinaryGuardian, SecurityPolicy, SecurityLevel, Verdict};
 pub use frontend::ast;
 pub use frontend::c;
 pub use frontend::cpp;
-pub use frontend::lexer;
-pub use frontend::parser;
 pub use frontend::type_checker;
 pub use isa::isa_compiler::IsaCompiler;
 pub use isa::codegen; // Clean alias for isa_compiler

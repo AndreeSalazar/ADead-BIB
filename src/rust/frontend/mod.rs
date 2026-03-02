@@ -1,7 +1,16 @@
-pub mod lexer;
-pub mod parser;
+// ============================================================
+// ADead-BIB Frontend v3.0
+// C/C++ Native Frontends — No custom .adB syntax
+// ============================================================
+
 pub mod ast;
 pub mod types;
 pub mod type_checker;
 pub mod c;
 pub mod cpp;
+
+// Legacy modules kept for compatibility but not actively used
+#[allow(dead_code)]
+pub mod lexer;
+#[allow(dead_code)]
+pub mod parser;

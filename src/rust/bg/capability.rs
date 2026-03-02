@@ -12,7 +12,7 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use crate::isa::{ADeadOp, CallTarget, Condition, Label, Operand, Reg};
+use crate::isa::{ADeadOp, CallTarget, Operand};
 use super::arch_map::*;
 
 /// Capability Mapper — Analiza ABIB IR y construye un Architecture Map.
