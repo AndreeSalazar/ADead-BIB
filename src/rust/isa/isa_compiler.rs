@@ -1654,6 +1654,44 @@ impl IsaCompiler {
     }
 
     fn emit_call(&mut self, name: &str, args: &[Expr]) {
+        // Special handling for printf — call via IAT
+        if name == "printf" || name == "std::printf" {
+            for (i, arg) in args.iter().enumerate().take(4) {
+                self.emit_expression(arg);
+                let dst = self.arg_register(i);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(dst),
+                    src: Operand::Reg(Reg::RAX),
+                });
+            }
+            self.emit_call_printf();
+            return;
+        }
+
+        // Special handling for scanf — call via IAT
+        if name == "scanf" || name == "std::scanf" {
+            for (i, arg) in args.iter().enumerate().take(4) {
+                self.emit_expression(arg);
+                let dst = self.arg_register(i);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(dst),
+                    src: Operand::Reg(Reg::RAX),
+                });
+            }
+            // Shadow space + call scanf IAT
+            self.ir.emit(ADeadOp::Sub {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm8(32),
+            });
+            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2048 });
+            self.ir.emit(ADeadOp::Add {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm8(32),
+            });
+            return;
+        }
+
+        // Regular function call
         for (i, arg) in args.iter().enumerate().take(4) {
             self.emit_expression(arg);
             let dst = self.arg_register(i);

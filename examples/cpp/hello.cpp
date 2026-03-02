@@ -1,11 +1,10 @@
 // ADead-BIB C++ Example — Hello World
 // Compilar: adB cxx hello.cpp -o hello.exe
-
-int printf(const char *format, ...);
+#include <vector>
+#include <string>
+#include <iostream>
 
 int main() {
-    printf("Hello from ADead-BIB C++!\n");
-    printf("Sin GCC. Sin LLVM. Sin Clang.\n");
-    printf("100%% ADead-BIB — Hecho en Peru\n");
-    return 0;
+    std::vector<int> v = {1,2,3};
+    std::cout << "Hola\n";
 }
