@@ -12,11 +12,13 @@ use super::c_ast::*;
 pub struct CParser {
     tokens: Vec<CToken>,
     pos: usize,
+    /// Known typedef names so we can recognize them as type starters
+    typedef_names: std::collections::HashSet<String>,
 }
 
 impl CParser {
     pub fn new(tokens: Vec<CToken>) -> Self {
-        Self { tokens, pos: 0 }
+        Self { tokens, pos: 0, typedef_names: std::collections::HashSet::new() }
     }
 
     // ========== Token helpers ==========
@@ -45,7 +47,7 @@ impl CParser {
             self.advance();
             Ok(())
         } else {
-            Err(format!("Expected {:?}, got {:?}", expected, self.current()))
+            Err(format!("Expected {:?}, got {:?} at token position {}", expected, self.current(), self.pos))
         }
     }
 
@@ -68,13 +70,15 @@ impl CParser {
     // ========== Type parsing ==========
 
     fn is_type_start(&self) -> bool {
-        matches!(self.current(),
+        match self.current() {
             CToken::Void | CToken::Char | CToken::Short | CToken::Int |
             CToken::Long | CToken::Float | CToken::Double | CToken::Signed |
             CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Const |
             CToken::Volatile | CToken::Static | CToken::Extern | CToken::Register |
-            CToken::Inline | CToken::Typedef | CToken::Bool | CToken::Union
-        )
+            CToken::Inline | CToken::Typedef | CToken::Bool | CToken::Union => true,
+            CToken::Identifier(name) => self.typedef_names.contains(name),
+            _ => false,
+        }
     }
 
     fn is_type_specifier(&self) -> bool {
@@ -185,12 +189,63 @@ impl CParser {
     // ========== Top-level parsing ==========
 
     pub fn parse_translation_unit(&mut self) -> Result<CTranslationUnit, String> {
+        // Pre-scan: collect typedef names so they're recognized as type starters
+        self.prescan_typedef_names();
+
         let mut unit = CTranslationUnit::new();
         while *self.current() != CToken::Eof {
             let decl = self.parse_top_level()?;
+            // Register names from parsed declarations
+            match &decl {
+                CTopLevel::TypedefDecl { new_name, .. } => {
+                    self.typedef_names.insert(new_name.clone());
+                }
+                CTopLevel::StructDef { name, .. } => {
+                    self.typedef_names.insert(name.clone());
+                }
+                CTopLevel::EnumDef { name, .. } => {
+                    self.typedef_names.insert(name.clone());
+                }
+                _ => {}
+            }
             unit.declarations.push(decl);
         }
         Ok(unit)
+    }
+
+    /// Pre-scan tokens to collect typedef names before actual parsing.
+    /// This handles the chicken-and-egg problem where typedef names
+    /// must be known before parsing to distinguish types from identifiers.
+    fn prescan_typedef_names(&mut self) {
+        let mut i = 0;
+        while i < self.tokens.len() {
+            // typedef ... Name;
+            if self.tokens[i] == CToken::Typedef {
+                // Find the semicolon that ends this typedef
+                let mut j = i + 1;
+                let mut depth = 0;
+                while j < self.tokens.len() {
+                    match &self.tokens[j] {
+                        CToken::LBrace | CToken::LParen => depth += 1,
+                        CToken::RBrace | CToken::RParen => {
+                            if depth > 0 { depth -= 1; }
+                        }
+                        CToken::Semicolon if depth == 0 => break,
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                // The name is the identifier just before the semicolon
+                if j > 0 && j < self.tokens.len() {
+                    if let CToken::Identifier(name) = &self.tokens[j - 1] {
+                        self.typedef_names.insert(name.clone());
+                    }
+                }
+                i = j + 1;
+            } else {
+                i += 1;
+            }
+        }
     }
 
     fn parse_top_level(&mut self) -> Result<CTopLevel, String> {
@@ -445,6 +500,7 @@ impl CParser {
     fn parse_struct_def(&mut self) -> Result<CTopLevel, String> {
         self.advance(); // skip struct/union
         let name = self.expect_identifier()?;
+        self.typedef_names.insert(name.clone());
         self.expect(&CToken::LBrace)?;
         let fields = self.parse_struct_fields()?;
         self.expect(&CToken::RBrace)?;
@@ -533,17 +589,27 @@ impl CParser {
         self.advance(); // skip typedef
 
         // typedef struct { ... } Name;  (anonymous struct)
+        // Also handles: typedef struct { ... } *PtrName;
         if *self.current() == CToken::Struct && *self.peek() == CToken::LBrace {
             self.advance(); // skip struct
             self.advance(); // skip {
             let fields = self.parse_struct_fields()?;
             self.expect(&CToken::RBrace)?;
+            let is_ptr = self.eat(&CToken::Star);
             let new_name = self.expect_identifier()?;
+            self.typedef_names.insert(new_name.clone());
             self.expect(&CToken::Semicolon)?;
+            if is_ptr {
+                return Ok(CTopLevel::TypedefDecl {
+                    original: CType::Pointer(Box::new(CType::Struct(new_name.clone()))),
+                    new_name,
+                });
+            }
             return Ok(CTopLevel::StructDef { name: new_name, fields });
         }
 
         // typedef struct Name { ... } Alias;  (named struct with alias)
+        // Also handles: typedef struct Name { ... } *PtrAlias;
         if *self.current() == CToken::Struct {
             if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
                 if self.tokens.get(self.pos + 2) == Some(&CToken::LBrace) {
@@ -552,11 +618,18 @@ impl CParser {
                     self.advance(); // skip {
                     let fields = self.parse_struct_fields()?;
                     self.expect(&CToken::RBrace)?;
-                    // Check if there's an alias name after }
+                    // Check for pointer alias: } *Name;
+                    let is_ptr = self.eat(&CToken::Star);
                     if let CToken::Identifier(_) = self.current() {
                         let alias = self.expect_identifier()?;
+                        self.typedef_names.insert(alias.clone());
                         self.expect(&CToken::Semicolon)?;
-                        // Emit struct def with the alias name (more useful)
+                        if is_ptr {
+                            return Ok(CTopLevel::TypedefDecl {
+                                original: CType::Pointer(Box::new(CType::Struct(struct_name))),
+                                new_name: alias,
+                            });
+                        }
                         return Ok(CTopLevel::StructDef { name: alias, fields });
                     } else {
                         self.expect(&CToken::Semicolon)?;
@@ -567,6 +640,7 @@ impl CParser {
         }
 
         // typedef union Name { ... } Alias;
+        // Also handles: typedef union Name { ... } *PtrAlias;
         if *self.current() == CToken::Union {
             if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
                 if self.tokens.get(self.pos + 2) == Some(&CToken::LBrace) {
@@ -575,9 +649,17 @@ impl CParser {
                     self.advance(); // skip {
                     let fields = self.parse_struct_fields()?;
                     self.expect(&CToken::RBrace)?;
+                    let is_ptr = self.eat(&CToken::Star);
                     if let CToken::Identifier(_) = self.current() {
                         let alias = self.expect_identifier()?;
+                        self.typedef_names.insert(alias.clone());
                         self.expect(&CToken::Semicolon)?;
+                        if is_ptr {
+                            return Ok(CTopLevel::TypedefDecl {
+                                original: CType::Pointer(Box::new(CType::Struct(_union_name))),
+                                new_name: alias,
+                            });
+                        }
                         return Ok(CTopLevel::StructDef { name: alias, fields });
                     } else {
                         self.expect(&CToken::Semicolon)?;
@@ -672,9 +754,26 @@ impl CParser {
         }
 
         let new_name = self.expect_identifier_or_keyword()?;
+
+        // Handle array typedefs: typedef long jmp_buf[8];
+        let final_type = if *self.current() == CToken::LBracket {
+            self.advance();
+            let size = if let CToken::IntLiteral(n) = self.current().clone() {
+                self.advance();
+                Some(n as usize)
+            } else {
+                None
+            };
+            self.expect(&CToken::RBracket)?;
+            CType::Array(Box::new(original), size)
+        } else {
+            original
+        };
+
+        self.typedef_names.insert(new_name.clone());
         self.expect(&CToken::Semicolon)?;
 
-        Ok(CTopLevel::TypedefDecl { original, new_name })
+        Ok(CTopLevel::TypedefDecl { original: final_type, new_name })
     }
 
     /// Like expect_identifier, but also accepts C keywords used as names
@@ -1135,22 +1234,31 @@ impl CParser {
     }
 
     fn is_type_at_next(&self) -> bool {
-        matches!(self.peek(),
+        match self.peek() {
             CToken::Void | CToken::Char | CToken::Short | CToken::Int |
             CToken::Long | CToken::Float | CToken::Double | CToken::Signed |
             CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Const |
-            CToken::Volatile | CToken::Bool
-        )
+            CToken::Volatile | CToken::Bool => true,
+            CToken::Identifier(name) => self.typedef_names.contains(name),
+            _ => false,
+        }
     }
 
     fn is_cast(&self) -> bool {
         // (type)expr — check if this looks like a cast
         if *self.current() != CToken::LParen { return false; }
-        matches!(self.peek(),
+        match self.peek() {
             CToken::Void | CToken::Char | CToken::Short | CToken::Int |
             CToken::Long | CToken::Float | CToken::Double | CToken::Signed |
-            CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Bool
-        )
+            CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Bool |
+            CToken::Const | CToken::Volatile => true,
+            CToken::Identifier(name) => {
+                // Only treat as cast if name is a known typedef AND
+                // the token after closing ) looks like a unary expr, not binary op
+                self.typedef_names.contains(name)
+            }
+            _ => false,
+        }
     }
 
     fn parse_postfix(&mut self) -> Result<CExpr, String> {

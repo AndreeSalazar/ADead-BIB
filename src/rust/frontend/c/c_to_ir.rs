@@ -1247,6 +1247,99 @@ mod tests {
     }
 
     #[test]
+    fn test_example_hello_c() {
+        let source = std::fs::read_to_string("examples/hello.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "hello.c failed: {}", result.unwrap_err());
+        let prog = result.unwrap();
+        assert!(prog.functions.len() > 0, "hello.c should have functions");
+    }
+
+    #[test]
+    fn test_example_c_algorithms() {
+        let source = std::fs::read_to_string("examples/c_algorithms.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_algorithms.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_bitwise() {
+        let source = std::fs::read_to_string("examples/c_bitwise.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_bitwise.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_compression() {
+        let source = std::fs::read_to_string("examples/c_compression.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_compression.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_crypto() {
+        let source = std::fs::read_to_string("examples/c_crypto.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_crypto.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_database() {
+        let source = std::fs::read_to_string("examples/c_database.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_database.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_fastos_base() {
+        let source = std::fs::read_to_string("examples/c_fastos_base.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_fastos_base.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_fastos_complete() {
+        let source = std::fs::read_to_string("examples/c_fastos_complete.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_fastos_complete.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_math() {
+        let source = std::fs::read_to_string("examples/c_math.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_math.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_memory() {
+        let source = std::fs::read_to_string("examples/c_memory.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_memory.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_network() {
+        let source = std::fs::read_to_string("examples/c_network.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_network.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_structs() {
+        let source = std::fs::read_to_string("examples/c_structs.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_structs.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_c_threading() {
+        let source = std::fs::read_to_string("examples/c_threading.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_threading.c failed: {}", result.unwrap_err());
+    }
+
+    #[test]
     fn test_printf_percent_d_newline() {
         // This was the core "duplication" bug:
         // printf("Result: %d\n", x) should produce:
