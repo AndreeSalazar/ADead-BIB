@@ -20,6 +20,7 @@
 
 pub mod decoder;
 pub mod encoder;
+pub mod codegen;
 pub mod isa_compiler;
 pub mod optimizer;
 pub mod reg_alloc;

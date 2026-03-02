@@ -1,20 +1,29 @@
 // ============================================================
 // PE Translator — Windows PE/PE32+ → ADead-BIB IR
 // ============================================================
-// Pipeline: PE Binary → Parse → Decode → Map → ABIB_Module
+// FASM-inspired PE parser with full format coverage.
 //
-// Parses:
-//   DOS Header, NT Headers, Section Table,
-//   Import Directory, Export Directory, Relocations
+// Parsing (from FASM's FORMATS.INC format_pe):
+//   DOS Header (MZ), NT Headers (PE\0\0),
+//   COFF Header (machine 0x8664/0x14C),
+//   Optional Header (PE32+ magic 0x020B),
+//   Section Table, Data Directories (16 entries),
+//   Import Directory (IDT→ILT→IAT→hint/name),
+//   Export Directory (addr/name/ordinal tables),
+//   Base Relocations (block→entries)
 //
-// Decodes:
-//   x86-64 instructions from .text section
+// Decoding:
+//   x86-64 instructions via FASM-quality decoder
+//   (80+ instruction patterns, full ModR/M+SIB+disp)
 //
-// Maps:
-//   Instructions → ABIB_Instruction
-//   Imports → ABIB_Import
-//   Exports → ABIB_Export
-//   Relocations → ABIB_Relocation
+// FASM constants used:
+//   IMAGE_FILE_MACHINE_AMD64 = 0x8664
+//   IMAGE_FILE_MACHINE_I386  = 0x14C
+//   IMAGE_SUBSYSTEM_CONSOLE  = 3
+//   IMAGE_SUBSYSTEM_GUI      = 2
+//   IMAGE_SCN_MEM_EXECUTE    = 0x20000000
+//   IMAGE_SCN_MEM_READ       = 0x40000000
+//   IMAGE_SCN_MEM_WRITE      = 0x80000000
 // ============================================================
 
 use crate::core::ir::*;
@@ -370,6 +379,65 @@ fn parse_exports(data: &[u8], sections: &[PeSection], export_dir: (u32, u32)) ->
 }
 
 // ============================================================
+// FASM-inspired: Base Relocation Parser
+// ============================================================
+// FASM's FORMATS.INC handles relocations in close_pe_section/
+// generate_pe_data. The .reloc section contains blocks of:
+//   VirtualAddress (4 bytes) + SizeOfBlock (4 bytes)
+//   followed by (SizeOfBlock-8)/2 entries of type+offset (2 bytes each)
+// Types: 0=ABSOLUTE(pad), 3=HIGHLOW(32-bit), 10=DIR64(64-bit)
+// ============================================================
+
+#[derive(Debug, Clone)]
+struct PeRelocation {
+    rva: u32,
+    reloc_type: u8, // IMAGE_REL_BASED_*
+}
+
+fn parse_relocations(data: &[u8], sections: &[PeSection], reloc_dir: (u32, u32)) -> Vec<PeRelocation> {
+    let mut relocs = Vec::new();
+    if reloc_dir.0 == 0 || reloc_dir.1 == 0 { return relocs; }
+
+    let base_off = match rva_to_file_offset(sections, reloc_dir.0) {
+        Some(o) => o,
+        None => return relocs,
+    };
+
+    let mut offset = base_off;
+    let end = base_off + reloc_dir.1 as usize;
+
+    while offset + 8 <= end && offset + 8 <= data.len() {
+        let block_rva = u32::from_le_bytes(data[offset..offset+4].try_into().unwrap());
+        let block_size = u32::from_le_bytes(data[offset+4..offset+8].try_into().unwrap());
+
+        if block_size < 8 { break; } // Invalid block
+
+        let num_entries = (block_size - 8) / 2;
+        let entries_off = offset + 8;
+
+        for i in 0..num_entries as usize {
+            let entry_off = entries_off + i * 2;
+            if entry_off + 2 > data.len() { break; }
+            let entry = u16::from_le_bytes([data[entry_off], data[entry_off + 1]]);
+            let reloc_type = (entry >> 12) as u8;
+            let reloc_offset = entry & 0x0FFF;
+
+            // Skip padding entries (type 0 = IMAGE_REL_BASED_ABSOLUTE)
+            if reloc_type != 0 {
+                relocs.push(PeRelocation {
+                    rva: block_rva + reloc_offset as u32,
+                    reloc_type,
+                });
+            }
+        }
+
+        offset += block_size as usize;
+    }
+
+    relocs
+}
+
+// ============================================================
 // PE Translator
 // ============================================================
 
@@ -393,10 +461,15 @@ impl ABIBTranslator for PeTranslator {
 
         let mut ctx = TranslationContext::new_cpu(&view.filename, SourceFormat::PE);
         ctx.module.image_base = headers.image_base;
-        ctx.module.arch = if headers.machine == 0x8664 {
-            "x86-64".to_string()
-        } else {
-            format!("unknown-0x{:04X}", headers.machine)
+
+        // FASM-inspired: machine type detection (from format_pe)
+        // FASM sets [machine] to 14Ch (i386) or 8664h (AMD64)
+        ctx.module.arch = match headers.machine {
+            0x8664 => "x86-64".to_string(),
+            0x014C => "x86".to_string(),
+            0x01C0 => "arm".to_string(),
+            0xAA64 => "arm64".to_string(),
+            _ => format!("unknown-0x{:04X}", headers.machine),
         };
 
         // Add imports
@@ -408,6 +481,23 @@ impl ABIBTranslator for PeTranslator {
         // Add exports
         for exp in &exports {
             ctx.add_export(&exp.name, headers.image_base + exp.rva as u64, exp.ordinal);
+        }
+
+        // FASM-inspired: Parse relocations (from generate_pe_data)
+        let relocations = parse_relocations(&view.data, &sections, headers.reloc_dir);
+        for reloc in &relocations {
+            // Type 3 = IMAGE_REL_BASED_HIGHLOW (32-bit), 10 = IMAGE_REL_BASED_DIR64
+            let reloc_ir_type = match reloc.reloc_type {
+                3 => RelocType::Rel32,   // HIGHLOW → 32-bit
+                10 => RelocType::Dir64,  // DIR64 → 64-bit absolute
+                _ => RelocType::Abs64,
+            };
+            ctx.module.relocations.push(ABIB_Relocation {
+                addr: headers.image_base + reloc.rva as u64,
+                reloc_type: reloc_ir_type,
+                symbol: String::new(),
+                addend: 0,
+            });
         }
 
         // Decode code sections
@@ -433,7 +523,7 @@ impl ABIBTranslator for PeTranslator {
             ctx.begin_function(func_name, base_va);
             ctx.auto_block(base_va);
 
-            // Decode x86-64 instructions
+            // Decode x86-64 instructions using FASM-quality decoder
             let instructions = x86_decoder::decode_all(code, base_va);
             for inst in instructions {
                 ctx.emit(inst);
@@ -450,7 +540,8 @@ impl ABIBTranslator for PeTranslator {
                 let end = (start + sec.raw_size as usize).min(view.data.len());
                 if start < end {
                     let data = &view.data[start..end];
-                    let readonly = sec.characteristics & 0x80000000 == 0; // !WRITE
+                    // FASM-inspired: check IMAGE_SCN_MEM_WRITE for mutability
+                    let readonly = sec.characteristics & 0x80000000 == 0;
                     ctx.add_global(
                         &sec.name,
                         headers.image_base + sec.virtual_address as u64,

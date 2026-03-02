@@ -85,7 +85,7 @@ impl CppToIR {
                             CppClassMember::Constructor {
                                 params, body: Some(body), initializer_list, ..
                             } => {
-                                let func_name = format!("{}::{}", name, name);
+                                let _func_name = format!("{}::{}", name, name);
                                 let func = self.convert_constructor(name, params, initializer_list, body)?;
                                 program.functions.push(func);
                             }
@@ -481,13 +481,13 @@ impl CppToIR {
             }
 
             CppExpr::Assign { target, value } => {
-                let t = self.convert_expr(target)?;
+                let _t = self.convert_expr(target)?;
                 let v = self.convert_expr(value)?;
                 // Return the value (C++ assignment is an expression)
                 Ok(v)
             }
 
-            CppExpr::CompoundAssign { target, value, .. } => {
+            CppExpr::CompoundAssign { value, .. } => {
                 let v = self.convert_expr(value)?;
                 Ok(v)
             }
@@ -506,7 +506,7 @@ impl CppToIR {
                 // Handle special functions
                 match name.as_str() {
                     "printf" | "std::printf" => {
-                        if let Some(Expr::String(ref s)) = ir_args.first() {
+                        if let Some(Expr::String(ref _s)) = ir_args.first() {
                             return Ok(Expr::Call {
                                 name: "printf".to_string(),
                                 args: ir_args,
@@ -577,7 +577,7 @@ impl CppToIR {
                 })
             }
 
-            CppExpr::New { type_name, args, .. } => {
+            CppExpr::New { type_name, .. } => {
                 let t = self.convert_type(type_name);
                 let size = Expr::SizeOf(Box::new(SizeOfArg::Type(t)));
                 Ok(Expr::Malloc(Box::new(size)))
@@ -588,7 +588,7 @@ impl CppToIR {
                 Ok(Expr::Call { name: "free".to_string(), args: vec![e] })
             }
 
-            CppExpr::Lambda { body, .. } => {
+            CppExpr::Lambda { .. } => {
                 // Simplified: convert lambda body to a call expression
                 Ok(Expr::Number(0)) // Placeholder
             }

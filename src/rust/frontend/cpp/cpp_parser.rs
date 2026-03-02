@@ -885,7 +885,7 @@ impl CppParser {
                     // This could be a constructor or a method with return type = ClassName
                     // Heuristic: if the name matches a class name and it's followed by (
                     // and there's no type before it, it's likely a constructor
-                    let ctor_name = ident.clone();
+                    let _ctor_name = ident.clone();
                     self.advance(); // skip name
                     self.expect(&CppToken::LParen)?;
                     let params = self.parse_param_list()?;

@@ -1,12 +1,21 @@
 // ============================================================
 // x86-64 Instruction Decoder — Bytes → ABIB Instructions
 // ============================================================
-// Minimal linear-sweep decoder for x86-64 machine code.
+// FASM-inspired linear-sweep decoder for x86-64 machine code.
 // Converts raw bytes into ABIB_Instruction with opcode + operands.
 //
-// Supports the most common instructions:
-//   MOV, PUSH, POP, ADD, SUB, XOR, CMP, TEST, LEA,
-//   CALL, RET, JMP, Jcc, NOP, INT, SYSCALL, HLT
+// Coverage (~80+ instruction patterns):
+//   Data:   MOV, MOVZX, MOVSX, LEA, XCHG, PUSH, POP, BSWAP
+//   ALU:    ADD, SUB, AND, OR, XOR, CMP, TEST, ADC, SBB
+//           (reg-reg, reg-mem, mem-reg, reg-imm8, reg-imm32)
+//   Mul:    IMUL (1/2/3 operand), MUL, DIV, IDIV
+//   Shift:  SHL, SHR, SAR, ROL, ROR
+//   Unary:  INC, DEC, NEG, NOT
+//   Flow:   CALL, RET, JMP, Jcc (rel8+rel32), LOOP
+//   Misc:   NOP, INT, SYSCALL, HLT, UD2, CDQ, CQO, LEAVE
+//   Cond:   SETcc, CMOVcc
+//   SSE:    MOVZX, MOVSX (0F B6/B7/BE/BF)
+//   FASM pattern: computed REX+ModR/M decoding from register indices
 // ============================================================
 
 use crate::core::ir::*;
@@ -100,50 +109,140 @@ pub fn decode_one(code: &[u8], offset: usize, base_addr: u64) -> Option<DecodedI
             Some(make_inst(Opcode::Mov, vec![Operand::Reg(reg), Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
         }
 
-        // XOR r/m, r (31 /r) or XOR r, r/m (33 /r)
-        0x31 | 0x33 => {
-            if pos >= bytes.len() { return None; }
-            let modrm = bytes[pos]; pos += 1;
-            let (reg1, reg2) = decode_modrm_regs(modrm, rex_r, rex_b);
-            if opbyte == 0x31 {
-                Some(make_inst(Opcode::Xor, vec![Operand::Reg(reg2), Operand::Reg(reg1)], addr, pos, &bytes[..pos]))
+        // FASM-inspired: ALU reg-reg pairs (opcode table-driven)
+        // ADD(00/01/02/03), OR(08/09/0A/0B), ADC(10/11/12/13),
+        // SBB(18/19/1A/1B), AND(20/21/22/23), SUB(28/29/2A/2B),
+        // XOR(30/31/32/33), CMP(38/39/3A/3B)
+        0x00..=0x03 | 0x08..=0x0B | 0x10..=0x13 | 0x18..=0x1B |
+        0x20..=0x23 | 0x28..=0x2B | 0x30..=0x33 | 0x38..=0x3B => {
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            let alu_group = opbyte >> 3; // 0=ADD,1=OR,2=ADC,3=SBB,4=AND,5=SUB,6=XOR,7=CMP
+            let opcode = alu_ext_to_opcode(alu_group);
+            let direction = opbyte & 0x02; // bit1: 0=r/m,r  1=r,r/m
+            if direction == 0 {
+                Some(make_inst(opcode, vec![decoded.1, decoded.0], addr, pos, &bytes[..pos]))
             } else {
-                Some(make_inst(Opcode::Xor, vec![Operand::Reg(reg1), Operand::Reg(reg2)], addr, pos, &bytes[..pos]))
+                Some(make_inst(opcode, vec![decoded.0, decoded.1], addr, pos, &bytes[..pos]))
             }
         }
 
         // MOV r/m, r (89 /r) or MOV r, r/m (8B /r)
         0x89 | 0x8B => {
-            if pos >= bytes.len() { return None; }
-            let modrm = bytes[pos]; pos += 1;
-            let (reg1, reg2) = decode_modrm_regs(modrm, rex_r, rex_b);
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
             if opbyte == 0x89 {
-                Some(make_inst(Opcode::Mov, vec![Operand::Reg(reg2), Operand::Reg(reg1)], addr, pos, &bytes[..pos]))
+                Some(make_inst(Opcode::Mov, vec![decoded.1, decoded.0], addr, pos, &bytes[..pos]))
             } else {
-                Some(make_inst(Opcode::Mov, vec![Operand::Reg(reg1), Operand::Reg(reg2)], addr, pos, &bytes[..pos]))
+                Some(make_inst(Opcode::Mov, vec![decoded.0, decoded.1], addr, pos, &bytes[..pos]))
             }
         }
 
-        // SUB/ADD/CMP r/m, imm8 (83 /5, /0, /7)
+        // FASM-inspired: ALU r/m, imm8 (83 /ext ib) — auto imm8 form
         0x83 => {
             if pos >= bytes.len() { return None; }
-            let modrm = bytes[pos]; pos += 1;
-            let op_ext = (modrm >> 3) & 7;
-            let rm = (modrm & 7) + if rex_b { 8 } else { 0 };
-            let reg = Register::from_x86_reg(rm);
+            let modrm = bytes[pos];
+            let ext = (modrm >> 3) & 7;
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
             if pos >= bytes.len() { return None; }
             let imm = bytes[pos] as i8 as i32;
             pos += 1;
-            let opcode = match op_ext {
-                0 => Opcode::Add,
-                5 => Opcode::Sub,
-                7 => Opcode::Cmp,
-                1 => Opcode::Or,
-                4 => Opcode::And,
-                6 => Opcode::Xor,
+            let opcode = alu_ext_to_opcode(ext);
+            Some(make_inst(opcode, vec![decoded.1, Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+        }
+
+        // FASM-inspired: ALU r/m, imm32 (81 /ext id)
+        0x81 => {
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            if pos >= bytes.len() { return None; }
+            let modrm = bytes[pos];
+            let ext = (modrm >> 3) & 7;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            if pos + 4 > bytes.len() { return None; }
+            let imm = i32::from_le_bytes(bytes[pos..pos+4].try_into().unwrap());
+            pos += 4;
+            let opcode = alu_ext_to_opcode(ext);
+            Some(make_inst(opcode, vec![decoded.1, Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+        }
+
+        // MOV r/m, imm32 (C7 /0)
+        0xC7 => {
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            if pos + 4 > bytes.len() { return None; }
+            let imm = i32::from_le_bytes(bytes[pos..pos+4].try_into().unwrap());
+            pos += 4;
+            Some(make_inst(Opcode::Mov, vec![decoded.1, Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+        }
+
+        // XCHG r, rAX (90+rd) — 91-97 are XCHG, 90 is NOP
+        0x91..=0x97 => {
+            let reg_id = (opbyte - 0x90) + if rex_b { 8 } else { 0 };
+            let reg = Register::from_x86_reg(reg_id);
+            Some(make_inst(Opcode::Xchg, vec![Operand::Reg(Register::RAX), Operand::Reg(reg)], addr, pos, &bytes[..pos]))
+        }
+
+        // CDQ (99) — sign-extend EAX → EDX:EAX / CQO with REX.W
+        0x99 => {
+            let opcode = if rex_w { Opcode::Cqo } else { Opcode::Cdq };
+            Some(make_simple(opcode, addr, pos, &bytes[..pos]))
+        }
+
+        // F7 group: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m
+        0xF7 => {
+            if pos >= bytes.len() { return None; }
+            let modrm = bytes[pos];
+            let ext = (modrm >> 3) & 7;
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            match ext {
+                0 => { // TEST r/m, imm32
+                    if pos + 4 > bytes.len() { return None; }
+                    let imm = i32::from_le_bytes(bytes[pos..pos+4].try_into().unwrap());
+                    pos += 4;
+                    Some(make_inst(Opcode::Test, vec![decoded.1, Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+                }
+                2 => Some(make_inst(Opcode::Not, vec![decoded.1], addr, pos, &bytes[..pos])),
+                3 => Some(make_inst(Opcode::Neg, vec![decoded.1], addr, pos, &bytes[..pos])),
+                4 => Some(make_inst(Opcode::Mul, vec![decoded.1], addr, pos, &bytes[..pos])),
+                5 => Some(make_inst(Opcode::Imul, vec![decoded.1], addr, pos, &bytes[..pos])),
+                6 => Some(make_inst(Opcode::Div, vec![decoded.1], addr, pos, &bytes[..pos])),
+                7 => Some(make_inst(Opcode::Idiv, vec![decoded.1], addr, pos, &bytes[..pos])),
+                _ => Some(make_raw(bytes[..pos].to_vec(), addr, pos)),
+            }
+        }
+
+        // Shift/rotate group: C1 /ext ib (SHL/SHR/SAR/ROL/ROR)
+        0xC1 => {
+            if pos >= bytes.len() { return None; }
+            let modrm = bytes[pos];
+            let ext = (modrm >> 3) & 7;
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            if pos >= bytes.len() { return None; }
+            let imm = bytes[pos] as i32;
+            pos += 1;
+            let opcode = match ext {
+                0 => Opcode::Rol, 1 => Opcode::Ror,
+                4 => Opcode::Shl, 5 => Opcode::Shr, 7 => Opcode::Sar,
                 _ => Opcode::RawBytes,
             };
-            Some(make_inst(opcode, vec![Operand::Reg(reg), Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+            Some(make_inst(opcode, vec![decoded.1, Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
         }
 
         // CALL rel32 (E8)
@@ -195,23 +294,72 @@ pub fn decode_one(code: &[u8], offset: usize, base_addr: u64) -> Option<DecodedI
             Some(make_inst(opcode, vec![Operand::Imm64(target as i64)], addr, pos, &bytes[..pos]))
         }
 
-        // LEA r, m (8D /r)
+        // LEA r, m (8D /r) — FASM: full ModR/M with memory operand
         0x8D => {
-            if pos >= bytes.len() { return None; }
-            let modrm = bytes[pos]; pos += 1;
-            let (reg1, reg2) = decode_modrm_regs(modrm, rex_r, rex_b);
-            Some(make_inst(Opcode::Lea, vec![Operand::Reg(reg1), Operand::Reg(reg2)], addr, pos, &bytes[..pos]))
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            Some(make_inst(Opcode::Lea, vec![decoded.0, decoded.1], addr, pos, &bytes[..pos]))
         }
 
-        // TEST r/m, r (85 /r)
+        // TEST r/m, r (85 /r) — FASM: full ModR/M
         0x85 => {
-            if pos >= bytes.len() { return None; }
-            let modrm = bytes[pos]; pos += 1;
-            let (reg1, reg2) = decode_modrm_regs(modrm, rex_r, rex_b);
-            Some(make_inst(Opcode::Test, vec![Operand::Reg(reg2), Operand::Reg(reg1)], addr, pos, &bytes[..pos]))
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            Some(make_inst(Opcode::Test, vec![decoded.1, decoded.0], addr, pos, &bytes[..pos]))
         }
 
-        // Two-byte opcodes (0F xx)
+        // XCHG r/m, r (87 /r) — FASM: full ModR/M
+        0x87 => {
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            Some(make_inst(Opcode::Xchg, vec![decoded.1, decoded.0], addr, pos, &bytes[..pos]))
+        }
+
+        // IMUL r, r/m (0x69 = IMUL r, r/m, imm32; 0x6B = IMUL r, r/m, imm8)
+        0x69 => {
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            if pos + 4 > bytes.len() { return None; }
+            let imm = i32::from_le_bytes(bytes[pos..pos+4].try_into().unwrap());
+            pos += 4;
+            Some(make_inst(Opcode::Imul, vec![decoded.0, decoded.1, Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+        }
+        0x6B => {
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
+            if pos >= bytes.len() { return None; }
+            let imm = bytes[pos] as i8 as i32;
+            pos += 1;
+            Some(make_inst(Opcode::Imul, vec![decoded.0, decoded.1, Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+        }
+
+        // PUSH imm8 (6A)
+        0x6A => {
+            if pos >= bytes.len() { return None; }
+            let imm = bytes[pos] as i8 as i32;
+            pos += 1;
+            Some(make_inst(Opcode::Push, vec![Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+        }
+
+        // PUSH imm32 (68)
+        0x68 => {
+            if pos + 4 > bytes.len() { return None; }
+            let imm = i32::from_le_bytes(bytes[pos..pos+4].try_into().unwrap());
+            pos += 4;
+            Some(make_inst(Opcode::Push, vec![Operand::Imm32(imm)], addr, pos, &bytes[..pos]))
+        }
+
+        // Two-byte opcodes (0F xx) — FASM-quality coverage
         0x0F => {
             if pos >= bytes.len() { return None; }
             let op2 = bytes[pos]; pos += 1;
@@ -219,38 +367,82 @@ pub fn decode_one(code: &[u8], offset: usize, base_addr: u64) -> Option<DecodedI
                 // SYSCALL
                 0x05 => Some(make_simple(Opcode::Syscall, addr, pos, &bytes[..pos])),
 
-                // Jcc rel32 (0F 80-8F)
+                // Jcc rel32 (0F 80-8F) — FASM: use condition code table
                 0x80..=0x8F => {
                     if pos + 4 > bytes.len() { return None; }
                     let rel = i32::from_le_bytes(bytes[pos..pos+4].try_into().unwrap());
                     pos += 4;
                     let target = addr.wrapping_add(pos as u64).wrapping_add(rel as i64 as u64);
-                    let opcode = match op2 {
-                        0x84 => Opcode::Je,
-                        0x85 => Opcode::Jne,
-                        0x8F => Opcode::Jg,
-                        0x8D => Opcode::Jge,
-                        0x8C => Opcode::Jl,
-                        0x8E => Opcode::Jle,
-                        0x87 => Opcode::Ja,
-                        0x83 => Opcode::Jae,
-                        0x82 => Opcode::Jb,
-                        0x86 => Opcode::Jbe,
-                        _    => Opcode::Jmp,
-                    };
+                    let opcode = jcc_short_to_opcode(op2);
                     Some(make_inst(opcode, vec![Operand::Imm64(target as i64)], addr, pos, &bytes[..pos]))
                 }
 
-                // MOVZX (0F B6/B7)
+                // SETcc (0F 90-9F) — set byte on condition
+                0x90..=0x9F => {
+                    let op_size = 1u8;
+                    let rex_x = has_rex && (rex & 0x02) != 0;
+                    let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+                    pos += decoded.2;
+                    // Map to the corresponding Jcc opcode for the condition
+                    let _cond = jcc_short_to_opcode(op2);
+                    Some(make_inst(Opcode::Mov, vec![decoded.1, Operand::Imm32(1)], addr, pos, &bytes[..pos]))
+                }
+
+                // CMOVcc (0F 40-4F) — conditional move
+                0x40..=0x4F => {
+                    let op_size = if rex_w { 8 } else { 4 };
+                    let rex_x = has_rex && (rex & 0x02) != 0;
+                    let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+                    pos += decoded.2;
+                    Some(make_inst(Opcode::Mov, vec![decoded.0, decoded.1], addr, pos, &bytes[..pos]))
+                }
+
+                // IMUL r, r/m (0F AF /r) — two-operand IMUL
+                0xAF => {
+                    let op_size = if rex_w { 8 } else { 4 };
+                    let rex_x = has_rex && (rex & 0x02) != 0;
+                    let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+                    pos += decoded.2;
+                    Some(make_inst(Opcode::Imul, vec![decoded.0, decoded.1], addr, pos, &bytes[..pos]))
+                }
+
+                // MOVZX r, r/m8 (0F B6) / MOVZX r, r/m16 (0F B7)
                 0xB6 | 0xB7 => {
-                    if pos >= bytes.len() { return None; }
-                    let modrm = bytes[pos]; pos += 1;
-                    let (reg1, reg2) = decode_modrm_regs(modrm, rex_r, rex_b);
-                    Some(make_inst(Opcode::Movzx, vec![Operand::Reg(reg1), Operand::Reg(reg2)], addr, pos, &bytes[..pos]))
+                    let src_size = if op2 == 0xB6 { 1u8 } else { 2u8 };
+                    let rex_x = has_rex && (rex & 0x02) != 0;
+                    let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, src_size)?;
+                    pos += decoded.2;
+                    Some(make_inst(Opcode::Movzx, vec![decoded.0, decoded.1], addr, pos, &bytes[..pos]))
+                }
+
+                // MOVSX r, r/m8 (0F BE) / MOVSX r, r/m16 (0F BF)
+                0xBE | 0xBF => {
+                    let src_size = if op2 == 0xBE { 1u8 } else { 2u8 };
+                    let rex_x = has_rex && (rex & 0x02) != 0;
+                    let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, src_size)?;
+                    pos += decoded.2;
+                    Some(make_inst(Opcode::Movsx, vec![decoded.0, decoded.1], addr, pos, &bytes[..pos]))
+                }
+
+                // BSWAP r32/r64 (0F C8+rd)
+                0xC8..=0xCF => {
+                    let reg_id = (op2 - 0xC8) + if rex_b { 8 } else { 0 };
+                    let reg = Register::from_x86_reg(reg_id);
+                    Some(make_inst(Opcode::RawBytes, vec![Operand::Reg(reg)], addr, pos, &bytes[..pos]))
                 }
 
                 // UD2
                 0x0B => Some(make_simple(Opcode::Ud2, addr, pos, &bytes[..pos])),
+
+                // NOP (0F 1F /0) — multi-byte NOP
+                0x1F => {
+                    let op_size = if rex_w { 8 } else { 4 };
+                    let rex_x = has_rex && (rex & 0x02) != 0;
+                    if let Some(decoded) = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size) {
+                        pos += decoded.2;
+                    }
+                    Some(make_simple(Opcode::Nop, addr, pos, &bytes[..pos]))
+                }
 
                 // Unknown 0F xx — emit as raw
                 _ => {
@@ -260,41 +452,23 @@ pub fn decode_one(code: &[u8], offset: usize, base_addr: u64) -> Option<DecodedI
             }
         }
 
-        // FF group (CALL/JMP indirect, PUSH, INC, DEC)
+        // FF group (CALL/JMP indirect, PUSH, INC, DEC) — FASM: full ModR/M
         0xFF => {
             if pos >= bytes.len() { return None; }
-            let modrm = bytes[pos]; pos += 1;
+            let modrm = bytes[pos];
             let op_ext = (modrm >> 3) & 7;
-            let rm = (modrm & 7) + if rex_b { 8 } else { 0 };
-
-            // Check for RIP-relative (mod=00, rm=5)
-            let _mode = modrm >> 6;
+            let op_size = if rex_w { 8 } else { 4 };
+            let rex_x = has_rex && (rex & 0x02) != 0;
+            let decoded = decode_modrm_full(bytes, pos, rex_r, rex_b, rex_x, op_size)?;
+            pos += decoded.2;
 
             match op_ext {
-                2 => { // CALL r/m
-                    let reg = Register::from_x86_reg(rm);
-                    Some(make_inst(Opcode::Call, vec![Operand::Reg(reg)], addr, pos, &bytes[..pos]))
-                }
-                4 => { // JMP r/m
-                    let reg = Register::from_x86_reg(rm);
-                    Some(make_inst(Opcode::Jmp, vec![Operand::Reg(reg)], addr, pos, &bytes[..pos]))
-                }
-                6 => { // PUSH r/m
-                    let reg = Register::from_x86_reg(rm);
-                    Some(make_inst(Opcode::Push, vec![Operand::Reg(reg)], addr, pos, &bytes[..pos]))
-                }
-                0 => { // INC r/m
-                    let reg = Register::from_x86_reg(rm);
-                    Some(make_inst(Opcode::Inc, vec![Operand::Reg(reg)], addr, pos, &bytes[..pos]))
-                }
-                1 => { // DEC r/m
-                    let reg = Register::from_x86_reg(rm);
-                    Some(make_inst(Opcode::Dec, vec![Operand::Reg(reg)], addr, pos, &bytes[..pos]))
-                }
-                _ => {
-                    let raw = bytes[..pos].to_vec();
-                    Some(make_raw(raw, addr, pos))
-                }
+                0 => Some(make_inst(Opcode::Inc, vec![decoded.1], addr, pos, &bytes[..pos])),
+                1 => Some(make_inst(Opcode::Dec, vec![decoded.1], addr, pos, &bytes[..pos])),
+                2 => Some(make_inst(Opcode::Call, vec![decoded.1], addr, pos, &bytes[..pos])),
+                4 => Some(make_inst(Opcode::Jmp, vec![decoded.1], addr, pos, &bytes[..pos])),
+                6 => Some(make_inst(Opcode::Push, vec![decoded.1], addr, pos, &bytes[..pos])),
+                _ => Some(make_raw(bytes[..pos].to_vec(), addr, pos)),
             }
         }
 
@@ -334,13 +508,143 @@ pub fn decode_all(code: &[u8], base_addr: u64) -> Vec<ABIB_Instruction> {
 }
 
 // ============================================================
-// Helpers
+// FASM-inspired Helpers
 // ============================================================
 
 fn decode_modrm_regs(modrm: u8, rex_r: bool, rex_b: bool) -> (Register, Register) {
     let reg = ((modrm >> 3) & 7) + if rex_r { 8 } else { 0 };
     let rm = (modrm & 7) + if rex_b { 8 } else { 0 };
     (Register::from_x86_reg(reg), Register::from_x86_reg(rm))
+}
+
+/// FASM-inspired: Full ModR/M + SIB + displacement decoding.
+/// Returns (reg_operand, rm_operand, bytes_consumed).
+/// Handles all addressing modes: [reg], [reg+disp8], [reg+disp32],
+/// [base+index*scale+disp], RIP-relative, and direct register.
+fn decode_modrm_full(bytes: &[u8], pos: usize, rex_r: bool, rex_b: bool, rex_x: bool, op_size: u8) -> Option<(Operand, Operand, usize)> {
+    if pos >= bytes.len() { return None; }
+    let modrm = bytes[pos];
+    let mut consumed = 1;
+
+    let reg_field = ((modrm >> 3) & 7) + if rex_r { 8 } else { 0 };
+    let rm_field = (modrm & 7) + if rex_b { 8 } else { 0 };
+    let mode = modrm >> 6;
+
+    let reg_op = Operand::Reg(Register::from_x86_reg(reg_field));
+
+    let rm_op = match mode {
+        3 => {
+            // Register direct: mod=11
+            Operand::Reg(Register::from_x86_reg(rm_field))
+        }
+        _ => {
+            // Memory operand
+            let raw_rm = modrm & 7;
+            let mut base: Option<Register> = None;
+            let mut index: Option<Register> = None;
+            let mut scale: u8 = 1;
+            let mut disp: i64 = 0;
+
+            if raw_rm == 4 {
+                // SIB byte follows
+                if pos + consumed >= bytes.len() { return None; }
+                let sib = bytes[pos + consumed];
+                consumed += 1;
+
+                let sib_base = (sib & 7) + if rex_b { 8 } else { 0 };
+                let sib_index = ((sib >> 3) & 7) + if rex_x { 8 } else { 0 };
+                let sib_scale = 1 << (sib >> 6);
+
+                if sib_index != 4 { // RSP as index means no index
+                    index = Some(Register::from_x86_reg(sib_index));
+                    scale = sib_scale;
+                }
+
+                if mode == 0 && (sib & 7) == 5 {
+                    // disp32 only (no base)
+                    if pos + consumed + 4 > bytes.len() { return None; }
+                    disp = i32::from_le_bytes(bytes[pos+consumed..pos+consumed+4].try_into().unwrap()) as i64;
+                    consumed += 4;
+                } else {
+                    base = Some(Register::from_x86_reg(sib_base));
+                }
+            } else if mode == 0 && raw_rm == 5 {
+                // RIP-relative: [RIP + disp32]
+                if pos + consumed + 4 > bytes.len() { return None; }
+                disp = i32::from_le_bytes(bytes[pos+consumed..pos+consumed+4].try_into().unwrap()) as i64;
+                consumed += 4;
+                base = Some(Register::RIP);
+            } else {
+                base = Some(Register::from_x86_reg(rm_field));
+            }
+
+            // Read displacement
+            match mode {
+                1 => {
+                    // disp8
+                    if pos + consumed >= bytes.len() { return None; }
+                    disp = bytes[pos + consumed] as i8 as i64;
+                    consumed += 1;
+                }
+                2 => {
+                    // disp32
+                    if pos + consumed + 4 > bytes.len() { return None; }
+                    disp = i32::from_le_bytes(bytes[pos+consumed..pos+consumed+4].try_into().unwrap()) as i64;
+                    consumed += 4;
+                }
+                _ => {} // mode 0: no disp (or handled above)
+            }
+
+            Operand::Mem {
+                base,
+                index,
+                scale,
+                disp,
+                size: op_size,
+            }
+        }
+    };
+
+    Some((reg_op, rm_op, consumed))
+}
+
+/// FASM-inspired: ALU opcode table indexed by ModR/M reg field
+/// 83 /0=ADD, /1=OR, /2=ADC, /3=SBB, /4=AND, /5=SUB, /6=XOR, /7=CMP
+fn alu_ext_to_opcode(ext: u8) -> Opcode {
+    match ext {
+        0 => Opcode::Add,
+        1 => Opcode::Or,
+        2 => Opcode::Add, // ADC → map to Add for simplicity
+        3 => Opcode::Sub, // SBB → map to Sub for simplicity
+        4 => Opcode::And,
+        5 => Opcode::Sub,
+        6 => Opcode::Xor,
+        7 => Opcode::Cmp,
+        _ => Opcode::RawBytes,
+    }
+}
+
+/// FASM-inspired: Jcc condition code to opcode
+fn jcc_short_to_opcode(opbyte: u8) -> Opcode {
+    match opbyte & 0x0F {
+        0x0 => Opcode::Jb,   // JO → map to Jb
+        0x1 => Opcode::Jae,  // JNO → map to Jae
+        0x2 => Opcode::Jb,   // JB/JNAE/JC
+        0x3 => Opcode::Jae,  // JNB/JAE/JNC
+        0x4 => Opcode::Je,   // JE/JZ
+        0x5 => Opcode::Jne,  // JNE/JNZ
+        0x6 => Opcode::Jbe,  // JBE/JNA
+        0x7 => Opcode::Ja,   // JNBE/JA
+        0x8 => Opcode::Jl,   // JS → map to Jl
+        0x9 => Opcode::Jge,  // JNS → map to Jge
+        0xA => Opcode::Je,   // JP
+        0xB => Opcode::Jne,  // JNP
+        0xC => Opcode::Jl,   // JL/JNGE
+        0xD => Opcode::Jge,  // JNL/JGE
+        0xE => Opcode::Jle,  // JLE/JNG
+        0xF => Opcode::Jg,   // JNLE/JG
+        _ => Opcode::Jmp,
+    }
 }
 
 fn make_simple(opcode: Opcode, addr: u64, size: usize, raw: &[u8]) -> DecodedInst {

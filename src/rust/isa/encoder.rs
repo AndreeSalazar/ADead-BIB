@@ -58,32 +58,115 @@ impl Encoder {
         }
     }
 
-    /// Codifica todas las instrucciones y resuelve saltos.
+    /// FASM-inspired multi-pass encoder (from assembler_loop in ASSEMBLE.INC).
+    ///
+    /// Pass 1: Encode all ops with rel32 jumps, record label positions.
+    /// Pass 2: Patch all jump targets.
+    /// Pass 3+: Check if any rel32 jumps fit in rel8 (±127 bytes).
+    ///          If so, mark them as short and re-encode from scratch.
+    ///          Repeat until no more jumps can be shortened (convergence).
+    ///
+    /// This mirrors FASM's approach where the assembler iterates until
+    /// all forward references stabilize and code size stops changing.
     pub fn encode_all(&mut self, ops: &[ADeadOp]) -> EncodeResult {
-        self.code.clear();
-        self.label_positions.clear();
-        self.pending_patches.clear();
-        self.unresolved_calls.clear();
+        // Track which labels can use short jumps (discovered during passes)
+        let mut short_jump_labels: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let max_passes = 4; // FASM typically converges in 2-3 passes
 
-        // Pass 1: encode todas las ops, registrar labels, dejar placeholders
-        for op in ops {
-            self.encode_op(op);
-        }
+        for pass in 0..max_passes {
+            self.code.clear();
+            self.label_positions.clear();
+            self.pending_patches.clear();
+            self.unresolved_calls.clear();
 
-        // Pass 2: resolver saltos
-        for patch in &self.pending_patches {
-            if let Some(&target_pos) = self.label_positions.get(&patch.target.0) {
-                match patch.kind {
-                    PatchKind::Rel32 => {
-                        let rel = (target_pos as i64 - (patch.code_offset as i64 + 4)) as i32;
-                        self.code[patch.code_offset..patch.code_offset + 4]
-                            .copy_from_slice(&rel.to_le_bytes());
+            // Encode all ops, using short jumps where we know they fit
+            for op in ops {
+                match op {
+                    ADeadOp::Jmp { target } if short_jump_labels.contains(&target.0) => {
+                        // FASM-style: emit short JMP (EB rel8) instead of near (E9 rel32)
+                        self.emit(&[0xEB]);
+                        let patch_offset = self.code.len();
+                        self.emit(&[0x00]); // placeholder rel8
+                        self.pending_patches.push(PendingPatch {
+                            code_offset: patch_offset,
+                            target: *target,
+                            kind: PatchKind::Rel8,
+                        });
                     }
-                    PatchKind::Rel8 => {
-                        let rel = (target_pos as i64 - (patch.code_offset as i64 + 1)) as i8;
-                        self.code[patch.code_offset] = rel as u8;
+                    ADeadOp::Jcc { cond, target } if short_jump_labels.contains(&target.0) => {
+                        // FASM-style: emit short Jcc (7x rel8) instead of near (0F 8x rel32)
+                        let cc = match cond {
+                            Condition::Equal => 0x04u8,
+                            Condition::NotEqual => 0x05,
+                            Condition::Less => 0x0C,
+                            Condition::LessEq => 0x0E,
+                            Condition::Greater => 0x0F,
+                            Condition::GreaterEq => 0x0D,
+                            Condition::Always => {
+                                // Short JMP
+                                self.emit(&[0xEB]);
+                                let patch_offset = self.code.len();
+                                self.emit(&[0x00]);
+                                self.pending_patches.push(PendingPatch {
+                                    code_offset: patch_offset,
+                                    target: *target,
+                                    kind: PatchKind::Rel8,
+                                });
+                                continue;
+                            }
+                        };
+                        self.emit(&[0x70 | cc]); // short Jcc
+                        let patch_offset = self.code.len();
+                        self.emit(&[0x00]); // placeholder rel8
+                        self.pending_patches.push(PendingPatch {
+                            code_offset: patch_offset,
+                            target: *target,
+                            kind: PatchKind::Rel8,
+                        });
+                    }
+                    _ => self.encode_op(op),
+                }
+            }
+
+            // Resolve all patches
+            for patch in &self.pending_patches {
+                if let Some(&target_pos) = self.label_positions.get(&patch.target.0) {
+                    match patch.kind {
+                        PatchKind::Rel32 => {
+                            let rel = (target_pos as i64 - (patch.code_offset as i64 + 4)) as i32;
+                            self.code[patch.code_offset..patch.code_offset + 4]
+                                .copy_from_slice(&rel.to_le_bytes());
+                        }
+                        PatchKind::Rel8 => {
+                            let rel = (target_pos as i64 - (patch.code_offset as i64 + 1)) as i8;
+                            self.code[patch.code_offset] = rel as u8;
+                        }
                     }
                 }
+            }
+
+            // FASM convergence check: find rel32 jumps that could be rel8
+            let mut changed = false;
+            for patch in &self.pending_patches {
+                if let PatchKind::Rel32 = patch.kind {
+                    if let Some(&target_pos) = self.label_positions.get(&patch.target.0) {
+                        let rel = target_pos as i64 - (patch.code_offset as i64 + 4);
+                        // If the displacement fits in rel8 (after accounting for size difference),
+                        // mark this target for short encoding on next pass
+                        // Near JMP = 5 bytes (E9 rel32), Short JMP = 2 bytes (EB rel8) → saves 3
+                        // Near Jcc = 6 bytes (0F 8x rel32), Short Jcc = 2 bytes (7x rel8) → saves 4
+                        if rel >= -128 && rel <= 127 {
+                            if short_jump_labels.insert(patch.target.0) {
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If no new short jumps found, we've converged
+            if !changed || pass == max_passes - 1 {
+                break;
             }
         }
 
@@ -1015,9 +1098,10 @@ mod tests {
             ADeadOp::Jmp { target: lbl },
         ];
         let result = enc.encode_all(&ops);
-        // Label at 0, nop at 0 (1 byte), jmp at 1 (5 bytes)
-        // rel32 = 0 - (1+4+4) ... let's just verify it compiles and has content
-        assert_eq!(result.code.len(), 6); // nop(1) + jmp(5)
+        // FASM multi-pass: Label at 0, nop at 0 (1 byte), jmp at 1
+        // The multi-pass encoder detects that the backward jump fits in rel8
+        // and shortens it: nop(1) + jmp_short(2) = 3 bytes instead of 6
+        assert_eq!(result.code.len(), 3); // nop(1) + jmp_short(2)
     }
 
     // ========================================

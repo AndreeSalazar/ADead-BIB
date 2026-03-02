@@ -39,7 +39,7 @@ pub fn generate_pe_compact(
     // - strings en idata_rva + 0x78 = 0x2078
     // Usamos el mismo layout pero con FileAlignment más pequeño
     
-    let text_rva: u32 = 0x1000;
+    let _text_rva: u32 = 0x1000;
     let idata_rva: u32 = 0x2000;
     let iat_rva: u32 = idata_rva + 0x40;
     

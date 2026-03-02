@@ -1,26 +1,27 @@
 // ============================================================
-// ADead-BIB Backend - Binary Is Binary
+// ADead-BIB Backend — Binary Is Binary
 // ============================================================
-// Emitimos BYTES directamente, sin ASM intermedio.
+// Emits BYTES directly. No ASM intermediary. No linker.
 //
-// Estructura:
-// - cpu/     : Bytes x86-64 directos → PE/ELF/RAW
-// - gpu/     : Bytes GPU directos → SPIR-V/CUDA/HEX
+// Structure:
+//   cpu/ : x86-64 bytes → PE/ELF/RAW (FASM-inspired encoding)
+//   gpu/ : GPU bytes → SPIR-V/CUDA/HEX
 //
-// Filosofía: "Código → Bytes → Binario. Sin intermediarios."
+// Pipeline: Code → AST → ISA IR → Encoder → Bytes → Binary
 // ============================================================
 
 pub mod cpu;
 pub mod gpu;
 
-// Re-exports para compatibilidad
+// Core format re-exports
 pub use cpu::pe;
 pub use cpu::elf;
-// DEPRECATED re-exports (use adead_bib::isa::isa_compiler instead)
+pub use cpu::pe_tiny;
+
+// Legacy re-exports (use isa::codegen instead for new code)
 pub use cpu::codegen;
 pub use cpu::codegen_v2;
 pub use cpu::syscalls;
 pub use cpu::win32_resolver;
 pub use cpu::pe_minimal;
-pub use cpu::pe_tiny;
 pub use cpu::microvm;

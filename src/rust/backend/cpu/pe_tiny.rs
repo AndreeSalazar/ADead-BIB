@@ -182,7 +182,7 @@ pub fn generate_exit_opcodes(exit_code: u32) -> Vec<u8> {
 pub fn generate_console_write_opcodes(message: &str) -> Vec<u8> {
     let mut code = Vec::new();
     let msg_bytes = message.as_bytes();
-    let msg_len = msg_bytes.len();
+    let _msg_len = msg_bytes.len();
     
     // El mensaje se coloca después del código
     // Calcularemos el offset después

@@ -231,7 +231,7 @@ impl IsaCompiler {
         let result = encoder.encode_all(self.ir.ops());
 
         // Fase 8: Resolver llamadas a funciones por nombre
-        let mut code = result.code;
+        let code = result.code;
         for (offset, name) in &result.unresolved_calls {
             if let Some(func) = self.functions.get(name) {
                 // Necesitamos saber la posición real del label en el código

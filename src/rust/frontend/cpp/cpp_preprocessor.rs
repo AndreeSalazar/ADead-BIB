@@ -63,7 +63,7 @@ impl CppPreprocessor {
                 // Skip multi-line defines with backslash continuation
                 output.push('\n');
                 // Consume continuation lines
-                while let Some(next_line) = lines_iter.peek() {
+                while let Some(_next_line) = lines_iter.peek() {
                     if line.trim_end().ends_with('\\') {
                         lines_iter.next();
                         output.push('\n');

@@ -28,4 +28,5 @@ pub use frontend::lexer;
 pub use frontend::parser;
 pub use frontend::type_checker;
 pub use isa::isa_compiler::IsaCompiler;
+pub use isa::codegen; // Clean alias for isa_compiler
 pub use runtime::{CPUFeatures, ComputeBackend};
