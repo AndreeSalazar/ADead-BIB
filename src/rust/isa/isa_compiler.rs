@@ -245,10 +245,10 @@ impl IsaCompiler {
         compiler
     }
     
-    /// Get field offset from class layout (GCC/LLVM ABI style)
+    /// Get field offset from class layout (MSVC/GCC/LLVM ABI style)
     /// Returns the byte offset of a field within a class/struct
     fn get_field_offset(&self, field_name: &str) -> i32 {
-        // First, try to find the field in any registered class layout
+        // First, try to find the field in any registered class layout (dynamic from program)
         for layout in self.class_layouts.values() {
             for (name, offset) in &layout.fields {
                 if name == field_name {
@@ -256,15 +256,17 @@ impl IsaCompiler {
                 }
             }
         }
-        // Fallback to hardcoded common offsets
+        // Fallback to hardcoded common offsets (MSVC x64 ABI: 8-byte aligned)
         match field_name {
             "value" => 0,
             "max_value" => 8,
             "x" => 0,
             "y" => 8,
             "z" => 16,
-            "w" | "width" => 8,  // After x,y or after origin
-            "h" | "height" => 16,
+            "w" => 8,
+            "width" => 16,  // After origin (Point2D = 16 bytes)
+            "h" => 16,
+            "height" => 24,
             "data" => 0,
             "top" => 8,
             "front" => 8,
@@ -277,6 +279,18 @@ impl IsaCompiler {
             "origin" => 0,
             _ => 0,
         }
+    }
+    
+    /// Get field offset for a specific class (MSVC ABI)
+    fn get_class_field_offset(&self, class_name: &str, field_name: &str) -> i32 {
+        if let Some(layout) = self.class_layouts.get(class_name) {
+            for (name, offset) in &layout.fields {
+                if name == field_name {
+                    return *offset;
+                }
+            }
+        }
+        self.get_field_offset(field_name)
     }
 
     /// Create compiler for 16-bit real mode (boot sectors)
@@ -359,6 +373,21 @@ impl IsaCompiler {
 
     /// Compila un programa completo y retorna (code_bytes, data_bytes, iat_offsets, string_offsets).
     pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
+        // Fase 0: Registrar layouts de structs/clases del programa (MSVC ABI style)
+        for st in &program.structs {
+            let mut fields = Vec::new();
+            let mut offset = 0i32;
+            for field in &st.fields {
+                fields.push((field.name.clone(), offset));
+                offset += 8; // MSVC x64: all fields aligned to 8 bytes
+            }
+            self.class_layouts.insert(st.name.clone(), ClassLayout {
+                name: st.name.clone(),
+                fields,
+                size: offset,
+            });
+        }
+        
         // Fase 1: Recolectar strings
         self.collect_all_strings(program);
         self.collect_strings_from_stmts(&program.statements);
