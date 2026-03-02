@@ -23,6 +23,7 @@ pub use backend::pe;
 pub use bg::{BinaryGuardian, SecurityPolicy, SecurityLevel, Verdict};
 pub use frontend::ast;
 pub use frontend::c;
+pub use frontend::cpp;
 pub use frontend::lexer;
 pub use frontend::parser;
 pub use frontend::type_checker;

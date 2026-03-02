@@ -1,293 +1,160 @@
-# ADead-BIB Examples — Tres Modos de Compilación
+# ADead-BIB — Ejemplos de Compilación
+## Backend Universal • Nano Bytes • Sin Overhead 💀🦈
+### Hecho en Perú 🇵🇪 • 2025
 
-ADead-BIB soporta **tres modos de compilación** para diferentes casos de uso:
+ADead-BIB genera binarios directamente — sin ensamblador intermedio, sin LLVM, sin GCC.
 
 ---
 
-## 🔧 MODO 1: Boot/OS — Machine Code Directo
+## Modos de Compilación
 
-**Uso:** Bootloaders, kernels, drivers, firmware, código bare-metal.
+| Modo | Lenguaje | Output | Comando |
+|------|----------|--------|---------|
+| **Modo 1** | ADead-BIB (raw) | `.bin` flat binary | `adB flat` / `adB boot` |
+| **Modo 2a** | ADead-BIB (typed) | `.exe` PE / ELF | `adB build` |
+| **Modo 2b** | C99 nativo | `.exe` PE / ELF | `adB cc` |
+| **Modo 2c** | C++11/14/17/20 | `.exe` PE / ELF | `adB cxx` |
+| **Modo 3** | GPU compute | `.spv` SPIR-V | `adB gpu` |
 
-**Características:**
-- Genera código máquina puro (sin headers PE/ELF)
-- Acceso directo a registros y puertos I/O
-- Instrucciones privilegiadas: `cli`, `sti`, `hlt`, `cpuid`
-- Control total sobre cada byte generado
-- Soporte para 16-bit (real mode), 32-bit (protected), 64-bit (long mode)
+---
 
-### Compilar
+## Modo 1: Raw Machine Code (Boot/OS)
+
+Flat binary sin headers. Cada byte cuenta.
+
+| Archivo | Descripción | Comando |
+|---------|-------------|---------|
+| `MODE1_boot_minimal.adB` | Boot sector 512b con `0x55AA` | `adB boot ... -o boot.bin` |
+| `MODE1_kernel_driver.adB` | GDT/IDT, port I/O, VGA, serial | `adB flat ... -o kernel.bin` |
+| `boot_sector.adB` | Boot con labels y `raw { }` | `adB boot ... -o boot.bin` |
+| `boot_labels_test.adB` | Forward/backward label refs | `adB flat ... -o test.bin` |
+| `os_kernel_setup.adB` | Kernel config, VGA, serial | `adB flat ... -o kernel.bin` |
+
+---
+
+## Modo 2a: ADead-BIB Typed + OOP
+
+| Archivo | Descripción | Comando |
+|---------|-------------|---------|
+| `MODE2_app_typed.adB` | Tipos, punteros, arrays, structs | `adB build ... -o app.exe` |
+| `MODE2_oop_classes.adB` | Herencia, virtual, interfaces | `adB build ... -o oop.exe` |
+| `test_large_program.adB` | Stress test del compilador | `adB build ... -o large.exe` |
+
+---
+
+## Modo 2b: C99 Nativo (`adB cc`)
+
+Sin GCC. Sin Clang. 100% ADead-BIB.
+
+Pipeline: `C Source -> CPreprocessor -> CLexer -> CParser -> CAST -> CToIR -> Program -> x86-64 -> PE/ELF`
+
+| Archivo | Descripción | Headers |
+|---------|-------------|---------|
+| `hello.c` | Hello World C99 | stdlib |
+| `c_algorithms.c` | Quicksort, mergesort, binary search | stdlib |
+| `c_bitwise.c` | AND/OR/XOR/shifts, bit manipulation | stdlib |
+| `c_compression.c` | Run-length encoding, Huffman | stdlib |
+| `c_crypto.c` | XOR/Caesar cipher, hash functions | stdlib |
+| `c_database.c` | In-memory key-value store, CRUD | stdlib |
+| `c_math.c` | Trig, algebra lineal, complejos | math.h |
+| `c_memory.c` | malloc/free, memory pools, arena | stdlib |
+| `c_network.c` | Sockets, HTTP basics | network |
+| `c_structs.c` | Structs, typedefs, unions, nested | stdlib |
+| `c_threading.c` | pthread, mutex, thread pool | pthread |
+| `c_fastos_base.c` | 75+ system headers compilados | ALL |
+| `c_fastos_complete.c` | FastOS completo (fs, mem, proc) | ALL |
 
 ```bash
-# Boot sector (512 bytes con firma 0x55AA)
-adeadc raw MODE1_boot_minimal.adB -o boot.bin --boot
-
-# Driver raw
-adeadc raw MODE1_kernel_driver.adB -o driver.bin
-
-# Modos de CPU
-adeadc raw file.adB -o out.bin --mode 16   # Real mode
-adeadc raw file.adB -o out.bin --mode 32   # Protected mode
-adeadc raw file.adB -o out.bin --mode 64   # Long mode (default)
+adB cc hello.c -o hello.exe
+adB cc c_fastos_base.c -o fastos.exe
 ```
 
-### Probar con QEMU
+Tests: 55 tests (42 unit + 13 example files) — todos pasan
 
-```bash
-qemu-system-x86_64 -drive format=raw,file=boot.bin
-```
+---
 
-### Sintaxis Modo 1
+## Modo 2c: C++11/14/17/20 (`adB cxx`)
 
-```adB
-org 0x7C00             // Dirección de carga
+Sin GCC. Sin LLVM. Sin Clang. 100% ADead-BIB C++.
 
-cli                    // Deshabilitar interrupciones
-sti                    // Habilitar interrupciones
-hlt                    // Halt CPU
+Pipeline: `C++ Source -> CppLexer -> CppParser -> CppAST -> CppToIR -> Program -> x86-64 -> PE/ELF`
 
-raw { 0x31, 0xC0 }     // Bytes de máquina inline (xor ax, ax)
+### Features soportados
 
-int_call(0x10)         // INT 0x10 (BIOS video)
-port_out(0x20, 0x20)   // Escribir a I/O port
-let val = port_in(0x60) // Leer de I/O port
+- **OOP**: classes, herencia, virtual, override, constructors, destructors
+- **Templates**: function templates, class templates, non-type params, defaults
+- **Namespaces**: anidados, using declarations, using namespace
+- **Modern C++**: auto, constexpr, nullptr, enum class, range-for
+- **Lambdas**: captures (by value, by ref, this), params, return type
+- **Casts**: static_cast, dynamic_cast, const_cast, reinterpret_cast, C-style
+- **Exception handling**: try/catch/throw (eliminados a error codes)
+- **Operator overloading**: todos los operadores comunes
+- **Smart pointers**: unique_ptr, shared_ptr -> raw pointers (zero overhead)
+- **STL types**: string, vector, map, optional, variant (reconocidos)
+- **C++20**: spaceship operator, concepts, coroutines (parsed)
 
-@interrupt             // Handler de interrupción (auto push/pop + iretq)
-fn keyboard_handler() { ... }
+### Archivos C++
 
-@exception             // Handler de excepción (con error code en stack)
-fn page_fault_handler() { ... }
-
-@naked                 // Sin prologue/epilogue (control total)
-fn init_pic() { ... }
-```
-
-### Ejemplos Modo 1
-
-| Archivo | Descripción |
+| Archivo | Descripcion |
 |---------|-------------|
-| `MODE1_boot_minimal.adB` | Boot sector que imprime "OS OK" via BIOS |
-| `MODE1_kernel_driver.adB` | Driver 64-bit con PIC, teclado, timer, CPUID |
-| `boot_sector.adB` | Boot sector completo con mensaje |
-| `os_kernel_setup.adB` | Setup de kernel 64-bit |
-
----
-
-## 📦 MODO 2: C + Rust OOP — Sintaxis Tipada
-
-**Uso:** Aplicaciones, herramientas CLI, scripts compilados.
-
-**Características:**
-- Genera ejecutables PE (Windows) o ELF (Linux)
-- Tipos C: `int`, `char`, `short`, `long`, `float`, `double`, `bool`
-- Punteros reales: `int*`, `&var`, `*ptr`
-- Arrays reales: `int arr[5] = [...]`, `arr[i]`
-- **OOP ligero**: `struct` + `impl` + `&self` (Rust-style)
-- Control de flujo: `if/else if/else`, `while`, `do-while`, `switch`, `break`
-- Compound assignments: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`
-- Bitwise: `&`, `|`, `^`, `~`, `<<`, `>>`
-- `sizeof(type)` para introspección de memoria
-
-### Compilar
+| `hello.cpp` | Hello World C++ |
+| `cpp_oop.cpp` | Classes, herencia, virtual, override, constructors |
+| `cpp_templates.cpp` | Function/class templates, namespaces, recursion |
+| `cpp_modern.cpp` | auto, constexpr, nullptr, enum class, type aliases |
 
 ```bash
-adeadc MODE2_app_typed.adB -o app.exe          # Windows PE
-adeadc MODE2_app_typed.adB -o app --linux      # Linux ELF
-adeadc MODE2_app_typed.adB -o app.exe -O2      # Con optimizaciones
+adB cxx hello.cpp -o hello.exe
+adB cxx cpp_oop.cpp -o oop.exe
+adB cxx cpp_templates.cpp -o templates.exe
+adB cxx cpp_modern.cpp -o modern.exe
 ```
 
-### Sintaxis Modo 2 — OOP (struct + impl)
-
-```adB
-// Definición
-struct Punto {
-    x: int
-    y: int
-}
-
-impl Punto {
-    fn nuevo(x: int, y: int) -> Punto {
-        Punto { x: x, y: y }
-    }
-
-    fn mostrar(&self) {
-        printf("Punto(")
-        printf(self.x)
-        printf(", ")
-        printf(self.y)
-        printf(")\n")
-    }
-
-    fn mover(&mut self, dx: int, dy: int) {
-        self.x = self.x + dx
-        self.y = self.y + dy
-    }
-}
-
-// Uso
-int main() {
-    let p = Punto::nuevo(10, 20)
-    p.mostrar()
-    p.mover(5, -3)
-    p.mostrar()
-    return 0
-}
-```
-
-### Sintaxis Modo 2 — Punteros y Arrays
-
-```adB
-// Punteros
-int valor = 42
-int* ptr = &valor
-*ptr = 100           // Modifica valor a través del puntero
-
-// Arrays
-int arr[5] = [10, 20, 30, 40, 50]
-arr[2] = 99          // Acceso por índice
-
-// sizeof
-printf(sizeof(int))  // 4 bytes
-```
-
-### Sintaxis Modo 2 — Control de flujo
-
-```adB
-// else if chain
-if score >= 90 {
-    printf("A\n")
-} else if score >= 80 {
-    printf("B\n")
-} else {
-    printf("F\n")
-}
-
-// do-while
-int n = 5
-do {
-    printf(n)
-    n -= 1
-} while n > 0
-```
-
-### Ejemplos Modo 2
-
-| Archivo | Descripción |
-|---------|-------------|
-| `MODE2_app_typed.adB` | App con tipos C, OOP (Stats), compound, do-while |
-| `MODE2_oop_classes.adB` | OOP: Punto, Rectangulo y Circulo con struct+impl |
-| `01_hello.adB` | Hello World básico |
-| `02_variables.adB` | Variables con tipos C explícitos |
-| `03_conditions.adB` | if / else if / else |
-| `04_loops.adB` | while, do-while, break |
-| `05_functions.adB` | Funciones tipadas y recursión |
-| `06_operators.adB` | Aritmética, compound, bitwise |
-| `07_class_basic.adB` | OOP: Punto y Contador con struct+impl |
-| `08_arrays.adB` | Arrays reales con índice |
-| `09_math.adB` | abs, max, min, factorial, potencia, gcd |
-| `10_pointers.adB` | Punteros reales (&, *, sizeof) |
-| `11_pointers_real.adB` | Punteros + todas las operaciones bitwise |
+Tests: 24 tests (8 lexer + 6 parser + 6 IR + 4 example files) — todos pasan
 
 ---
 
-## 🎮 MODO 3: GPU Compute — SPIR-V Directo
+## Modo 3: GPU Compute (SPIR-V)
 
-**Uso:** Machine learning, procesamiento paralelo, shaders.
+AST -> SPIR-V directo, sin IR intermedio.
 
-**Características:**
-- Genera SPIR-V directamente (sin GLSL/HLSL)
-- Kernels con `@gpu`
-- Buffers: `buffer<f32>`
-- Memoria compartida: `shared`
-- Sincronización: `barrier()`
-
-```bash
-adeadc gpu MODE3_gpu_compute.adB -o compute.spv
-```
+| Archivo | Descripcion | Comando |
+|---------|-------------|---------|
+| `MODE3_gpu_compute.adB` | Vector add, matmul | `adB gpu ... -o compute.spv` |
 
 ---
 
-## 📊 Comparación de Modos
+## Arquitectura del Compilador
 
-| Característica       | Modo 1 (Boot/OS) | Modo 2 (App)       | Modo 3 (GPU) |
-|----------------------|------------------|--------------------|--------------|
-| **Output**           | Raw bytes        | PE/ELF             | SPIR-V       |
-| **Tipos**            | Implícitos (64b) | C explícitos       | f32/vec      |
-| **OOP**              | ❌               | ✅ struct+impl    | ❌           |
-| **Punteros**         | ✅ (raw)         | ✅ int* / &x / *p | ❌           |
-| **Arrays**           | ❌               | ✅ int arr[N]     | ✅ buffer<T> |
-| **I/O Ports**        | ✅ port_in/out   | ❌                | ❌           |
-| **Interrupciones**   | ✅               | ❌                | ❌           |
-| **Compound (+=)**    | ❌               | ✅                | ❌           |
-| **Bitwise**          | ✅ (raw)         | ✅ & \| ^ ~ << >> | ❌           |
+```
+Codigo fuente (.adB / .c / .cpp)
+         |
+    Lexer -> Tokens
+         |
+    Parser -> AST
+         |
+    Type Checker / IR Converter
+         |
+    ISA Compiler -> ADeadOp
+         |
+    Encoder -> x86-64 Bytes
+         |
+    PE (Windows) / ELF (Linux)
+```
+
+## Test Summary
+
+| Frontend | Tests | Status |
+|----------|-------|--------|
+| ADead-BIB | 40+ | All pass |
+| C99 | 55 | All pass |
+| C++ | 24 | All pass |
+| Total | 87+ frontend | All pass |
 
 ---
 
-## 🛠️ Comandos del Compilador
+Sin NASM. Sin LLVM. Sin linker externo.
+100% ADead-BIB. Hecho en Peru.
 
-```bash
-# Modo 1: Raw binary
-adeadc raw <input.adB> -o <output.bin>
-adeadc raw <input.adB> -o <output.bin> --boot    # Firma 0x55AA
-adeadc raw <input.adB> -o <output.bin> --mode 16 # 16-bit
-
-# Modo 2: Aplicación
-adeadc <input.adB> -o <output.exe>               # Windows PE
-adeadc <input.adB> -o <output> --linux           # Linux ELF
-adeadc <input.adB> -o <output.exe> -O2           # Optimizado
-
-# Modo 3: GPU
-adeadc gpu <input.adB> -o <output.spv>
-
-# Herramientas
-adeadc info <input.adB>                          # Mostrar AST
-adeadc disasm <binary>                           # Desensamblar
-```
-
----
-
-## 📁 Estructura de Ejemplos
-
-```
-examples/
-├── README.md
-├── MODE1_boot_minimal.adB       # Boot sector → "OS OK"
-├── MODE1_kernel_driver.adB      # Driver 64-bit (PIC, keyboard, timer)
-├── MODE2_app_typed.adB          # App tipada con OOP (Stats)
-├── MODE2_oop_classes.adB        # OOP: struct+impl (Punto, Rect, Circulo)
-├── MODE3_gpu_compute.adB        # GPU: SPIR-V (vector_add, matmul, softmax)
-├── boot_sector.adB
-├── boot_labels_test.adB
-├── os_kernel_setup.adB
-└── Ejemplos de guias en .adB/
-    ├── 01_hello.adB             # Hello World
-    ├── 02_variables.adB         # int, long, char, modulo
-    ├── 03_conditions.adB        # if / else if / else
-    ├── 04_loops.adB             # while, do-while, break
-    ├── 05_functions.adB         # funciones + recursión
-    ├── 06_operators.adB         # aritmética + compound + bitwise
-    ├── 07_class_basic.adB       # struct+impl OOP (Punto, Contador)
-    ├── 08_arrays.adB            # arrays reales int arr[N]
-    ├── 09_math.adB              # abs, factorial, potencia, gcd
-    ├── 10_pointers.adB          # int* ptr = &x, *ptr = val
-    └── 11_pointers_real.adB     # punteros + & | ^ ~ << >> + sizeof
-```
-
----
-
-## 🎯 Filosofía ADead-BIB
-
-> **"Sin NASM, Sin LLVM, Sin headers innecesarios"**
-
-```
-Código .adB → Parser → AST → TypeChecker → ISA (ADeadOp) → Encoder → Bytes
-```
-
-- **TypeChecker**: Verifica structs, métodos, arrays, punteros, firmas de funciones
-- **CPU**: IR completo con optimizaciones en el compilador
-- **GPU**: SPIR-V directo (optimización en el driver)
-
----
-
-**Autor:** Eddi Andreé Salazar Matos  
-**Versión:** ADead-BIB v3.4  
-**Licencia:** MIT
+Autor: Eddi Andree Salazar Matos
+Version: ADead-BIB v3.5
+Licencia: MIT

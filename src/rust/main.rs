@@ -9,6 +9,7 @@ use adead_bib::backend::microvm::{self, compile_microvm, MicroOp, MicroVM};
 use adead_bib::backend::pe_tiny;
 use adead_bib::builder::{BuildOptions, Builder};
 use adead_bib::frontend::c::compile_c_to_program;
+use adead_bib::frontend::cpp::compile_cpp_to_program;
 use adead_bib::frontend::lexer::Lexer;
 use adead_bib::frontend::parser::Parser;
 use adead_bib::frontend::type_checker::TypeChecker;
@@ -159,6 +160,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("✅ C compilation complete: {}", output_file);
             }
             println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB");
+        }
+        "cxx" | "c++" | "cpp" => {
+            // ============================================================
+            // ADead-BIB C++ Compiler — Compila C++11/14/17/20 nativo
+            // Sin GCC. Sin LLVM. Sin Clang. Solo ADead-BIB. 💀🦈
+            // ============================================================
+            if args.len() < 3 {
+                eprintln!("❌ Error: Missing C++ source file");
+                eprintln!("   Usage: adB cxx <file.cpp> [-o output.exe]");
+                std::process::exit(1);
+            }
+            let input_file = &args[2];
+            let output_file = get_output_filename(input_file, &args);
+
+            println!("🔨 ADead-BIB C++ Compiler");
+            println!("   Source: {}", input_file);
+            println!("   Target: {}", output_file);
+
+            // 1. Read C++ source
+            let source = fs::read_to_string(input_file).map_err(|e| {
+                format!("Cannot read '{}': {}", input_file, e)
+            })?;
+
+            // 2. C++ Frontend: CppLexer → CppParser → CppAST → Program
+            println!("   Step 1: Parsing C++...");
+            let program = compile_cpp_to_program(&source).map_err(|e| {
+                format!("C++ parse error: {}", e)
+            })?;
+
+            println!("   Step 2: {} functions, {} structs, {} classes found",
+                program.functions.len(), program.structs.len(), program.classes.len());
+
+            // 3. Compile via ISA Compiler → bytes
+            println!("   Step 3: Compiling to native x86-64...");
+            let target = determine_target();
+            let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+            let (opcodes, data) = compiler.compile(&program);
+
+            // 4. Generate binary
+            println!("   Step 4: Generating binary...");
+            match target {
+                Target::Windows => {
+                    adead_bib::backend::pe::generate_pe(&opcodes, &data, &output_file)?;
+                }
+                Target::Linux => {
+                    adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
+                }
+                Target::Raw => {
+                    fs::write(&output_file, &opcodes)?;
+                }
+            }
+
+            if let Ok(meta) = fs::metadata(&output_file) {
+                println!("✅ C++ compilation complete: {} ({} bytes)", output_file, meta.len());
+            } else {
+                println!("✅ C++ compilation complete: {}", output_file);
+            }
+            println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB C++");
         }
         "run" => {
             if args.len() < 3 {
@@ -837,23 +896,113 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             create_new_project_in_place(project_name)?;
         }
         _ => {
-            // Legacy behavior: treat first arg as input file if it's not a command
-            // Or just show usage. Let's support legacy "cargo run file.adB" style if possible,
-            // but explicitly asking for command is cleaner.
-            // Assuming default is build:
+            // Auto-detect by file extension: .c → cc, .cpp/.cxx/.cc → cxx, else → adB build
             let input_file = command;
-            let output_file = get_output_filename(input_file, &args);
+            let ext = Path::new(input_file).extension().and_then(|e| e.to_str()).unwrap_or("");
 
-            let options = BuildOptions {
-                target: determine_target(),
-                optimize: true,
-                output_path: output_file.clone(),
-                verbose: true,
-                opt_level: adead_bib::optimizer::OptLevel::Basic,
-                size_optimize: false,
-            };
+            match ext {
+                "c" | "h" => {
+                    // Auto-route to C compiler
+                    let output_file = get_output_filename(input_file, &args);
+                    println!("🔨 ADead-BIB C Compiler (auto-detected .c)");
+                    println!("   Source: {}", input_file);
+                    println!("   Target: {}", output_file);
 
-            Builder::build_file(input_file, options)?;
+                    let source = fs::read_to_string(input_file).map_err(|e| {
+                        format!("Cannot read '{}': {}", input_file, e)
+                    })?;
+
+                    println!("   Step 1: Parsing C99...");
+                    let program = compile_c_to_program(&source).map_err(|e| {
+                        format!("C parse error: {}", e)
+                    })?;
+
+                    println!("   Step 2: {} functions, {} structs found",
+                        program.functions.len(), program.structs.len());
+
+                    println!("   Step 3: Compiling to native x86-64...");
+                    let target = determine_target();
+                    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+                    let (opcodes, data) = compiler.compile(&program);
+
+                    println!("   Step 4: Generating binary...");
+                    match target {
+                        Target::Windows => {
+                            adead_bib::backend::pe::generate_pe(&opcodes, &data, &output_file)?;
+                        }
+                        Target::Linux => {
+                            adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
+                        }
+                        Target::Raw => {
+                            fs::write(&output_file, &opcodes)?;
+                        }
+                    }
+
+                    if let Ok(meta) = fs::metadata(&output_file) {
+                        println!("✅ C compilation complete: {} ({} bytes)", output_file, meta.len());
+                    } else {
+                        println!("✅ C compilation complete: {}", output_file);
+                    }
+                    println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB");
+                }
+                "cpp" | "cxx" | "cc" | "hpp" => {
+                    // Auto-route to C++ compiler
+                    let output_file = get_output_filename(input_file, &args);
+                    println!("🔨 ADead-BIB C++ Compiler (auto-detected .{})", ext);
+                    println!("   Source: {}", input_file);
+                    println!("   Target: {}", output_file);
+
+                    let source = fs::read_to_string(input_file).map_err(|e| {
+                        format!("Cannot read '{}': {}", input_file, e)
+                    })?;
+
+                    println!("   Step 1: Parsing C++...");
+                    let program = compile_cpp_to_program(&source).map_err(|e| {
+                        format!("C++ parse error: {}", e)
+                    })?;
+
+                    println!("   Step 2: {} functions, {} structs, {} classes found",
+                        program.functions.len(), program.structs.len(), program.classes.len());
+
+                    println!("   Step 3: Compiling to native x86-64...");
+                    let target = determine_target();
+                    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+                    let (opcodes, data) = compiler.compile(&program);
+
+                    println!("   Step 4: Generating binary...");
+                    match target {
+                        Target::Windows => {
+                            adead_bib::backend::pe::generate_pe(&opcodes, &data, &output_file)?;
+                        }
+                        Target::Linux => {
+                            adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
+                        }
+                        Target::Raw => {
+                            fs::write(&output_file, &opcodes)?;
+                        }
+                    }
+
+                    if let Ok(meta) = fs::metadata(&output_file) {
+                        println!("✅ C++ compilation complete: {} ({} bytes)", output_file, meta.len());
+                    } else {
+                        println!("✅ C++ compilation complete: {}", output_file);
+                    }
+                    println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB C++");
+                }
+                _ => {
+                    // Default: ADead-BIB language
+                    let output_file = get_output_filename(input_file, &args);
+                    let options = BuildOptions {
+                        target: determine_target(),
+                        optimize: true,
+                        output_path: output_file.clone(),
+                        verbose: true,
+                        opt_level: adead_bib::optimizer::OptLevel::Basic,
+                        size_optimize: false,
+                    };
+                    Builder::build_file(input_file, options)?;
+                }
+            }
         }
     }
 
