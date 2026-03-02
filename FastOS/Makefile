@@ -8,7 +8,8 @@
 #   make image    - Create bootable disk image
 
 # ADead-BIB Compiler
-ADEAD = cargo run --manifest-path=../Cargo.toml --
+ADEAD = cargo run --manifest-path=../Cargo.toml -- cc
+ADEAD_FLAT = $(ADEAD) --flat
 
 # Directories
 BOOT_DIR = boot

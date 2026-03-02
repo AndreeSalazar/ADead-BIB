@@ -1,15 +1,22 @@
 /*
- * Po — FastOS Native Executable Format
- * Hybrid header inspired by Windows PE and Linux ELF
+ * FastOS v2.0 — Po Executable Format
+ * Portable Object - Native executable format for FastOS
  * 
- * "Po" = Portable Object — El formato nativo de FastOS
+ * Hybrid design inspired by:
+ * - Windows PE (Portable Executable)
+ * - Linux ELF (Executable and Linkable Format)
+ * - Win32 API compatibility layer
  * 
- * Características:
- * - Compatible con análisis BG (Binary Guardian)
- * - Secciones claras: code, data, rodata, bss
- * - Metadatos de seguridad integrados
- * - Soporte para drivers y aplicaciones
- * - Checksums y firmas opcionales
+ * Features:
+ * - Binary Guardian (BG) integration for security
+ * - Native FastOS syscall interface
+ * - Win32 API translation layer
+ * - ELF-style dynamic linking
+ * - Security levels (Kernel, Driver, Service, User, Sandbox)
+ * - VBE/GPU driver loading support
+ * - Nouveau NVIDIA integration
+ * 
+ * Compiled by: ADead-BIB (C is Master, Rust is Safety)
  */
 
 #ifndef _FASTOS_PO_H
