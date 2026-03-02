@@ -696,23 +696,104 @@ impl IsaCompiler {
             }
 
             // Pointer/memory statements (v3.2)
-            Stmt::VarDecl { var_type: _, name, value } => {
+            Stmt::VarDecl { var_type, name, value } => {
+                // Calculate size based on type (important for arrays)
+                let type_size = var_type.size_bytes() as i32;
+                let alloc_size = if type_size > 0 { type_size } else { 8 };
+                
                 if let Some(val) = value {
+                    // For arrays with initializers, handle specially
                     self.emit_assign(name, val);
                 } else {
-                    // Declare with zero
+                    // Reserve space for the variable/array
                     let offset = self.stack_offset;
                     self.variables.insert(name.clone(), offset);
-                    self.stack_offset -= 8;
-                    self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Mem { base: Reg::RBP, disp: offset },
-                        src: Operand::Reg(Reg::RAX),
-                    });
+                    self.stack_offset -= alloc_size;
+                    
+                    // Zero-initialize (for simple types, just zero RAX and store)
+                    // For arrays, we'd need to zero multiple slots
+                    if alloc_size <= 8 {
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                    } else {
+                        // For arrays: zero-initialize all elements
+                        let num_qwords = (alloc_size + 7) / 8;
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                        for i in 0..num_qwords {
+                            let elem_offset = offset - (i * 8);
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                        }
+                    }
                 }
             }
             Stmt::CompoundAssign { name, op, value } => {
                 self.emit_compound_assign(name, op, value);
+            }
+            // ========== ARRAY INDEX ASSIGNMENT: arr[i] = value ==========
+            Stmt::IndexAssign { object, index, value } => {
+                // For local array variables, use direct RBP-relative addressing
+                if let Expr::Variable(name) = object {
+                    if let Some(&base_offset) = self.variables.get(name.as_str()) {
+                        // Check if index is a constant for direct addressing
+                        if let Expr::Number(idx) = index {
+                            // Direct store: mov [rbp + base_offset - idx*8], value
+                            // Stack grows down, so arr[0] is at base_offset, arr[1] at base_offset-8
+                            let elem_offset = base_offset - (*idx as i32 * 8);
+                            self.emit_expression(value);
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                        } else {
+                            // Dynamic index
+                            self.emit_expression(value);
+                            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                            self.emit_expression(index);
+                            self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
+                            if base_offset != 0 {
+                                self.ir.emit(ADeadOp::Add {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Imm32(base_offset),
+                                });
+                            }
+                            self.ir.emit(ADeadOp::Add {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Reg(Reg::RBP),
+                            });
+                            self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem { base: Reg::RAX, disp: 0 },
+                                src: Operand::Reg(Reg::RCX),
+                            });
+                        }
+                    } else {
+                        // Unknown variable - skip
+                    }
+                } else {
+                    // Non-variable object - evaluate as pointer
+                    self.emit_expression(value);
+                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    self.emit_expression(index);
+                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    self.emit_expression(object);
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+                    self.ir.emit(ADeadOp::Shl { dst: Reg::RBX, amount: 3 });
+                    self.ir.emit(ADeadOp::Add {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(Reg::RBX),
+                    });
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Mem { base: Reg::RAX, disp: 0 },
+                        src: Operand::Reg(Reg::RCX),
+                    });
+                }
             }
             Stmt::Increment { name, is_pre: _, is_increment } => {
                 if let Some(&offset) = self.variables.get(name.as_str()) {
@@ -1651,29 +1732,96 @@ impl IsaCompiler {
             }
             // ========== ARRAY ACCESS: arr[i] ==========
             Expr::Index { object, index } => {
-                // Evaluate index first, push to stack
-                self.emit_expression(index);
-                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                // Evaluate object (base address)
-                self.emit_expression(object);
-                // RAX = base address, pop index into RBX
-                self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
-                // Scale index by 8 (64-bit elements): RBX *= 8
-                self.ir.emit(ADeadOp::Shl { dst: Reg::RBX, amount: 3 });
-                // Add offset: RAX = base + index*8
-                self.ir.emit(ADeadOp::Add {
-                    dst: Operand::Reg(Reg::RAX),
-                    src: Operand::Reg(Reg::RBX),
-                });
-                // Load value from [RAX]
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(Reg::RBX),
-                    src: Operand::Reg(Reg::RAX),
-                });
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(Reg::RAX),
-                    src: Operand::Mem { base: Reg::RBX, disp: 0 },
-                });
+                // For local array variables, we can compute the address directly
+                // arr[i] where arr is at [RBP+offset] → load from [RBP + offset + i*8]
+                if let Expr::Variable(name) = object.as_ref() {
+                    if let Some(&base_offset) = self.variables.get(name.as_str()) {
+                        // Check if index is a constant for direct addressing
+                        if let Expr::Number(idx) = index.as_ref() {
+                            // Direct load: mov rax, [rbp + base_offset - idx*8]
+                            // Stack grows down, so arr[0] is at base_offset, arr[1] at base_offset-8, etc.
+                            let elem_offset = base_offset - (*idx as i32 * 8);
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                            });
+                        } else {
+                            // Dynamic index: compute address
+                            // arr[i] = [RBP + base_offset - i*8]
+                            // 1. Evaluate index into RAX
+                            self.emit_expression(index);
+                            // 2. Scale by 8: RAX = i*8
+                            self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
+                            // 3. Move scaled index to RBX
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                            // 4. Load base_offset into RAX
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Imm32(base_offset),
+                            });
+                            // 5. Subtract: RAX = base_offset - i*8
+                            self.ir.emit(ADeadOp::Sub {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Reg(Reg::RBX),
+                            });
+                            // 6. Add RBP: RAX = RBP + (base_offset - i*8)
+                            self.ir.emit(ADeadOp::Add {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Reg(Reg::RBP),
+                            });
+                            // 7. Load from [RAX]
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                            });
+                        }
+                    } else {
+                        // Unknown variable - evaluate as pointer
+                        self.emit_expression(index);
+                        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                        self.emit_expression(object);
+                        self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+                        self.ir.emit(ADeadOp::Shl { dst: Reg::RBX, amount: 3 });
+                        self.ir.emit(ADeadOp::Add {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Reg(Reg::RBX),
+                        });
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RBX),
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                        });
+                    }
+                } else {
+                    // For other expressions (pointer dereference, etc.)
+                    self.emit_expression(index);
+                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    self.emit_expression(object);
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+                    self.ir.emit(ADeadOp::Shl { dst: Reg::RBX, amount: 3 });
+                    self.ir.emit(ADeadOp::Add {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(Reg::RBX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                    });
+                }
             }
             // ========== ARRAY LITERAL: [a, b, c] ==========
             Expr::Array(elems) => {

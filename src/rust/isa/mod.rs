@@ -24,6 +24,10 @@ pub mod codegen;
 pub mod isa_compiler;
 pub mod optimizer;
 pub mod reg_alloc;
+pub mod compiler;
+
+// Re-export modular compiler
+pub use compiler::{IsaCompiler as IsaCompilerModular, Target as TargetModular, CpuMode as CpuModeModular};
 
 // ============================================================
 // Registers
