@@ -182,8 +182,8 @@ impl IsaCompiler {
         self.cpu_mode
     }
 
-    /// Compila un programa completo y retorna (code_bytes, data_bytes).
-    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>) {
+    /// Compila un programa completo y retorna (code_bytes, data_bytes, iat_offsets, string_offsets).
+    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
         // Fase 1: Recolectar strings
         self.collect_all_strings(program);
         self.collect_strings_from_stmts(&program.statements);
@@ -199,9 +199,10 @@ impl IsaCompiler {
             });
         }
 
-        // Fase 3: Si hay main y otras funciones, saltar a main
+        // Fase 3: Si hay main, saltar a main (skip auxiliary functions and top-level code)
         let main_label = self.functions.get("main").map(|f| f.label);
-        if has_main && program.functions.len() > 1 {
+        let needs_jmp = has_main && (program.functions.len() > 1 || !program.statements.is_empty());
+        if needs_jmp {
             if let Some(lbl) = main_label {
                 self.ir.emit(ADeadOp::Jmp { target: lbl });
             }
@@ -214,8 +215,8 @@ impl IsaCompiler {
             }
         }
 
-        // Fase 5: Compilar top-level statements
-        if !program.statements.is_empty() {
+        // Fase 5: Compilar top-level statements (only when no main — script mode)
+        if !has_main && !program.statements.is_empty() {
             self.compile_top_level(&program.statements);
         }
 
@@ -246,7 +247,7 @@ impl IsaCompiler {
         // Fase 9: Generar sección de datos
         let data = self.generate_data_section();
 
-        (code, data)
+        (code, data, result.iat_call_offsets, result.string_imm64_offsets)
     }
 
     // ========================================
@@ -1857,7 +1858,7 @@ fn main() {
 "#;
         let program = Parser::parse_program(source).unwrap();
         let mut compiler = IsaCompiler::new(Target::Windows);
-        let (code, data) = compiler.compile(&program);
+        let (code, data, _, _) = compiler.compile(&program);
         assert!(!code.is_empty(), "Code should not be empty");
         assert!(!data.is_empty(), "Data should contain strings");
     }
@@ -1874,7 +1875,7 @@ fn main() {
 "#;
         let program = Parser::parse_program(source).unwrap();
         let mut compiler = IsaCompiler::new(Target::Windows);
-        let (code, _data) = compiler.compile(&program);
+        let (code, _data, _, _) = compiler.compile(&program);
         assert!(!code.is_empty());
     }
 

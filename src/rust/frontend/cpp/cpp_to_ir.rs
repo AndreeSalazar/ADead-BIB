@@ -17,13 +17,15 @@ use super::cpp_ast::*;
 use crate::frontend::ast::{
     Expr, Stmt, Program, Function, Param, Struct as IrStruct,
     StructField, BinOp, CmpOp, UnaryOp as IrUnaryOp, BitwiseOp as IrBitwiseOp,
-    SizeOfArg, FunctionAttributes, ProgramAttributes, SwitchCase,
+    SizeOfArg, FunctionAttributes, ProgramAttributes, SwitchCase, CompoundOp,
 };
 use crate::frontend::types::Type;
 
 pub struct CppToIR {
     type_aliases: Vec<(String, CppType)>,
     class_methods: Vec<(String, String, Vec<CppParam>, CppType)>, // (class, method, params, ret)
+    current_namespace: Option<String>, // Track current namespace for unqualified calls
+    namespace_functions: Vec<String>,  // All function names in current namespace
 }
 
 impl CppToIR {
@@ -31,6 +33,8 @@ impl CppToIR {
         Self {
             type_aliases: Vec::new(),
             class_methods: Vec::new(),
+            current_namespace: None,
+            namespace_functions: Vec::new(),
         }
     }
 
@@ -100,14 +104,40 @@ impl CppToIR {
                         }
                     }
                 }
-                CppTopLevel::Namespace { declarations, .. } => {
-                    // Flatten namespace — prefix function names
-                    for inner_decl in declarations {
-                        if let CppTopLevel::FunctionDef { return_type, name: fname, params, body, .. } = inner_decl {
-                            let func = self.convert_function(return_type, fname, params, body)?;
-                            program.functions.push(func);
+                CppTopLevel::Namespace { name: ns_name, declarations } => {
+                    // Collect all function names in this namespace for unqualified call resolution
+                    self.namespace_functions.clear();
+                    for inner_decl in declarations.iter() {
+                        if let CppTopLevel::FunctionDef { name: fname, .. } = inner_decl {
+                            self.namespace_functions.push(fname.clone());
                         }
                     }
+                    self.current_namespace = Some(ns_name.clone());
+
+                    // Flatten namespace — prefix function names with ns::
+                    for inner_decl in declarations {
+                        match inner_decl {
+                            CppTopLevel::FunctionDef { return_type, name: fname, params, body, .. } => {
+                                let qualified = format!("{}::{}", ns_name, fname);
+                                let func = self.convert_function(return_type, &qualified, params, body)?;
+                                program.functions.push(func);
+                            }
+                            CppTopLevel::Namespace { name: inner_ns, declarations: inner_decls } => {
+                                // Nested namespace: ns::inner::func
+                                for inner2 in inner_decls {
+                                    if let CppTopLevel::FunctionDef { return_type, name: fname, params, body, .. } = inner2 {
+                                        let qualified = format!("{}::{}::{}", ns_name, inner_ns, fname);
+                                        let func = self.convert_function(return_type, &qualified, params, body)?;
+                                        program.functions.push(func);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    self.current_namespace = None;
+                    self.namespace_functions.clear();
                 }
                 CppTopLevel::EnumDef { name: _, values, .. } => {
                     // Enum constants become global assignments
@@ -273,6 +303,83 @@ impl CppToIR {
     fn convert_stmt(&self, stmt: &CppStmt) -> Result<Vec<Stmt>, String> {
         match stmt {
             CppStmt::Expr(expr) => {
+                // FASM-inspired: detect assignment expressions and emit proper Stmt::Assign
+                // Without this, `a = a + 1;` becomes Expr(a+1) instead of Assign{a, a+1}
+                match expr {
+                    CppExpr::Assign { target, value } => {
+                        if let CppExpr::Identifier(name) = target.as_ref() {
+                            let v = self.convert_expr(value)?;
+                            return Ok(vec![Stmt::Assign { name: name.clone(), value: v }]);
+                        }
+                        // Field assignment: obj.field = value
+                        if let CppExpr::MemberAccess { object, member } = target.as_ref() {
+                            let obj = self.convert_expr(object)?;
+                            let v = self.convert_expr(value)?;
+                            return Ok(vec![Stmt::FieldAssign {
+                                object: obj, field: member.clone(), value: v,
+                            }]);
+                        }
+                        // Array index assignment: arr[i] = value
+                        if let CppExpr::Index { object, index } = target.as_ref() {
+                            let obj = self.convert_expr(object)?;
+                            let idx = self.convert_expr(index)?;
+                            let v = self.convert_expr(value)?;
+                            return Ok(vec![Stmt::IndexAssign {
+                                object: obj, index: idx, value: v,
+                            }]);
+                        }
+                        let v = self.convert_expr(value)?;
+                        return Ok(vec![Stmt::Expr(v)]);
+                    }
+                    CppExpr::CompoundAssign { target, op, value } => {
+                        if let CppExpr::Identifier(name) = target.as_ref() {
+                            let v = self.convert_expr(value)?;
+                            let comp_op = match op {
+                                CppBinOp::Add => CompoundOp::AddAssign,
+                                CppBinOp::Sub => CompoundOp::SubAssign,
+                                CppBinOp::Mul => CompoundOp::MulAssign,
+                                CppBinOp::Div => CompoundOp::DivAssign,
+                                CppBinOp::Mod => CompoundOp::ModAssign,
+                                CppBinOp::BitAnd => CompoundOp::AndAssign,
+                                CppBinOp::BitOr => CompoundOp::OrAssign,
+                                CppBinOp::BitXor => CompoundOp::XorAssign,
+                                CppBinOp::Shl => CompoundOp::ShlAssign,
+                                CppBinOp::Shr => CompoundOp::ShrAssign,
+                                _ => CompoundOp::AddAssign,
+                            };
+                            return Ok(vec![Stmt::CompoundAssign {
+                                name: name.clone(), op: comp_op, value: v,
+                            }]);
+                        }
+                        let v = self.convert_expr(value)?;
+                        return Ok(vec![Stmt::Expr(v)]);
+                    }
+                    CppExpr::UnaryOp { op, expr: inner, is_prefix } => {
+                        use super::cpp_ast::CppUnaryOp;
+                        match op {
+                            CppUnaryOp::PreInc | CppUnaryOp::PostInc => {
+                                if let CppExpr::Identifier(name) = inner.as_ref() {
+                                    return Ok(vec![Stmt::Increment {
+                                        name: name.clone(),
+                                        is_pre: *is_prefix,
+                                        is_increment: true,
+                                    }]);
+                                }
+                            }
+                            CppUnaryOp::PreDec | CppUnaryOp::PostDec => {
+                                if let CppExpr::Identifier(name) = inner.as_ref() {
+                                    return Ok(vec![Stmt::Increment {
+                                        name: name.clone(),
+                                        is_pre: *is_prefix,
+                                        is_increment: false,
+                                    }]);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
                 let ir_expr = self.convert_expr(expr)?;
                 // Handle cout << "text" as Println
                 if let Expr::String(ref s) = ir_expr {
@@ -346,7 +453,52 @@ impl CppToIR {
                     .unwrap_or(Expr::Bool(true));
                 let mut body_stmts = self.convert_stmt(body)?;
                 if let Some(inc) = increment {
-                    body_stmts.push(Stmt::Expr(self.convert_expr(inc)?));
+                    // Convert increment expression to proper statement
+                    // (e.g., i++ → Stmt::Increment, i += 1 → Stmt::CompoundAssign)
+                    let inc_ref: &CppExpr = &inc;
+                    let inc_stmt = match inc_ref {
+                        CppExpr::UnaryOp { op, expr: inner, is_prefix } => {
+                            use super::cpp_ast::CppUnaryOp;
+                            let is_pre = *is_prefix;
+                            match op {
+                                CppUnaryOp::PreInc | CppUnaryOp::PostInc => {
+                                    if let CppExpr::Identifier(name) = inner.as_ref() {
+                                        Some(Stmt::Increment { name: name.clone(), is_pre, is_increment: true })
+                                    } else { None }
+                                }
+                                CppUnaryOp::PreDec | CppUnaryOp::PostDec => {
+                                    if let CppExpr::Identifier(name) = inner.as_ref() {
+                                        Some(Stmt::Increment { name: name.clone(), is_pre, is_increment: false })
+                                    } else { None }
+                                }
+                                _ => None,
+                            }
+                        }
+                        CppExpr::CompoundAssign { target, op, value } => {
+                            if let CppExpr::Identifier(name) = target.as_ref() {
+                                let v = self.convert_expr(value)?;
+                                let comp_op = match op {
+                                    CppBinOp::Add => CompoundOp::AddAssign,
+                                    CppBinOp::Sub => CompoundOp::SubAssign,
+                                    CppBinOp::Mul => CompoundOp::MulAssign,
+                                    CppBinOp::Div => CompoundOp::DivAssign,
+                                    CppBinOp::Mod => CompoundOp::ModAssign,
+                                    _ => CompoundOp::AddAssign,
+                                };
+                                Some(Stmt::CompoundAssign { name: name.clone(), op: comp_op, value: v })
+                            } else { None }
+                        }
+                        CppExpr::Assign { target, value } => {
+                            if let CppExpr::Identifier(name) = target.as_ref() {
+                                let v = self.convert_expr(value)?;
+                                Some(Stmt::Assign { name: name.clone(), value: v })
+                            } else { None }
+                        }
+                        _ => None,
+                    };
+                    body_stmts.push(inc_stmt.unwrap_or_else(|| {
+                        Stmt::Expr(self.convert_expr(inc_ref).unwrap_or(Expr::Number(0)))
+                    }));
                 }
                 stmts.push(Stmt::While { condition: cond, body: body_stmts });
                 Ok(stmts)
@@ -494,7 +646,19 @@ impl CppToIR {
 
             CppExpr::Call { callee, args } => {
                 let name = match callee.as_ref() {
-                    CppExpr::Identifier(n) => n.clone(),
+                    CppExpr::Identifier(n) => {
+                        // If inside a namespace and this is an unqualified call to a sibling
+                        // function, qualify it with the namespace prefix (FASM-style label resolution)
+                        if let Some(ref ns) = self.current_namespace {
+                            if self.namespace_functions.contains(n) {
+                                format!("{}::{}", ns, n)
+                            } else {
+                                n.clone()
+                            }
+                        } else {
+                            n.clone()
+                        }
+                    }
                     CppExpr::ScopedIdentifier { scope, name } =>
                         format!("{}::{}", scope.join("::"), name),
                     _ => "unknown".to_string(),

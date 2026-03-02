@@ -138,13 +138,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   Step 3: Compiling to native x86-64...");
             let target = determine_target();
             let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
-            let (opcodes, data) = compiler.compile(&program);
+            let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
 
             // 4. Generate binary
             println!("   Step 4: Generating binary...");
             match target {
                 Target::Windows => {
-                    adead_bib::backend::pe::generate_pe(&opcodes, &data, &output_file)?;
+                    adead_bib::backend::pe::generate_pe_with_offsets(&opcodes, &data, &output_file, &iat_offsets, &string_offsets)?;
                 }
                 Target::Linux => {
                     adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
@@ -196,13 +196,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   Step 3: Compiling to native x86-64...");
             let target = determine_target();
             let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
-            let (opcodes, data) = compiler.compile(&program);
+            let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
 
             // 4. Generate binary
             println!("   Step 4: Generating binary...");
             match target {
                 Target::Windows => {
-                    adead_bib::backend::pe::generate_pe(&opcodes, &data, &output_file)?;
+                    adead_bib::backend::pe::generate_pe_with_offsets(&opcodes, &data, &output_file, &iat_offsets, &string_offsets)?;
                 }
                 Target::Linux => {
                     adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
@@ -316,7 +316,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Generar código mínimo via ISA Compiler
             let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(Target::Raw);
-            let (opcodes, _data) = compiler.compile(&program);
+            let (opcodes, _data, _, _) = compiler.compile(&program);
 
             // Si el código es muy grande, usar exit simple
             let final_opcodes = if opcodes.len() > 200 {
@@ -432,7 +432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Generar código via ISA Compiler
             let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(Target::Raw);
-            let (opcodes, data) = compiler.compile(&program);
+            let (opcodes, data, _, _) = compiler.compile(&program);
 
             // Usar FlatBinaryGenerator
             let mut gen = adead_bib::backend::cpu::flat_binary::FlatBinaryGenerator::new(0x0000);
@@ -472,7 +472,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Generar código via ISA Compiler
             let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(Target::Raw);
-            let (opcodes, _data) = compiler.compile(&program);
+            let (opcodes, _data, _, _) = compiler.compile(&program);
 
             // Usar FlatBinaryGenerator para boot sector
             let mut gen = adead_bib::backend::cpu::flat_binary::FlatBinaryGenerator::new(0x7C00);
@@ -541,7 +541,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Generar código via ISA Compiler con CPU mode
             let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::with_cpu_mode(Target::Raw, cpu_mode);
-            let (opcodes, _data) = compiler.compile(&program);
+            let (opcodes, _data, _, _) = compiler.compile(&program);
 
             // Generar boot sector con firma 0x55AA
             let mut gen = adead_bib::backend::cpu::flat_binary::FlatBinaryGenerator::new(0x7C00);
@@ -923,12 +923,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("   Step 3: Compiling to native x86-64...");
                     let target = determine_target();
                     let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
-                    let (opcodes, data) = compiler.compile(&program);
+                    let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
 
                     println!("   Step 4: Generating binary...");
                     match target {
                         Target::Windows => {
-                            adead_bib::backend::pe::generate_pe(&opcodes, &data, &output_file)?;
+                            adead_bib::backend::pe::generate_pe_with_offsets(&opcodes, &data, &output_file, &iat_offsets, &string_offsets)?;
                         }
                         Target::Linux => {
                             adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
@@ -967,12 +967,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("   Step 3: Compiling to native x86-64...");
                     let target = determine_target();
                     let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
-                    let (opcodes, data) = compiler.compile(&program);
+                    let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
 
                     println!("   Step 4: Generating binary...");
                     match target {
                         Target::Windows => {
-                            adead_bib::backend::pe::generate_pe(&opcodes, &data, &output_file)?;
+                            adead_bib::backend::pe::generate_pe_with_offsets(&opcodes, &data, &output_file, &iat_offsets, &string_offsets)?;
                         }
                         Target::Linux => {
                             adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;

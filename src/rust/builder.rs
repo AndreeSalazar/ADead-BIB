@@ -88,7 +88,7 @@ impl Builder {
         // 4. Backend: ISA Compilation (ADead ISA → bytes)
         if options.verbose { println!("Step 4: ISA Compilation..."); }
         let mut compiler = IsaCompiler::new(options.target);
-        let (opcodes, data) = compiler.compile(&program);
+        let (opcodes, data, _iat_offsets, _string_offsets) = compiler.compile(&program);
 
         // 4.5. ISA-Level Optimization (operates on ADeadIR before encoding)
         let optimized_opcodes = if options.size_optimize {

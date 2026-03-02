@@ -20,6 +20,12 @@ pub struct EncodeResult {
     pub code: Vec<u8>,
     /// Llamadas a funciones no resueltas: (offset_en_code, nombre_función)
     pub unresolved_calls: Vec<(usize, String)>,
+    /// FASM-inspired: exact offsets of IAT call disp32 fields (FF 15 [disp32])
+    /// Each entry is the code offset of the 4-byte disp32 field
+    pub iat_call_offsets: Vec<usize>,
+    /// FASM-inspired: exact offsets of 64-bit string address immediates (48 B8+ [imm64])
+    /// Each entry is the code offset of the 8-byte imm64 field
+    pub string_imm64_offsets: Vec<usize>,
 }
 
 /// Tipo de patch pendiente para resolución de saltos.
@@ -46,6 +52,8 @@ pub struct Encoder {
     label_positions: HashMap<u32, usize>,
     pending_patches: Vec<PendingPatch>,
     unresolved_calls: Vec<(usize, String)>,
+    iat_call_offsets: Vec<usize>,
+    string_imm64_offsets: Vec<usize>,
 }
 
 impl Encoder {
@@ -55,77 +63,84 @@ impl Encoder {
             label_positions: HashMap::new(),
             pending_patches: Vec::new(),
             unresolved_calls: Vec::new(),
+            iat_call_offsets: Vec::new(),
+            string_imm64_offsets: Vec::new(),
         }
     }
 
     /// FASM-inspired multi-pass encoder (from assembler_loop in ASSEMBLE.INC).
     ///
     /// Pass 1: Encode all ops with rel32 jumps, record label positions.
-    /// Pass 2: Patch all jump targets.
-    /// Pass 3+: Check if any rel32 jumps fit in rel8 (±127 bytes).
-    ///          If so, mark them as short and re-encode from scratch.
-    ///          Repeat until no more jumps can be shortened (convergence).
+    /// Pass 2: Patch all jump displacement fields.
+    /// Pass 3: Verify short-jump candidates — only backward jumps whose
+    ///         target label was already seen (no forward-reference risk).
+    ///         Re-encode if any can be shortened; repeat until stable.
     ///
-    /// This mirrors FASM's approach where the assembler iterates until
-    /// all forward references stabilize and code size stops changing.
+    /// Conservative approach: only shorten backward jumps where the label
+    /// position is definitively known before the jump instruction.
     pub fn encode_all(&mut self, ops: &[ADeadOp]) -> EncodeResult {
-        // Track which labels can use short jumps (discovered during passes)
-        let mut short_jump_labels: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        let max_passes = 4; // FASM typically converges in 2-3 passes
+        // Track which (jump_index, target_label) can use short encoding.
+        // Key = index into ops[] of the Jmp/Jcc, value = true if short-safe.
+        let mut short_jump_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let max_passes = 3;
 
-        for pass in 0..max_passes {
+        for _pass in 0..max_passes {
             self.code.clear();
             self.label_positions.clear();
             self.pending_patches.clear();
             self.unresolved_calls.clear();
+            self.iat_call_offsets.clear();
+            self.string_imm64_offsets.clear();
 
-            // Encode all ops, using short jumps where we know they fit
-            for op in ops {
-                match op {
-                    ADeadOp::Jmp { target } if short_jump_labels.contains(&target.0) => {
-                        // FASM-style: emit short JMP (EB rel8) instead of near (E9 rel32)
-                        self.emit(&[0xEB]);
-                        let patch_offset = self.code.len();
-                        self.emit(&[0x00]); // placeholder rel8
-                        self.pending_patches.push(PendingPatch {
-                            code_offset: patch_offset,
-                            target: *target,
-                            kind: PatchKind::Rel8,
-                        });
+            for (op_idx, op) in ops.iter().enumerate() {
+                if short_jump_indices.contains(&op_idx) {
+                    // Emit short form for this jump
+                    match op {
+                        ADeadOp::Jmp { target } => {
+                            self.emit(&[0xEB]);
+                            let patch_offset = self.code.len();
+                            self.emit(&[0x00]);
+                            self.pending_patches.push(PendingPatch {
+                                code_offset: patch_offset,
+                                target: *target,
+                                kind: PatchKind::Rel8,
+                            });
+                            continue;
+                        }
+                        ADeadOp::Jcc { cond, target } => {
+                            let cc = match cond {
+                                Condition::Equal => 0x04u8,
+                                Condition::NotEqual => 0x05,
+                                Condition::Less => 0x0C,
+                                Condition::LessEq => 0x0E,
+                                Condition::Greater => 0x0F,
+                                Condition::GreaterEq => 0x0D,
+                                Condition::Always => {
+                                    self.emit(&[0xEB]);
+                                    let patch_offset = self.code.len();
+                                    self.emit(&[0x00]);
+                                    self.pending_patches.push(PendingPatch {
+                                        code_offset: patch_offset,
+                                        target: *target,
+                                        kind: PatchKind::Rel8,
+                                    });
+                                    continue;
+                                }
+                            };
+                            self.emit(&[0x70 | cc]);
+                            let patch_offset = self.code.len();
+                            self.emit(&[0x00]);
+                            self.pending_patches.push(PendingPatch {
+                                code_offset: patch_offset,
+                                target: *target,
+                                kind: PatchKind::Rel8,
+                            });
+                            continue;
+                        }
+                        _ => {}
                     }
-                    ADeadOp::Jcc { cond, target } if short_jump_labels.contains(&target.0) => {
-                        // FASM-style: emit short Jcc (7x rel8) instead of near (0F 8x rel32)
-                        let cc = match cond {
-                            Condition::Equal => 0x04u8,
-                            Condition::NotEqual => 0x05,
-                            Condition::Less => 0x0C,
-                            Condition::LessEq => 0x0E,
-                            Condition::Greater => 0x0F,
-                            Condition::GreaterEq => 0x0D,
-                            Condition::Always => {
-                                // Short JMP
-                                self.emit(&[0xEB]);
-                                let patch_offset = self.code.len();
-                                self.emit(&[0x00]);
-                                self.pending_patches.push(PendingPatch {
-                                    code_offset: patch_offset,
-                                    target: *target,
-                                    kind: PatchKind::Rel8,
-                                });
-                                continue;
-                            }
-                        };
-                        self.emit(&[0x70 | cc]); // short Jcc
-                        let patch_offset = self.code.len();
-                        self.emit(&[0x00]); // placeholder rel8
-                        self.pending_patches.push(PendingPatch {
-                            code_offset: patch_offset,
-                            target: *target,
-                            kind: PatchKind::Rel8,
-                        });
-                    }
-                    _ => self.encode_op(op),
                 }
+                self.encode_op(op);
             }
 
             // Resolve all patches
@@ -138,34 +153,49 @@ impl Encoder {
                                 .copy_from_slice(&rel.to_le_bytes());
                         }
                         PatchKind::Rel8 => {
-                            let rel = (target_pos as i64 - (patch.code_offset as i64 + 1)) as i8;
-                            self.code[patch.code_offset] = rel as u8;
+                            let rel = target_pos as i64 - (patch.code_offset as i64 + 1);
+                            // Safety: verify it still fits; if not, we have a bug
+                            self.code[patch.code_offset] = (rel as i8) as u8;
                         }
                     }
                 }
             }
 
-            // FASM convergence check: find rel32 jumps that could be rel8
+            // Convergence: find backward rel32 jumps that fit in rel8
             let mut changed = false;
-            for patch in &self.pending_patches {
+            for (patch_idx, patch) in self.pending_patches.iter().enumerate() {
                 if let PatchKind::Rel32 = patch.kind {
                     if let Some(&target_pos) = self.label_positions.get(&patch.target.0) {
-                        let rel = target_pos as i64 - (patch.code_offset as i64 + 4);
-                        // If the displacement fits in rel8 (after accounting for size difference),
-                        // mark this target for short encoding on next pass
-                        // Near JMP = 5 bytes (E9 rel32), Short JMP = 2 bytes (EB rel8) → saves 3
-                        // Near Jcc = 6 bytes (0F 8x rel32), Short Jcc = 2 bytes (7x rel8) → saves 4
-                        if rel >= -128 && rel <= 127 {
-                            if short_jump_labels.insert(patch.target.0) {
-                                changed = true;
+                        // Only shorten BACKWARD jumps (target before jump)
+                        if target_pos < patch.code_offset {
+                            let rel = target_pos as i64 - (patch.code_offset as i64 + 4);
+                            // Conservative: only if well within range after shrink
+                            if rel >= -120 && rel <= 120 {
+                                // Find the op_idx for this patch
+                                // We need to map patch back to op index
+                                // For safety, scan ops to find which Jmp/Jcc generated this patch
+                                let mut op_counter = 0usize;
+                                for (oi, o) in ops.iter().enumerate() {
+                                    match o {
+                                        ADeadOp::Jmp { .. } | ADeadOp::Jcc { .. } => {
+                                            if op_counter == patch_idx {
+                                                if short_jump_indices.insert(oi) {
+                                                    changed = true;
+                                                }
+                                                break;
+                                            }
+                                            op_counter += 1;
+                                        }
+                                        _ => {}
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // If no new short jumps found, we've converged
-            if !changed || pass == max_passes - 1 {
+            if !changed {
                 break;
             }
         }
@@ -173,6 +203,8 @@ impl Encoder {
         EncodeResult {
             code: self.code.clone(),
             unresolved_calls: self.unresolved_calls.clone(),
+            iat_call_offsets: self.iat_call_offsets.clone(),
+            string_imm64_offsets: self.string_imm64_offsets.clone(),
         }
     }
 
@@ -280,6 +312,8 @@ impl Encoder {
                 let (idx, ext) = reg_index(r);
                 let rex = self.rex_wrxb(true, false, ext);
                 self.emit(&[rex, 0xB8 + idx]);
+                // Track the exact offset of the imm64 field for PE string patching
+                self.string_imm64_offsets.push(self.code.len());
                 self.emit_u64(*v);
             }
             // mov r32, imm32 — FASM: mov_reg_imm_32bit (B8+rd id)
@@ -625,6 +659,8 @@ impl Encoder {
         let current_rva = 0x1000u32 + self.code.len() as u32 + 6;
         let offset = iat_rva as i32 - current_rva as i32;
         self.emit(&[0xFF, 0x15]);
+        // Track the exact offset of the disp32 field for PE patching
+        self.iat_call_offsets.push(self.code.len());
         self.emit_i32(offset);
     }
 

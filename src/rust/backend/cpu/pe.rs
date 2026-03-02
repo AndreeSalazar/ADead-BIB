@@ -6,6 +6,19 @@ use std::fs::File;
 use std::io::Write;
 
 pub fn generate_pe(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    generate_pe_with_offsets(opcodes, _data, output_path, &[], &[])
+}
+
+/// FASM-inspired PE generator with precise offset tracking.
+/// Uses exact IAT call and string address offsets from the encoder
+/// instead of fragile byte-pattern scanning.
+pub fn generate_pe_with_offsets(
+    opcodes: &[u8],
+    _data: &[u8],
+    output_path: &str,
+    iat_call_offsets: &[usize],
+    string_imm64_offsets: &[usize],
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut file = File::create(output_path)?;
     
     // Constants
@@ -80,73 +93,75 @@ pub fn generate_pe(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<()
     let idata_virtual_pages = (idata_virtual_size + section_align - 1) / section_align;
     let size_of_image = idata_rva + idata_virtual_pages * section_align;
     
-    // Fixup IAT references and string addresses in opcodes if idata moved from default 0x2000
-    // The ISA compiler hardcodes:
-    //   - IAT RVAs as 0x2040 (printf) and 0x2048 (scanf)
-    //   - String addresses as ImageBase + 0x2078 + offset
-    // We need to adjust both when idata_rva != 0x2000.
+    // FASM-inspired precise patching: use tracked offsets from encoder when available,
+    // fall back to byte scanning only when no offsets are provided (backward compat).
     let mut patched_opcodes = opcodes.to_vec();
     let iat_delta = idata_rva as i32 - 0x2000i32;
-    
-    // String address patching: ISA compiler uses ImageBase (0x140000000) + 0x2078 for strings
-    // Actual location is ImageBase + idata_rva + 0x78
-    // So we need to add (idata_rva - 0x2000) to any 64-bit immediate in the string range
     let image_base: u64 = 0x0000000140000000;
     let old_string_base = image_base + 0x2078;
     let new_string_base = image_base + idata_rva as u64 + 0x78;
     let string_delta = new_string_base as i64 - old_string_base as i64;
     
     if iat_delta != 0 || string_delta != 0 {
-        let mut i = 0;
-        while i < patched_opcodes.len() {
-            // Patch call [rip+offset] for IAT (FF 15 xx xx xx xx)
-            if i + 5 < patched_opcodes.len() && patched_opcodes[i] == 0xFF && patched_opcodes[i + 1] == 0x15 {
-                let old_offset = i32::from_le_bytes([
-                    patched_opcodes[i + 2],
-                    patched_opcodes[i + 3],
-                    patched_opcodes[i + 4],
-                    patched_opcodes[i + 5],
-                ]);
-                let new_offset = old_offset + iat_delta;
-                let new_bytes = new_offset.to_le_bytes();
-                patched_opcodes[i + 2] = new_bytes[0];
-                patched_opcodes[i + 3] = new_bytes[1];
-                patched_opcodes[i + 4] = new_bytes[2];
-                patched_opcodes[i + 5] = new_bytes[3];
-                i += 6;
-                continue;
-            }
-            
-            // Patch mov reg, imm64 for string addresses (48 B8-BF xx xx xx xx xx xx xx xx)
-            // REX.W + MOV r64, imm64: 48 B8+rd imm64
-            if i + 9 < patched_opcodes.len() && patched_opcodes[i] == 0x48 {
-                let opcode = patched_opcodes[i + 1];
-                if opcode >= 0xB8 && opcode <= 0xBF {
-                    let imm64 = u64::from_le_bytes([
-                        patched_opcodes[i + 2], patched_opcodes[i + 3],
-                        patched_opcodes[i + 4], patched_opcodes[i + 5],
-                        patched_opcodes[i + 6], patched_opcodes[i + 7],
-                        patched_opcodes[i + 8], patched_opcodes[i + 9],
+        if !iat_call_offsets.is_empty() || !string_imm64_offsets.is_empty() {
+            // PRECISE MODE: use exact offsets from encoder (no byte scanning)
+            for &offset in iat_call_offsets {
+                if offset + 4 <= patched_opcodes.len() {
+                    let old_val = i32::from_le_bytes([
+                        patched_opcodes[offset], patched_opcodes[offset + 1],
+                        patched_opcodes[offset + 2], patched_opcodes[offset + 3],
                     ]);
-                    // Check if this is a string address (in the old string range)
-                    if imm64 >= old_string_base && imm64 < old_string_base + 0x10000 {
-                        let new_imm64 = (imm64 as i64 + string_delta) as u64;
-                        let new_bytes = new_imm64.to_le_bytes();
-                        patched_opcodes[i + 2] = new_bytes[0];
-                        patched_opcodes[i + 3] = new_bytes[1];
-                        patched_opcodes[i + 4] = new_bytes[2];
-                        patched_opcodes[i + 5] = new_bytes[3];
-                        patched_opcodes[i + 6] = new_bytes[4];
-                        patched_opcodes[i + 7] = new_bytes[5];
-                        patched_opcodes[i + 8] = new_bytes[6];
-                        patched_opcodes[i + 9] = new_bytes[7];
-                    }
-                    i += 10;
-                    continue;
+                    let new_val = old_val + iat_delta;
+                    patched_opcodes[offset..offset + 4].copy_from_slice(&new_val.to_le_bytes());
                 }
             }
-            
-            i += 1;
+            for &offset in string_imm64_offsets {
+                if offset + 8 <= patched_opcodes.len() {
+                    let imm64 = u64::from_le_bytes([
+                        patched_opcodes[offset], patched_opcodes[offset + 1],
+                        patched_opcodes[offset + 2], patched_opcodes[offset + 3],
+                        patched_opcodes[offset + 4], patched_opcodes[offset + 5],
+                        patched_opcodes[offset + 6], patched_opcodes[offset + 7],
+                    ]);
+                    if imm64 >= old_string_base && imm64 < old_string_base + 0x10000 {
+                        let new_imm64 = (imm64 as i64 + string_delta) as u64;
+                        patched_opcodes[offset..offset + 8].copy_from_slice(&new_imm64.to_le_bytes());
+                    }
+                }
+            }
+        } else {
+            // LEGACY MODE: byte-pattern scanning (backward compat for callers without offsets)
+            let mut i = 0;
+            while i < patched_opcodes.len() {
+                if i + 5 < patched_opcodes.len() && patched_opcodes[i] == 0xFF && patched_opcodes[i + 1] == 0x15 {
+                    let old_offset = i32::from_le_bytes([
+                        patched_opcodes[i + 2], patched_opcodes[i + 3],
+                        patched_opcodes[i + 4], patched_opcodes[i + 5],
+                    ]);
+                    let new_offset = old_offset + iat_delta;
+                    patched_opcodes[i + 2..i + 6].copy_from_slice(&new_offset.to_le_bytes());
+                    i += 6;
+                    continue;
+                }
+                if i + 9 < patched_opcodes.len() && patched_opcodes[i] == 0x48 {
+                    let opcode = patched_opcodes[i + 1];
+                    if opcode >= 0xB8 && opcode <= 0xBF {
+                        let imm64 = u64::from_le_bytes([
+                            patched_opcodes[i + 2], patched_opcodes[i + 3],
+                            patched_opcodes[i + 4], patched_opcodes[i + 5],
+                            patched_opcodes[i + 6], patched_opcodes[i + 7],
+                            patched_opcodes[i + 8], patched_opcodes[i + 9],
+                        ]);
+                        if imm64 >= old_string_base && imm64 < old_string_base + 0x10000 {
+                            let new_imm64 = (imm64 as i64 + string_delta) as u64;
+                            patched_opcodes[i + 2..i + 10].copy_from_slice(&new_imm64.to_le_bytes());
+                        }
+                        i += 10;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
         }
     }
     let opcodes = &patched_opcodes;
