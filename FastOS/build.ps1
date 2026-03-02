@@ -128,14 +128,14 @@ $stage1[511] = 0xAA
 [System.IO.File]::WriteAllBytes("$BUILD\stage1.bin", $stage1)
 Write-Success "Stage 1: 512 bytes (real bootloader)"
 
-# Step 2: Build Stage 2 - Professional Windows/Linux hybrid interface
+# Step 2: Build Stage 2 - Desktop with apps (simplified and working)
 Write-Status "Building Stage 2 bootloader..."
 
 $stage2 = New-Object byte[] 16384  # 32 sectors
 
-# Simplified but working stage2 with direct VGA writes
+# Simple working stage2 - clean desktop layout
 $stage2Code = @(
-    # org 0x8000
+    # === INIT ===
     0xFA,                   # cli
     0x31, 0xC0,             # xor ax, ax
     0x8E, 0xD8,             # mov ds, ax
@@ -144,7 +144,7 @@ $stage2Code = @(
     0xBC, 0x00, 0x90,       # mov sp, 0x9000
     0xFB,                   # sti
     
-    # Set video mode 3 (80x25 text, clear screen)
+    # Set video mode 3 (80x25 text)
     0xB8, 0x03, 0x00,       # mov ax, 0x0003
     0xCD, 0x10,             # int 0x10
     
@@ -153,147 +153,112 @@ $stage2Code = @(
     0xB9, 0x00, 0x20,       # mov cx, 0x2000
     0xCD, 0x10,             # int 0x10
     
-    # Setup VGA segment
+    # === FILL SCREEN BLUE ===
     0xB8, 0x00, 0xB8,       # mov ax, 0xB800
     0x8E, 0xC0,             # mov es, ax
-    
-    # Fill entire screen with dark blue background (0x17 = white on blue)
     0x31, 0xFF,             # xor di, di
-    0xB9, 0xD0, 0x07,       # mov cx, 2000 (80*25)
-    0xB8, 0x20, 0x17,       # mov ax, 0x1720 (space, white on blue)
+    0xB9, 0xD0, 0x07,       # mov cx, 2000
+    0xB8, 0x20, 0x1F,       # mov ax, 0x1F20 (white on blue)
     0xF3, 0xAB,             # rep stosw
     
-    # Draw top bar (Windows-style title bar) - row 0
+    # === TITLE BAR (row 0) - gray ===
     0x31, 0xFF,             # xor di, di
     0xB9, 0x50, 0x00,       # mov cx, 80
-    0xB8, 0x20, 0x70,       # mov ax, 0x7020 (space, black on light gray)
+    0xB8, 0x20, 0x70,       # mov ax, 0x7020
     0xF3, 0xAB,             # rep stosw
     
-    # Draw bottom bar (taskbar) - row 24 (offset 0x0F00 = 3840)
+    # === TASKBAR (row 24) - gray ===
     0xBF, 0x00, 0x0F,       # mov di, 3840
     0xB9, 0x50, 0x00,       # mov cx, 80
     0xB8, 0x20, 0x70,       # mov ax, 0x7020
     0xF3, 0xAB,             # rep stosw
     
-    # Write "FastOS v2.0" in title bar using direct memory writes
-    # Position 2 in title bar = offset 4
-    0xBF, 0x04, 0x00,       # mov di, 4
-    # 'F' - yellow (0x0E) on gray (0x70) = 0x7E... no, 0x74 = red on gray
-    # Let's use 0x70 for black on gray, 0x74 for red on gray
-    0x26, 0xC7, 0x05, 0x46, 0x7E,  # mov word es:[di], 0x7E46 ('F' yellow)
-    0x83, 0xC7, 0x02,       # add di, 2
-    0x26, 0xC7, 0x05, 0x61, 0x70,  # 'a' black
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x73, 0x70,  # 's'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x74, 0x70,  # 't'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x4F, 0x7E,  # 'O' yellow
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x53, 0x7E,  # 'S' yellow
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x20, 0x70,  # space
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x76, 0x78,  # 'v' dark gray
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x32, 0x78,  # '2'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x2E, 0x78,  # '.'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x30, 0x78,  # '0'
-    
-    # Write "Start" button in taskbar (green background 0x2F)
-    0xBF, 0x02, 0x0F,       # mov di, 3842 (taskbar + 2)
-    0x26, 0xC7, 0x05, 0xFE, 0x2F,  # block char
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x53, 0x2F,  # 'S'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x74, 0x2F,  # 't'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x61, 0x2F,  # 'a'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x72, 0x2F,  # 'r'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x74, 0x2F,  # 't'
-    
-    # Write clock "12:00" in taskbar right side
-    0xBF, 0x90, 0x0F,       # mov di, 3984 (near right edge)
-    0x26, 0xC7, 0x05, 0x31, 0x70,  # '1'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x32, 0x70,  # '2'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x3A, 0x70,  # ':'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x30, 0x70,  # '0'
-    0x83, 0xC7, 0x02,
-    0x26, 0xC7, 0x05, 0x30, 0x70,  # '0'
-    
-    # Now use BIOS to print text in the main area
+    # === USE BIOS TO PRINT TEXT ===
     0x31, 0xC0,             # xor ax, ax
     0x8E, 0xD8,             # mov ds, ax
     
-    # Set cursor to row 2, col 5
-    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x02, 0xB2, 0x05, 0xCD, 0x10,
-    
-    # Print logo box
+    # Title at row 0, col 2
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x00, 0xB2, 0x02, 0xCD, 0x10,
     0xBE, 0x00, 0x81,       # mov si, 0x8100
-    # print_loop:
+    0xE8, 0x50, 0x00,       # call print
+    
+    # Start button at row 24, col 1
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x18, 0xB2, 0x01, 0xCD, 0x10,
+    0xBE, 0x30, 0x81,       # mov si, 0x8130
+    0xE8, 0x43, 0x00,       # call print
+    
+    # Clock at row 24, col 73
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x18, 0xB2, 0x49, 0xCD, 0x10,
+    0xBE, 0x40, 0x81,       # mov si, 0x8140
+    0xE8, 0x36, 0x00,       # call print
+    
+    # Icon 1: Term at row 3, col 5
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x03, 0xB2, 0x05, 0xCD, 0x10,
+    0xBE, 0x50, 0x81,       # mov si, 0x8150
+    0xE8, 0x29, 0x00,       # call print
+    
+    # Icon 2: Files at row 3, col 18
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x03, 0xB2, 0x12, 0xCD, 0x10,
+    0xBE, 0x60, 0x81,       # mov si, 0x8160
+    0xE8, 0x1C, 0x00,       # call print
+    
+    # Icon 3: Sett at row 3, col 31
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x03, 0xB2, 0x1F, 0xCD, 0x10,
+    0xBE, 0x70, 0x81,       # mov si, 0x8170
+    0xE8, 0x0F, 0x00,       # call print
+    
+    # Icon 4: Net at row 3, col 44
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x03, 0xB2, 0x2C, 0xCD, 0x10,
+    0xBE, 0x80, 0x81,       # mov si, 0x8180
+    0xE8, 0x02, 0x00,       # call print
+    
+    # Status at row 22, col 18
+    0xB4, 0x02, 0xB7, 0x00, 0xB6, 0x16, 0xB2, 0x12, 0xCD, 0x10,
+    0xBE, 0x90, 0x81,       # mov si, 0x8190
+    # fall through to print, then halt
+    
+    # === PRINT STRING ===
     0xAC,                   # lodsb
     0x3C, 0x00,             # cmp al, 0
-    0x74, 0x09,             # jz done_print
+    0x74, 0x09,             # jz done
     0xB4, 0x0E,             # mov ah, 0x0E
-    0xB7, 0x00,             # mov bh, 0
-    0xB3, 0x1F,             # mov bl, 0x1F (white on blue)
+    0xB7, 0x00,             # bh = 0
+    0xB3, 0x1F,             # bl = white on blue
     0xCD, 0x10,             # int 0x10
-    0xEB, 0xF1,             # jmp print_loop
-    # done_print:
+    0xEB, 0xF1,             # jmp print
+    # done:
+    0xC3,                   # ret
     
-    # Halt
+    # === HALT ===
     0xF4,                   # hlt
-    0xEB, 0xFD              # jmp halt
+    0xEB, 0xFD              # jmp $
 )
 
 for ($i = 0; $i -lt $stage2Code.Length; $i++) {
     $stage2[$i] = $stage2Code[$i]
 }
 
-# Main content at 0x100 (0x8100) - Shorter to fit in memory
-$content = @"
+# Strings at 0x100 (0x8100) - Single line strings only
+$stage2Strings = @(
+    @{ Offset = 0x100; Text = "FastOS v2.0 - ADead-BIB Native OS" }
+    @{ Offset = 0x130; Text = "[Start]" }
+    @{ Offset = 0x140; Text = "12:00" }
+    @{ Offset = 0x150; Text = "[T] Term" }
+    @{ Offset = 0x160; Text = "[F] Files" }
+    @{ Offset = 0x170; Text = "[S] Sett" }
+    @{ Offset = 0x180; Text = "[N] Net" }
+    @{ Offset = 0x190; Text = "System Ready - C is Master, Rust is Safety" }
+)
 
-  +============================================================+
-  |                    F A S T O S  v 2.0                      |
-  |          ADead-BIB Native Operating System                 |
-  |        C is Master  -  Rust provides Safety                |
-  +============================================================+
-
-  System:
-    [OK] CPU: x86-64    [OK] RAM: 256 MB    [OK] Video: VGA
-    [OK] Keyboard: PS/2 [OK] Mouse: PS/2    [OK] Disk: fd0
-
-  Kernel:
-    [INIT] Scheduler (64 procs)  [INIT] VFS mounted
-    [INIT] Syscalls ready        [INIT] Binary Guardian
-
-  Drivers:
-    [LOAD] keyboard.c   [LOAD] mouse.c
-    [LOAD] framebuffer.c [LOAD] nouveau.c (NVIDIA)
-
-  Rust Safety Layer:
-    [LINK] rust_malloc   [LINK] rust_memcpy_safe
-    [LINK] rust_translate [LINK] rust_buffer
-
-  Po Format: Active (PE+ELF hybrid)
-  Security: Binary Guardian enabled
-
-  FastOS ready. Type 'help' for commands.
-"@
-$contentBytes = [System.Text.Encoding]::ASCII.GetBytes($content + "`0")
-for ($i = 0; $i -lt [Math]::Min($contentBytes.Length, 0x600); $i++) {
-    $stage2[0x100 + $i] = $contentBytes[$i]
+foreach ($s in $stage2Strings) {
+    $bytes = [System.Text.Encoding]::ASCII.GetBytes($s.Text + "`0")
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        $stage2[$s.Offset + $i] = $bytes[$i]
+    }
 }
 
 [System.IO.File]::WriteAllBytes("$BUILD\stage2.bin", $stage2)
-Write-Success "Stage 2: $($stage2.Length) bytes (Windows/Linux hybrid UI)"
+Write-Success "Stage 2: $($stage2.Length) bytes (Desktop with apps)"
 
 # Step 3: Build Kernel
 Write-Status "Building kernel..."
