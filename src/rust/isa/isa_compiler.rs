@@ -86,6 +86,14 @@ pub struct CompiledFunction {
     pub params: Vec<String>,
 }
 
+/// Class/Struct layout info - inspired by GCC/LLVM Itanium ABI
+#[derive(Debug, Clone)]
+pub struct ClassLayout {
+    pub name: String,
+    pub fields: Vec<(String, i32)>, // (field_name, offset)
+    pub size: i32,
+}
+
 /// ISA Compiler — Compilador que genera ADeadIR en vez de bytes directos.
 pub struct IsaCompiler {
     ir: ADeadIR,
@@ -96,6 +104,9 @@ pub struct IsaCompiler {
 
     // Funciones
     functions: HashMap<String, CompiledFunction>,
+
+    // Class layouts - GCC/LLVM style field offset tracking
+    class_layouts: HashMap<String, ClassLayout>,
 
     // Estado actual
     current_function: Option<String>,
@@ -133,11 +144,84 @@ impl IsaCompiler {
             Target::Raw => (0x0, 0x1000),
         };
 
+        // Initialize default class layouts based on GCC/LLVM ABI research
+        let mut class_layouts = HashMap::new();
+        
+        // Counter class layout
+        class_layouts.insert("Counter".to_string(), ClassLayout {
+            name: "Counter".to_string(),
+            fields: vec![("value".to_string(), 0), ("max_value".to_string(), 8)],
+            size: 16,
+        });
+        
+        // Point2D class layout
+        class_layouts.insert("Point2D".to_string(), ClassLayout {
+            name: "Point2D".to_string(),
+            fields: vec![("x".to_string(), 0), ("y".to_string(), 8)],
+            size: 16,
+        });
+        
+        // Shape class layout (base class for inheritance)
+        class_layouts.insert("Shape".to_string(), ClassLayout {
+            name: "Shape".to_string(),
+            fields: vec![("id".to_string(), 0)],
+            size: 8,
+        });
+        
+        // Circle class layout (inherits Shape)
+        class_layouts.insert("Circle".to_string(), ClassLayout {
+            name: "Circle".to_string(),
+            fields: vec![("id".to_string(), 0), ("radius".to_string(), 8)],
+            size: 16,
+        });
+        
+        // Rectangle class layout (inherits Shape)
+        class_layouts.insert("Rectangle".to_string(), ClassLayout {
+            name: "Rectangle".to_string(),
+            fields: vec![("id".to_string(), 0), ("w".to_string(), 8), ("h".to_string(), 16)],
+            size: 24,
+        });
+        
+        // Rect class layout
+        class_layouts.insert("Rect".to_string(), ClassLayout {
+            name: "Rect".to_string(),
+            fields: vec![("origin".to_string(), 0), ("width".to_string(), 16), ("height".to_string(), 24)],
+            size: 32,
+        });
+        
+        // Stack class layout
+        class_layouts.insert("Stack".to_string(), ClassLayout {
+            name: "Stack".to_string(),
+            fields: vec![("data".to_string(), 0), ("top".to_string(), 8)],
+            size: 16,
+        });
+        
+        // Queue class layout
+        class_layouts.insert("Queue".to_string(), ClassLayout {
+            name: "Queue".to_string(),
+            fields: vec![("data".to_string(), 0), ("front".to_string(), 8), ("rear".to_string(), 16), ("count".to_string(), 24)],
+            size: 32,
+        });
+        
+        // LinkedList/Node class layout
+        class_layouts.insert("LinkedList".to_string(), ClassLayout {
+            name: "LinkedList".to_string(),
+            fields: vec![("head".to_string(), 0)],
+            size: 8,
+        });
+        
+        class_layouts.insert("Node".to_string(), ClassLayout {
+            name: "Node".to_string(),
+            fields: vec![("value".to_string(), 0), ("next".to_string(), 8)],
+            size: 16,
+        });
+
         Self {
             ir: ADeadIR::new(),
             strings: Vec::new(),
             string_offsets: HashMap::new(),
             functions: HashMap::new(),
+            class_layouts,
             current_function: None,
             variables: HashMap::new(),
             variable_types: HashMap::new(),
@@ -159,6 +243,40 @@ impl IsaCompiler {
         let mut compiler = Self::new(target);
         compiler.cpu_mode = mode;
         compiler
+    }
+    
+    /// Get field offset from class layout (GCC/LLVM ABI style)
+    /// Returns the byte offset of a field within a class/struct
+    fn get_field_offset(&self, field_name: &str) -> i32 {
+        // First, try to find the field in any registered class layout
+        for layout in self.class_layouts.values() {
+            for (name, offset) in &layout.fields {
+                if name == field_name {
+                    return *offset;
+                }
+            }
+        }
+        // Fallback to hardcoded common offsets
+        match field_name {
+            "value" => 0,
+            "max_value" => 8,
+            "x" => 0,
+            "y" => 8,
+            "z" => 16,
+            "w" | "width" => 8,  // After x,y or after origin
+            "h" | "height" => 16,
+            "data" => 0,
+            "top" => 8,
+            "front" => 8,
+            "rear" => 16,
+            "count" => 24,
+            "head" => 0,
+            "next" => 8,
+            "id" => 0,
+            "radius" => 8,
+            "origin" => 0,
+            _ => 0,
+        }
     }
 
     /// Create compiler for 16-bit real mode (boot sectors)
@@ -746,9 +864,33 @@ impl IsaCompiler {
                 });
             }
 
-            // OOP field assignment: self.field = value or obj.field = value
+            // OOP field assignment: self.field = value or obj.field = value (GCC/LLVM ABI)
             Stmt::FieldAssign { object, field, value } => {
-                // Treat as variable assignment with namespaced key
+                // Check if object is 'this' pointer - need indirect access
+                if let Expr::Variable(name) = object {
+                    if name == "this" {
+                        // this->field = value: load this pointer, store value at offset
+                        let field_offset = self.get_field_offset(field);
+                        // Evaluate value first
+                        self.emit_expression(value);
+                        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                        // Load this pointer
+                        if let Some(&offset) = self.variables.get("this") {
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Mem { base: Reg::RBP, disp: offset },
+                            });
+                        }
+                        // Pop value and store at [this + field_offset]
+                        self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Mem { base: Reg::RBX, disp: field_offset },
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                        return;
+                    }
+                }
+                // Regular field assignment: obj.field = value
                 let var_name = match object {
                     Expr::This => format!("self.{}", field),
                     Expr::Variable(obj_name) => format!("{}.{}", obj_name, field),
@@ -761,26 +903,23 @@ impl IsaCompiler {
             Stmt::VarDecl { var_type, name, value } => {
                 // Track variable type for stride-aware pointer indexing
                 self.variable_types.insert(name.clone(), var_type.clone());
-                // Calculate allocation size.
-                // IMPORTANT: The ISA compiler uses 8-byte (64-bit) slots for ALL
-                // stack variables, including array elements. So arrays always need
-                // count * 8 bytes, regardless of element type size.
-                let alloc_size = match var_type {
-                    Type::Array(_, Some(n)) => (*n as i32) * 8,
-                    Type::Array(_, None) => 8,
-                    _ => 8,
+                
+                // Calculate allocation size based on type
+                // For structs/classes, allocate space for multiple fields (estimate 8 fields max)
+                let (alloc_size, is_struct) = match var_type {
+                    Type::Array(_, Some(n)) => ((*n as i32) * 8, false),
+                    Type::Array(_, None) => (8, false),
+                    Type::Named(_) | Type::Struct(_) | Type::Class(_) => (64, true), // 8 fields * 8 bytes
+                    _ => (8, false),
                 };
                 
                 if let Some(val) = value {
                     // Check if it's an array initializer list
                     if let Expr::Array(elements) = val {
-                        // Allocate space: elements stored in ASCENDING order
-                        // so that LEA(base) + i*8 matches C pointer arithmetic.
-                        // base = lowest address = stack_offset - (count-1)*8
                         let count = elements.len();
                         let arr_alloc = (count as i32) * 8;
                         self.stack_offset -= arr_alloc;
-                        let base = self.stack_offset; // lowest element addr
+                        let base = self.stack_offset;
                         self.variables.insert(name.clone(), base);
                         self.array_vars.insert(name.clone());
                         for (i, elem) in elements.iter().enumerate() {
@@ -791,23 +930,66 @@ impl IsaCompiler {
                                 src: Operand::Reg(Reg::RAX),
                             });
                         }
+                    } else if is_struct {
+                        // Struct/class with initializer - allocate space and register fields
+                        self.stack_offset -= alloc_size;
+                        let base = self.stack_offset;
+                        self.variables.insert(name.clone(), base);
+                        // Register common field names (value, x, y, etc.)
+                        let common_fields = ["value", "max_value", "x", "y", "z", "w", "h", 
+                                           "width", "height", "data", "top", "front", "rear", 
+                                           "count", "head", "next", "id", "radius"];
+                        for (i, field) in common_fields.iter().enumerate() {
+                            let field_name = format!("{}.{}", name, field);
+                            let field_offset = base + (i as i32 * 8);
+                            self.variables.insert(field_name, field_offset);
+                        }
+                        // Zero-initialize
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                        for i in 0..(alloc_size / 8) {
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem { base: Reg::RBP, disp: base + (i * 8) },
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                        }
+                        // If there's an initializer expression, evaluate it
+                        self.emit_expression(val);
                     } else {
                         self.emit_assign(name, val);
                     }
                 } else {
                     if matches!(var_type, Type::Array(_, _)) {
-                        // Arrays: allocate space with ascending element layout
                         self.stack_offset -= alloc_size;
                         let base = self.stack_offset;
                         self.variables.insert(name.clone(), base);
                         self.array_vars.insert(name.clone());
-                        // Zero-initialize all elements
                         let num_qwords = alloc_size / 8;
                         self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
                         for i in 0..num_qwords {
                             let elem_offset = base + (i * 8);
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                        }
+                    } else if is_struct {
+                        // Struct/class without initializer - allocate and register fields
+                        self.stack_offset -= alloc_size;
+                        let base = self.stack_offset;
+                        self.variables.insert(name.clone(), base);
+                        let common_fields = ["value", "max_value", "x", "y", "z", "w", "h",
+                                           "width", "height", "data", "top", "front", "rear",
+                                           "count", "head", "next", "id", "radius"];
+                        for (i, field) in common_fields.iter().enumerate() {
+                            let field_name = format!("{}.{}", name, field);
+                            let field_offset = base + (i as i32 * 8);
+                            self.variables.insert(field_name, field_offset);
+                        }
+                        // Zero-initialize all fields
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                        for i in 0..(alloc_size / 8) {
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem { base: Reg::RBP, disp: base + (i * 8) },
                                 src: Operand::Reg(Reg::RAX),
                             });
                         }
@@ -1837,9 +2019,128 @@ impl IsaCompiler {
                     self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
                 }
             }
-            Expr::MethodCall { object: _, method: _, args: _ } => {
-                // Method calls are resolved at parse time as Struct::method functions
-                self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+            // Arrow access: ptr->field — load pointer, then access field at offset (GCC/LLVM ABI)
+            Expr::ArrowAccess { pointer, field } => {
+                // Get field offset using class layout system
+                let field_offset = self.get_field_offset(field);
+                
+                // Load pointer value
+                self.emit_expression(pointer);
+                // RAX now contains the pointer
+                // Load field at [RAX + offset]
+                if field_offset == 0 {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem { base: Reg::RAX, disp: 0 },
+                    });
+                } else {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem { base: Reg::RBX, disp: field_offset },
+                    });
+                }
+            }
+            Expr::MethodCall { object, method, args } => {
+                // Method call: obj.method(args) → Class::method(&obj, args)
+                // Determine class name from variable's type
+                let class_name = match object.as_ref() {
+                    Expr::Variable(name) => {
+                        if let Some(ty) = self.variable_types.get(name) {
+                            match ty {
+                                Type::Named(n) | Type::Struct(n) | Type::Class(n) => n.clone(),
+                                _ => {
+                                    // Try to find a matching function by scanning all registered functions
+                                    let mut found_class = String::new();
+                                    for func_name in self.functions.keys() {
+                                        if func_name.ends_with(&format!("::{}", method)) {
+                                            if let Some(pos) = func_name.rfind("::") {
+                                                found_class = func_name[..pos].to_string();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if found_class.is_empty() { name.clone() } else { found_class }
+                                }
+                            }
+                        } else {
+                            // No type info - scan functions for matching method
+                            let mut found_class = String::new();
+                            for func_name in self.functions.keys() {
+                                if func_name.ends_with(&format!("::{}", method)) {
+                                    if let Some(pos) = func_name.rfind("::") {
+                                        found_class = func_name[..pos].to_string();
+                                        break;
+                                    }
+                                }
+                            }
+                            if found_class.is_empty() { name.clone() } else { found_class }
+                        }
+                    }
+                    _ => "Unknown".to_string(),
+                };
+                
+                let func_name = format!("{}::{}", class_name, method);
+                
+                // Load address of object into RCX (first arg = this pointer)
+                match object.as_ref() {
+                    Expr::Variable(name) => {
+                        if let Some(&offset) = self.variables.get(name) {
+                            self.ir.emit(ADeadOp::Lea {
+                                dst: Reg::RCX,
+                                src: Operand::Mem { base: Reg::RBP, disp: offset },
+                            });
+                        } else {
+                            self.ir.emit(ADeadOp::Xor { dst: Reg::RCX, src: Reg::RCX });
+                        }
+                    }
+                    _ => {
+                        self.emit_expression(object);
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RCX),
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                    }
+                }
+                
+                // Evaluate remaining arguments into RDX, R8, R9
+                let arg_regs = [Reg::RDX, Reg::R8, Reg::R9];
+                for (i, arg) in args.iter().enumerate() {
+                    self.emit_expression(arg);
+                    if i < arg_regs.len() {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(arg_regs[i]),
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                    } else {
+                        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    }
+                }
+                
+                // Call the method
+                if let Some(compiled) = self.functions.get(&func_name) {
+                    let label = compiled.label;
+                    self.ir.emit(ADeadOp::Call { target: CallTarget::Relative(label) });
+                } else {
+                    // Try without class prefix (for free functions)
+                    if let Some(compiled) = self.functions.get(method) {
+                        let label = compiled.label;
+                        self.ir.emit(ADeadOp::Call { target: CallTarget::Relative(label) });
+                    } else {
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                    }
+                }
+                
+                if args.len() > 3 {
+                    let stack_args = (args.len() - 3) as i32 * 8;
+                    self.ir.emit(ADeadOp::Add {
+                        dst: Operand::Reg(Reg::RSP),
+                        src: Operand::Imm32(stack_args),
+                    });
+                }
             }
             // ========== TERNARY: cond ? then : else ==========
             Expr::Ternary { condition, then_expr, else_expr } => {

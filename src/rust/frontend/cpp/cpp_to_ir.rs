@@ -26,6 +26,8 @@ pub struct CppToIR {
     class_methods: Vec<(String, String, Vec<CppParam>, CppType)>, // (class, method, params, ret)
     current_namespace: Option<String>, // Track current namespace for unqualified calls
     namespace_functions: Vec<String>,  // All function names in current namespace
+    current_class: Option<String>,     // Track current class for this-> resolution
+    class_fields: Vec<(String, Vec<String>)>, // (class_name, field_names)
 }
 
 impl CppToIR {
@@ -35,30 +37,52 @@ impl CppToIR {
             class_methods: Vec::new(),
             current_namespace: None,
             namespace_functions: Vec::new(),
+            current_class: None,
+            class_fields: Vec::new(),
         }
+    }
+    
+    /// Check if an identifier is a field of the current class
+    fn is_class_field(&self, name: &str) -> bool {
+        if let Some(ref class_name) = self.current_class {
+            for (cn, fields) in &self.class_fields {
+                if cn == class_name && fields.contains(&name.to_string()) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn convert(&mut self, unit: &CppTranslationUnit) -> Result<Program, String> {
         let mut program = Program::new();
         program.attributes = ProgramAttributes::default();
 
-        // First pass: collect type aliases and class info
+        // First pass: collect type aliases, class info, and field names
         for decl in &unit.declarations {
             match decl {
                 CppTopLevel::TypeAlias { new_name, original, .. } => {
                     self.type_aliases.push((new_name.clone(), original.clone()));
                 }
                 CppTopLevel::ClassDef { name, members, .. } => {
+                    let mut field_names = Vec::new();
                     for member in members {
-                        if let CppClassMember::Method { name: method_name, params, return_type, .. } = member {
-                            self.class_methods.push((
-                                name.clone(),
-                                method_name.clone(),
-                                params.clone(),
-                                return_type.clone(),
-                            ));
+                        match member {
+                            CppClassMember::Method { name: method_name, params, return_type, .. } => {
+                                self.class_methods.push((
+                                    name.clone(),
+                                    method_name.clone(),
+                                    params.clone(),
+                                    return_type.clone(),
+                                ));
+                            }
+                            CppClassMember::Field { name: field_name, .. } => {
+                                field_names.push(field_name.clone());
+                            }
+                            _ => {}
                         }
                     }
+                    self.class_fields.push((name.clone(), field_names));
                 }
                 _ => {}
             }
@@ -281,21 +305,55 @@ impl CppToIR {
         })
     }
 
-    fn convert_method(&self, ret_type: &CppType, func_name: &str, _class_name: &str, params: &[CppParam], body: &[CppStmt]) -> Result<Function, String> {
+    fn convert_method(&mut self, ret_type: &CppType, func_name: &str, class_name: &str, params: &[CppParam], body: &[CppStmt]) -> Result<Function, String> {
+        // Set current class for this-> resolution
+        self.current_class = Some(class_name.to_string());
+        
         // Add implicit 'this' pointer as first param
         let mut all_params = vec![CppParam {
-            param_type: CppType::Pointer(Box::new(CppType::Named(_class_name.to_string()))),
+            param_type: CppType::Pointer(Box::new(CppType::Named(class_name.to_string()))),
             name: Some("this".to_string()),
             default_value: None,
             is_variadic: false,
         }];
         all_params.extend_from_slice(params);
-        self.convert_function(ret_type, func_name, &all_params, body)
+        let result = self.convert_function(ret_type, func_name, &all_params, body);
+        
+        self.current_class = None;
+        result
     }
 
-    fn convert_constructor(&self, class_name: &str, params: &[CppParam], _init_list: &[(String, CppExpr)], body: &[CppStmt]) -> Result<Function, String> {
+    fn convert_constructor(&mut self, class_name: &str, params: &[CppParam], init_list: &[(String, CppExpr)], body: &[CppStmt]) -> Result<Function, String> {
+        // Set current class for this-> resolution
+        self.current_class = Some(class_name.to_string());
+        
         let func_name = format!("{}::{}", class_name, class_name);
-        self.convert_function(&CppType::Void, &func_name, params, body)
+        
+        // Add implicit 'this' pointer as first param (like methods)
+        let mut all_params = vec![CppParam {
+            param_type: CppType::Pointer(Box::new(CppType::Named(class_name.to_string()))),
+            name: Some("this".to_string()),
+            default_value: None,
+            is_variadic: false,
+        }];
+        all_params.extend_from_slice(params);
+        
+        // Convert initializer list to field assignments at start of body
+        let mut full_body = Vec::new();
+        for (field, expr) in init_list {
+            full_body.push(CppStmt::Expr(CppExpr::Assign {
+                target: Box::new(CppExpr::MemberAccess {
+                    object: Box::new(CppExpr::Identifier("this".to_string())),
+                    member: field.clone(),
+                }),
+                value: Box::new(expr.clone()),
+            }));
+        }
+        full_body.extend_from_slice(body);
+        
+        let result = self.convert_function(&CppType::Void, &func_name, &all_params, &full_body);
+        self.current_class = None;
+        result
     }
 
     // ========== Statement conversion ==========
@@ -397,10 +455,38 @@ impl CppToIR {
                         None
                     };
                     stmts.push(Stmt::VarDecl {
-                        var_type,
+                        var_type: var_type.clone(),
                         name: d.name.clone(),
-                        value: init,
+                        value: init.clone(),
                     });
+                    
+                    // If this is a class/struct type, generate constructor call
+                    if let CppType::Named(class_name) | CppType::Class(class_name) | CppType::Struct(class_name) = type_spec {
+                        let ctor_name = format!("{}::{}", class_name, class_name);
+                        // Get constructor args from initializer
+                        let ctor_args = if let Some(ref e) = d.initializer {
+                            match e {
+                                CppExpr::Call { args, .. } => {
+                                    args.iter().map(|a| self.convert_expr(a)).collect::<Result<Vec<_>, _>>()?
+                                }
+                                CppExpr::InitList(items) => {
+                                    items.iter().map(|a| self.convert_expr(a)).collect::<Result<Vec<_>, _>>()?
+                                }
+                                // Single value initializer (e.g., Counter c(5))
+                                _ => vec![self.convert_expr(e)?],
+                            }
+                        } else {
+                            vec![] // Default constructor
+                        };
+                        
+                        // Generate: ClassName::ClassName(&var, args...)
+                        let mut call_args = vec![Expr::AddressOf(Box::new(Expr::Variable(d.name.clone())))];
+                        call_args.extend(ctor_args);
+                        stmts.push(Stmt::Expr(Expr::Call {
+                            name: ctor_name,
+                            args: call_args,
+                        }));
+                    }
                 }
                 Ok(stmts)
             }
@@ -563,7 +649,17 @@ impl CppToIR {
             CppExpr::CharLiteral(c) => Ok(Expr::Number(*c as i64)),
             CppExpr::BoolLiteral(b) => Ok(Expr::Bool(*b)),
             CppExpr::NullptrLiteral => Ok(Expr::Nullptr),
-            CppExpr::Identifier(name) => Ok(Expr::Variable(name.clone())),
+            CppExpr::Identifier(name) => {
+                // If inside a class method and this is a class field, convert to this->field
+                if self.is_class_field(name) {
+                    Ok(Expr::ArrowAccess {
+                        pointer: Box::new(Expr::Variable("this".to_string())),
+                        field: name.clone(),
+                    })
+                } else {
+                    Ok(Expr::Variable(name.clone()))
+                }
+            }
             CppExpr::ScopedIdentifier { scope, name } => {
                 let full = format!("{}::{}", scope.join("::"), name);
                 // Handle std::cout, std::endl, etc
@@ -645,6 +741,33 @@ impl CppToIR {
             }
 
             CppExpr::Call { callee, args } => {
+                let ir_args: Vec<Expr> = args.iter()
+                    .map(|a| self.convert_expr(a))
+                    .collect::<Result<Vec<_>, _>>()?;
+                
+                // Check if this is a method call: obj.method() or obj->method()
+                match callee.as_ref() {
+                    CppExpr::MemberAccess { object, member } => {
+                        // Method call: obj.method(args) → MethodCall { object, method, args }
+                        let obj = self.convert_expr(object)?;
+                        return Ok(Expr::MethodCall {
+                            object: Box::new(obj),
+                            method: member.clone(),
+                            args: ir_args,
+                        });
+                    }
+                    CppExpr::ArrowAccess { pointer, member } => {
+                        // Method call via pointer: ptr->method(args)
+                        let ptr = self.convert_expr(pointer)?;
+                        return Ok(Expr::MethodCall {
+                            object: Box::new(Expr::Deref(Box::new(ptr))),
+                            method: member.clone(),
+                            args: ir_args,
+                        });
+                    }
+                    _ => {}
+                }
+                
                 let name = match callee.as_ref() {
                     CppExpr::Identifier(n) => {
                         // If inside a namespace and this is an unqualified call to a sibling
@@ -663,9 +786,6 @@ impl CppToIR {
                         format!("{}::{}", scope.join("::"), name),
                     _ => "unknown".to_string(),
                 };
-                let ir_args: Vec<Expr> = args.iter()
-                    .map(|a| self.convert_expr(a))
-                    .collect::<Result<Vec<_>, _>>()?;
 
                 // Handle special functions
                 match name.as_str() {
