@@ -616,9 +616,14 @@ impl CppToIR {
 pub fn compile_cpp_to_program(source: &str) -> Result<Program, String> {
     use super::cpp_lexer::CppLexer;
     use super::cpp_parser::CppParser;
+    use super::cpp_preprocessor::CppPreprocessor;
 
-    // Phase 1: Lex — tokenize source (preprocessor directives are skipped by lexer)
-    let tokens = CppLexer::new(source).tokenize();
+    // Phase 0: Preprocess — resolve #include, strip #define/#ifdef/etc.
+    let mut preprocessor = CppPreprocessor::new();
+    let preprocessed = preprocessor.process(source);
+
+    // Phase 1: Lex — tokenize preprocessed source
+    let tokens = CppLexer::new(&preprocessed).tokenize();
 
     // Phase 2: Parse — tokens → C++ AST
     let unit = CppParser::new(tokens).parse_translation_unit()?;
@@ -752,5 +757,14 @@ mod tests {
         let source = std::fs::read_to_string("examples/cpp/cpp_modern.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
         assert!(result.is_ok(), "cpp_modern.cpp failed: {}", result.unwrap_err());
+    }
+
+    #[test]
+    fn test_example_cpp_stdlib_long() {
+        let source = std::fs::read_to_string("examples/cpp/cpp_stdlib_long.cpp").unwrap();
+        let result = compile_cpp_to_program(&source);
+        assert!(result.is_ok(), "cpp_stdlib_long.cpp failed: {}", result.unwrap_err());
+        let prog = result.unwrap();
+        assert!(prog.functions.len() > 10, "cpp_stdlib_long.cpp should have many functions, got {}", prog.functions.len());
     }
 }

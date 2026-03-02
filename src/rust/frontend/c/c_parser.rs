@@ -565,9 +565,10 @@ impl CParser {
         while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
             let ident = self.expect_identifier()?;
             let val = if self.eat(&CToken::Assign) {
+                let negative = self.eat(&CToken::Minus);
                 if let CToken::IntLiteral(n) = self.current().clone() {
                     self.advance();
-                    Some(n)
+                    Some(if negative { -n } else { n })
                 } else {
                     None
                 }

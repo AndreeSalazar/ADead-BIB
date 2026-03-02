@@ -83,7 +83,18 @@ impl CppParser {
             CppToken::Inline | CppToken::Constexpr | CppToken::Mutable |
             CppToken::Typename | CppToken::Decltype | CppToken::Register |
             CppToken::Thread_local => true,
-            CppToken::Identifier(name) => self.type_names.contains(name),
+            CppToken::Identifier(name) => {
+                if self.type_names.contains(name) {
+                    return true;
+                }
+                // Recognize namespace::type patterns (e.g. std::vector, std::string)
+                if *self.peek() == CppToken::Scope {
+                    if let CppToken::Identifier(inner) = self.peek_at(2) {
+                        return self.type_names.contains(inner);
+                    }
+                }
+                false
+            }
             _ => false,
         }
     }
@@ -640,10 +651,20 @@ impl CppParser {
             };
             Some(expr)
         } else if *self.current() == CppToken::LBrace {
-            // Brace initialization: int x{5}
+            // Brace initialization: int x{5} or vector<int> v = {1,2,3} or int arr{1,2,3}
             self.advance();
             let expr = if *self.current() != CppToken::RBrace {
-                self.parse_expression()?
+                let mut items = Vec::new();
+                items.push(self.parse_assignment_expr()?);
+                while self.eat(&CppToken::Comma) {
+                    if *self.current() == CppToken::RBrace { break; } // trailing comma
+                    items.push(self.parse_assignment_expr()?);
+                }
+                if items.len() == 1 {
+                    items.into_iter().next().unwrap()
+                } else {
+                    CppExpr::InitList(items)
+                }
             } else {
                 CppExpr::InitList(Vec::new())
             };
@@ -1018,7 +1039,14 @@ impl CppParser {
                     body,
                 });
             } else {
-                // Field
+                // Field — handle array dimensions: int data[32];
+                while *self.current() == CppToken::LBracket {
+                    self.advance();
+                    if *self.current() != CppToken::RBracket {
+                        let _ = self.parse_assignment_expr()?;
+                    }
+                    self.expect(&CppToken::RBracket)?;
+                }
                 let default_value = if self.eat(&CppToken::Assign) {
                     Some(self.parse_expression()?)
                 } else if *self.current() == CppToken::LBrace {

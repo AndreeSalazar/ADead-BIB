@@ -1340,6 +1340,15 @@ mod tests {
     }
 
     #[test]
+    fn test_example_c_stdlib_long() {
+        let source = std::fs::read_to_string("examples/c/c_stdlib_long.c").unwrap();
+        let result = compile_c_to_program(&source);
+        assert!(result.is_ok(), "c_stdlib_long.c failed: {}", result.unwrap_err());
+        let prog = result.unwrap();
+        assert!(prog.functions.len() > 20, "c_stdlib_long.c should have many functions, got {}", prog.functions.len());
+    }
+
+    #[test]
     fn test_printf_percent_d_newline() {
         // This was the core "duplication" bug:
         // printf("Result: %d\n", x) should produce:

@@ -411,7 +411,9 @@ impl IsaCompiler {
     fn compile_function(&mut self, func: &Function) {
         self.current_function = Some(func.name.clone());
         self.variables.clear();
-        self.stack_offset = -8;
+        // Start at -40 because prologue pushes 4 callee-saved regs after mov rbp,rsp
+        // occupying [rbp-8], [rbp-16], [rbp-24], [rbp-32]
+        self.stack_offset = -40;
 
         let is_interrupt = func.attributes.is_interrupt;
         let is_exception = func.attributes.is_exception;
@@ -481,7 +483,8 @@ impl IsaCompiler {
     fn compile_top_level(&mut self, stmts: &[Stmt]) {
         self.current_function = Some("__entry".to_string());
         self.variables.clear();
-        self.stack_offset = -8;
+        // Start at -40 because prologue pushes 4 callee-saved regs after mov rbp,rsp
+        self.stack_offset = -40;
 
         // For bare-metal (Target::Raw), emit instructions directly — no prologue/epilogue.
         // Boot sectors and flat binaries need raw machine code, not 64-bit function frames.
@@ -512,6 +515,12 @@ impl IsaCompiler {
             dst: Operand::Reg(Reg::RBP),
             src: Operand::Reg(Reg::RSP),
         });
+        // Save callee-saved registers used by TempAllocator (RBX, R12)
+        // Windows x64 ABI requires these to be preserved across calls
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBX) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R12) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RSI) });
+        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RDI) });
         // Dynamic stack frame: emit placeholder, patch after function body
         self.prologue_sub_index = Some(self.ir.len());
         self.ir.emit(ADeadOp::Sub {
@@ -544,10 +553,18 @@ impl IsaCompiler {
     }
 
     fn emit_epilogue(&mut self) {
-        self.ir.emit(ADeadOp::Mov {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Reg(Reg::RBP),
+        // Restore RSP to point before callee-saved pushes
+        // We pushed RBP, RBX, R12, RSI, RDI after mov rbp,rsp
+        // So lea rsp, [rbp-32] points to where RDI was pushed
+        self.ir.emit(ADeadOp::Lea {
+            dst: Reg::RSP,
+            src: Operand::Mem { base: Reg::RBP, disp: -32 },
         });
+        // Restore callee-saved registers (reverse order of prologue)
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RDI });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RSI });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R12 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
         self.ir.emit(ADeadOp::Pop { dst: Reg::RBP });
         self.ir.emit(ADeadOp::Ret);
     }
@@ -1311,33 +1328,15 @@ impl IsaCompiler {
     fn emit_condition(&mut self, expr: &Expr) {
         match expr {
             Expr::Comparison { op, left, right } => {
+                // Use push/pop — safe for nested calls and recursion
                 self.emit_expression(left);
-
-                // Use register allocation instead of push/pop for comparisons
-                if let Some(temp) = self.temp_alloc.alloc() {
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(temp),
-                        src: Operand::Reg(Reg::RAX),
-                    });
-                    self.emit_expression(right);
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RBX),
-                        src: Operand::Reg(Reg::RAX),
-                    });
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Reg(temp),
-                    });
-                    self.temp_alloc.free(temp);
-                } else {
-                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                    self.emit_expression(right);
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RBX),
-                        src: Operand::Reg(Reg::RAX),
-                    });
-                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
-                }
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(right);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
 
                 self.ir.emit(ADeadOp::Cmp {
                     left: Operand::Reg(Reg::RAX),
@@ -1403,37 +1402,16 @@ impl IsaCompiler {
                 }
             }
             Expr::BinaryOp { op, left, right } => {
-                // Optimization: use register allocation instead of push/pop
-                // This eliminates 2 bytes per push + 1 byte per pop = 3 bytes saved per binop
-                // and avoids RSP mutation which can break stack alignment
+                // Use push/pop to preserve left across right evaluation.
+                // This is safe for all cases including nested calls and recursion.
                 self.emit_expression(left);
-
-                if let Some(temp) = self.temp_alloc.alloc() {
-                    // Fast path: save left in a temp register (no stack ops!)
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(temp),
-                        src: Operand::Reg(Reg::RAX),
-                    });
-                    self.emit_expression(right);
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RBX),
-                        src: Operand::Reg(Reg::RAX),
-                    });
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Reg(temp),
-                    });
-                    self.temp_alloc.free(temp);
-                } else {
-                    // Spill path: all temp regs in use, fall back to push/pop
-                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                    self.emit_expression(right);
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RBX),
-                        src: Operand::Reg(Reg::RAX),
-                    });
-                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
-                }
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(right);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
 
                 match op {
                     BinOp::Add => self.ir.emit(ADeadOp::Add {
@@ -1654,31 +1632,31 @@ impl IsaCompiler {
     }
 
     fn emit_call(&mut self, name: &str, args: &[Expr]) {
+        // Evaluate all arguments first, pushing results to stack.
+        // This prevents arg register clobbering when evaluating later args
+        // (temp allocator uses RCX/RDX/R8/R9 which are also arg registers).
+        let arg_count = args.len().min(4);
+
+        // Phase 1: Evaluate each arg, push result to stack
+        for arg in args.iter().take(4) {
+            self.emit_expression(arg);
+            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+        }
+
+        // Phase 2: Pop results into arg registers (reverse order)
+        for i in (0..arg_count).rev() {
+            let dst = self.arg_register(i);
+            self.ir.emit(ADeadOp::Pop { dst });
+        }
+
         // Special handling for printf — call via IAT
         if name == "printf" || name == "std::printf" {
-            for (i, arg) in args.iter().enumerate().take(4) {
-                self.emit_expression(arg);
-                let dst = self.arg_register(i);
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(dst),
-                    src: Operand::Reg(Reg::RAX),
-                });
-            }
             self.emit_call_printf();
             return;
         }
 
         // Special handling for scanf — call via IAT
         if name == "scanf" || name == "std::scanf" {
-            for (i, arg) in args.iter().enumerate().take(4) {
-                self.emit_expression(arg);
-                let dst = self.arg_register(i);
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(dst),
-                    src: Operand::Reg(Reg::RAX),
-                });
-            }
-            // Shadow space + call scanf IAT
             self.ir.emit(ADeadOp::Sub {
                 dst: Operand::Reg(Reg::RSP),
                 src: Operand::Imm8(32),
@@ -1689,16 +1667,6 @@ impl IsaCompiler {
                 src: Operand::Imm8(32),
             });
             return;
-        }
-
-        // Regular function call
-        for (i, arg) in args.iter().enumerate().take(4) {
-            self.emit_expression(arg);
-            let dst = self.arg_register(i);
-            self.ir.emit(ADeadOp::Mov {
-                dst: Operand::Reg(dst),
-                src: Operand::Reg(Reg::RAX),
-            });
         }
 
         // Shadow space
