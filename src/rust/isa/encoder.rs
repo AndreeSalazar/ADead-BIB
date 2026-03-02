@@ -188,215 +188,44 @@ impl Encoder {
     // MOV
     // ========================================
 
+    /// FASM-inspired generic MOV encoder — supports ALL register combinations.
+    /// Replaces ~120 lines of per-register match arms with computed encoding.
     fn encode_mov(&mut self, dst: &Operand, src: &Operand) {
         match (dst, src) {
-            // mov reg64, imm64
+            // mov r64, imm64 — FASM: mov_reg_imm_64bit (REX.W B8+rd io)
             (Operand::Reg(r), Operand::Imm64(v)) => {
-                match r {
-                    Reg::RAX => {
-                        self.emit(&[0x48, 0xB8]);
-                        self.emit_u64(*v);
-                    }
-                    Reg::RCX => {
-                        self.emit(&[0x48, 0xB9]);
-                        self.emit_u64(*v);
-                    }
-                    Reg::RDX => {
-                        self.emit(&[0x48, 0xBA]);
-                        self.emit_u64(*v);
-                    }
-                    Reg::RBX => {
-                        self.emit(&[0x48, 0xBB]);
-                        self.emit_u64(*v);
-                    }
-                    Reg::RSI => {
-                        self.emit(&[0x48, 0xBE]);
-                        self.emit_u64(*v);
-                    }
-                    Reg::RDI => {
-                        self.emit(&[0x48, 0xBF]);
-                        self.emit_u64(*v);
-                    }
-                    Reg::R8 => {
-                        self.emit(&[0x49, 0xB8]);
-                        self.emit_u64(*v);
-                    }
-                    Reg::R9 => {
-                        self.emit(&[0x49, 0xB9]);
-                        self.emit_u64(*v);
-                    }
-                    _ => {
-                        // Generic MOV r64, imm64 using reg_index
-                        let (idx, ext) = reg_index(r);
-                        let rex = 0x48 | if ext { 0x01 } else { 0x00 };
-                        self.emit(&[rex, 0xB8 + idx]);
-                        self.emit_u64(*v);
-                    }
-                }
+                let (idx, ext) = reg_index(r);
+                let rex = self.rex_wrxb(true, false, ext);
+                self.emit(&[rex, 0xB8 + idx]);
+                self.emit_u64(*v);
             }
-            // mov reg32, imm32
-            (Operand::Reg(Reg::EAX), Operand::Imm32(v)) => {
-                self.emit(&[0xB8]);
+            // mov r32, imm32 — FASM: mov_reg_imm_32bit (B8+rd id)
+            (Operand::Reg(r), Operand::Imm32(v)) if r.is_32bit() => {
+                let (idx, _) = reg_index(r);
+                self.emit(&[0xB8 + idx]);
                 self.emit_i32(*v);
             }
-            // mov reg64, imm32 (sign-extended)
-            (Operand::Reg(r), Operand::Imm32(v)) => match r {
-                Reg::RAX => {
-                    self.emit(&[0x48, 0xC7, 0xC0]);
-                    self.emit_i32(*v);
-                }
-                Reg::RCX => {
-                    self.emit(&[0x48, 0xC7, 0xC1]);
-                    self.emit_i32(*v);
-                }
-                Reg::RDX => {
-                    self.emit(&[0x48, 0xC7, 0xC2]);
-                    self.emit_i32(*v);
-                }
-                Reg::RDI => {
-                    self.emit(&[0x48, 0xC7, 0xC7]);
-                    self.emit_i32(*v);
-                }
-                _ => {
-                    self.emit(&[0x48, 0xC7, 0xC0]);
-                    self.emit_i32(*v);
-                }
-            },
-            // mov reg64, [rbp+disp32]
-            (
-                Operand::Reg(r),
-                Operand::Mem {
-                    base: Reg::RBP,
-                    disp,
-                },
-            ) => match r {
-                Reg::RAX => {
-                    self.emit(&[0x48, 0x8B, 0x85]);
-                    self.emit_i32(*disp);
-                }
-                Reg::RCX => {
-                    self.emit(&[0x48, 0x8B, 0x8D]);
-                    self.emit_i32(*disp);
-                }
-                Reg::RDX => {
-                    self.emit(&[0x48, 0x8B, 0x95]);
-                    self.emit_i32(*disp);
-                }
-                Reg::RBX => {
-                    self.emit(&[0x48, 0x8B, 0x9D]);
-                    self.emit_i32(*disp);
-                }
-                _ => {
-                    self.emit(&[0x48, 0x8B, 0x85]);
-                    self.emit_i32(*disp);
-                }
-            },
-            // mov [rbp+disp32], reg64
-            (
-                Operand::Mem {
-                    base: Reg::RBP,
-                    disp,
-                },
-                Operand::Reg(r),
-            ) => {
-                let fits_i8 = *disp >= -128 && *disp <= 127;
-                match r {
-                    Reg::RAX => {
-                        self.emit(&[0x48, 0x89, 0x85]);
-                        self.emit_i32(*disp);
-                    }
-                    Reg::RCX if fits_i8 => {
-                        self.emit(&[0x48, 0x89, 0x4D, *disp as u8]);
-                    }
-                    Reg::RCX => {
-                        self.emit(&[0x48, 0x89, 0x8D]);
-                        self.emit_i32(*disp);
-                    }
-                    Reg::RDX if fits_i8 => {
-                        self.emit(&[0x48, 0x89, 0x55, *disp as u8]);
-                    }
-                    Reg::RDX => {
-                        self.emit(&[0x48, 0x89, 0x95]);
-                        self.emit_i32(*disp);
-                    }
-                    Reg::R8 if fits_i8 => {
-                        self.emit(&[0x4C, 0x89, 0x45, *disp as u8]);
-                    }
-                    Reg::R8 => {
-                        self.emit(&[0x4C, 0x89, 0x85]);
-                        self.emit_i32(*disp);
-                    }
-                    Reg::R9 if fits_i8 => {
-                        self.emit(&[0x4C, 0x89, 0x4D, *disp as u8]);
-                    }
-                    Reg::R9 => {
-                        self.emit(&[0x4C, 0x89, 0x8D]);
-                        self.emit_i32(*disp);
-                    }
-                    _ => {
-                        self.emit(&[0x48, 0x89, 0x85]);
-                        self.emit_i32(*disp);
-                    }
-                }
+            // mov r64, imm32 (sign-extended) — FASM: mov_reg_64bit_imm_32bit
+            (Operand::Reg(r), Operand::Imm32(v)) => {
+                let (idx, ext) = reg_index(r);
+                let rex = self.rex_wrxb(true, false, ext);
+                let modrm = self.modrm(3, 0, idx);
+                self.emit(&[rex, 0xC7, modrm]);
+                self.emit_i32(*v);
             }
-            // mov reg64, [reg64] (base sin desplazamiento)
-            (
-                Operand::Reg(Reg::RAX),
-                Operand::Mem {
-                    base: Reg::RAX,
-                    disp: 0,
-                },
-            ) => {
-                self.emit(&[0x48, 0x8B, 0x00]);
+            // mov r64, [base+disp] — FASM: mov_reg_mem (8B /r)
+            (Operand::Reg(r), Operand::Mem { base, disp }) => {
+                self.encode_rm_disp(0x8B, r, base, *disp);
             }
-            (
-                Operand::Reg(Reg::RAX),
-                Operand::Mem {
-                    base: Reg::RBX,
-                    disp: 0,
-                },
-            ) => {
-                self.emit(&[0x48, 0x8B, 0x03]);
+            // mov [base+disp], r64 — FASM: basic_mem_reg (89 /r)
+            (Operand::Mem { base, disp }, Operand::Reg(r)) => {
+                self.encode_rm_disp(0x89, r, base, *disp);
             }
-            // mov [reg64], reg64 (base sin desplazamiento)
-            (
-                Operand::Mem {
-                    base,
-                    disp: 0,
-                },
-                Operand::Reg(src_r),
-            ) => {
-                let (base_idx, base_ext) = reg_index(base);
-                let (src_idx, src_ext) = reg_index(src_r);
-                let mut rex: u8 = 0x48;
-                if src_ext { rex |= 0x04; }
-                if base_ext { rex |= 0x01; }
-                let modrm = (src_idx << 3) | base_idx;
-                self.emit(&[rex, 0x89, modrm]);
-            }
-            // mov reg64, reg64
+            // mov r64, r64 — FASM: mov_reg_reg (89 /r)
             (Operand::Reg(dst_r), Operand::Reg(src_r)) => {
-                self.encode_mov_reg_reg(dst_r, src_r);
+                self.encode_rr(0x89, src_r, dst_r);
             }
             _ => {}
-        }
-    }
-
-    fn encode_mov_reg_reg(&mut self, dst: &Reg, src: &Reg) {
-        match (dst, src) {
-            (Reg::RBP, Reg::RSP) => self.emit(&[0x48, 0x89, 0xE5]),
-            (Reg::RSP, Reg::RBP) => self.emit(&[0x48, 0x89, 0xEC]),
-            (Reg::RBX, Reg::RAX) => self.emit(&[0x48, 0x89, 0xC3]),
-            (Reg::RCX, Reg::RAX) => self.emit(&[0x48, 0x89, 0xC1]),
-            (Reg::RDX, Reg::RAX) => self.emit(&[0x48, 0x89, 0xC2]),
-            (Reg::RAX, Reg::RCX) => self.emit(&[0x48, 0x89, 0xC8]),
-            (Reg::R8, Reg::RAX) => self.emit(&[0x49, 0x89, 0xC0]),
-            (Reg::R9, Reg::RAX) => self.emit(&[0x49, 0x89, 0xC1]),
-            _ => {
-                // Encoding genérico: REX.W + MOV + ModR/M
-                let (rex, modrm) = self.reg_reg_encoding(src, dst);
-                self.emit(&[rex, 0x89, modrm]);
-            }
         }
     }
 
@@ -404,31 +233,19 @@ impl Encoder {
     // MOVZX, LEA
     // ========================================
 
-    fn encode_movzx(&mut self, _dst: &Reg, _src: &Reg) {
-        // movzx rax, al → [0x48, 0x0F, 0xB6, 0xC0]
-        self.emit(&[0x48, 0x0F, 0xB6, 0xC0]);
+    /// FASM-inspired: generic MOVZX r64, r8 — supports ALL registers
+    fn encode_movzx(&mut self, dst: &Reg, src: &Reg) {
+        let (dst_idx, dst_ext) = reg_index(dst);
+        let (src_idx, src_ext) = reg_index(src);
+        let rex = self.rex_wrxb(true, dst_ext, src_ext);
+        let modrm = self.modrm(3, dst_idx, src_idx);
+        self.emit(&[rex, 0x0F, 0xB6, modrm]);
     }
 
+    /// FASM-inspired: generic LEA r64, [base+disp] — supports ALL registers
     fn encode_lea(&mut self, dst: &Reg, src: &Operand) {
-        if let Operand::Mem {
-            base: Reg::RBP,
-            disp,
-        } = src
-        {
-            match dst {
-                Reg::RAX => {
-                    self.emit(&[0x48, 0x8D, 0x85]);
-                    self.emit_i32(*disp);
-                }
-                Reg::RDX => {
-                    self.emit(&[0x48, 0x8D, 0x95]);
-                    self.emit_i32(*disp);
-                }
-                _ => {
-                    self.emit(&[0x48, 0x8D, 0x85]);
-                    self.emit_i32(*disp);
-                }
-            }
+        if let Operand::Mem { base, disp } = src {
+            self.encode_rm_disp(0x8D, dst, base, *disp);
         }
     }
 
@@ -436,71 +253,78 @@ impl Encoder {
     // Arithmetic: ADD, SUB, MUL, DIV
     // ========================================
 
+    /// FASM-inspired: generic ADD — supports ALL register/immediate combinations
     fn encode_add(&mut self, dst: &Operand, src: &Operand) {
         match (dst, src) {
-            (Operand::Reg(Reg::RAX), Operand::Reg(Reg::RBX)) => {
-                self.emit(&[0x48, 0x01, 0xD8]);
-            }
-            (Operand::Reg(Reg::RSP), Operand::Imm8(v)) => {
-                self.emit(&[0x48, 0x83, 0xC4, *v as u8]);
-            }
-            (Operand::Reg(Reg::RSP), Operand::Imm32(v)) => {
-                self.emit(&[0x48, 0x81, 0xC4]);
-                self.emit_i32(*v);
-            }
+            // add r64, r64 — FASM: basic_reg_reg (01 /r)
+            (Operand::Reg(d), Operand::Reg(s)) => self.encode_rr(0x01, s, d),
+            // add r64, imm — FASM: basic_reg_imm with auto imm8/imm32 (/0)
+            (Operand::Reg(r), Operand::Imm8(v)) => self.encode_alu_ri(0, r, *v as i32),
+            (Operand::Reg(r), Operand::Imm32(v)) => self.encode_alu_ri(0, r, *v),
             _ => {}
         }
     }
 
+    /// FASM-inspired: generic SUB — supports ALL register/immediate combinations
     fn encode_sub(&mut self, dst: &Operand, src: &Operand) {
         match (dst, src) {
-            (Operand::Reg(Reg::RAX), Operand::Reg(Reg::RBX)) => {
-                self.emit(&[0x48, 0x29, 0xD8]);
-            }
-            (Operand::Reg(Reg::RBX), Operand::Reg(Reg::RAX)) => {
-                self.emit(&[0x48, 0x29, 0xC3]);
-            }
-            (Operand::Reg(Reg::RSP), Operand::Imm32(v)) => {
-                self.emit(&[0x48, 0x81, 0xEC]);
-                self.emit_i32(*v);
-            }
-            (Operand::Reg(Reg::RSP), Operand::Imm8(v)) => {
-                self.emit(&[0x48, 0x83, 0xEC, *v as u8]);
-            }
+            // sub r64, r64 — FASM: basic_reg_reg (29 /r)
+            (Operand::Reg(d), Operand::Reg(s)) => self.encode_rr(0x29, s, d),
+            // sub r64, imm — FASM: basic_reg_imm with auto imm8/imm32 (/5)
+            (Operand::Reg(r), Operand::Imm8(v)) => self.encode_alu_ri(5, r, *v as i32),
+            (Operand::Reg(r), Operand::Imm32(v)) => self.encode_alu_ri(5, r, *v),
             _ => {}
         }
     }
 
-    fn encode_mul(&mut self, _dst: &Reg, _src: &Reg) {
-        // imul rax, rbx → [0x48, 0x0F, 0xAF, 0xC3]
-        self.emit(&[0x48, 0x0F, 0xAF, 0xC3]);
+    /// FASM-inspired: generic IMUL r64, r64 — supports ALL register combinations
+    fn encode_mul(&mut self, dst: &Reg, src: &Reg) {
+        let (dst_idx, dst_ext) = reg_index(dst);
+        let (src_idx, src_ext) = reg_index(src);
+        let rex = self.rex_wrxb(true, dst_ext, src_ext);
+        let modrm = self.modrm(3, dst_idx, src_idx);
+        self.emit(&[rex, 0x0F, 0xAF, modrm]);
     }
 
-    fn encode_div(&mut self, _src: &Reg) {
-        // cqo + idiv rbx
-        self.emit(&[0x48, 0x99]); // cqo
-        self.emit(&[0x48, 0xF7, 0xFB]); // idiv rbx
+    /// FASM-inspired: generic IDIV r64 — supports ALL registers
+    fn encode_div(&mut self, src: &Reg) {
+        let (idx, ext) = reg_index(src);
+        let rex_cqo = self.rex_wrxb(true, false, false);
+        self.emit(&[rex_cqo, 0x99]); // cqo
+        let rex = self.rex_wrxb(true, false, ext);
+        let modrm = self.modrm(3, 7, idx); // IDIV = /7
+        self.emit(&[rex, 0xF7, modrm]);
     }
 
     // ========================================
     // Bitwise: AND, OR, XOR
     // ========================================
 
-    fn encode_and(&mut self, _dst: &Reg, _src: &Reg) {
-        self.emit(&[0x48, 0x21, 0xD8]); // and rax, rbx
+    /// FASM-inspired: generic AND r64, r64
+    fn encode_and(&mut self, dst: &Reg, src: &Reg) {
+        self.encode_rr(0x21, src, dst);
     }
 
-    fn encode_or(&mut self, _dst: &Reg, _src: &Reg) {
-        self.emit(&[0x48, 0x09, 0xD8]); // or rax, rbx
+    /// FASM-inspired: generic OR r64, r64
+    fn encode_or(&mut self, dst: &Reg, src: &Reg) {
+        self.encode_rr(0x09, src, dst);
     }
 
+    /// FASM-inspired: generic XOR r, r — auto-detects 32-bit for xor eax,eax optimization
     fn encode_xor(&mut self, dst: &Reg, src: &Reg) {
-        match (dst, src) {
-            (Reg::RAX, Reg::RAX) => self.emit(&[0x48, 0x31, 0xC0]),
-            (Reg::EAX, Reg::EAX) => self.emit(&[0x31, 0xC0]),
-            (Reg::ECX, Reg::ECX) => self.emit(&[0x31, 0xC9]),
-            (Reg::RCX, Reg::RCX) => self.emit(&[0x48, 0x31, 0xC9]),
-            _ => self.emit(&[0x48, 0x31, 0xC0]),
+        if dst.is_32bit() {
+            // 32-bit XOR: no REX.W needed (saves 1 byte, FASM-style size opt)
+            let (dst_idx, dst_ext) = reg_index(dst);
+            let (src_idx, src_ext) = reg_index(src);
+            let modrm = self.modrm(3, src_idx, dst_idx);
+            if dst_ext || src_ext {
+                let rex = self.rex_wrxb(false, src_ext, dst_ext);
+                self.emit(&[rex, 0x31, modrm]);
+            } else {
+                self.emit(&[0x31, modrm]);
+            }
+        } else {
+            self.encode_rr(0x31, src, dst);
         }
     }
 
@@ -508,89 +332,94 @@ impl Encoder {
     // INC, DEC, NEG, NOT, SHL
     // ========================================
 
+    /// FASM-inspired: generic INC — supports ALL registers and memory
     fn encode_inc(&mut self, dst: &Operand) {
         match dst {
-            Operand::Reg(Reg::RAX) => self.emit(&[0x48, 0xFF, 0xC0]),
-            Operand::Reg(Reg::RCX) => self.emit(&[0x48, 0xFF, 0xC1]),
-            Operand::Mem {
-                base: Reg::RBP,
-                disp,
-            } => {
-                self.emit(&[0x48, 0xFF, 0x85]);
-                self.emit_i32(*disp);
+            Operand::Reg(r) => {
+                // INC r64: REX.W FF /0
+                let (idx, ext) = reg_index(r);
+                let rex = self.rex_wrxb(true, false, ext);
+                let modrm = self.modrm(3, 0, idx);
+                self.emit(&[rex, 0xFF, modrm]);
+            }
+            Operand::Mem { base, disp } => {
+                // INC [base+disp]: REX.W FF /0
+                self.encode_ext_rm_disp(0xFF, 0, base, *disp);
             }
             _ => {}
         }
     }
 
+    /// FASM-inspired: generic DEC — supports ALL registers and memory
     fn encode_dec(&mut self, dst: &Operand) {
         match dst {
-            Operand::Reg(Reg::RCX) => self.emit(&[0x48, 0xFF, 0xC9]),
-            Operand::Mem {
-                base: Reg::RBP,
-                disp,
-            } => {
-                self.emit(&[0x48, 0xFF, 0x8D]);
-                self.emit_i32(*disp);
+            Operand::Reg(r) => {
+                // DEC r64: REX.W FF /1
+                let (idx, ext) = reg_index(r);
+                let rex = self.rex_wrxb(true, false, ext);
+                let modrm = self.modrm(3, 1, idx);
+                self.emit(&[rex, 0xFF, modrm]);
+            }
+            Operand::Mem { base, disp } => {
+                // DEC [base+disp]: REX.W FF /1
+                self.encode_ext_rm_disp(0xFF, 1, base, *disp);
             }
             _ => {}
         }
     }
 
-    fn encode_neg(&mut self, _dst: &Reg) {
-        self.emit(&[0x48, 0xF7, 0xD8]); // neg rax
+    /// FASM-inspired: generic NEG r64
+    fn encode_neg(&mut self, dst: &Reg) {
+        let (idx, ext) = reg_index(dst);
+        let rex = self.rex_wrxb(true, false, ext);
+        let modrm = self.modrm(3, 3, idx); // NEG = /3
+        self.emit(&[rex, 0xF7, modrm]);
     }
 
-    fn encode_not(&mut self, _dst: &Reg) {
-        // Logical NOT: test rax, rax; sete al; movzx rax, al
-        self.emit(&[0x48, 0x85, 0xC0]); // test rax, rax
+    fn encode_not(&mut self, dst: &Reg) {
+        // Logical NOT: test r, r; sete al; movzx rax, al
+        let (idx, ext) = reg_index(dst);
+        let rex = self.rex_wrxb(true, ext, ext);
+        let modrm_test = self.modrm(3, idx, idx);
+        self.emit(&[rex, 0x85, modrm_test]); // test r, r
         self.emit(&[0x0F, 0x94, 0xC0]); // sete al
         self.emit(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
 
-    fn encode_shl(&mut self, _dst: &Reg, amount: u8) {
-        // shl rax, imm8
-        self.emit(&[0x48, 0xC1, 0xE0, amount]);
+    /// FASM-inspired: generic SHL r64, imm8
+    fn encode_shl(&mut self, dst: &Reg, amount: u8) {
+        let (idx, ext) = reg_index(dst);
+        let rex = self.rex_wrxb(true, false, ext);
+        let modrm = self.modrm(3, 4, idx); // SHL = /4
+        self.emit(&[rex, 0xC1, modrm, amount]);
     }
 
     // ========================================
     // CMP, TEST, SETCC
     // ========================================
 
+    /// FASM-inspired: generic CMP — supports ALL register/memory combinations
     fn encode_cmp(&mut self, left: &Operand, right: &Operand) {
         match (left, right) {
-            (Operand::Reg(Reg::RAX), Operand::Reg(Reg::RBX)) => {
-                self.emit(&[0x48, 0x39, 0xD8]);
+            // cmp r64, r64 — (39 /r)
+            (Operand::Reg(l), Operand::Reg(r)) => self.encode_rr(0x39, r, l),
+            // cmp [base+disp], r64 — (39 /r)
+            (Operand::Mem { base, disp }, Operand::Reg(r)) => {
+                self.encode_rm_disp(0x39, r, base, *disp);
             }
-            (Operand::Reg(Reg::RCX), Operand::Reg(Reg::R8)) => {
-                self.emit(&[0x4C, 0x39, 0xC1]);
+            // cmp r64, [base+disp] — (3B /r)
+            (Operand::Reg(r), Operand::Mem { base, disp }) => {
+                self.encode_rm_disp(0x3B, r, base, *disp);
             }
-            (
-                Operand::Mem {
-                    base: Reg::RBP,
-                    disp,
-                },
-                Operand::Reg(Reg::R8),
-            ) => {
-                self.emit(&[0x4C, 0x39, 0x85]);
-                self.emit_i32(*disp);
-            }
-            (
-                Operand::Reg(Reg::RAX),
-                Operand::Mem {
-                    base: Reg::RBP,
-                    disp,
-                },
-            ) => {
-                self.emit(&[0x48, 0x3B, 0x85]);
-                self.emit_i32(*disp);
-            }
-            _ => self.emit(&[0x48, 0x39, 0xD8]),
+            // cmp r64, imm32 — (81 /7 or 83 /7)
+            (Operand::Reg(r), Operand::Imm32(v)) => self.encode_alu_ri(7, r, *v),
+            _ => self.encode_rr(0x39, &Reg::RBX, &Reg::RAX),
         }
     }
 
-    fn encode_test(&mut self, _left: &Reg, _right: &Reg) {
-        self.emit(&[0x48, 0x85, 0xC0]); // test rax, rax
+    /// FASM-inspired: generic TEST r64, r64
+    fn encode_test(&mut self, left: &Reg, right: &Reg) {
+        self.encode_rr(0x85, right, left);
     }
 
     fn encode_setcc(&mut self, cond: &Condition) {
@@ -609,45 +438,16 @@ impl Encoder {
     // PUSH, POP
     // ========================================
 
+    /// FASM-inspired: generic PUSH — computed 50+rd, supports ALL 16 GPRs
     fn encode_push(&mut self, src: &Operand) {
-        match src {
-            Operand::Reg(r) => match r {
-                Reg::RAX => self.emit(&[0x50]),
-                Reg::RCX => self.emit(&[0x51]),
-                Reg::RDX => self.emit(&[0x52]),
-                Reg::RBX => self.emit(&[0x53]),
-                Reg::RSP => self.emit(&[0x54]),
-                Reg::RBP => self.emit(&[0x55]),
-                Reg::RSI => self.emit(&[0x56]),
-                Reg::RDI => self.emit(&[0x57]),
-                Reg::R8 => self.emit(&[0x41, 0x50]),
-                Reg::R9 => self.emit(&[0x41, 0x51]),
-                Reg::R10 => self.emit(&[0x41, 0x52]),
-                Reg::R11 => self.emit(&[0x41, 0x53]),
-                Reg::R12 => self.emit(&[0x41, 0x54]),
-                Reg::R13 => self.emit(&[0x41, 0x55]),
-                Reg::R14 => self.emit(&[0x41, 0x56]),
-                Reg::R15 => self.emit(&[0x41, 0x57]),
-                _ => {}
-            },
-            _ => {}
+        if let Operand::Reg(r) = src {
+            self.encode_push_reg(r);
         }
     }
 
+    /// FASM-inspired: generic POP — computed 58+rd, supports ALL 16 GPRs
     fn encode_pop(&mut self, dst: &Reg) {
-        match dst {
-            Reg::RAX => self.emit(&[0x58]),
-            Reg::RCX => self.emit(&[0x59]),
-            Reg::RDX => self.emit(&[0x5A]),
-            Reg::RBX => self.emit(&[0x5B]),
-            Reg::RSP => self.emit(&[0x5C]),
-            Reg::RBP => self.emit(&[0x5D]),
-            Reg::RSI => self.emit(&[0x5E]),
-            Reg::RDI => self.emit(&[0x5F]),
-            Reg::R8 => self.emit(&[0x41, 0x58]),
-            Reg::R9 => self.emit(&[0x41, 0x59]),
-            _ => {}
-        }
+        self.encode_pop_reg(dst);
     }
 
     // ========================================
@@ -679,7 +479,9 @@ impl Encoder {
         }
     }
 
+    /// FASM-inspired: JMP with short/near auto-selection in patch phase
     fn encode_jmp(&mut self, target: &Label) {
+        // Always emit near (rel32) first; patch phase may shrink to short (rel8)
         self.emit(&[0xE9]);
         let patch_offset = self.code.len();
         self.emit_i32(0);
@@ -690,19 +492,23 @@ impl Encoder {
         });
     }
 
+    /// FASM-inspired: Jcc with condition code table
     fn encode_jcc(&mut self, cond: &Condition, target: &Label) {
-        match cond {
-            Condition::Equal => self.emit(&[0x0F, 0x84]),
-            Condition::NotEqual => self.emit(&[0x0F, 0x85]),
-            Condition::Less => self.emit(&[0x0F, 0x8C]),
-            Condition::LessEq => self.emit(&[0x0F, 0x8E]),
-            Condition::Greater => self.emit(&[0x0F, 0x8F]),
-            Condition::GreaterEq => self.emit(&[0x0F, 0x8D]),
+        // FASM pattern: condition code table instead of per-condition match
+        let cc = match cond {
+            Condition::Equal => 0x04u8,    // JE/JZ
+            Condition::NotEqual => 0x05,   // JNE/JNZ
+            Condition::Less => 0x0C,       // JL
+            Condition::LessEq => 0x0E,     // JLE
+            Condition::Greater => 0x0F,    // JG
+            Condition::GreaterEq => 0x0D,  // JGE
             Condition::Always => {
                 self.encode_jmp(target);
                 return;
             }
-        }
+        };
+        // Near Jcc: 0F 8x rel32
+        self.emit(&[0x0F, 0x80 | cc]);
         let patch_offset = self.code.len();
         self.emit_i32(0);
         self.pending_patches.push(PendingPatch {
@@ -740,21 +546,104 @@ impl Encoder {
     }
 
     // ========================================
-    // Helpers
+    // FASM-inspired Generic Encoding Primitives
     // ========================================
+    // Instead of hardcoding per-register match arms, compute
+    // REX + ModR/M from register indices — like FASM does.
 
-    fn reg_reg_encoding(&self, src: &Reg, dst: &Reg) -> (u8, u8) {
-        let (src_idx, src_ext) = reg_index(src);
-        let (dst_idx, dst_ext) = reg_index(dst);
-        let mut rex: u8 = 0x48;
-        if src_ext {
-            rex |= 0x04;
-        } // REX.R
-        if dst_ext {
-            rex |= 0x01;
-        } // REX.B
-        let modrm = 0xC0 | (src_idx << 3) | dst_idx;
-        (rex, modrm)
+    /// Compute REX prefix: REX.W=w, REX.R=reg_ext, REX.X=0, REX.B=rm_ext
+    #[inline(always)]
+    fn rex_wrxb(&self, w: bool, reg_ext: bool, rm_ext: bool) -> u8 {
+        let mut rex = 0x40u8;
+        if w { rex |= 0x08; }       // REX.W
+        if reg_ext { rex |= 0x04; } // REX.R
+        if rm_ext { rex |= 0x01; }  // REX.B
+        rex
+    }
+
+    /// Compute ModR/M byte: mod | (reg << 3) | rm
+    #[inline(always)]
+    fn modrm(&self, mode: u8, reg: u8, rm: u8) -> u8 {
+        (mode << 6) | ((reg & 7) << 3) | (rm & 7)
+    }
+
+    /// Generic reg-reg encoding: REX.W + opcode + ModR/M(11, src, dst)
+    /// FASM pattern: basic_instruction with register operands
+    fn encode_rr(&mut self, opcode: u8, reg: &Reg, rm: &Reg) {
+        let (reg_idx, reg_ext) = reg_index(reg);
+        let (rm_idx, rm_ext) = reg_index(rm);
+        let rex = self.rex_wrxb(true, reg_ext, rm_ext);
+        let modrm = self.modrm(3, reg_idx, rm_idx);
+        self.emit(&[rex, opcode, modrm]);
+    }
+
+    /// Generic reg-[base+disp] encoding with auto disp8/disp32 selection
+    /// FASM pattern: store_instruction with memory operand
+    fn encode_rm_disp(&mut self, opcode: u8, reg: &Reg, base: &Reg, disp: i32) {
+        let (reg_idx, reg_ext) = reg_index(reg);
+        let (base_idx, base_ext) = reg_index(base);
+        let rex = self.rex_wrxb(true, reg_ext, base_ext);
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        if disp == 0 && base_idx != 5 {
+            // [base] — mod=00 (but RBP(5) always needs disp8)
+            let modrm = self.modrm(0, reg_idx, base_idx);
+            self.emit(&[rex, opcode, modrm]);
+        } else if fits_i8 {
+            // [base+disp8] — mod=01 (saves 3 bytes vs disp32!)
+            let modrm = self.modrm(1, reg_idx, base_idx);
+            self.emit(&[rex, opcode, modrm, disp as u8]);
+        } else {
+            // [base+disp32] — mod=10
+            let modrm = self.modrm(2, reg_idx, base_idx);
+            self.emit(&[rex, opcode, modrm]);
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Generic reg-[base+disp] with extension opcode (e.g. INC, DEC, NEG /reg_field)
+    fn encode_ext_rm_disp(&mut self, opcode: u8, reg_field: u8, base: &Reg, disp: i32) {
+        let (base_idx, base_ext) = reg_index(base);
+        let rex = self.rex_wrxb(true, false, base_ext);
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        if fits_i8 {
+            let modrm = self.modrm(1, reg_field, base_idx);
+            self.emit(&[rex, opcode, modrm, disp as u8]);
+        } else {
+            let modrm = self.modrm(2, reg_field, base_idx);
+            self.emit(&[rex, opcode, modrm]);
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Generic PUSH reg — FASM pattern: 50+rd or REX.B 50+rd
+    fn encode_push_reg(&mut self, r: &Reg) {
+        let (idx, ext) = reg_index(r);
+        if ext { self.emit(&[0x41, 0x50 + idx]); }
+        else { self.emit(&[0x50 + idx]); }
+    }
+
+    /// Generic POP reg — FASM pattern: 58+rd or REX.B 58+rd
+    fn encode_pop_reg(&mut self, r: &Reg) {
+        let (idx, ext) = reg_index(r);
+        if ext { self.emit(&[0x41, 0x58 + idx]); }
+        else { self.emit(&[0x58 + idx]); }
+    }
+
+    /// Generic ALU reg, imm with auto imm8/imm32 selection
+    /// FASM pattern: basic_mem_simm_8bit — use sign-extended imm8 when possible
+    fn encode_alu_ri(&mut self, ext_op: u8, r: &Reg, imm: i32) {
+        let (idx, r_ext) = reg_index(r);
+        let rex = self.rex_wrxb(true, false, r_ext);
+        if imm >= -128 && imm <= 127 {
+            // Short form: REX.W 83 /ext_op ib (3+1=4 bytes vs 3+4=7)
+            let modrm = self.modrm(3, ext_op, idx);
+            self.emit(&[rex, 0x83, modrm, imm as u8]);
+        } else {
+            // Long form: REX.W 81 /ext_op id
+            let modrm = self.modrm(3, ext_op, idx);
+            self.emit(&[rex, 0x81, modrm]);
+            self.emit_i32(imm);
+        }
     }
 
     #[inline(always)]

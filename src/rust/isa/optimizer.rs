@@ -283,8 +283,51 @@ impl IsaOptimizer {
                 }
             }
 
-            // Pattern: xor eax, eax; mov [rbp+off], rax → mov qword [rbp+off], 0
-            // (Keep as-is; xor+mov is already efficient)
+            // FASM-inspired: push rax; pop rbx → mov rbx, rax (saves stack ops)
+            if i + 1 < ops.len() {
+                if let (
+                    ADeadOp::Push { src: Operand::Reg(r1) },
+                    ADeadOp::Pop { dst: r2 }
+                ) = (&ops[i], &ops[i + 1]) {
+                    if r1 != r2 {
+                        result.push(ADeadOp::Mov {
+                            dst: Operand::Reg(*r2),
+                            src: Operand::Reg(*r1),
+                        });
+                        self.stats.peephole_applied += 1;
+                        self.stats.instructions_fused += 1;
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+
+            // FASM-inspired: mul by power-of-2 → shl (strength reduction)
+            // imul rax, rbx where we know rbx = 2^N → shl rax, N
+            // (Can only apply when preceded by mov rbx, imm)
+            if i + 1 < ops.len() {
+                if let (
+                    ADeadOp::Mov { dst: Operand::Reg(Reg::RBX), src: Operand::Imm64(v) },
+                    ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX }
+                ) = (&ops[i], &ops[i + 1]) {
+                    if v.is_power_of_two() && *v > 1 {
+                        let shift = v.trailing_zeros() as u8;
+                        result.push(ADeadOp::Shl { dst: Reg::RAX, amount: shift });
+                        self.stats.peephole_applied += 1;
+                        self.stats.instructions_fused += 1;
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+
+            // FASM-inspired: mov rax, imm32(0) → xor eax, eax
+            if let ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm32(0) } = &ops[i] {
+                result.push(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
+                self.stats.peephole_applied += 1;
+                i += 1;
+                continue;
+            }
 
             // No pattern matched, keep instruction
             result.push(ops[i].clone());
