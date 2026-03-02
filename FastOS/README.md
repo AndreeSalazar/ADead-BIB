@@ -1,145 +1,105 @@
-# FastOS — Custom Operating System
+# FastOS v2.0 — ADead-BIB Native Operating System
 
-**Format: FsOS** (not PE, not ELF — our own binary format)
+**Un OS moderno escrito en C puro, compilado con ADead-BIB.**
 
-## Architecture: 3 Languages, Zero ASM
+Inspirado en:
+- **Linux** — Arquitectura de kernel modular, syscalls POSIX
+- **Windows NT** — Diseño de drivers, formato ejecutable
+- **Pop!_OS** — Sistema de drivers GPU (System76-power style)
+- **Nouveau** — Driver open-source para NVIDIA GPUs
 
-| Language  | Role                    | Files                                     |
-|-----------|-------------------------|-------------------------------------------|
-| ADead-BIB | Base / Hardware         | `boot/stage1.adB`, `stage2.adB`           |
-| Rust      | Security / Kernel Logic | `kernel/src/*.rs`, `kernel/src/apps/*.rs` |
-| C         | Compatibility / ABI     | `include/*.h`                             |
+## Características Únicas
 
-## FsOS Binary Format
+- **Formato Po** — Ejecutable nativo híbrido (PE + ELF inspirado)
+- **BG Integration** — Binary Guardian verifica binarios antes de ejecutar
+- **Syscalls Híbridos** — Compatible Linux + extensiones FastOS
+- **Seguridad por diseño** — Niveles de seguridad integrados (Kernel/Driver/User/Sandbox)
 
-```text
-Magic:   "FsOS" (0x46 0x73 0x4F 0x53)
-Header:  64 bytes (compact, like ELF but simpler)
-Modes:   16-bit / 32-bit / 64-bit (natural scaling)
-Default: 64-bit Long Mode
+## Arquitectura
+
 ```
-
-**Not PE. Not ELF. FastOS has its own format.**
-
-## Directory Structure
-
-```text
 FastOS/
-├── boot/
-│   ├── stage1.adB              # Boot sector (512 bytes, interactive Y/N)
-│   └── stage2.adB              # Mode switch: Real → Protected → Long Mode
-├── kernel/
-│   ├── Cargo.toml              # Rust bare-metal kernel
-│   ├── x86_64-fastos.json      # Custom target (no_std, no SSE)
-│   └── src/
-│       ├── main.rs             # Kernel entry → installer → login → desktop
-│       ├── vga.rs              # VGA 80x25 driver (16 colors, rects, lines)
-│       ├── keyboard.rs         # PS/2 keyboard (scancode set 1, shift)
-│       ├── installer.rs        # Interactive installer (Y=install / N=live)
-│       ├── login.rs            # Windows-style login (user/password)
-│       ├── desktop.rs          # Desktop manager (taskbar, icons, navigation)
-│       ├── window.rs           # Window manager (title bar, borders, [X])
-│       ├── startmenu.rs        # Start menu popup (app list + shutdown)
-│       ├── shell.rs            # CLI shell (fastos> prompt, 8 commands)
-│       ├── panic.rs            # Red screen panic handler
-│       └── apps/
-│           ├── mod.rs          # Apps module
-│           ├── terminal.rs     # Terminal emulator (inside window)
-│           ├── files.rs        # File Manager (virtual filesystem)
-│           ├── editor.rs       # Text Editor (line numbers, cursor)
-│           ├── calc.rs         # Calculator (+, -, *, /)
-│           ├── sysinfo.rs      # System Information panel
-│           └── settings.rs     # Settings panel
-├── include/
-│   ├── fastos_types.h          # C type definitions (shared ABI)
-│   └── fastos_kernel.h         # C kernel interface (FFI contract)
-├── link/
-│   └── kernel.ld               # Linker script (kernel at 0x100000)
-├── build/                      # Build output
-├── build.ps1                   # PowerShell build script
-└── README.md
+├── boot/                    # Bootloader (BIOS + UEFI)
+│   ├── stage1.c            # MBR boot sector (512 bytes)
+│   ├── stage2.c            # Second stage loader
+│   └── uefi/               # UEFI boot support
+├── kernel/                  # Kernel core
+│   ├── main.c              # Kernel entry point
+│   ├── memory.c            # Memory management (paging, heap)
+│   ├── interrupts.c        # IDT, IRQ handlers
+│   ├── scheduler.c         # Process scheduler
+│   ├── syscall.c           # System call interface
+│   └── panic.c             # Kernel panic handler
+├── drivers/                 # Device drivers
+│   ├── video/              # Video drivers
+│   │   ├── vga.c          # VGA text mode
+│   │   ├── vesa.c         # VESA framebuffer
+│   │   └── nouveau/       # NVIDIA GPU (Nouveau-inspired)
+│   ├── storage/            # Storage drivers
+│   │   ├── ata.c          # ATA/IDE
+│   │   └── ahci.c         # SATA AHCI
+│   ├── input/              # Input drivers
+│   │   ├── keyboard.c     # PS/2 keyboard
+│   │   └── mouse.c        # PS/2 mouse
+│   └── pci/                # PCI bus
+│       └── pci.c          # PCI enumeration
+├── fs/                      # File systems
+│   ├── vfs.c               # Virtual File System
+│   ├── fat32.c             # FAT32 support
+│   └── ext2.c              # EXT2 support
+├── lib/                     # C runtime library
+│   ├── string.c            # String functions
+│   ├── memory.c            # memcpy, memset, etc.
+│   └── printf.c            # printf implementation
+├── include/                 # Header files
+│   ├── kernel.h            # Kernel definitions
+│   ├── types.h             # Type definitions
+│   └── drivers/            # Driver headers
+└── userspace/               # User applications
+    ├── shell.c             # Command shell
+    └── init.c              # Init process
 ```
 
-## Boot Flow
+## Compilación
 
-```text
-BIOS → Stage1 (16-bit, ADead-BIB)
-         ↓ "=== FastOS v1.0 ==="
-         ↓ "Install FastOS? (Y/N)"
-       Stage2 (ADead-BIB: A20 → GDT → Protected → Long Mode)
-         ↓
-       Kernel (64-bit Rust)
-         ↓
-       Installer → Login Screen → Desktop
+```bash
+# Compilar bootloader
+adB cc boot/stage1.c -o boot/stage1.bin --flat --org=0x7C00
+
+# Compilar kernel
+adB cc kernel/main.c -o kernel/kernel.bin --flat --org=0x100000
+
+# Crear imagen de disco
+./build/mkimage.sh
 ```
 
-## Desktop (Windows-like)
+## Características
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ FastOS Desktop                                        ADead-BIB+Rust+C v1.0│  ← Title bar
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│  │> Terminal │  │░ Files   │  │≡ Editor  │  │# Calc    │  │i SysInfo │       │  ← Desktop icons
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
-│  ┌──────────┐                                                                │
-│  │■ Settings│                                                                │
-│  └──────────┘                                                                │
-│                                                                              │
-│  WASD:Move  Enter:Open  1-6:Quick  M:Menu  Q:Shutdown                        │
-├──────────────────────────────────────────────────────────────────────────────┤
-│[M]Start │ Terminal │                                    │ FsOS 64bit         │  ← Taskbar
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+### Kernel
+- **Monolítico modular** — Core pequeño, drivers cargables
+- **Paginación x86-64** — 4-level page tables
+- **Multitarea preemptiva** — Round-robin scheduler
+- **System calls** — Interfaz POSIX-like
 
-## Desktop Apps
+### Drivers GPU (Nouveau-inspired)
+- **Detección PCI** — Enumera dispositivos NVIDIA
+- **Framebuffer** — Modo gráfico básico
+- **Reclocking** — Control de frecuencia (GPUs soportadas)
 
-- **Terminal** — Full shell inside a window (help, ver, info, echo, clear)
-- **File Manager** — Virtual filesystem browser (directories + files)
-- **Text Editor** — Line-numbered editor with cursor (Ln/Col status bar)
-- **Calculator** — Integer calculator (+, -, *, /, =, C, backspace)
-- **System Info** — OS, CPU, memory, format, technology stack
-- **Settings** — Username, hostname, theme, keyboard, language, boot mode
+### Compatibilidad
+- **BIOS Legacy** — Boot desde MBR
+- **UEFI** — Boot moderno con GOP
+- **x86-64** — Solo 64-bit
 
-## Login Screen
+## Filosofía
 
-- **Default credentials:** `admin` / `fastos`
-- Blue Windows-style background with bordered login box
-- Password field masked with `*`
-- 3 attempts before reboot
+> **C es el lenguaje del kernel. ADead-BIB es el compilador.**
 
-## Start Menu
+- Sin dependencias externas (no GCC, no LLVM)
+- Código limpio y legible
+- Documentación inline
+- Compatible con hardware real
 
-Press **M** on the desktop to open the Start menu:
-- App launcher (1-6 hotkeys)
-- About FastOS
-- Shutdown
+## Licencia
 
-## Features
-
-- **Interactive installer** — Always asks before installing
-- **Windows-style login** — User/password before desktop
-- **Desktop with taskbar** — Icons, Start menu, system tray
-- **Window manager** — Title bars, borders, close buttons
-- **6 desktop apps** — Terminal, Files, Editor, Calc, SysInfo, Settings
-- **FsOS format** — Own binary format, not PE or ELF
-- **Red screen panic** — Rust panic handler with file/line info
-- **64-bit native** — Scales from 16-bit boot to 64-bit kernel
-
-## Build & Test
-
-```powershell
-# Build everything
-.\build.ps1
-
-# Build and run in QEMU
-.\build.ps1 -Run
-
-# Or manually:
-adB fastos boot\stage1.adB -o build\fastos.bin --run
-```
-
-## Author
-
-Eddi Andreé Salazar Matos
+MIT License — Eddi Andreé Salazar Matos
