@@ -1,30 +1,88 @@
-# ADead-BIB v3.0
+# ADead-BIB v3.5 💀🦈
 
-**El Lenguaje que Divide CPU y GPU por Verdad Binaria**
+**Compilador Multi-Lenguaje: ADead-BIB · C99 · C++ → Binario Nativo**
 
-> CPU = IR Completo | GPU = SPIR-V Directo
+> CPU = IR Completo | GPU = SPIR-V Directo | Sin NASM, Sin LLVM, Sin GCC
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Tu Código (.adB)                           │
-│                            ↓                                    │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   ADead-BIB Compiler                      │  │
-│  │                                                           │  │
-│  │   ┌─────────────────┐         ┌─────────────────────┐     │  │
-│  │   │      CPU        │         │        GPU          │     │  │
-│  │   │   (IR Completo) │         │   (SPIR-V Directo)  │     │  │
-│  │   │                 │         │                     │     │  │
-│  │   │  AST → IR → x86 │         │  AST → SPIR-V bytes │     │  │
-│  │   │  Optimización   │         │  Sin intermediarios │     │  │
-│  │   │  completa       │         │                     │     │  │
-│  │   └────────┬────────┘         └──────────┬──────────┘     │  │
-│  └────────────┼──────────────────────────────┼───────────────┘  │
-│               ↓                              ↓                  │
-│         .exe / .elf                      .spv / .ahyb           │
-│      (Binario Nativo)                 (Bytecode GPU)            │
-└─────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│          Tu Código (.adB / .c / .cpp)                              │
+│                         ↓                                          │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │                ADead-BIB Compiler v3.5                       │  │
+│  │                                                              │  │
+│  │   .adB ──→ Lexer/Parser ──→ AST ──┐                          │  │
+│  │   .c   ──→ CLexer/CParser ──→ IR ─┤──→ ISA ──→ x86-64        │  │
+│  │   .cpp ──→ CppLexer/CppParser ──→─┘      │                   │  │
+│  │                                           ↓                  │  │
+│  │   .adB ──→ AST ──→ SPIR-V bytes (GPU directo)                │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                    ↓                          ↓                    │
+│              .exe / .elf                  .spv (GPU)               │
+│           (Binario Nativo)             (Compute Shader)            │
+└────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Inicio Rápido
+
+```bash
+# Clonar y compilar
+git clone https://github.com/AndreeSalazar/ADead-BIB.git
+cd ADead-BIB
+cargo build --release
+
+# ADead-BIB nativo
+cargo run -- build examples/adB/MODE2_app_typed.adB -o app.exe
+
+# C99 (auto-detecta .c)
+cargo run -- examples/c/hello.c -o hello.exe
+
+# C++ (auto-detecta .cpp)
+cargo run -- examples/cpp/hello.cpp -o hello.exe
+
+# O explícito:
+cargo run -- cc examples/c/hello.c -o hello.exe
+cargo run -- cxx examples/cpp/cpp_oop.cpp -o oop.exe
+
+# GPU
+cargo run -- gpu
+```
+
+---
+
+## Frontends Soportados
+
+| Frontend | Extensión | Comando | Auto-detect |
+|----------|-----------|---------|-------------|
+| **ADead-BIB** | `.adB` | `adeadc build` | ✅ |
+| **C99** | `.c` | `adeadc cc` | ✅ por `.c` |
+| **C++11/14/17/20** | `.cpp` `.cxx` `.cc` | `adeadc cxx` | ✅ por `.cpp` |
+| **GPU** | `.adB` | `adeadc gpu` | — |
+
+### C Frontend (v3.4)
+
+- **Preprocesador** completo (#include, #define, #ifdef)
+- **75+ headers** de sistema inyectados (stdio, stdlib, string, math, pthread...)
+- **Structs**, typedefs, unions, function pointers
+- **Punteros**, arrays, malloc/free, bitwise
+- Pipeline: `C → CLexer → CParser → CAST → CToIR → Program → x86-64 → PE/ELF`
+- **55 tests** — todos pasan ✅
+
+### C++ Frontend (v3.5) — NUEVO
+
+- **OOP**: classes, herencia, virtual, override, constructors, destructors
+- **Templates**: function/class templates, non-type params, defaults
+- **Namespaces**: anidados, using declarations
+- **Modern C++**: auto, constexpr, nullptr, enum class, range-for
+- **Lambdas**: captures (by value, by ref, this), params, return type
+- **Casts**: static_cast, dynamic_cast, const_cast, reinterpret_cast
+- **Exceptions**: try/catch/throw → eliminados a error codes
+- **Smart pointers**: unique_ptr, shared_ptr → raw pointers (zero overhead)
+- **C++20**: spaceship operator, concepts, coroutines (parsed)
+- Pipeline: `C++ → CppLexer → CppParser → CppAST → CppToIR → Program → x86-64 → PE/ELF`
+- **24 tests** — todos pasan ✅
 
 ---
 
@@ -36,47 +94,15 @@
 | **Optimización** | Completa (DCE, inlining, etc.) | Mínima (driver optimiza) |
 | **Ejecución** | Secuencial + SIMD | Masivamente paralela |
 | **Memoria** | Stack + Heap | Buffers + Shared Memory |
-| **Control** | Branches, loops | Workgroups, barriers |
-
-**No estás dividiendo por comodidad, estás dividiendo por VERDAD BINARIA.**
-
----
-
-## Inicio Rápido
-
-```bash
-# Clonar e instalar
-git clone https://github.com/AndreeSalazar/ADead-BIB.git
-cd ADead-BIB
-cargo build --release
-
-# Ejecutar CPU
-adB run main.adB
-
-# Ejecutar GPU
-adB gpu matmul 1024
-```
-
----
-
-## Autor
-
-**Eddi Andreé Salazar Matos**  
-eddi.salazar.dev@gmail.com  
-Hecho en Perú
-
-**Licencia:** GPLv2
 
 ---
 
 ## CPU Backend: IR Completo
 
-El backend CPU usa **Intermediate Representation** para optimización completa antes de emitir bytes x86-64.
-
 ### Pipeline CPU
 
 ```
-Código ADead → AST → IR → Optimizador → x86-64 bytes → PE/ELF
+Código (.adB/.c/.cpp) → AST → IR → Optimizador → x86-64 bytes → PE/ELF
 ```
 
 ### IR Operations
@@ -101,32 +127,12 @@ Código ADead → AST → IR → Optimizador → x86-64 bytes → PE/ELF
 - **Register Allocation** — Minimiza accesos a memoria
 - **Peephole** — Optimiza patrones locales
 
-### Ejemplo CPU
-
-```rust
-fn factorial(n) {
-    if n <= 1 { return 1 }
-    return n * factorial(n - 1)
-}
-
-fn main() {
-    let result = factorial(10)
-    println(result)  // 3628800
-}
-```
-
-**Genera ~1.5 KB de binario nativo.**
-
 ---
 
 ## GPU Backend: SPIR-V Directo
 
-El backend GPU emite **SPIR-V bytecode directamente** sin IR intermedio.
-
-### Pipeline GPU
-
 ```
-Código ADead → AST → SPIR-V bytes (directo)
+Código ADead → AST → SPIR-V bytes (directo, sin IR)
 ```
 
 ### ADead GPU Opcodes (4 bits)
@@ -136,33 +142,10 @@ Código ADead → AST → SPIR-V bytes (directo)
 | `EXIT` | 0x0 | Terminar kernel |
 | `LOAD` | 0x1 | acc = buffer[gid] |
 | `STORE` | 0x2 | buffer[gid] = acc |
-| `LOAD_IMM` | 0x3 | acc = immediate |
 | `ADD` | 0x4 | acc += buffer[gid] |
-| `SUB` | 0x5 | acc -= buffer[gid] |
 | `MUL` | 0x6 | acc *= buffer[gid] |
-| `DIV` | 0x7 | acc /= buffer[gid] |
-| `VEC_ADD` | 0x8 | Vector add |
-| `VEC_MUL` | 0x9 | Vector multiply |
-| `DOT` | 0xA | Dot product |
 | `MATMUL` | 0xB | Matrix multiply |
 | `SYNC` | 0xC | Barrier |
-
-### SPIR-V Generation
-
-```rust
-// ADead bytecode
-let kernel = [
-    (LOAD, 0),      // acc = A[gid]
-    (ADD, 1),       // acc += B[gid]
-    (STORE, 2),     // C[gid] = acc
-    (EXIT, 0),
-]
-
-// Genera SPIR-V válido directamente
-// Magic: 0x07230203
-// Version: 1.0
-// ...compute shader completo
-```
 
 ### FFI GPU (Python)
 
@@ -170,43 +153,14 @@ let kernel = [
 from FFI_GPU import GPU
 
 gpu = GPU()
-
-# Crear buffers
 A = gpu.buffer(data_a)
 B = gpu.buffer(data_b)
 C = gpu.buffer(size=N)
 
-# Cargar y ejecutar kernel
 kernel = gpu.load_spirv("vecadd.spv")
 gpu.dispatch(kernel, A, B, C, groups=(N//256, 1, 1))
-gpu.wait()
-
-# Leer resultado
 result = C.read()
 ```
-
----
-
-## Comparación CPU vs GPU
-
-| Operación | CPU (IR) | GPU (SPIR-V) |
-|-----------|----------|--------------|
-| MatMul 1024x1024 | ~200ms | ~5ms |
-| VecAdd 1M | ~10ms | ~0.5ms |
-| Reduce 1M | ~15ms | ~1ms |
-| Compilación | Optimizada | Directa |
-| Tamaño binario | ~1.5 KB | ~2 KB shader |
-
-### Cuándo usar cada uno
-
-| Caso | Recomendación |
-|------|---------------|
-| Lógica de control | CPU |
-| Cálculo masivo paralelo | GPU |
-| I/O, archivos | CPU |
-| Matrices grandes | GPU |
-| Código secuencial | CPU |
-| Procesamiento de imágenes | GPU |
 
 ---
 
@@ -215,31 +169,72 @@ result = C.read()
 ```
 ADead-BIB/
 ├── src/rust/
-│   ├── frontend/           # Lexer, Parser, AST
+│   ├── frontend/
+│   │   ├── lexer.rs, parser.rs, ast.rs    # ADead-BIB frontend
+│   │   ├── c/                              # C99 frontend
+│   │   │   ├── c_lexer.rs, c_parser.rs
+│   │   │   ├── c_ast.rs, c_to_ir.rs
+│   │   │   └── c_preprocessor.rs, c_stdlib.rs
+│   │   └── cpp/                            # C++ frontend (NUEVO)
+│   │       ├── cpp_lexer.rs, cpp_parser.rs
+│   │       ├── cpp_ast.rs, cpp_to_ir.rs
+│   │       └── mod.rs
 │   ├── backend/
-│   │   ├── cpu/            # IR → x86-64
-│   │   │   ├── ir.rs       # Intermediate Representation
-│   │   │   ├── codegen.rs  # x86-64 emission
-│   │   │   └── pe.rs       # PE/ELF generation
-│   │   └── gpu/            # AST → SPIR-V
-│   │       ├── spirv/      # SPIR-V bytecode
-│   │       ├── vulkan/     # Vulkan runtime
-│   │       └── compute.rs  # Unified compute API
-│   └── optimizer/          # CPU optimizations
+│   │   ├── cpu/         # IR → x86-64 → PE/ELF
+│   │   └── gpu/         # AST → SPIR-V → Vulkan
+│   ├── isa/             # ISA Compiler (ADeadOp)
+│   ├── optimizer/       # DCE, Constant Folding, Inlining
+│   └── runtime/         # GPU dispatcher, misuse detector
 │
-├── FFI GPU/                # Python GPU runtime
-│   └── python/
-│       ├── gpu_runtime.py
-│       ├── gpu_buffer.py
-│       ├── gpu_kernel.py
-│       └── gpu_optimizer.py
+├── examples/
+│   ├── adB/             # ADead-BIB examples + guías
+│   ├── c/               # 13 C99 examples
+│   ├── cpp/             # 4 C++ examples
+│   ├── boot/            # Boot sectors, kernels
+│   └── gpu/             # GPU compute
 │
-├── Metal_Dead/             # IA Personal CPU-first
-│   └── core/
-│       ├── cpu_compute.py
-│       └── metal_dead_cpu.py
-│
-└── examples/
+├── FFI/                 # Multi-language bindings
+├── FFI GPU/             # Python GPU runtime
+├── Metal_Dead/          # IA Personal CPU-first
+└── Cargo.toml
+```
+
+---
+
+## Comandos CLI
+
+```bash
+# ADead-BIB
+adeadc build main.adB -o app.exe       # Compilar a .exe
+adeadc run main.adB                     # Compilar y ejecutar
+adeadc opt main.adB                     # Optimización máxima
+adeadc check main.adB                   # Verificar sintaxis
+
+# C (explícito o auto-detect por extensión)
+adeadc cc hello.c -o hello.exe
+adeadc hello.c -o hello.exe             # Auto-detect .c
+
+# C++ (explícito o auto-detect por extensión)
+adeadc cxx hello.cpp -o hello.exe
+adeadc hello.cpp -o hello.exe           # Auto-detect .cpp
+
+# Boot/OS
+adeadc boot boot.adB -o boot.bin        # Boot sector 512b
+adeadc flat kernel.adB -o kernel.bin    # Flat binary
+
+# GPU
+adeadc gpu                              # Detectar GPU + shader
+adeadc spirv matmul 1024                # Generar SPIR-V
+adeadc unified matmul 1024              # CPU+GPU unificado
+
+# Binarios mínimos
+adeadc tiny main.adB -o tiny.exe        # PE < 500 bytes
+adeadc nano output.exe                  # PE más pequeño posible
+adeadc micro output.exe                 # PE32 < 256 bytes
+
+# Proyecto
+adeadc create mi_proyecto               # Nuevo proyecto
+adeadc init                             # Inicializar en directorio actual
 ```
 
 ---
@@ -257,32 +252,9 @@ print(response)
 ai.shutdown()
 ```
 
-### Características
-
-- **CPU-First**: Optimizado para CPU con SIMD
+- **CPU-First**: Optimizado para CPU con SIMD (AVX2)
 - **ADead-BIB FFI**: Integración nativa
-- **Transformer**: 2 capas, 128 dim embedding
-- **Memoria**: ~1.2 MB en RAM
-
----
-
-## Comandos CLI
-
-```bash
-# CPU
-adB run main.adB              # Compilar y ejecutar
-adB build main.adB            # Compilar a .exe
-adB opt main.adB              # Optimización máxima
-
-# GPU
-adB gpu                       # Detectar GPU
-adB spirv kernel.adB          # Generar SPIR-V
-adB unified matmul 1024       # CPU+GPU unificado
-
-# Proyecto
-adB create proyecto           # Nuevo proyecto
-adB check main.adB            # Verificar sintaxis
-```
+- **Transformer**: 2 capas, 128 dim embedding, ~1.2 MB RAM
 
 ---
 
@@ -290,21 +262,34 @@ adB check main.adB            # Verificar sintaxis
 
 | Modo | Tamaño | Descripción |
 |------|--------|-------------|
-| CPU Normal | ~1.5 KB | Con IR optimizado |
+| CPU Normal | ~2 KB | Con IR optimizado |
 | CPU Ultra | ~1 KB | Optimización máxima |
 | CPU Tiny | <500 bytes | PE mínimo |
+| CPU Micro | <256 bytes | PE32 ultra-compacto |
 | GPU Shader | ~2 KB | SPIR-V completo |
 
 ---
 
+## Test Summary
+
+| Frontend | Tests | Status |
+|----------|-------|--------|
+| ADead-BIB | 40+ | ✅ |
+| C99 | 55 | ✅ |
+| C++ | 24 | ✅ |
+| **Total** | **87+ frontend** | ✅ |
+
+---
+
+## Autor
+
+**Eddi Andreé Salazar Matos**
+eddi.salazar.dev@gmail.com
+Hecho en Perú 🇵🇪
+
 ## Licencia
 
 **GNU General Public License v2.0**
-
-- Usar libremente
-- Modificar libremente
-- Distribuir con misma licencia
-- Incluir código fuente
 
 ```
 Copyright (C) 2024-2026 Eddi Andreé Salazar Matos
@@ -313,5 +298,5 @@ eddi.salazar.dev@gmail.com
 
 ---
 
-**ADead-BIB v3.0: CPU = IR | GPU = SPIR-V**
-**División por Verdad Binaria**
+**ADead-BIB v3.5: ADead-BIB · C99 · C++ → Binario Nativo 💀🦈**
+**Sin NASM. Sin LLVM. Sin GCC. Sin Clang. Hecho en Perú 🇵🇪**

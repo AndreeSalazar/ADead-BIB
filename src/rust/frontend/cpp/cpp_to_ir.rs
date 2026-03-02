@@ -728,28 +728,28 @@ mod tests {
 
     #[test]
     fn test_example_hello_cpp() {
-        let source = std::fs::read_to_string("examples/hello.cpp").unwrap();
+        let source = std::fs::read_to_string("examples/cpp/hello.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
         assert!(result.is_ok(), "hello.cpp failed: {}", result.unwrap_err());
     }
 
     #[test]
     fn test_example_cpp_oop() {
-        let source = std::fs::read_to_string("examples/cpp_oop.cpp").unwrap();
+        let source = std::fs::read_to_string("examples/cpp/cpp_oop.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
         assert!(result.is_ok(), "cpp_oop.cpp failed: {}", result.unwrap_err());
     }
 
     #[test]
     fn test_example_cpp_templates() {
-        let source = std::fs::read_to_string("examples/cpp_templates.cpp").unwrap();
+        let source = std::fs::read_to_string("examples/cpp/cpp_templates.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
         assert!(result.is_ok(), "cpp_templates.cpp failed: {}", result.unwrap_err());
     }
 
     #[test]
     fn test_example_cpp_modern() {
-        let source = std::fs::read_to_string("examples/cpp_modern.cpp").unwrap();
+        let source = std::fs::read_to_string("examples/cpp/cpp_modern.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
         assert!(result.is_ok(), "cpp_modern.cpp failed: {}", result.unwrap_err());
     }
