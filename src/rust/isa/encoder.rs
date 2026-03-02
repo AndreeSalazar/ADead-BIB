@@ -37,6 +37,8 @@ struct PendingPatch {
     target: Label,
     /// Tipo de salto (rel8 o rel32)
     kind: PatchKind,
+    /// Index into the ops[] array that generated this patch
+    op_idx: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,6 +56,7 @@ pub struct Encoder {
     unresolved_calls: Vec<(usize, String)>,
     iat_call_offsets: Vec<usize>,
     string_imm64_offsets: Vec<usize>,
+    current_op_idx: usize,
 }
 
 impl Encoder {
@@ -65,6 +68,7 @@ impl Encoder {
             unresolved_calls: Vec::new(),
             iat_call_offsets: Vec::new(),
             string_imm64_offsets: Vec::new(),
+            current_op_idx: 0,
         }
     }
 
@@ -104,6 +108,7 @@ impl Encoder {
                                 code_offset: patch_offset,
                                 target: *target,
                                 kind: PatchKind::Rel8,
+                                op_idx,
                             });
                             continue;
                         }
@@ -123,6 +128,7 @@ impl Encoder {
                                         code_offset: patch_offset,
                                         target: *target,
                                         kind: PatchKind::Rel8,
+                                        op_idx,
                                     });
                                     continue;
                                 }
@@ -134,12 +140,14 @@ impl Encoder {
                                 code_offset: patch_offset,
                                 target: *target,
                                 kind: PatchKind::Rel8,
+                                op_idx,
                             });
                             continue;
                         }
                         _ => {}
                     }
                 }
+                self.current_op_idx = op_idx;
                 self.encode_op(op);
             }
 
@@ -163,7 +171,7 @@ impl Encoder {
 
             // Convergence: find backward rel32 jumps that fit in rel8
             let mut changed = false;
-            for (patch_idx, patch) in self.pending_patches.iter().enumerate() {
+            for patch in self.pending_patches.iter() {
                 if let PatchKind::Rel32 = patch.kind {
                     if let Some(&target_pos) = self.label_positions.get(&patch.target.0) {
                         // Only shorten BACKWARD jumps (target before jump)
@@ -171,23 +179,8 @@ impl Encoder {
                             let rel = target_pos as i64 - (patch.code_offset as i64 + 4);
                             // Conservative: only if well within range after shrink
                             if rel >= -120 && rel <= 120 {
-                                // Find the op_idx for this patch
-                                // We need to map patch back to op index
-                                // For safety, scan ops to find which Jmp/Jcc generated this patch
-                                let mut op_counter = 0usize;
-                                for (oi, o) in ops.iter().enumerate() {
-                                    match o {
-                                        ADeadOp::Jmp { .. } | ADeadOp::Jcc { .. } => {
-                                            if op_counter == patch_idx {
-                                                if short_jump_indices.insert(oi) {
-                                                    changed = true;
-                                                }
-                                                break;
-                                            }
-                                            op_counter += 1;
-                                        }
-                                        _ => {}
-                                    }
+                                if short_jump_indices.insert(patch.op_idx) {
+                                    changed = true;
                                 }
                             }
                         }
@@ -581,6 +574,7 @@ impl Encoder {
                     code_offset: patch_offset,
                     target: *label,
                     kind: PatchKind::Rel32,
+                    op_idx: self.current_op_idx,
                 });
             }
             CallTarget::RipRelative(disp) => {
@@ -606,6 +600,7 @@ impl Encoder {
             code_offset: patch_offset,
             target: *target,
             kind: PatchKind::Rel32,
+            op_idx: self.current_op_idx,
         });
     }
 
@@ -632,6 +627,7 @@ impl Encoder {
             code_offset: patch_offset,
             target: *target,
             kind: PatchKind::Rel32,
+            op_idx: self.current_op_idx,
         });
     }
 

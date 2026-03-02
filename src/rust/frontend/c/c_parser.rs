@@ -349,18 +349,16 @@ impl CParser {
         let init = if self.eat(&CToken::Assign) {
             if *self.current() == CToken::LBrace {
                 // Brace-enclosed initializer list: = { expr, expr, ... }
-                // Skip the entire { ... } for now — treat as no initializer
-                // (the values are still in the AST as array elements via other means)
                 self.advance(); // skip {
-                let mut depth = 1;
-                while depth > 0 && *self.current() != CToken::Eof {
-                    match self.current() {
-                        CToken::LBrace => { depth += 1; self.advance(); }
-                        CToken::RBrace => { depth -= 1; self.advance(); }
-                        _ => { self.advance(); }
+                let mut elements = Vec::new();
+                while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+                    elements.push(self.parse_assign_expr()?);
+                    if !self.eat(&CToken::Comma) {
+                        break;
                     }
                 }
-                None
+                self.expect(&CToken::RBrace)?;
+                Some(CExpr::InitList(elements))
             } else {
                 Some(self.parse_assign_expr()?)
             }

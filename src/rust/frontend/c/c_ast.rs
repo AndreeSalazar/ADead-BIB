@@ -108,6 +108,9 @@ pub enum CExpr {
     // Comma expression: (a, b, c)
     Comma(Vec<CExpr>),
 
+    // Initializer list: {5, 3, 8, ...}
+    InitList(Vec<CExpr>),
+
     // NULL
     Null,
 }

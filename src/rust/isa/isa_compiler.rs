@@ -100,6 +100,8 @@ pub struct IsaCompiler {
     // Estado actual
     current_function: Option<String>,
     variables: HashMap<String, i32>,
+    variable_types: HashMap<String, Type>,
+    array_vars: std::collections::HashSet<String>,
     stack_offset: i32,
 
     // Configuración
@@ -138,6 +140,8 @@ impl IsaCompiler {
             functions: HashMap::new(),
             current_function: None,
             variables: HashMap::new(),
+            variable_types: HashMap::new(),
+            array_vars: std::collections::HashSet::new(),
             stack_offset: 0,
             target,
             base_address: base,
@@ -170,6 +174,59 @@ impl IsaCompiler {
     /// Create compiler for 64-bit long mode (default)
     pub fn new_long64(target: Target) -> Self {
         Self::with_cpu_mode(target, CpuMode::Long64)
+    }
+
+    /// Get the element stride (in bytes) for pointer indexing based on variable type.
+    /// For `char *` / `I8` / `U8` → 1, `short *` → 2, `int *` → 4, `long *` / default → 8
+    fn element_stride(&self, var_name: &str) -> u8 {
+        if let Some(vt) = self.variable_types.get(var_name) {
+            match vt {
+                Type::Pointer(inner) | Type::Array(inner, _) => match inner.as_ref() {
+                    // Only byte-sized types use stride 1 (string literals, char arrays)
+                    // Everything else uses 8-byte stride because our stack stores
+                    // all values as 64-bit qwords.
+                    Type::I8 | Type::U8 | Type::Bool => 1,
+                    _ => 8,
+                },
+                _ => 8,
+            }
+        } else {
+            8 // default: 64-bit slots
+        }
+    }
+
+    /// Emit index scaling: RAX = RAX * stride.
+    /// Uses SHL for power-of-2 strides, no-op for stride 1.
+    fn emit_index_scale(&mut self, stride: u8) {
+        match stride {
+            1 => {} // no scaling needed for byte access
+            2 => { self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 1 }); }
+            4 => { self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 2 }); }
+            8 => { self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 }); }
+            _ => { self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 }); }
+        }
+    }
+
+    /// Emit load from memory with appropriate width.
+    /// For byte access (stride=1), load 64-bit and AND with 0xFF to isolate the byte.
+    fn emit_load_with_stride(&mut self, base_reg: Reg, stride: u8) {
+        // Load full qword from [base_reg]
+        self.ir.emit(ADeadOp::Mov {
+            dst: Operand::Reg(Reg::RAX),
+            src: Operand::Mem { base: base_reg, disp: 0 },
+        });
+        if stride == 1 {
+            // Mask to single byte: movzx rax, al
+            // Emitted as: and rax, 0xFF using mov rbx, 0xFF + and rax, rbx
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBX),
+                src: Operand::Imm32(0xFF),
+            });
+            self.ir.emit(ADeadOp::And {
+                dst: Reg::RAX,
+                src: Reg::RBX,
+            });
+        }
     }
 
     /// Set CPU mode at runtime (for mode transitions)
@@ -412,6 +469,8 @@ impl IsaCompiler {
     fn compile_function(&mut self, func: &Function) {
         self.current_function = Some(func.name.clone());
         self.variables.clear();
+        self.variable_types.clear();
+        self.array_vars.clear();
         // Start at -40 because prologue pushes 4 callee-saved regs after mov rbp,rsp
         // occupying [rbp-8], [rbp-16], [rbp-24], [rbp-32]
         self.stack_offset = -40;
@@ -443,6 +502,7 @@ impl IsaCompiler {
                     16 + ((i - 4) as i32 * 8)
                 };
                 self.variables.insert(param.name.clone(), param_offset);
+                self.variable_types.insert(param.name.clone(), param.param_type.clone());
 
                 // Guardar parámetros de registros en stack
                 if i <= 3 {
@@ -484,6 +544,8 @@ impl IsaCompiler {
     fn compile_top_level(&mut self, stmts: &[Stmt]) {
         self.current_function = Some("__entry".to_string());
         self.variables.clear();
+        self.variable_types.clear();
+        self.array_vars.clear();
         // Start at -40 because prologue pushes 4 callee-saved regs after mov rbp,rsp
         self.stack_offset = -40;
 
@@ -697,38 +759,68 @@ impl IsaCompiler {
 
             // Pointer/memory statements (v3.2)
             Stmt::VarDecl { var_type, name, value } => {
-                // Calculate size based on type (important for arrays)
-                let type_size = var_type.size_bytes() as i32;
-                let alloc_size = if type_size > 0 { type_size } else { 8 };
+                // Track variable type for stride-aware pointer indexing
+                self.variable_types.insert(name.clone(), var_type.clone());
+                // Calculate allocation size.
+                // IMPORTANT: The ISA compiler uses 8-byte (64-bit) slots for ALL
+                // stack variables, including array elements. So arrays always need
+                // count * 8 bytes, regardless of element type size.
+                let alloc_size = match var_type {
+                    Type::Array(_, Some(n)) => (*n as i32) * 8,
+                    Type::Array(_, None) => 8,
+                    _ => 8,
+                };
                 
                 if let Some(val) = value {
-                    // For arrays with initializers, handle specially
-                    self.emit_assign(name, val);
-                } else {
-                    // Reserve space for the variable/array
-                    let offset = self.stack_offset;
-                    self.variables.insert(name.clone(), offset);
-                    self.stack_offset -= alloc_size;
-                    
-                    // Zero-initialize (for simple types, just zero RAX and store)
-                    // For arrays, we'd need to zero multiple slots
-                    if alloc_size <= 8 {
-                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
-                        self.ir.emit(ADeadOp::Mov {
-                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
-                            src: Operand::Reg(Reg::RAX),
-                        });
-                    } else {
-                        // For arrays: zero-initialize all elements
-                        let num_qwords = (alloc_size + 7) / 8;
-                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
-                        for i in 0..num_qwords {
-                            let elem_offset = offset - (i * 8);
+                    // Check if it's an array initializer list
+                    if let Expr::Array(elements) = val {
+                        // Allocate space: elements stored in ASCENDING order
+                        // so that LEA(base) + i*8 matches C pointer arithmetic.
+                        // base = lowest address = stack_offset - (count-1)*8
+                        let count = elements.len();
+                        let arr_alloc = (count as i32) * 8;
+                        self.stack_offset -= arr_alloc;
+                        let base = self.stack_offset; // lowest element addr
+                        self.variables.insert(name.clone(), base);
+                        self.array_vars.insert(name.clone());
+                        for (i, elem) in elements.iter().enumerate() {
+                            self.emit_expression(elem);
+                            let elem_offset = base + (i as i32 * 8);
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
                                 src: Operand::Reg(Reg::RAX),
                             });
                         }
+                    } else {
+                        self.emit_assign(name, val);
+                    }
+                } else {
+                    if matches!(var_type, Type::Array(_, _)) {
+                        // Arrays: allocate space with ascending element layout
+                        self.stack_offset -= alloc_size;
+                        let base = self.stack_offset;
+                        self.variables.insert(name.clone(), base);
+                        self.array_vars.insert(name.clone());
+                        // Zero-initialize all elements
+                        let num_qwords = alloc_size / 8;
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                        for i in 0..num_qwords {
+                            let elem_offset = base + (i * 8);
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                        }
+                    } else {
+                        // Scalar variable
+                        let offset = self.stack_offset;
+                        self.variables.insert(name.clone(), offset);
+                        self.stack_offset -= 8;
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                            src: Operand::Reg(Reg::RAX),
+                        });
                     }
                 }
             }
@@ -737,35 +829,68 @@ impl IsaCompiler {
             }
             // ========== ARRAY INDEX ASSIGNMENT: arr[i] = value ==========
             Stmt::IndexAssign { object, index, value } => {
-                // For local array variables, use direct RBP-relative addressing
                 if let Expr::Variable(name) = object {
                     if let Some(&base_offset) = self.variables.get(name.as_str()) {
-                        // Check if index is a constant for direct addressing
-                        if let Expr::Number(idx) = index {
-                            // Direct store: mov [rbp + base_offset - idx*8], value
-                            // Stack grows down, so arr[0] is at base_offset, arr[1] at base_offset-8
-                            let elem_offset = base_offset - (*idx as i32 * 8);
-                            self.emit_expression(value);
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
-                                src: Operand::Reg(Reg::RAX),
-                            });
-                        } else {
-                            // Dynamic index
-                            self.emit_expression(value);
-                            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                            self.emit_expression(index);
-                            self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
-                            if base_offset != 0 {
-                                self.ir.emit(ADeadOp::Add {
+                        let is_local_array = self.array_vars.contains(name.as_str());
+
+                        if is_local_array {
+                            // LOCAL ARRAY: ascending layout, arr[i] at base + i*8
+                            if let Expr::Number(idx) = index {
+                                let elem_offset = base_offset + (*idx as i32 * 8);
+                                self.emit_expression(value);
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                    src: Operand::Reg(Reg::RAX),
+                                });
+                            } else {
+                                // Dynamic index for local array
+                                self.emit_expression(value);
+                                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                                self.emit_expression(index);
+                                self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RBX),
+                                    src: Operand::Reg(Reg::RAX),
+                                });
+                                self.ir.emit(ADeadOp::Mov {
                                     dst: Operand::Reg(Reg::RAX),
                                     src: Operand::Imm32(base_offset),
                                 });
+                                self.ir.emit(ADeadOp::Add {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Reg(Reg::RBX),
+                                });
+                                self.ir.emit(ADeadOp::Add {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Reg(Reg::RBP),
+                                });
+                                self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Mem { base: Reg::RAX, disp: 0 },
+                                    src: Operand::Reg(Reg::RCX),
+                                });
                             }
+                        } else {
+                            // POINTER VARIABLE (e.g. int *arr parameter):
+                            // Load pointer, then store at [ptr + i*stride]
+                            let stride = self.element_stride(name);
+                            self.emit_expression(value);
+                            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                            self.emit_expression(index);
+                            self.emit_index_scale(stride);
+                            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                            // Load pointer value
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Mem { base: Reg::RBP, disp: base_offset },
+                            });
+                            self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+                            // ptr + i*stride
                             self.ir.emit(ADeadOp::Add {
                                 dst: Operand::Reg(Reg::RAX),
-                                src: Operand::Reg(Reg::RBP),
+                                src: Operand::Reg(Reg::RBX),
                             });
+                            // Store value at [ptr + i*stride]
                             self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Mem { base: Reg::RAX, disp: 0 },
@@ -1475,10 +1600,19 @@ impl IsaCompiler {
             }
             Expr::Variable(name) => {
                 if let Some(&offset) = self.variables.get(name) {
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Mem { base: Reg::RBP, disp: offset },
-                    });
+                    if self.array_vars.contains(name) {
+                        // Array variable: load its ADDRESS (LEA), not its value
+                        // This is needed when passing arrays to functions as pointers
+                        self.ir.emit(ADeadOp::Lea {
+                            dst: Reg::RAX,
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                    } else {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                    }
                 } else {
                     self.ir.emit(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
                 }
@@ -1732,58 +1866,74 @@ impl IsaCompiler {
             }
             // ========== ARRAY ACCESS: arr[i] ==========
             Expr::Index { object, index } => {
-                // For local array variables, we can compute the address directly
-                // arr[i] where arr is at [RBP+offset] → load from [RBP + offset + i*8]
                 if let Expr::Variable(name) = object.as_ref() {
                     if let Some(&base_offset) = self.variables.get(name.as_str()) {
-                        // Check if index is a constant for direct addressing
-                        if let Expr::Number(idx) = index.as_ref() {
-                            // Direct load: mov rax, [rbp + base_offset - idx*8]
-                            // Stack grows down, so arr[0] is at base_offset, arr[1] at base_offset-8, etc.
-                            let elem_offset = base_offset - (*idx as i32 * 8);
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Reg(Reg::RAX),
-                                src: Operand::Mem { base: Reg::RBP, disp: elem_offset },
-                            });
+                        let is_local_array = self.array_vars.contains(name.as_str());
+
+                        if is_local_array {
+                            // LOCAL ARRAY: ascending layout, arr[i] at base + i*8
+                            if let Expr::Number(idx) = index.as_ref() {
+                                let elem_offset = base_offset + (*idx as i32 * 8);
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                });
+                            } else {
+                                // Dynamic index for local array
+                                self.emit_expression(index);
+                                self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RBX),
+                                    src: Operand::Reg(Reg::RAX),
+                                });
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Imm32(base_offset),
+                                });
+                                self.ir.emit(ADeadOp::Add {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Reg(Reg::RBX),
+                                });
+                                self.ir.emit(ADeadOp::Add {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Reg(Reg::RBP),
+                                });
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RBX),
+                                    src: Operand::Reg(Reg::RAX),
+                                });
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                                });
+                            }
                         } else {
-                            // Dynamic index: compute address
-                            // arr[i] = [RBP + base_offset - i*8]
-                            // 1. Evaluate index into RAX
+                            // POINTER VARIABLE (e.g. function parameter int *arr):
+                            // Load pointer value, then index: [ptr + i*stride]
+                            let stride = self.element_stride(name);
                             self.emit_expression(index);
-                            // 2. Scale by 8: RAX = i*8
-                            self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
-                            // 3. Move scaled index to RBX
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Reg(Reg::RBX),
-                                src: Operand::Reg(Reg::RAX),
-                            });
-                            // 4. Load base_offset into RAX
+                            self.emit_index_scale(stride);
+                            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                            // Load the pointer value from the variable
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Reg(Reg::RAX),
-                                src: Operand::Imm32(base_offset),
+                                src: Operand::Mem { base: Reg::RBP, disp: base_offset },
                             });
-                            // 5. Subtract: RAX = base_offset - i*8
-                            self.ir.emit(ADeadOp::Sub {
+                            self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+                            // ptr + i*stride
+                            self.ir.emit(ADeadOp::Add {
                                 dst: Operand::Reg(Reg::RAX),
                                 src: Operand::Reg(Reg::RBX),
                             });
-                            // 6. Add RBP: RAX = RBP + (base_offset - i*8)
-                            self.ir.emit(ADeadOp::Add {
-                                dst: Operand::Reg(Reg::RAX),
-                                src: Operand::Reg(Reg::RBP),
-                            });
-                            // 7. Load from [RAX]
+                            // Load value at [ptr + i*stride]
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Reg(Reg::RBX),
                                 src: Operand::Reg(Reg::RAX),
                             });
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Reg(Reg::RAX),
-                                src: Operand::Mem { base: Reg::RBX, disp: 0 },
-                            });
+                            self.emit_load_with_stride(Reg::RBX, stride);
                         }
                     } else {
-                        // Unknown variable - evaluate as pointer
+                        // Unknown variable - evaluate as pointer expression
                         self.emit_expression(index);
                         self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
                         self.emit_expression(object);

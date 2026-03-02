@@ -71,8 +71,14 @@ impl IsaCompiler {
 
             // VarDecl
             Stmt::VarDecl { var_type, name, value } => {
-                let type_size = var_type.size_bytes() as i32;
-                let alloc_size = if type_size > 0 { type_size } else { 8 };
+                // IMPORTANT: The ISA compiler uses 8-byte (64-bit) slots for ALL
+                // stack variables, including array elements. So arrays always need
+                // count * 8 bytes, regardless of element type size.
+                let alloc_size = match var_type {
+                    Type::Array(_, Some(n)) => (*n as i32) * 8,
+                    Type::Array(_, None) => 8,
+                    _ => 8,
+                };
                 
                 if let Some(val) = value {
                     self.emit_assign(name, val);

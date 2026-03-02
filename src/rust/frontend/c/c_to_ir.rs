@@ -1044,6 +1044,14 @@ impl CToIR {
                     Ok(Expr::Number(0))
                 }
             }
+
+            CExpr::InitList(elements) => {
+                let mut converted = Vec::new();
+                for e in elements {
+                    converted.push(self.convert_expr(e)?);
+                }
+                Ok(Expr::Array(converted))
+            }
         }
     }
 
