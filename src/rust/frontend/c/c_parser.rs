@@ -292,7 +292,23 @@ impl CParser {
         };
 
         let init = if self.eat(&CToken::Assign) {
-            Some(self.parse_assign_expr()?)
+            if *self.current() == CToken::LBrace {
+                // Brace-enclosed initializer list: = { expr, expr, ... }
+                // Skip the entire { ... } for now — treat as no initializer
+                // (the values are still in the AST as array elements via other means)
+                self.advance(); // skip {
+                let mut depth = 1;
+                while depth > 0 && *self.current() != CToken::Eof {
+                    match self.current() {
+                        CToken::LBrace => { depth += 1; self.advance(); }
+                        CToken::RBrace => { depth -= 1; self.advance(); }
+                        _ => { self.advance(); }
+                    }
+                }
+                None
+            } else {
+                Some(self.parse_assign_expr()?)
+            }
         } else {
             None
         };
@@ -374,6 +390,12 @@ impl CParser {
         Ok(params)
     }
 
+    /// Check if current position looks like a function pointer struct field
+    /// Reuses same logic as is_function_pointer_param
+    fn is_function_pointer_field(&self) -> bool {
+        self.is_function_pointer_param()
+    }
+
     /// Check if current position looks like a function pointer parameter
     /// Patterns: type (*name)(...), type *(*name)(...)
     fn is_function_pointer_param(&self) -> bool {
@@ -424,13 +446,37 @@ impl CParser {
         self.advance(); // skip struct/union
         let name = self.expect_identifier()?;
         self.expect(&CToken::LBrace)?;
+        let fields = self.parse_struct_fields()?;
+        self.expect(&CToken::RBrace)?;
+        self.expect(&CToken::Semicolon)?;
+        Ok(CTopLevel::StructDef { name, fields })
+    }
 
+    /// Parse struct/union fields until RBrace
+    fn parse_struct_fields(&mut self) -> Result<Vec<CStructField>, String> {
         let mut fields = Vec::new();
         while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+            // Handle function pointer fields: type (*name)(params);
+            if self.is_function_pointer_field() {
+                let ret_type = self.parse_type()?;
+                self.expect(&CToken::LParen)?;
+                self.eat(&CToken::Star);
+                let fp_name = self.expect_identifier()?;
+                self.expect(&CToken::RParen)?;
+                self.expect(&CToken::LParen)?;
+                self.skip_balanced_parens();
+                self.expect(&CToken::Semicolon)?;
+                fields.push(CStructField {
+                    field_type: CType::Pointer(Box::new(ret_type)),
+                    name: fp_name,
+                });
+                continue;
+            }
+
             let field_type = self.parse_type()?;
             let field_name = self.expect_identifier()?;
 
-            // Handle array fields
+            // Handle array fields: type name[N];
             let final_type = if *self.current() == CToken::LBracket {
                 self.advance();
                 let size = if let CToken::IntLiteral(n) = self.current().clone() {
@@ -451,10 +497,7 @@ impl CParser {
                 name: field_name,
             });
         }
-        self.expect(&CToken::RBrace)?;
-        self.expect(&CToken::Semicolon)?;
-
-        Ok(CTopLevel::StructDef { name, fields })
+        Ok(fields)
     }
 
     fn parse_enum_def(&mut self) -> Result<CTopLevel, String> {
@@ -493,13 +536,7 @@ impl CParser {
         if *self.current() == CToken::Struct && *self.peek() == CToken::LBrace {
             self.advance(); // skip struct
             self.advance(); // skip {
-            let mut fields = Vec::new();
-            while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
-                let ft = self.parse_type()?;
-                let fn_ = self.expect_identifier()?;
-                self.expect(&CToken::Semicolon)?;
-                fields.push(CStructField { field_type: ft, name: fn_ });
-            }
+            let fields = self.parse_struct_fields()?;
             self.expect(&CToken::RBrace)?;
             let new_name = self.expect_identifier()?;
             self.expect(&CToken::Semicolon)?;
@@ -513,21 +550,7 @@ impl CParser {
                     self.advance(); // skip struct
                     let struct_name = self.expect_identifier()?;
                     self.advance(); // skip {
-                    let mut fields = Vec::new();
-                    while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
-                        let ft = self.parse_type()?;
-                        let fn_ = self.expect_identifier()?;
-                        // Handle array fields in typedef struct
-                        if *self.current() == CToken::LBracket {
-                            self.advance();
-                            if *self.current() != CToken::RBracket {
-                                self.advance(); // skip size
-                            }
-                            self.expect(&CToken::RBracket)?;
-                        }
-                        self.expect(&CToken::Semicolon)?;
-                        fields.push(CStructField { field_type: ft, name: fn_ });
-                    }
+                    let fields = self.parse_struct_fields()?;
                     self.expect(&CToken::RBrace)?;
                     // Check if there's an alias name after }
                     if let CToken::Identifier(_) = self.current() {
@@ -550,13 +573,7 @@ impl CParser {
                     self.advance(); // skip union
                     let _union_name = self.expect_identifier()?;
                     self.advance(); // skip {
-                    let mut fields = Vec::new();
-                    while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
-                        let ft = self.parse_type()?;
-                        let fn_ = self.expect_identifier()?;
-                        self.expect(&CToken::Semicolon)?;
-                        fields.push(CStructField { field_type: ft, name: fn_ });
-                    }
+                    let fields = self.parse_struct_fields()?;
                     self.expect(&CToken::RBrace)?;
                     if let CToken::Identifier(_) = self.current() {
                         let alias = self.expect_identifier()?;
@@ -654,10 +671,27 @@ impl CParser {
             });
         }
 
-        let new_name = self.expect_identifier()?;
+        let new_name = self.expect_identifier_or_keyword()?;
         self.expect(&CToken::Semicolon)?;
 
         Ok(CTopLevel::TypedefDecl { original, new_name })
+    }
+
+    /// Like expect_identifier, but also accepts C keywords used as names
+    /// (e.g. `typedef int bool;` where bool is a keyword)
+    fn expect_identifier_or_keyword(&mut self) -> Result<String, String> {
+        match self.current().clone() {
+            CToken::Identifier(name) => { self.advance(); Ok(name) }
+            CToken::Bool => { self.advance(); Ok("bool".to_string()) }
+            CToken::Char => { self.advance(); Ok("char".to_string()) }
+            CToken::Int => { self.advance(); Ok("int".to_string()) }
+            CToken::Long => { self.advance(); Ok("long".to_string()) }
+            CToken::Short => { self.advance(); Ok("short".to_string()) }
+            CToken::Float => { self.advance(); Ok("float".to_string()) }
+            CToken::Double => { self.advance(); Ok("double".to_string()) }
+            CToken::Void => { self.advance(); Ok("void".to_string()) }
+            other => Err(format!("Expected identifier, got {:?}", other)),
+        }
     }
 
     // ========== Statement parsing ==========

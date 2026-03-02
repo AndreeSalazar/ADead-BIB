@@ -109,6 +109,8 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "zlib.h" => Some(HEADER_ZLIB),
         "lz4.h" => Some(HEADER_LZ4),
         "zstd.h" => Some(HEADER_ZSTD),
+        "bzlib.h" => Some(HEADER_BZIP2),
+        "lzma.h" => Some(HEADER_LZMA),
 
         // ==========================================
         // Imágenes (Fase 3)
@@ -116,6 +118,8 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "png.h" => Some(HEADER_PNG),
         "jpeglib.h" => Some(HEADER_JPEG),
         "webp/encode.h" | "webp/decode.h" => Some(HEADER_WEBP),
+        "tiff.h" | "tiffio.h" => Some(HEADER_TIFF),
+        "gif_lib.h" => Some(HEADER_GIF),
 
         // ==========================================
         // Audio (Fase 4)
@@ -123,6 +127,8 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "vorbis/codec.h" | "vorbis/vorbisfile.h" => Some(HEADER_VORBIS),
         "opus/opus.h" | "opus.h" => Some(HEADER_OPUS),
         "FLAC/stream_decoder.h" | "FLAC/all.h" => Some(HEADER_FLAC),
+        "ogg/ogg.h" => Some(HEADER_OGG),
+        "pulse/simple.h" | "pulse/pulseaudio.h" => Some(HEADER_PULSE),
 
         // ==========================================
         // GPU / Gráficos (Fase 2)
@@ -137,17 +143,22 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         // ==========================================
         "ft2build.h" | "freetype/freetype.h" => Some(HEADER_FREETYPE),
         "hb.h" | "harfbuzz/hb.h" => Some(HEADER_HARFBUZZ),
+        "fontconfig/fontconfig.h" => Some(HEADER_FONTCONFIG),
+        "fribidi/fribidi.h" | "fribidi.h" => Some(HEADER_FRIBIDI),
 
         // ==========================================
         // Base de datos (Fase 3)
         // ==========================================
         "sqlite3.h" => Some(HEADER_SQLITE3),
+        "leveldb/c.h" => Some(HEADER_LEVELDB),
 
         // ==========================================
         // Red/Security (Fase 3)
         // ==========================================
         "curl/curl.h" => Some(HEADER_CURL),
         "openssl/ssl.h" => Some(HEADER_OPENSSL),
+        "libssh2.h" | "libssh2_sftp.h" => Some(HEADER_SSH2),
+        "ares.h" => Some(HEADER_CARES),
 
         // ==========================================
         // Input / Hardware (Fase 2)
@@ -156,6 +167,8 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "xkbcommon/xkbcommon.h" => Some(HEADER_XKBCOMMON),
         "libudev.h" => Some(HEADER_LIBUDEV),
         "libusb.h" | "libusb-1.0/libusb.h" => Some(HEADER_LIBUSB),
+        "libevdev/libevdev.h" | "libevdev-1.0/libevdev/libevdev.h" => Some(HEADER_EVDEV),
+        "pci/pci.h" | "pci/types.h" => Some(HEADER_PCI),
 
         // ==========================================
         // Multimedia / FFmpeg (Fase 4)
@@ -169,6 +182,8 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         // XML/JSON/Config (Fase 3)
         // ==========================================
         "expat.h" => Some(HEADER_EXPAT),
+        "jsmn.h" => Some(HEADER_JSMN),
+        "libconfig.h" => Some(HEADER_LIBCONFIG),
 
         _ => None,
     }
@@ -1917,6 +1932,528 @@ XML_Bool XML_ParserReset(XML_Parser parser, const XML_Char *encoding);
 void XML_SetEncoding(XML_Parser parser, const XML_Char *encoding);
 "#;
 
+// ================================================================
+//  Compresión Extended Headers (bzip2, xz/liblzma)
+// ================================================================
+
+const HEADER_BZIP2: &str = r#"
+typedef struct bz_stream {
+    const char *next_in;
+    unsigned int avail_in;
+    unsigned int total_in_lo32;
+    unsigned int total_in_hi32;
+    char *next_out;
+    unsigned int avail_out;
+    unsigned int total_out_lo32;
+    unsigned int total_out_hi32;
+    void *state;
+    void *(*bzalloc)(void *, int, int);
+    void (*bzfree)(void *, void *);
+    void *opaque;
+} bz_stream;
+
+int BZ2_bzCompressInit(bz_stream *strm, int blockSize100k, int verbosity, int workFactor);
+int BZ2_bzCompress(bz_stream *strm, int action);
+int BZ2_bzCompressEnd(bz_stream *strm);
+int BZ2_bzDecompressInit(bz_stream *strm, int verbosity, int small);
+int BZ2_bzDecompress(bz_stream *strm);
+int BZ2_bzDecompressEnd(bz_stream *strm);
+int BZ2_bzBuffToBuffCompress(char *dest, unsigned int *destLen, char *source, unsigned int sourceLen, int blockSize100k, int verbosity, int workFactor);
+int BZ2_bzBuffToBuffDecompress(char *dest, unsigned int *destLen, char *source, unsigned int sourceLen, int small, int verbosity);
+const char *BZ2_bzlibVersion(void);
+"#;
+
+const HEADER_LZMA: &str = r#"
+typedef unsigned int lzma_ret;
+typedef unsigned long long lzma_vli;
+typedef struct lzma_stream {
+    const unsigned char *next_in;
+    size_t avail_in;
+    unsigned long long total_in;
+    unsigned char *next_out;
+    size_t avail_out;
+    unsigned long long total_out;
+    void *allocator;
+    void *internal;
+} lzma_stream;
+
+typedef struct lzma_allocator lzma_allocator;
+
+lzma_ret lzma_easy_encoder(lzma_stream *strm, unsigned int preset, int check);
+lzma_ret lzma_stream_decoder(lzma_stream *strm, unsigned long long memlimit, unsigned int flags);
+lzma_ret lzma_code(lzma_stream *strm, int action);
+void lzma_end(lzma_stream *strm);
+lzma_ret lzma_auto_decoder(lzma_stream *strm, unsigned long long memlimit, unsigned int flags);
+unsigned long long lzma_easy_buffer_size_bound(size_t uncompressed_size);
+unsigned int lzma_version_number(void);
+const char *lzma_version_string(void);
+"#;
+
+// ================================================================
+//  Imágenes Extended Headers (TIFF, GIF)
+// ================================================================
+
+const HEADER_TIFF: &str = r#"
+typedef struct tiff TIFF;
+typedef unsigned int ttag_t;
+typedef unsigned short tdir_t;
+typedef unsigned int tsample_t;
+typedef unsigned int tstrip_t;
+typedef unsigned int ttile_t;
+typedef long tsize_t;
+typedef unsigned int toff_t;
+
+TIFF *TIFFOpen(const char *filename, const char *mode);
+void TIFFClose(TIFF *tif);
+int TIFFGetField(TIFF *tif, ttag_t tag, ...);
+int TIFFSetField(TIFF *tif, ttag_t tag, ...);
+tsize_t TIFFReadScanline(TIFF *tif, void *buf, unsigned int row, tsample_t sample);
+tsize_t TIFFWriteScanline(TIFF *tif, void *buf, unsigned int row, tsample_t sample);
+int TIFFReadRGBAImage(TIFF *tif, unsigned int w, unsigned int h, unsigned int *raster, int stop);
+int TIFFWriteDirectory(TIFF *tif);
+int TIFFFlush(TIFF *tif);
+tstrip_t TIFFNumberOfStrips(TIFF *tif);
+tsize_t TIFFStripSize(TIFF *tif);
+tsize_t TIFFReadEncodedStrip(TIFF *tif, tstrip_t strip, void *buf, tsize_t size);
+tsize_t TIFFWriteEncodedStrip(TIFF *tif, tstrip_t strip, void *data, tsize_t cc);
+int TIFFIsTiled(TIFF *tif);
+const char *TIFFGetVersion(void);
+"#;
+
+const HEADER_GIF: &str = r#"
+typedef struct GifFileType {
+    int SWidth;
+    int SHeight;
+    int SColorResolution;
+    int SBackGroundColor;
+    int ImageCount;
+    void *SavedImages;
+    int Error;
+    void *UserData;
+    void *Private;
+} GifFileType;
+
+typedef struct GifColorType {
+    unsigned char Red;
+    unsigned char Green;
+    unsigned char Blue;
+} GifColorType;
+
+typedef struct ColorMapObject {
+    int ColorCount;
+    int BitsPerPixel;
+    int SortFlag;
+    GifColorType *Colors;
+} ColorMapObject;
+
+GifFileType *DGifOpenFileName(const char *FileName, int *Error);
+GifFileType *DGifOpenFileHandle(int FileHandle, int *Error);
+int DGifSlurp(GifFileType *GifFile);
+int DGifCloseFile(GifFileType *GifFile, int *ErrorCode);
+GifFileType *EGifOpenFileName(const char *FileName, int TestExistence, int *Error);
+int EGifSpew(GifFileType *GifFile);
+int EGifCloseFile(GifFileType *GifFile, int *ErrorCode);
+const char *GifErrorString(int ErrorCode);
+"#;
+
+// ================================================================
+//  Audio Extended Headers (OGG container, PulseAudio)
+// ================================================================
+
+const HEADER_OGG: &str = r#"
+typedef long long ogg_int64_t;
+
+typedef struct ogg_sync_state {
+    unsigned char *data;
+    int storage;
+    int fill;
+    int returned;
+    int unsynced;
+    int headerbytes;
+    int bodybytes;
+} ogg_sync_state;
+
+typedef struct ogg_stream_state {
+    unsigned char *body_data;
+    long body_storage;
+    long body_fill;
+    long body_returned;
+    int *lacing_vals;
+    ogg_int64_t *granule_vals;
+    long lacing_storage;
+    long lacing_fill;
+    long lacing_packet;
+    long lacing_returned;
+    int e_o_s;
+    int b_o_s;
+    long serialno;
+    long pageno;
+    ogg_int64_t packetno;
+    ogg_int64_t granulepos;
+} ogg_stream_state;
+
+typedef struct ogg_page {
+    unsigned char *header;
+    long header_len;
+    unsigned char *body;
+    long body_len;
+} ogg_page;
+
+typedef struct ogg_packet {
+    unsigned char *packet;
+    long bytes;
+    long b_o_s;
+    long e_o_s;
+    ogg_int64_t granulepos;
+    ogg_int64_t packetno;
+} ogg_packet;
+
+int ogg_sync_init(ogg_sync_state *oy);
+int ogg_sync_clear(ogg_sync_state *oy);
+char *ogg_sync_buffer(ogg_sync_state *oy, long size);
+int ogg_sync_wrote(ogg_sync_state *oy, long bytes);
+int ogg_sync_pageout(ogg_sync_state *oy, ogg_page *og);
+int ogg_stream_init(ogg_stream_state *os, int serialno);
+int ogg_stream_clear(ogg_stream_state *os);
+int ogg_stream_pagein(ogg_stream_state *os, ogg_page *og);
+int ogg_stream_packetout(ogg_stream_state *os, ogg_packet *op);
+int ogg_page_serialno(const ogg_page *og);
+int ogg_page_eos(const ogg_page *og);
+"#;
+
+const HEADER_PULSE: &str = r#"
+typedef struct pa_simple pa_simple;
+typedef struct pa_mainloop pa_mainloop;
+typedef struct pa_mainloop_api pa_mainloop_api;
+typedef struct pa_context pa_context;
+typedef struct pa_stream pa_stream;
+typedef struct pa_operation pa_operation;
+typedef int pa_sample_format_t;
+typedef unsigned int pa_channel_position_t;
+typedef int pa_stream_direction_t;
+typedef int pa_context_state_t;
+
+typedef struct pa_sample_spec {
+    pa_sample_format_t format;
+    unsigned int rate;
+    unsigned char channels;
+} pa_sample_spec;
+
+typedef struct pa_buffer_attr {
+    unsigned int maxlength;
+    unsigned int tlength;
+    unsigned int prebuf;
+    unsigned int minreq;
+    unsigned int fragsize;
+} pa_buffer_attr;
+
+pa_simple *pa_simple_new(const char *server, const char *name, pa_stream_direction_t dir, const char *dev, const char *stream_name, const pa_sample_spec *ss, const void *map, const pa_buffer_attr *attr, int *error);
+void pa_simple_free(pa_simple *s);
+int pa_simple_write(pa_simple *s, const void *data, size_t bytes, int *error);
+int pa_simple_read(pa_simple *s, void *data, size_t bytes, int *error);
+int pa_simple_drain(pa_simple *s, int *error);
+int pa_simple_flush(pa_simple *s, int *error);
+unsigned long long pa_simple_get_latency(pa_simple *s, int *error);
+pa_mainloop *pa_mainloop_new(void);
+void pa_mainloop_free(pa_mainloop *m);
+pa_mainloop_api *pa_mainloop_get_api(pa_mainloop *m);
+int pa_mainloop_run(pa_mainloop *m, int *retval);
+pa_context *pa_context_new(pa_mainloop_api *mainloop, const char *name);
+void pa_context_unref(pa_context *c);
+int pa_context_connect(pa_context *c, const char *server, int flags, const void *api);
+void pa_context_disconnect(pa_context *c);
+const char *pa_strerror(int error);
+const char *pa_get_library_version(void);
+"#;
+
+// ================================================================
+//  Red Extended Headers (libssh2, c-ares)
+// ================================================================
+
+const HEADER_SSH2: &str = r#"
+typedef struct LIBSSH2_SESSION LIBSSH2_SESSION;
+typedef struct LIBSSH2_CHANNEL LIBSSH2_CHANNEL;
+typedef struct LIBSSH2_SFTP LIBSSH2_SFTP;
+typedef struct LIBSSH2_SFTP_HANDLE LIBSSH2_SFTP_HANDLE;
+typedef struct LIBSSH2_KNOWNHOSTS LIBSSH2_KNOWNHOSTS;
+typedef struct LIBSSH2_AGENT LIBSSH2_AGENT;
+
+int libssh2_init(int flags);
+void libssh2_exit(void);
+LIBSSH2_SESSION *libssh2_session_init(void);
+int libssh2_session_free(LIBSSH2_SESSION *session);
+int libssh2_session_handshake(LIBSSH2_SESSION *session, int sock);
+int libssh2_session_disconnect(LIBSSH2_SESSION *session, const char *description);
+const char *libssh2_session_last_error(LIBSSH2_SESSION *session, char **errmsg, int *errmsg_len, int want_buf);
+int libssh2_userauth_password(LIBSSH2_SESSION *session, const char *username, const char *password);
+int libssh2_userauth_publickey_fromfile(LIBSSH2_SESSION *session, const char *username, const char *publickey, const char *privatekey, const char *passphrase);
+const char *libssh2_hostkey_hash(LIBSSH2_SESSION *session, int hash_type);
+LIBSSH2_CHANNEL *libssh2_channel_open_session(LIBSSH2_SESSION *session);
+int libssh2_channel_close(LIBSSH2_CHANNEL *channel);
+int libssh2_channel_free(LIBSSH2_CHANNEL *channel);
+int libssh2_channel_exec(LIBSSH2_CHANNEL *channel, const char *command);
+ssize_t libssh2_channel_read(LIBSSH2_CHANNEL *channel, char *buf, size_t buflen);
+ssize_t libssh2_channel_write(LIBSSH2_CHANNEL *channel, const char *buf, size_t buflen);
+int libssh2_channel_send_eof(LIBSSH2_CHANNEL *channel);
+int libssh2_channel_get_exit_status(LIBSSH2_CHANNEL *channel);
+const char *libssh2_version(int req_version_num);
+"#;
+
+const HEADER_CARES: &str = r#"
+typedef struct ares_channeldata *ares_channel;
+typedef struct ares_options {
+    int flags;
+    int timeout;
+    int tries;
+    int ndots;
+    unsigned short udp_port;
+    unsigned short tcp_port;
+} ares_options;
+
+typedef void (*ares_callback)(void *arg, int status, int timeouts, unsigned char *abuf, int alen);
+typedef void (*ares_host_callback)(void *arg, int status, int timeouts, void *hostent);
+
+int ares_library_init(int flags);
+void ares_library_cleanup(void);
+int ares_init(ares_channel *channelptr);
+int ares_init_options(ares_channel *channelptr, ares_options *options, int optmask);
+void ares_destroy(ares_channel channel);
+void ares_send(ares_channel channel, const unsigned char *qbuf, int qlen, ares_callback callback, void *arg);
+void ares_query(ares_channel channel, const char *name, int dnsclass, int type_val, ares_callback callback, void *arg);
+void ares_gethostbyname(ares_channel channel, const char *name, int family, ares_host_callback callback, void *arg);
+int ares_fds(ares_channel channel, void *read_fds, void *write_fds);
+void ares_process(ares_channel channel, void *read_fds, void *write_fds);
+void ares_process_fd(ares_channel channel, int read_fd, int write_fd);
+const char *ares_strerror(int code);
+const char *ares_version(int *version);
+void ares_cancel(ares_channel channel);
+"#;
+
+// ================================================================
+//  Fuentes Extended Headers (fontconfig, fribidi)
+// ================================================================
+
+const HEADER_FONTCONFIG: &str = r#"
+typedef int FcBool;
+typedef struct FcConfig FcConfig;
+typedef struct FcPattern FcPattern;
+typedef struct FcFontSet FcFontSet;
+typedef struct FcObjectSet FcObjectSet;
+typedef struct FcCharSet FcCharSet;
+typedef int FcResult;
+typedef unsigned char FcChar8;
+typedef unsigned int FcChar32;
+
+FcConfig *FcInitLoadConfigAndFonts(void);
+void FcConfigDestroy(FcConfig *config);
+FcBool FcConfigSubstitute(FcConfig *config, FcPattern *p, int kind);
+void FcDefaultSubstitute(FcPattern *pattern);
+FcPattern *FcPatternCreate(void);
+void FcPatternDestroy(FcPattern *p);
+FcBool FcPatternAddString(FcPattern *p, const char *object, const FcChar8 *s);
+FcBool FcPatternAddInteger(FcPattern *p, const char *object, int i);
+FcBool FcPatternAddDouble(FcPattern *p, const char *object, double d);
+FcResult FcPatternGetString(const FcPattern *p, const char *object, int n, FcChar8 **s);
+FcResult FcPatternGetInteger(const FcPattern *p, const char *object, int n, int *i);
+FcPattern *FcFontMatch(FcConfig *config, FcPattern *p, FcResult *result);
+FcFontSet *FcFontList(FcConfig *config, FcPattern *p, FcObjectSet *os);
+void FcFontSetDestroy(FcFontSet *s);
+FcObjectSet *FcObjectSetCreate(void);
+FcBool FcObjectSetAdd(FcObjectSet *os, const char *object);
+void FcObjectSetDestroy(FcObjectSet *os);
+FcPattern *FcNameParse(const FcChar8 *name);
+FcChar8 *FcNameUnparse(FcPattern *pat);
+int FcGetVersion(void);
+FcBool FcInit(void);
+void FcFini(void);
+"#;
+
+const HEADER_FRIBIDI: &str = r#"
+typedef unsigned int FriBidiChar;
+typedef int FriBidiStrIndex;
+typedef unsigned int FriBidiCharType;
+typedef unsigned int FriBidiParType;
+typedef unsigned char FriBidiLevel;
+typedef int FriBidiBracketType;
+
+void fribidi_get_bidi_types(const FriBidiChar *str, FriBidiStrIndex len, FriBidiCharType *btypes);
+void fribidi_get_bracket_types(const FriBidiChar *str, FriBidiStrIndex len, const FriBidiCharType *types, FriBidiBracketType *btypes);
+FriBidiLevel fribidi_get_par_embedding_levels(const FriBidiCharType *bidi_types, const FriBidiBracketType *bracket_types, FriBidiStrIndex len, FriBidiParType *pbase_dir, FriBidiLevel *embedding_levels);
+FriBidiLevel fribidi_log2vis(const FriBidiChar *str, FriBidiStrIndex len, FriBidiParType *pbase_dir, FriBidiChar *visual_str, FriBidiStrIndex *positions_L_to_V, FriBidiStrIndex *positions_V_to_L, FriBidiLevel *embedding_levels);
+int fribidi_charset_to_unicode(int char_set, const char *s, FriBidiStrIndex len, FriBidiChar *us);
+int fribidi_unicode_to_charset(int char_set, const FriBidiChar *us, FriBidiStrIndex len, char *s);
+"#;
+
+// ================================================================
+//  DB Extended Headers (LevelDB)
+// ================================================================
+
+const HEADER_LEVELDB: &str = r#"
+typedef struct leveldb_t leveldb_t;
+typedef struct leveldb_cache_t leveldb_cache_t;
+typedef struct leveldb_iterator_t leveldb_iterator_t;
+typedef struct leveldb_options_t leveldb_options_t;
+typedef struct leveldb_readoptions_t leveldb_readoptions_t;
+typedef struct leveldb_writeoptions_t leveldb_writeoptions_t;
+typedef struct leveldb_writebatch_t leveldb_writebatch_t;
+typedef struct leveldb_snapshot_t leveldb_snapshot_t;
+
+leveldb_t *leveldb_open(const leveldb_options_t *options, const char *name, char **errptr);
+void leveldb_close(leveldb_t *db);
+void leveldb_put(leveldb_t *db, const leveldb_writeoptions_t *options, const char *key, size_t keylen, const char *val, size_t vallen, char **errptr);
+void leveldb_delete(leveldb_t *db, const leveldb_writeoptions_t *options, const char *key, size_t keylen, char **errptr);
+char *leveldb_get(leveldb_t *db, const leveldb_readoptions_t *options, const char *key, size_t keylen, size_t *vallen, char **errptr);
+void leveldb_write(leveldb_t *db, const leveldb_writeoptions_t *options, leveldb_writebatch_t *batch, char **errptr);
+leveldb_iterator_t *leveldb_create_iterator(leveldb_t *db, const leveldb_readoptions_t *options);
+void leveldb_iter_destroy(leveldb_iterator_t *iter);
+unsigned char leveldb_iter_valid(const leveldb_iterator_t *iter);
+void leveldb_iter_seek_to_first(leveldb_iterator_t *iter);
+void leveldb_iter_seek_to_last(leveldb_iterator_t *iter);
+void leveldb_iter_seek(leveldb_iterator_t *iter, const char *k, size_t klen);
+void leveldb_iter_next(leveldb_iterator_t *iter);
+void leveldb_iter_prev(leveldb_iterator_t *iter);
+const char *leveldb_iter_key(const leveldb_iterator_t *iter, size_t *klen);
+const char *leveldb_iter_value(const leveldb_iterator_t *iter, size_t *vlen);
+leveldb_options_t *leveldb_options_create(void);
+void leveldb_options_destroy(leveldb_options_t *options);
+void leveldb_options_set_create_if_missing(leveldb_options_t *options, unsigned char v);
+leveldb_readoptions_t *leveldb_readoptions_create(void);
+void leveldb_readoptions_destroy(leveldb_readoptions_t *options);
+leveldb_writeoptions_t *leveldb_writeoptions_create(void);
+void leveldb_writeoptions_destroy(leveldb_writeoptions_t *options);
+leveldb_writebatch_t *leveldb_writebatch_create(void);
+void leveldb_writebatch_destroy(leveldb_writebatch_t *batch);
+void leveldb_writebatch_put(leveldb_writebatch_t *batch, const char *key, size_t klen, const char *val, size_t vlen);
+void leveldb_writebatch_delete(leveldb_writebatch_t *batch, const char *key, size_t klen);
+void leveldb_free(void *ptr);
+int leveldb_major_version(void);
+int leveldb_minor_version(void);
+"#;
+
+// ================================================================
+//  XML/JSON/Config Extended Headers (jsmn, libconfig)
+// ================================================================
+
+const HEADER_JSMN: &str = r#"
+typedef enum {
+    JSMN_UNDEFINED = 0,
+    JSMN_OBJECT = 1,
+    JSMN_ARRAY = 2,
+    JSMN_STRING = 3,
+    JSMN_PRIMITIVE = 4
+} jsmntype_t;
+
+typedef struct jsmntok {
+    jsmntype_t type;
+    int start;
+    int end;
+    int size;
+    int parent;
+} jsmntok_t;
+
+typedef struct jsmn_parser {
+    unsigned int pos;
+    unsigned int toknext;
+    int toksuper;
+} jsmn_parser;
+
+void jsmn_init(jsmn_parser *parser);
+int jsmn_parse(jsmn_parser *parser, const char *js, size_t len, jsmntok_t *tokens, unsigned int num_tokens);
+"#;
+
+const HEADER_LIBCONFIG: &str = r#"
+typedef struct config_t config_t;
+typedef struct config_setting_t config_setting_t;
+
+void config_init(config_t *config);
+void config_destroy(config_t *config);
+int config_read_file(config_t *config, const char *filename);
+int config_write_file(config_t *config, const char *filename);
+int config_read_string(config_t *config, const char *str);
+const char *config_error_text(const config_t *config);
+int config_error_line(const config_t *config);
+config_setting_t *config_lookup(const config_t *config, const char *path);
+int config_lookup_int(const config_t *config, const char *path, int *value);
+int config_lookup_float(const config_t *config, const char *path, double *value);
+int config_lookup_bool(const config_t *config, const char *path, int *value);
+int config_lookup_string(const config_t *config, const char *path, const char **value);
+int config_setting_get_int(const config_setting_t *setting);
+double config_setting_get_float(const config_setting_t *setting);
+int config_setting_get_bool(const config_setting_t *setting);
+const char *config_setting_get_string(const config_setting_t *setting);
+int config_setting_length(const config_setting_t *setting);
+int config_setting_type(const config_setting_t *setting);
+const char *config_setting_name(const config_setting_t *setting);
+"#;
+
+// ================================================================
+//  Hardware Extended Headers (libevdev, libpci)
+// ================================================================
+
+const HEADER_EVDEV: &str = r#"
+struct input_event {
+    long tv_sec;
+    long tv_usec;
+    unsigned short type;
+    unsigned short code;
+    int value;
+};
+
+typedef struct libevdev libevdev;
+
+libevdev *libevdev_new(void);
+void libevdev_free(libevdev *dev);
+int libevdev_new_from_fd(int fd, libevdev **dev);
+int libevdev_set_fd(libevdev *dev, int fd);
+int libevdev_change_fd(libevdev *dev, int fd);
+int libevdev_get_fd(const libevdev *dev);
+int libevdev_next_event(libevdev *dev, unsigned int flags, struct input_event *ev);
+int libevdev_has_event_pending(libevdev *dev);
+const char *libevdev_get_name(const libevdev *dev);
+void libevdev_set_name(libevdev *dev, const char *name);
+int libevdev_get_id_bustype(const libevdev *dev);
+int libevdev_get_id_vendor(const libevdev *dev);
+int libevdev_get_id_product(const libevdev *dev);
+int libevdev_has_event_type(const libevdev *dev, unsigned int type);
+int libevdev_has_event_code(const libevdev *dev, unsigned int type, unsigned int code);
+int libevdev_get_abs_minimum(const libevdev *dev, unsigned int code);
+int libevdev_get_abs_maximum(const libevdev *dev, unsigned int code);
+int libevdev_get_event_value(const libevdev *dev, unsigned int type, unsigned int code);
+int libevdev_grab(libevdev *dev, int grab);
+"#;
+
+const HEADER_PCI: &str = r#"
+typedef struct pci_access pci_access;
+typedef struct pci_dev {
+    struct pci_dev *next;
+    unsigned short domain;
+    unsigned char bus;
+    unsigned char dev;
+    unsigned char func;
+    unsigned short vendor_id;
+    unsigned short device_id;
+    unsigned short device_class;
+    int irq;
+    unsigned long base_addr[6];
+    unsigned long size[6];
+} pci_dev;
+
+pci_access *pci_alloc(void);
+void pci_init(pci_access *acc);
+void pci_cleanup(pci_access *acc);
+void pci_scan_bus(pci_access *acc);
+pci_dev *pci_get_dev(pci_access *acc, int domain, int bus, int dev, int func);
+void pci_free_dev(pci_dev *d);
+void pci_fill_info(pci_dev *d, int flags);
+unsigned char pci_read_byte(pci_dev *d, int pos);
+unsigned short pci_read_word(pci_dev *d, int pos);
+unsigned int pci_read_long(pci_dev *d, int pos);
+int pci_write_byte(pci_dev *d, int pos, unsigned char data);
+int pci_write_word(pci_dev *d, int pos, unsigned short data);
+int pci_write_long(pci_dev *d, int pos, unsigned int data);
+char *pci_lookup_name(pci_access *a, char *buf, int size, int flags, ...);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2048,5 +2585,99 @@ mod tests {
         // Hardware
         assert!(get_header("libudev.h").is_some());
         assert!(get_header("libusb-1.0/libusb.h").is_some());
+    }
+
+    #[test]
+    fn test_extended_fastos_headers() {
+        // Compresión extended
+        assert!(get_header("bzlib.h").is_some());
+        assert!(get_header("lzma.h").is_some());
+
+        // Imágenes extended
+        assert!(get_header("tiff.h").is_some());
+        assert!(get_header("tiffio.h").is_some());
+        assert!(get_header("gif_lib.h").is_some());
+
+        // Audio extended
+        assert!(get_header("ogg/ogg.h").is_some());
+        assert!(get_header("pulse/simple.h").is_some());
+        assert!(get_header("pulse/pulseaudio.h").is_some());
+
+        // Red extended
+        assert!(get_header("libssh2.h").is_some());
+        assert!(get_header("ares.h").is_some());
+
+        // Fuentes extended
+        assert!(get_header("fontconfig/fontconfig.h").is_some());
+        assert!(get_header("fribidi.h").is_some());
+        assert!(get_header("fribidi/fribidi.h").is_some());
+
+        // DB extended
+        assert!(get_header("leveldb/c.h").is_some());
+
+        // Config/JSON
+        assert!(get_header("jsmn.h").is_some());
+        assert!(get_header("libconfig.h").is_some());
+
+        // Hardware extended
+        assert!(get_header("libevdev/libevdev.h").is_some());
+        assert!(get_header("pci/pci.h").is_some());
+    }
+
+    #[test]
+    fn test_bzip2_has_compress() {
+        let bz = get_header("bzlib.h").unwrap();
+        assert!(bz.contains("BZ2_bzCompressInit"));
+        assert!(bz.contains("BZ2_bzDecompress"));
+        assert!(bz.contains("BZ2_bzlibVersion"));
+    }
+
+    #[test]
+    fn test_leveldb_has_crud() {
+        let ldb = get_header("leveldb/c.h").unwrap();
+        assert!(ldb.contains("leveldb_open"));
+        assert!(ldb.contains("leveldb_put"));
+        assert!(ldb.contains("leveldb_get"));
+        assert!(ldb.contains("leveldb_delete"));
+        assert!(ldb.contains("leveldb_close"));
+    }
+
+    #[test]
+    fn test_ssh2_has_session() {
+        let ssh = get_header("libssh2.h").unwrap();
+        assert!(ssh.contains("libssh2_session_init"));
+        assert!(ssh.contains("libssh2_channel_exec"));
+        assert!(ssh.contains("libssh2_channel_read"));
+    }
+
+    #[test]
+    fn test_total_header_count() {
+        // Verify we have 55+ headers covering ALL FastOS categories
+        let headers = vec![
+            "stdio.h", "stdlib.h", "string.h", "math.h", "stdint.h",
+            "stdbool.h", "stddef.h", "stdarg.h", "ctype.h", "limits.h",
+            "float.h", "errno.h", "assert.h", "signal.h", "setjmp.h",
+            "time.h", "locale.h", "unistd.h", "fcntl.h", "sys/types.h",
+            "sys/stat.h", "sys/mman.h", "sys/ioctl.h", "sys/wait.h",
+            "sys/time.h", "sys/select.h", "dirent.h", "dlfcn.h",
+            "pthread.h", "semaphore.h", "sys/socket.h", "netinet/in.h",
+            "arpa/inet.h", "netdb.h", "poll.h", "sys/epoll.h",
+            "zlib.h", "lz4.h", "zstd.h", "bzlib.h", "lzma.h",
+            "png.h", "jpeglib.h", "tiff.h", "gif_lib.h",
+            "vorbis/codec.h", "opus/opus.h", "FLAC/all.h", "ogg/ogg.h",
+            "pulse/simple.h", "vulkan/vulkan.h", "EGL/egl.h",
+            "wayland-client.h", "ft2build.h", "hb.h",
+            "fontconfig/fontconfig.h", "fribidi.h",
+            "sqlite3.h", "leveldb/c.h", "curl/curl.h", "openssl/ssl.h",
+            "libssh2.h", "ares.h", "libinput.h", "xkbcommon/xkbcommon.h",
+            "libudev.h", "libusb.h", "libevdev/libevdev.h", "pci/pci.h",
+            "libavcodec/avcodec.h", "libavformat/avformat.h",
+            "libavutil/avutil.h", "libswscale/swscale.h",
+            "expat.h", "jsmn.h", "libconfig.h",
+        ];
+        for h in &headers {
+            assert!(get_header(h).is_some(), "Missing header: {}", h);
+        }
+        assert!(headers.len() >= 55, "Expected 55+ headers, got {}", headers.len());
     }
 }

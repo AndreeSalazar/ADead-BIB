@@ -23,7 +23,14 @@
 //   Red:         libcurl, OpenSSL, sockets, epoll
 //   DB:          SQLite3
 //   Multimedia:  FFmpeg (avcodec, avformat, avutil, swscale)
-//   Hardware:    libinput, xkbcommon, libudev, libusb
+//   Hardware:    libinput, xkbcommon, libudev, libusb, libevdev, libpci
+//   Compresión+: bzip2, xz/liblzma
+//   Imágenes+:   libtiff, libgif
+//   Audio+:      libogg, PulseAudio
+//   Red+:        libssh2, c-ares
+//   Fuentes+:    fontconfig, fribidi
+//   DB+:         LevelDB
+//   Config:      jsmn (JSON), libconfig
 //   XML:         expat
 //
 // Sin GCC. Sin LLVM. Sin Clang. Solo ADead-BIB. 💀🦈

@@ -238,19 +238,19 @@ impl CPUFeatures {
     /// Imprime un resumen de las características
     pub fn print_summary(&self) {
         println!("╔════════════════════════════════════════════════════════════╗");
-        println!("║                    CPU FEATURES                             ║");
+        println!("║                    CPU FEATURES                            ║");
         println!("╠════════════════════════════════════════════════════════════╣");
         println!("║ Vendor: {:50} ║", self.vendor);
         println!("║ Brand:  {:50} ║", &self.brand[..self.brand.len().min(50)]);
-        println!("║ Cores:  {:3} | Threads: {:3}                                 ║", self.cores, self.threads);
+        println!("║ Cores:  {:3} | Threads: {:3}                               ║", self.cores, self.threads);
         println!("╠════════════════════════════════════════════════════════════╣");
         println!("║ SIMD Support:                                              ║");
-        println!("║   SSE:    {} | SSE2:   {} | SSE3:   {} | SSSE3:  {}         ║",
+        println!("║   SSE:    {} | SSE2:   {} | SSE3:   {} | SSSE3:  {}        ║",
                  if self.has_sse { "✓" } else { "✗" },
                  if self.has_sse2 { "✓" } else { "✗" },
                  if self.has_sse3 { "✓" } else { "✗" },
                  if self.has_ssse3 { "✓" } else { "✗" });
-        println!("║   SSE4.1: {} | SSE4.2: {} | AVX:    {} | AVX2:   {}         ║",
+        println!("║   SSE4.1: {} | SSE4.2: {} | AVX:    {} | AVX2:   {}        ║",
                  if self.has_sse4_1 { "✓" } else { "✗" },
                  if self.has_sse4_2 { "✓" } else { "✗" },
                  if self.has_avx { "✓" } else { "✗" },

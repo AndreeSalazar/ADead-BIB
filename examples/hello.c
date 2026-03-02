@@ -346,7 +346,7 @@ int main() {
 
     // --- Memoria dinámica ---
     printf("\nMemoria dinamica:\n");
-    int *heap = malloc(5 * sizeof(int));
+    int *heap = (int *)malloc(5 * sizeof(int));
     if (heap != NULL) {
         for (int i = 0; i < 5; i++) {
             heap[i] = i * i;
