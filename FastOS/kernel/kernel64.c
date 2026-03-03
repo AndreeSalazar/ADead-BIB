@@ -513,7 +513,7 @@ void kernel_main(void) {
         cursor_x = terminal_window.x + 9 + cmd_pos;
         cursor_y = terminal_window.y + 1 + term_line;
         
-        if ((tick & 0x7FFF) < 0x4000) {
+        if ((tick & 0xFFFFF) < 0x80000) {
             vga_putchar_at(cursor_x, cursor_y, '_', terminal_window.content_attr);
         } else {
             vga_putchar_at(cursor_x, cursor_y, ' ', terminal_window.content_attr);
@@ -557,6 +557,8 @@ void kernel_main(void) {
  * ============================================================ */
 
 void _start(void) {
+    /* Firma mágica que el bootloader verifica */
+    __asm__ volatile(".long 0xDEADBEEF");
     kernel_main();
     while (1) hlt();
 }

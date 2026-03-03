@@ -354,14 +354,13 @@ lm_start:
     ; The kernel is loaded by the build script after the loader
     ; ============================================================
     
-    ; Check if kernel exists (any non-zero byte at 0x100000)
-    mov al, [0x100000]
-    test al, al             ; Zero = no kernel
-    jz .no_kernel
+    ; Check if kernel exists (verify magic signature 0xDEADBEEF)
+    mov eax, [0x100000]
+    cmp eax, 0xDEADBEEF
+    jne .no_kernel
     
-    ; Kernel found (first byte is non-zero)
-    ; Jump to kernel entry point
-    mov rax, 0x100000
+    ; Kernel found - skip magic signature and call entry point
+    mov rax, 0x100004       ; Skip 4-byte magic
     call rax
     
     ; If kernel returns, fall through to shell

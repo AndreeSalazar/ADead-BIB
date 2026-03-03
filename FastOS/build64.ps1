@@ -89,24 +89,26 @@ $loaderSize = (Get-Item $loaderBin).Length
 Write-Success "Loader: $loaderSize bytes"
 
 # ============================================================
-# Step 3: Assemble kernel64.asm with FASM (working ASM kernel)
+# Step 3: Compile kernel64.c with ADead-BIB
 # ============================================================
-Write-Status "Step 3: Assembling kernel64.asm with FASM..."
+Write-Status "Step 3: Compiling kernel64.c with ADead-BIB..."
 
-$kernelSrc = "$KERNEL\kernel64.asm"
+$kernelSrc = "$KERNEL\kernel64.c"
 $kernelBin = "$BUILD\kernel64.bin"
 
-# Assemble kernel with FASM
+# Compile kernel with ADead-BIB --flat
 $compiled = $false
-if (Test-Path $kernelSrc) {
-    & $FASM $kernelSrc $kernelBin 2>&1
+try {
+    $result = & cargo run --manifest-path="$ADEAD_ROOT\Cargo.toml" --release -- cc "$kernelSrc" -o "$kernelBin" --flat --org=0x100000 --size=32768 2>&1
     if (Test-Path $kernelBin) {
         $kernelSize = (Get-Item $kernelBin).Length
         if ($kernelSize -gt 0) {
-            Write-Success "Kernel: $kernelSize bytes (FASM 64-bit)"
+            Write-Success "Kernel: $kernelSize bytes (ADead-BIB C)"
             $compiled = $true
         }
     }
+} catch {
+    Write-Status "ADead-BIB compilation failed"
 }
 
 if (-not $compiled) {
