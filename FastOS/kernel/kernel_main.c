@@ -11,7 +11,53 @@
 #include "../include/kernel.h"
 #include "../include/types.h"
 #include "../include/po.h"
+#include "../include/rust_safety.h"
+#include "../include/boot_types.h"
 #include "../drivers/video/nouveau/nouveau.h"
+
+/* ============================================================
+ * Rust Safety Layer Integration
+ * ============================================================ */
+
+static int rust_safety_initialized = 0;
+
+static void rust_safety_init(void) {
+    /* Initialize Rust heap allocator */
+    extern u8 _heap_start[];
+    extern u8 _heap_end[];
+    
+    /* Use 1MB for Rust heap if symbols not available */
+    static u8 rust_heap[1024 * 1024];
+    rust_heap_init((size_t)rust_heap, sizeof(rust_heap));
+    
+    rust_safety_initialized = 1;
+    kputs("[RUST] Safety layer initialized\n");
+    kputs("[BG] Binary Guardian: ACTIVE\n");
+}
+
+/* Safe memory operations using Rust */
+static void* safe_kmalloc(size_t size) {
+    if (rust_safety_initialized) {
+        return rust_malloc(size);
+    }
+    return kmalloc(size);
+}
+
+static int safe_memcpy(void* dest, size_t dest_size, const void* src, size_t count) {
+    if (rust_safety_initialized) {
+        return rust_memcpy_safe(dest, dest_size, src, count);
+    }
+    kmemcpy(dest, src, count);
+    return 1;
+}
+
+static int safe_memset(void* dest, size_t dest_size, u8 value, size_t count) {
+    if (rust_safety_initialized) {
+        return rust_memset_safe(dest, dest_size, value, count);
+    }
+    kmemset(dest, value, count);
+    return 1;
+}
 
 /* ============================================================
  * Global State
@@ -486,6 +532,10 @@ void kernel_main(void) {
     
     kputs("[BOOT] Kernel loaded at 0x100000\n");
     kputs("[BOOT] C is Master, Rust provides Safety\n\n");
+    
+    /* Initialize Rust Safety Layer */
+    kputs("[INIT] Initializing Rust Safety Layer...\n");
+    rust_safety_init();
     
     /* Initialize PIC */
     kputs("[INIT] Initializing PIC...\n");
