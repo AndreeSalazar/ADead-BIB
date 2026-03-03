@@ -350,12 +350,6 @@ lm_start:
 .s2: mov [rdi+8], al
     mov byte [rdi+9], 0x0E
 
-    ; Check if kernel exists (verify first byte is JMP opcode 0xE9)
-    mov al, [0x100000]
-    test al, al
-    jz .no_kernel
-    
-    ; Kernel found - call entry point directly
     mov rax, 0x100000
     call rax
     
