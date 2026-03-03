@@ -1,0 +1,405 @@
+/*
+ * ADead-BIB C++ Standard Library
+ * <memory> - Memory Management
+ * 
+ * Based on: C++17/C++20 standard
+ */
+
+#ifndef _ADEAD_CPP_MEMORY
+#define _ADEAD_CPP_MEMORY
+
+#include <cstddef>
+#include <cstdlib>
+
+namespace std {
+
+// Default allocator
+template<typename T>
+class allocator {
+public:
+    using value_type = T;
+    using size_type = size_t;
+    using difference_type = ptrdiff_t;
+    using pointer = T*;
+    using const_pointer = const T*;
+    using reference = T&;
+    using const_reference = const T&;
+    
+    allocator() noexcept = default;
+    allocator(const allocator&) noexcept = default;
+    template<typename U> allocator(const allocator<U>&) noexcept {}
+    ~allocator() = default;
+    
+    T* allocate(size_t n) {
+        if (n > max_size()) throw bad_alloc();
+        return static_cast<T*>(::operator new(n * sizeof(T)));
+    }
+    
+    void deallocate(T* p, size_t) noexcept {
+        ::operator delete(p);
+    }
+    
+    size_t max_size() const noexcept {
+        return static_cast<size_t>(-1) / sizeof(T);
+    }
+    
+    template<typename U, typename... Args>
+    void construct(U* p, Args&&... args) {
+        new (p) U(static_cast<Args&&>(args)...);
+    }
+    
+    template<typename U>
+    void destroy(U* p) {
+        p->~U();
+    }
+};
+
+template<typename T1, typename T2>
+bool operator==(const allocator<T1>&, const allocator<T2>&) noexcept { return true; }
+
+template<typename T1, typename T2>
+bool operator!=(const allocator<T1>&, const allocator<T2>&) noexcept { return false; }
+
+// bad_alloc exception
+class bad_alloc {
+public:
+    bad_alloc() noexcept = default;
+    virtual ~bad_alloc() noexcept = default;
+    virtual const char* what() const noexcept { return "std::bad_alloc"; }
+};
+
+// unique_ptr
+template<typename T>
+struct default_delete {
+    constexpr default_delete() noexcept = default;
+    
+    template<typename U>
+    default_delete(const default_delete<U>&) noexcept {}
+    
+    void operator()(T* ptr) const {
+        delete ptr;
+    }
+};
+
+template<typename T>
+struct default_delete<T[]> {
+    constexpr default_delete() noexcept = default;
+    
+    void operator()(T* ptr) const {
+        delete[] ptr;
+    }
+};
+
+template<typename T, typename Deleter = default_delete<T>>
+class unique_ptr {
+public:
+    using pointer = T*;
+    using element_type = T;
+    using deleter_type = Deleter;
+
+private:
+    pointer _ptr;
+    Deleter _deleter;
+
+public:
+    constexpr unique_ptr() noexcept : _ptr(nullptr) {}
+    constexpr unique_ptr(nullptr_t) noexcept : _ptr(nullptr) {}
+    explicit unique_ptr(pointer p) noexcept : _ptr(p) {}
+    unique_ptr(pointer p, const Deleter& d) noexcept : _ptr(p), _deleter(d) {}
+    unique_ptr(pointer p, Deleter&& d) noexcept : _ptr(p), _deleter(static_cast<Deleter&&>(d)) {}
+    
+    unique_ptr(unique_ptr&& u) noexcept 
+        : _ptr(u._ptr), _deleter(static_cast<Deleter&&>(u._deleter)) {
+        u._ptr = nullptr;
+    }
+    
+    template<typename U, typename E>
+    unique_ptr(unique_ptr<U, E>&& u) noexcept 
+        : _ptr(u.release()), _deleter(static_cast<E&&>(u.get_deleter())) {}
+    
+    unique_ptr(const unique_ptr&) = delete;
+    unique_ptr& operator=(const unique_ptr&) = delete;
+    
+    ~unique_ptr() {
+        if (_ptr) _deleter(_ptr);
+    }
+    
+    unique_ptr& operator=(unique_ptr&& u) noexcept {
+        reset(u.release());
+        _deleter = static_cast<Deleter&&>(u._deleter);
+        return *this;
+    }
+    
+    unique_ptr& operator=(nullptr_t) noexcept {
+        reset();
+        return *this;
+    }
+    
+    pointer release() noexcept {
+        pointer p = _ptr;
+        _ptr = nullptr;
+        return p;
+    }
+    
+    void reset(pointer p = pointer()) noexcept {
+        pointer old = _ptr;
+        _ptr = p;
+        if (old) _deleter(old);
+    }
+    
+    void swap(unique_ptr& other) noexcept {
+        pointer tmp = _ptr;
+        _ptr = other._ptr;
+        other._ptr = tmp;
+    }
+    
+    pointer get() const noexcept { return _ptr; }
+    Deleter& get_deleter() noexcept { return _deleter; }
+    const Deleter& get_deleter() const noexcept { return _deleter; }
+    explicit operator bool() const noexcept { return _ptr != nullptr; }
+    
+    T& operator*() const { return *_ptr; }
+    pointer operator->() const noexcept { return _ptr; }
+};
+
+// unique_ptr for arrays
+template<typename T, typename Deleter>
+class unique_ptr<T[], Deleter> {
+public:
+    using pointer = T*;
+    using element_type = T;
+    using deleter_type = Deleter;
+
+private:
+    pointer _ptr;
+    Deleter _deleter;
+
+public:
+    constexpr unique_ptr() noexcept : _ptr(nullptr) {}
+    constexpr unique_ptr(nullptr_t) noexcept : _ptr(nullptr) {}
+    explicit unique_ptr(pointer p) noexcept : _ptr(p) {}
+    
+    unique_ptr(unique_ptr&& u) noexcept 
+        : _ptr(u._ptr), _deleter(static_cast<Deleter&&>(u._deleter)) {
+        u._ptr = nullptr;
+    }
+    
+    unique_ptr(const unique_ptr&) = delete;
+    unique_ptr& operator=(const unique_ptr&) = delete;
+    
+    ~unique_ptr() {
+        if (_ptr) _deleter(_ptr);
+    }
+    
+    unique_ptr& operator=(unique_ptr&& u) noexcept {
+        reset(u.release());
+        _deleter = static_cast<Deleter&&>(u._deleter);
+        return *this;
+    }
+    
+    unique_ptr& operator=(nullptr_t) noexcept {
+        reset();
+        return *this;
+    }
+    
+    pointer release() noexcept {
+        pointer p = _ptr;
+        _ptr = nullptr;
+        return p;
+    }
+    
+    void reset(pointer p = pointer()) noexcept {
+        pointer old = _ptr;
+        _ptr = p;
+        if (old) _deleter(old);
+    }
+    
+    pointer get() const noexcept { return _ptr; }
+    explicit operator bool() const noexcept { return _ptr != nullptr; }
+    
+    T& operator[](size_t i) const { return _ptr[i]; }
+};
+
+// make_unique
+template<typename T, typename... Args>
+unique_ptr<T> make_unique(Args&&... args) {
+    return unique_ptr<T>(new T(static_cast<Args&&>(args)...));
+}
+
+template<typename T>
+unique_ptr<T> make_unique(size_t size) {
+    return unique_ptr<T>(new typename remove_extent<T>::type[size]());
+}
+
+// shared_ptr (simplified)
+template<typename T>
+class shared_ptr {
+public:
+    using element_type = T;
+
+private:
+    T* _ptr;
+    size_t* _ref_count;
+
+    void _release() {
+        if (_ref_count) {
+            --(*_ref_count);
+            if (*_ref_count == 0) {
+                delete _ptr;
+                delete _ref_count;
+            }
+        }
+        _ptr = nullptr;
+        _ref_count = nullptr;
+    }
+
+public:
+    constexpr shared_ptr() noexcept : _ptr(nullptr), _ref_count(nullptr) {}
+    constexpr shared_ptr(nullptr_t) noexcept : _ptr(nullptr), _ref_count(nullptr) {}
+    
+    explicit shared_ptr(T* p) : _ptr(p), _ref_count(new size_t(1)) {}
+    
+    shared_ptr(const shared_ptr& other) noexcept 
+        : _ptr(other._ptr), _ref_count(other._ref_count) {
+        if (_ref_count) ++(*_ref_count);
+    }
+    
+    shared_ptr(shared_ptr&& other) noexcept 
+        : _ptr(other._ptr), _ref_count(other._ref_count) {
+        other._ptr = nullptr;
+        other._ref_count = nullptr;
+    }
+    
+    template<typename U>
+    shared_ptr(const shared_ptr<U>& other) noexcept 
+        : _ptr(other.get()), _ref_count(other._get_ref_count()) {
+        if (_ref_count) ++(*_ref_count);
+    }
+    
+    ~shared_ptr() { _release(); }
+    
+    shared_ptr& operator=(const shared_ptr& other) noexcept {
+        if (this != &other) {
+            _release();
+            _ptr = other._ptr;
+            _ref_count = other._ref_count;
+            if (_ref_count) ++(*_ref_count);
+        }
+        return *this;
+    }
+    
+    shared_ptr& operator=(shared_ptr&& other) noexcept {
+        if (this != &other) {
+            _release();
+            _ptr = other._ptr;
+            _ref_count = other._ref_count;
+            other._ptr = nullptr;
+            other._ref_count = nullptr;
+        }
+        return *this;
+    }
+    
+    void reset() noexcept { _release(); }
+    void reset(T* p) {
+        _release();
+        _ptr = p;
+        _ref_count = p ? new size_t(1) : nullptr;
+    }
+    
+    void swap(shared_ptr& other) noexcept {
+        T* tmp_ptr = _ptr;
+        size_t* tmp_ref = _ref_count;
+        _ptr = other._ptr;
+        _ref_count = other._ref_count;
+        other._ptr = tmp_ptr;
+        other._ref_count = tmp_ref;
+    }
+    
+    T* get() const noexcept { return _ptr; }
+    size_t* _get_ref_count() const noexcept { return _ref_count; }
+    
+    T& operator*() const noexcept { return *_ptr; }
+    T* operator->() const noexcept { return _ptr; }
+    
+    size_t use_count() const noexcept { return _ref_count ? *_ref_count : 0; }
+    bool unique() const noexcept { return use_count() == 1; }
+    explicit operator bool() const noexcept { return _ptr != nullptr; }
+};
+
+// make_shared
+template<typename T, typename... Args>
+shared_ptr<T> make_shared(Args&&... args) {
+    return shared_ptr<T>(new T(static_cast<Args&&>(args)...));
+}
+
+// weak_ptr (simplified)
+template<typename T>
+class weak_ptr {
+private:
+    T* _ptr;
+    size_t* _ref_count;
+
+public:
+    constexpr weak_ptr() noexcept : _ptr(nullptr), _ref_count(nullptr) {}
+    
+    weak_ptr(const shared_ptr<T>& sp) noexcept 
+        : _ptr(sp.get()), _ref_count(sp._get_ref_count()) {}
+    
+    weak_ptr(const weak_ptr& other) noexcept 
+        : _ptr(other._ptr), _ref_count(other._ref_count) {}
+    
+    weak_ptr& operator=(const weak_ptr& other) noexcept {
+        _ptr = other._ptr;
+        _ref_count = other._ref_count;
+        return *this;
+    }
+    
+    weak_ptr& operator=(const shared_ptr<T>& sp) noexcept {
+        _ptr = sp.get();
+        _ref_count = sp._get_ref_count();
+        return *this;
+    }
+    
+    void reset() noexcept {
+        _ptr = nullptr;
+        _ref_count = nullptr;
+    }
+    
+    size_t use_count() const noexcept { return _ref_count ? *_ref_count : 0; }
+    bool expired() const noexcept { return use_count() == 0; }
+    
+    shared_ptr<T> lock() const noexcept {
+        if (expired()) return shared_ptr<T>();
+        return shared_ptr<T>(*this);
+    }
+};
+
+// addressof
+template<typename T>
+T* addressof(T& arg) noexcept {
+    return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(arg)));
+}
+
+// pointer_traits
+template<typename Ptr>
+struct pointer_traits {
+    using pointer = Ptr;
+    using element_type = typename Ptr::element_type;
+    using difference_type = typename Ptr::difference_type;
+};
+
+template<typename T>
+struct pointer_traits<T*> {
+    using pointer = T*;
+    using element_type = T;
+    using difference_type = ptrdiff_t;
+    
+    static T* pointer_to(T& r) noexcept { return addressof(r); }
+};
+
+// align
+void* align(size_t alignment, size_t size, void*& ptr, size_t& space);
+
+} // namespace std
+
+#endif // _ADEAD_CPP_MEMORY

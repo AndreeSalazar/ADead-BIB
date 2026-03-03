@@ -1,0 +1,240 @@
+/*
+ * ADead-BIB C++ Standard Library
+ * <thread> - Threading Support
+ * 
+ * Based on: C++11/14/17/20 standard
+ */
+
+#ifndef _ADEAD_CPP_THREAD
+#define _ADEAD_CPP_THREAD
+
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <chrono>
+
+namespace std {
+
+// Forward declarations
+namespace this_thread {
+    void yield() noexcept;
+    template<typename Rep, typename Period>
+    void sleep_for(const chrono::duration<Rep, Period>& sleep_duration);
+    template<typename Clock, typename Duration>
+    void sleep_until(const chrono::time_point<Clock, Duration>& sleep_time);
+}
+
+class thread {
+public:
+    class id {
+        friend class thread;
+        friend bool operator==(id x, id y) noexcept;
+        friend bool operator<(id x, id y) noexcept;
+        
+        unsigned long _id;
+    public:
+        id() noexcept : _id(0) {}
+        explicit id(unsigned long i) : _id(i) {}
+    };
+    
+    using native_handle_type = void*;
+
+private:
+    id _id;
+    native_handle_type _handle;
+    
+    struct thread_data_base {
+        virtual ~thread_data_base() = default;
+        virtual void run() = 0;
+    };
+    
+    template<typename Callable>
+    struct thread_data : thread_data_base {
+        Callable func;
+        thread_data(Callable&& f) : func(static_cast<Callable&&>(f)) {}
+        void run() override { func(); }
+    };
+
+public:
+    // Constructors
+    thread() noexcept : _id(), _handle(nullptr) {}
+    
+    template<typename Callable, typename... Args>
+    explicit thread(Callable&& f, Args&&... args) {
+        auto bound = [=]() mutable { f(args...); };
+        // Platform-specific thread creation would go here
+        // For now, just store the callable
+        _handle = nullptr;
+        _id = id(0);
+    }
+    
+    ~thread() {
+        if (joinable()) {
+            // std::terminate() in real implementation
+        }
+    }
+    
+    thread(const thread&) = delete;
+    thread& operator=(const thread&) = delete;
+    
+    thread(thread&& other) noexcept 
+        : _id(other._id), _handle(other._handle) {
+        other._id = id();
+        other._handle = nullptr;
+    }
+    
+    thread& operator=(thread&& other) noexcept {
+        if (joinable()) {
+            // std::terminate() in real implementation
+        }
+        _id = other._id;
+        _handle = other._handle;
+        other._id = id();
+        other._handle = nullptr;
+        return *this;
+    }
+    
+    // Observers
+    bool joinable() const noexcept {
+        return _id._id != 0;
+    }
+    
+    id get_id() const noexcept {
+        return _id;
+    }
+    
+    native_handle_type native_handle() {
+        return _handle;
+    }
+    
+    static unsigned int hardware_concurrency() noexcept {
+        // Platform-specific
+        return 1;
+    }
+    
+    // Operations
+    void join() {
+        if (!joinable()) {
+            // throw system_error
+            return;
+        }
+        // Platform-specific join
+        _id = id();
+        _handle = nullptr;
+    }
+    
+    void detach() {
+        if (!joinable()) {
+            // throw system_error
+            return;
+        }
+        // Platform-specific detach
+        _id = id();
+        _handle = nullptr;
+    }
+    
+    void swap(thread& other) noexcept {
+        id tmp_id = _id;
+        native_handle_type tmp_handle = _handle;
+        _id = other._id;
+        _handle = other._handle;
+        other._id = tmp_id;
+        other._handle = tmp_handle;
+    }
+};
+
+inline bool operator==(thread::id x, thread::id y) noexcept {
+    return x._id == y._id;
+}
+
+inline bool operator!=(thread::id x, thread::id y) noexcept {
+    return !(x == y);
+}
+
+inline bool operator<(thread::id x, thread::id y) noexcept {
+    return x._id < y._id;
+}
+
+inline bool operator<=(thread::id x, thread::id y) noexcept {
+    return !(y < x);
+}
+
+inline bool operator>(thread::id x, thread::id y) noexcept {
+    return y < x;
+}
+
+inline bool operator>=(thread::id x, thread::id y) noexcept {
+    return !(x < y);
+}
+
+inline void swap(thread& x, thread& y) noexcept {
+    x.swap(y);
+}
+
+namespace this_thread {
+    inline thread::id get_id() noexcept {
+        // Platform-specific
+        return thread::id(1);
+    }
+    
+    inline void yield() noexcept {
+        // Platform-specific yield
+    }
+    
+    template<typename Rep, typename Period>
+    void sleep_for(const chrono::duration<Rep, Period>& sleep_duration) {
+        // Platform-specific sleep
+        (void)sleep_duration;
+    }
+    
+    template<typename Clock, typename Duration>
+    void sleep_until(const chrono::time_point<Clock, Duration>& sleep_time) {
+        auto now = Clock::now();
+        if (sleep_time > now) {
+            sleep_for(sleep_time - now);
+        }
+    }
+}
+
+// jthread (C++20)
+class jthread {
+    thread _thread;
+    
+public:
+    using id = thread::id;
+    using native_handle_type = thread::native_handle_type;
+    
+    jthread() noexcept = default;
+    
+    template<typename Callable, typename... Args>
+    explicit jthread(Callable&& f, Args&&... args)
+        : _thread(static_cast<Callable&&>(f), static_cast<Args&&>(args)...) {}
+    
+    ~jthread() {
+        if (joinable()) {
+            join();
+        }
+    }
+    
+    jthread(const jthread&) = delete;
+    jthread& operator=(const jthread&) = delete;
+    
+    jthread(jthread&&) noexcept = default;
+    jthread& operator=(jthread&&) noexcept = default;
+    
+    bool joinable() const noexcept { return _thread.joinable(); }
+    id get_id() const noexcept { return _thread.get_id(); }
+    native_handle_type native_handle() { return _thread.native_handle(); }
+    
+    void join() { _thread.join(); }
+    void detach() { _thread.detach(); }
+    void swap(jthread& other) noexcept { _thread.swap(other._thread); }
+    
+    static unsigned int hardware_concurrency() noexcept {
+        return thread::hardware_concurrency();
+    }
+};
+
+} // namespace std
+
+#endif // _ADEAD_CPP_THREAD

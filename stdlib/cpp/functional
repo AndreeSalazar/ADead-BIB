@@ -1,0 +1,305 @@
+/*
+ * ADead-BIB C++ Standard Library
+ * <functional> - Function Objects
+ * 
+ * Based on: C++17/C++20 standard
+ */
+
+#ifndef _ADEAD_CPP_FUNCTIONAL
+#define _ADEAD_CPP_FUNCTIONAL
+
+#include <cstddef>
+#include <memory>
+
+namespace std {
+
+// Arithmetic operations
+template<typename T = void>
+struct plus {
+    constexpr T operator()(const T& x, const T& y) const { return x + y; }
+};
+
+template<typename T = void>
+struct minus {
+    constexpr T operator()(const T& x, const T& y) const { return x - y; }
+};
+
+template<typename T = void>
+struct multiplies {
+    constexpr T operator()(const T& x, const T& y) const { return x * y; }
+};
+
+template<typename T = void>
+struct divides {
+    constexpr T operator()(const T& x, const T& y) const { return x / y; }
+};
+
+template<typename T = void>
+struct modulus {
+    constexpr T operator()(const T& x, const T& y) const { return x % y; }
+};
+
+template<typename T = void>
+struct negate {
+    constexpr T operator()(const T& x) const { return -x; }
+};
+
+// Comparison operations
+template<typename T = void>
+struct equal_to {
+    constexpr bool operator()(const T& x, const T& y) const { return x == y; }
+};
+
+template<typename T = void>
+struct not_equal_to {
+    constexpr bool operator()(const T& x, const T& y) const { return x != y; }
+};
+
+template<typename T = void>
+struct greater {
+    constexpr bool operator()(const T& x, const T& y) const { return x > y; }
+};
+
+template<typename T = void>
+struct less {
+    constexpr bool operator()(const T& x, const T& y) const { return x < y; }
+};
+
+template<typename T = void>
+struct greater_equal {
+    constexpr bool operator()(const T& x, const T& y) const { return x >= y; }
+};
+
+template<typename T = void>
+struct less_equal {
+    constexpr bool operator()(const T& x, const T& y) const { return x <= y; }
+};
+
+// Logical operations
+template<typename T = void>
+struct logical_and {
+    constexpr bool operator()(const T& x, const T& y) const { return x && y; }
+};
+
+template<typename T = void>
+struct logical_or {
+    constexpr bool operator()(const T& x, const T& y) const { return x || y; }
+};
+
+template<typename T = void>
+struct logical_not {
+    constexpr bool operator()(const T& x) const { return !x; }
+};
+
+// Bitwise operations
+template<typename T = void>
+struct bit_and {
+    constexpr T operator()(const T& x, const T& y) const { return x & y; }
+};
+
+template<typename T = void>
+struct bit_or {
+    constexpr T operator()(const T& x, const T& y) const { return x | y; }
+};
+
+template<typename T = void>
+struct bit_xor {
+    constexpr T operator()(const T& x, const T& y) const { return x ^ y; }
+};
+
+template<typename T = void>
+struct bit_not {
+    constexpr T operator()(const T& x) const { return ~x; }
+};
+
+// reference_wrapper
+template<typename T>
+class reference_wrapper {
+public:
+    using type = T;
+    
+    reference_wrapper(T& ref) noexcept : _ptr(&ref) {}
+    reference_wrapper(T&&) = delete;
+    reference_wrapper(const reference_wrapper&) noexcept = default;
+    
+    reference_wrapper& operator=(const reference_wrapper&) noexcept = default;
+    
+    operator T&() const noexcept { return *_ptr; }
+    T& get() const noexcept { return *_ptr; }
+    
+    template<typename... Args>
+    auto operator()(Args&&... args) const 
+        -> decltype((*_ptr)(static_cast<Args&&>(args)...)) {
+        return (*_ptr)(static_cast<Args&&>(args)...);
+    }
+    
+private:
+    T* _ptr;
+};
+
+template<typename T>
+reference_wrapper<T> ref(T& t) noexcept { return reference_wrapper<T>(t); }
+
+template<typename T>
+reference_wrapper<const T> cref(const T& t) noexcept { return reference_wrapper<const T>(t); }
+
+// function (simplified)
+template<typename>
+class function;
+
+template<typename R, typename... Args>
+class function<R(Args...)> {
+private:
+    struct callable_base {
+        virtual ~callable_base() = default;
+        virtual R invoke(Args...) = 0;
+        virtual callable_base* clone() const = 0;
+    };
+    
+    template<typename F>
+    struct callable : callable_base {
+        F func;
+        callable(F f) : func(f) {}
+        R invoke(Args... args) override { return func(args...); }
+        callable_base* clone() const override { return new callable(func); }
+    };
+    
+    callable_base* _callable;
+
+public:
+    function() noexcept : _callable(nullptr) {}
+    function(nullptr_t) noexcept : _callable(nullptr) {}
+    
+    template<typename F>
+    function(F f) : _callable(new callable<F>(f)) {}
+    
+    function(const function& other) 
+        : _callable(other._callable ? other._callable->clone() : nullptr) {}
+    
+    function(function&& other) noexcept : _callable(other._callable) {
+        other._callable = nullptr;
+    }
+    
+    ~function() { delete _callable; }
+    
+    function& operator=(const function& other) {
+        if (this != &other) {
+            delete _callable;
+            _callable = other._callable ? other._callable->clone() : nullptr;
+        }
+        return *this;
+    }
+    
+    function& operator=(function&& other) noexcept {
+        if (this != &other) {
+            delete _callable;
+            _callable = other._callable;
+            other._callable = nullptr;
+        }
+        return *this;
+    }
+    
+    function& operator=(nullptr_t) noexcept {
+        delete _callable;
+        _callable = nullptr;
+        return *this;
+    }
+    
+    template<typename F>
+    function& operator=(F f) {
+        delete _callable;
+        _callable = new callable<F>(f);
+        return *this;
+    }
+    
+    explicit operator bool() const noexcept { return _callable != nullptr; }
+    
+    R operator()(Args... args) const {
+        if (!_callable) throw bad_function_call();
+        return _callable->invoke(args...);
+    }
+    
+    void swap(function& other) noexcept {
+        callable_base* tmp = _callable;
+        _callable = other._callable;
+        other._callable = tmp;
+    }
+};
+
+class bad_function_call {
+public:
+    bad_function_call() noexcept = default;
+    virtual ~bad_function_call() noexcept = default;
+    virtual const char* what() const noexcept { return "std::bad_function_call"; }
+};
+
+// hash
+template<typename T>
+struct hash;
+
+template<>
+struct hash<bool> {
+    size_t operator()(bool val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<>
+struct hash<char> {
+    size_t operator()(char val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<>
+struct hash<int> {
+    size_t operator()(int val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<>
+struct hash<long> {
+    size_t operator()(long val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<>
+struct hash<long long> {
+    size_t operator()(long long val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<>
+struct hash<unsigned int> {
+    size_t operator()(unsigned int val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<>
+struct hash<unsigned long> {
+    size_t operator()(unsigned long val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<>
+struct hash<unsigned long long> {
+    size_t operator()(unsigned long long val) const noexcept { return static_cast<size_t>(val); }
+};
+
+template<typename T>
+struct hash<T*> {
+    size_t operator()(T* val) const noexcept { 
+        return reinterpret_cast<size_t>(val); 
+    }
+};
+
+// bind placeholder
+namespace placeholders {
+    struct _placeholder_1 {} _1;
+    struct _placeholder_2 {} _2;
+    struct _placeholder_3 {} _3;
+    struct _placeholder_4 {} _4;
+    struct _placeholder_5 {} _5;
+}
+
+// invoke
+template<typename F, typename... Args>
+auto invoke(F&& f, Args&&... args) 
+    -> decltype(static_cast<F&&>(f)(static_cast<Args&&>(args)...)) {
+    return static_cast<F&&>(f)(static_cast<Args&&>(args)...);
+}
+
+} // namespace std
+
+#endif // _ADEAD_CPP_FUNCTIONAL

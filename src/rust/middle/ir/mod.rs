@@ -18,6 +18,7 @@ mod instruction;
 mod types;
 mod value;
 mod builder;
+pub mod pdp11_heritage;
 
 pub use module::{Module, GlobalVariable};
 pub use function::Function;

@@ -1,0 +1,499 @@
+/*
+ * ADead-BIB C++ Standard Library
+ * <map> - Associative Containers
+ * 
+ * Based on: C++17/C++20 standard
+ */
+
+#ifndef _ADEAD_CPP_MAP
+#define _ADEAD_CPP_MAP
+
+#include <cstddef>
+#include <memory>
+#include <functional>
+#include <utility>
+#include <stdexcept>
+
+namespace std {
+
+// pair
+template<typename T1, typename T2>
+struct pair {
+    using first_type = T1;
+    using second_type = T2;
+    
+    T1 first;
+    T2 second;
+    
+    constexpr pair() : first(), second() {}
+    constexpr pair(const T1& x, const T2& y) : first(x), second(y) {}
+    
+    template<typename U1, typename U2>
+    constexpr pair(U1&& x, U2&& y) 
+        : first(static_cast<U1&&>(x)), second(static_cast<U2&&>(y)) {}
+    
+    template<typename U1, typename U2>
+    constexpr pair(const pair<U1, U2>& p) : first(p.first), second(p.second) {}
+    
+    template<typename U1, typename U2>
+    constexpr pair(pair<U1, U2>&& p) 
+        : first(static_cast<U1&&>(p.first)), second(static_cast<U2&&>(p.second)) {}
+    
+    pair& operator=(const pair& other) {
+        first = other.first;
+        second = other.second;
+        return *this;
+    }
+    
+    void swap(pair& other) noexcept {
+        T1 tmp1 = static_cast<T1&&>(first);
+        first = static_cast<T1&&>(other.first);
+        other.first = static_cast<T1&&>(tmp1);
+        
+        T2 tmp2 = static_cast<T2&&>(second);
+        second = static_cast<T2&&>(other.second);
+        other.second = static_cast<T2&&>(tmp2);
+    }
+};
+
+template<typename T1, typename T2>
+constexpr pair<T1, T2> make_pair(T1&& t, T2&& u) {
+    return pair<T1, T2>(static_cast<T1&&>(t), static_cast<T2&&>(u));
+}
+
+template<typename T1, typename T2>
+constexpr bool operator==(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs) {
+    return lhs.first == rhs.first && lhs.second == rhs.second;
+}
+
+template<typename T1, typename T2>
+constexpr bool operator<(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs) {
+    if (lhs.first < rhs.first) return true;
+    if (rhs.first < lhs.first) return false;
+    return lhs.second < rhs.second;
+}
+
+// Simple map implementation using sorted vector
+template<
+    typename Key,
+    typename T,
+    typename Compare = less<Key>,
+    typename Allocator = allocator<pair<const Key, T>>
+>
+class map {
+public:
+    using key_type = Key;
+    using mapped_type = T;
+    using value_type = pair<const Key, T>;
+    using size_type = size_t;
+    using difference_type = ptrdiff_t;
+    using key_compare = Compare;
+    using allocator_type = Allocator;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using pointer = value_type*;
+    using const_pointer = const value_type*;
+    
+private:
+    struct Node {
+        value_type data;
+        Node* left;
+        Node* right;
+        Node* parent;
+        int height;
+        
+        Node(const Key& k, const T& v) 
+            : data(k, v), left(nullptr), right(nullptr), parent(nullptr), height(1) {}
+    };
+    
+    Node* _root;
+    size_type _size;
+    Compare _comp;
+    Allocator _alloc;
+    
+    int _height(Node* n) const { return n ? n->height : 0; }
+    int _balance(Node* n) const { return n ? _height(n->left) - _height(n->right) : 0; }
+    
+    void _update_height(Node* n) {
+        if (n) {
+            int lh = _height(n->left);
+            int rh = _height(n->right);
+            n->height = 1 + (lh > rh ? lh : rh);
+        }
+    }
+    
+    Node* _rotate_right(Node* y) {
+        Node* x = y->left;
+        Node* T2 = x->right;
+        
+        x->right = y;
+        y->left = T2;
+        
+        x->parent = y->parent;
+        y->parent = x;
+        if (T2) T2->parent = y;
+        
+        _update_height(y);
+        _update_height(x);
+        
+        return x;
+    }
+    
+    Node* _rotate_left(Node* x) {
+        Node* y = x->right;
+        Node* T2 = y->left;
+        
+        y->left = x;
+        x->right = T2;
+        
+        y->parent = x->parent;
+        x->parent = y;
+        if (T2) T2->parent = x;
+        
+        _update_height(x);
+        _update_height(y);
+        
+        return y;
+    }
+    
+    Node* _insert(Node* node, const Key& key, const T& value, Node* parent) {
+        if (!node) {
+            Node* n = new Node(key, value);
+            n->parent = parent;
+            ++_size;
+            return n;
+        }
+        
+        if (_comp(key, node->data.first)) {
+            node->left = _insert(node->left, key, value, node);
+        } else if (_comp(node->data.first, key)) {
+            node->right = _insert(node->right, key, value, node);
+        } else {
+            return node; // Key exists
+        }
+        
+        _update_height(node);
+        
+        int balance = _balance(node);
+        
+        // Left Left
+        if (balance > 1 && _comp(key, node->left->data.first))
+            return _rotate_right(node);
+        
+        // Right Right
+        if (balance < -1 && _comp(node->right->data.first, key))
+            return _rotate_left(node);
+        
+        // Left Right
+        if (balance > 1 && _comp(node->left->data.first, key)) {
+            node->left = _rotate_left(node->left);
+            return _rotate_right(node);
+        }
+        
+        // Right Left
+        if (balance < -1 && _comp(key, node->right->data.first)) {
+            node->right = _rotate_right(node->right);
+            return _rotate_left(node);
+        }
+        
+        return node;
+    }
+    
+    Node* _find(Node* node, const Key& key) const {
+        if (!node) return nullptr;
+        if (_comp(key, node->data.first)) return _find(node->left, key);
+        if (_comp(node->data.first, key)) return _find(node->right, key);
+        return node;
+    }
+    
+    void _clear(Node* node) {
+        if (node) {
+            _clear(node->left);
+            _clear(node->right);
+            delete node;
+        }
+    }
+    
+    Node* _min(Node* node) const {
+        while (node && node->left) node = node->left;
+        return node;
+    }
+    
+    Node* _max(Node* node) const {
+        while (node && node->right) node = node->right;
+        return node;
+    }
+    
+public:
+    // Iterator
+    class iterator {
+        Node* _node;
+        const map* _map;
+        
+        Node* _next(Node* n) const {
+            if (n->right) {
+                n = n->right;
+                while (n->left) n = n->left;
+                return n;
+            }
+            while (n->parent && n == n->parent->right) n = n->parent;
+            return n->parent;
+        }
+        
+    public:
+        using iterator_category = bidirectional_iterator_tag;
+        using value_type = pair<const Key, T>;
+        using difference_type = ptrdiff_t;
+        using pointer = value_type*;
+        using reference = value_type&;
+        
+        iterator() : _node(nullptr), _map(nullptr) {}
+        iterator(Node* n, const map* m) : _node(n), _map(m) {}
+        
+        reference operator*() const { return _node->data; }
+        pointer operator->() const { return &_node->data; }
+        
+        iterator& operator++() {
+            _node = _next(_node);
+            return *this;
+        }
+        
+        iterator operator++(int) {
+            iterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+        
+        bool operator==(const iterator& other) const { return _node == other._node; }
+        bool operator!=(const iterator& other) const { return _node != other._node; }
+    };
+    
+    using const_iterator = iterator;
+    
+    // Constructors
+    map() : _root(nullptr), _size(0) {}
+    
+    map(initializer_list<value_type> init) : map() {
+        for (const auto& p : init) {
+            insert(p);
+        }
+    }
+    
+    map(const map& other) : map() {
+        for (auto it = other.begin(); it != other.end(); ++it) {
+            insert(*it);
+        }
+    }
+    
+    map(map&& other) noexcept 
+        : _root(other._root), _size(other._size) {
+        other._root = nullptr;
+        other._size = 0;
+    }
+    
+    ~map() { clear(); }
+    
+    map& operator=(const map& other) {
+        if (this != &other) {
+            clear();
+            for (auto it = other.begin(); it != other.end(); ++it) {
+                insert(*it);
+            }
+        }
+        return *this;
+    }
+    
+    map& operator=(map&& other) noexcept {
+        if (this != &other) {
+            clear();
+            _root = other._root;
+            _size = other._size;
+            other._root = nullptr;
+            other._size = 0;
+        }
+        return *this;
+    }
+    
+    // Element access
+    T& at(const Key& key) {
+        Node* n = _find(_root, key);
+        if (!n) throw out_of_range("map::at");
+        return n->data.second;
+    }
+    
+    const T& at(const Key& key) const {
+        Node* n = _find(_root, key);
+        if (!n) throw out_of_range("map::at");
+        return n->data.second;
+    }
+    
+    T& operator[](const Key& key) {
+        Node* n = _find(_root, key);
+        if (!n) {
+            _root = _insert(_root, key, T(), nullptr);
+            n = _find(_root, key);
+        }
+        return n->data.second;
+    }
+    
+    // Iterators
+    iterator begin() noexcept { return iterator(_min(_root), this); }
+    const_iterator begin() const noexcept { return iterator(_min(_root), this); }
+    iterator end() noexcept { return iterator(nullptr, this); }
+    const_iterator end() const noexcept { return iterator(nullptr, this); }
+    
+    // Capacity
+    bool empty() const noexcept { return _size == 0; }
+    size_type size() const noexcept { return _size; }
+    
+    // Modifiers
+    void clear() noexcept {
+        _clear(_root);
+        _root = nullptr;
+        _size = 0;
+    }
+    
+    pair<iterator, bool> insert(const value_type& value) {
+        size_type old_size = _size;
+        _root = _insert(_root, value.first, value.second, nullptr);
+        bool inserted = (_size > old_size);
+        return make_pair(iterator(_find(_root, value.first), this), inserted);
+    }
+    
+    template<typename... Args>
+    pair<iterator, bool> emplace(Args&&... args) {
+        value_type val(static_cast<Args&&>(args)...);
+        return insert(val);
+    }
+    
+    size_type erase(const Key& key) {
+        // Simplified: just mark as not implemented for now
+        return 0;
+    }
+    
+    void swap(map& other) noexcept {
+        Node* tmp_root = _root;
+        size_type tmp_size = _size;
+        _root = other._root;
+        _size = other._size;
+        other._root = tmp_root;
+        other._size = tmp_size;
+    }
+    
+    // Lookup
+    size_type count(const Key& key) const {
+        return _find(_root, key) ? 1 : 0;
+    }
+    
+    iterator find(const Key& key) {
+        return iterator(_find(_root, key), this);
+    }
+    
+    const_iterator find(const Key& key) const {
+        return iterator(_find(_root, key), this);
+    }
+    
+    bool contains(const Key& key) const {
+        return _find(_root, key) != nullptr;
+    }
+};
+
+// unordered_map (simplified hash map)
+template<
+    typename Key,
+    typename T,
+    typename Hash = hash<Key>,
+    typename KeyEqual = equal_to<Key>,
+    typename Allocator = allocator<pair<const Key, T>>
+>
+class unordered_map {
+public:
+    using key_type = Key;
+    using mapped_type = T;
+    using value_type = pair<const Key, T>;
+    using size_type = size_t;
+    using hasher = Hash;
+    using key_equal = KeyEqual;
+    
+private:
+    struct Bucket {
+        value_type* data;
+        size_type size;
+        size_type capacity;
+        
+        Bucket() : data(nullptr), size(0), capacity(0) {}
+        ~Bucket() { delete[] data; }
+    };
+    
+    Bucket* _buckets;
+    size_type _bucket_count;
+    size_type _size;
+    Hash _hash;
+    KeyEqual _equal;
+    
+    static constexpr size_type _default_bucket_count = 16;
+    
+    size_type _bucket_index(const Key& key) const {
+        return _hash(key) % _bucket_count;
+    }
+    
+public:
+    unordered_map() : _bucket_count(_default_bucket_count), _size(0) {
+        _buckets = new Bucket[_bucket_count];
+    }
+    
+    ~unordered_map() {
+        delete[] _buckets;
+    }
+    
+    T& operator[](const Key& key) {
+        size_type idx = _bucket_index(key);
+        Bucket& b = _buckets[idx];
+        
+        for (size_type i = 0; i < b.size; ++i) {
+            if (_equal(b.data[i].first, key)) {
+                return b.data[i].second;
+            }
+        }
+        
+        // Insert new
+        if (b.size >= b.capacity) {
+            size_type new_cap = b.capacity == 0 ? 4 : b.capacity * 2;
+            value_type* new_data = new value_type[new_cap];
+            for (size_type i = 0; i < b.size; ++i) {
+                new_data[i] = b.data[i];
+            }
+            delete[] b.data;
+            b.data = new_data;
+            b.capacity = new_cap;
+        }
+        
+        new (&b.data[b.size]) value_type(key, T());
+        ++b.size;
+        ++_size;
+        return b.data[b.size - 1].second;
+    }
+    
+    size_type size() const noexcept { return _size; }
+    bool empty() const noexcept { return _size == 0; }
+    
+    size_type count(const Key& key) const {
+        size_type idx = _bucket_index(key);
+        const Bucket& b = _buckets[idx];
+        for (size_type i = 0; i < b.size; ++i) {
+            if (_equal(b.data[i].first, key)) return 1;
+        }
+        return 0;
+    }
+    
+    void clear() noexcept {
+        for (size_type i = 0; i < _bucket_count; ++i) {
+            _buckets[i].size = 0;
+        }
+        _size = 0;
+    }
+};
+
+} // namespace std
+
+#endif // _ADEAD_CPP_MAP

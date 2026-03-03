@@ -1,0 +1,434 @@
+/*
+ * ADead-BIB C++ Standard Library
+ * <algorithm> - Algorithms
+ * 
+ * Based on: C++17/C++20 standard
+ */
+
+#ifndef _ADEAD_CPP_ALGORITHM
+#define _ADEAD_CPP_ALGORITHM
+
+#include <cstddef>
+#include <iterator>
+
+namespace std {
+
+// Non-modifying sequence operations
+
+template<typename InputIt, typename UnaryPredicate>
+bool all_of(InputIt first, InputIt last, UnaryPredicate p) {
+    for (; first != last; ++first) {
+        if (!p(*first)) return false;
+    }
+    return true;
+}
+
+template<typename InputIt, typename UnaryPredicate>
+bool any_of(InputIt first, InputIt last, UnaryPredicate p) {
+    for (; first != last; ++first) {
+        if (p(*first)) return true;
+    }
+    return false;
+}
+
+template<typename InputIt, typename UnaryPredicate>
+bool none_of(InputIt first, InputIt last, UnaryPredicate p) {
+    for (; first != last; ++first) {
+        if (p(*first)) return false;
+    }
+    return true;
+}
+
+template<typename InputIt, typename UnaryFunction>
+UnaryFunction for_each(InputIt first, InputIt last, UnaryFunction f) {
+    for (; first != last; ++first) {
+        f(*first);
+    }
+    return f;
+}
+
+template<typename InputIt, typename T>
+InputIt find(InputIt first, InputIt last, const T& value) {
+    for (; first != last; ++first) {
+        if (*first == value) return first;
+    }
+    return last;
+}
+
+template<typename InputIt, typename UnaryPredicate>
+InputIt find_if(InputIt first, InputIt last, UnaryPredicate p) {
+    for (; first != last; ++first) {
+        if (p(*first)) return first;
+    }
+    return last;
+}
+
+template<typename InputIt, typename UnaryPredicate>
+InputIt find_if_not(InputIt first, InputIt last, UnaryPredicate p) {
+    for (; first != last; ++first) {
+        if (!p(*first)) return first;
+    }
+    return last;
+}
+
+template<typename InputIt, typename T>
+typename iterator_traits<InputIt>::difference_type
+count(InputIt first, InputIt last, const T& value) {
+    typename iterator_traits<InputIt>::difference_type ret = 0;
+    for (; first != last; ++first) {
+        if (*first == value) ++ret;
+    }
+    return ret;
+}
+
+template<typename InputIt, typename UnaryPredicate>
+typename iterator_traits<InputIt>::difference_type
+count_if(InputIt first, InputIt last, UnaryPredicate p) {
+    typename iterator_traits<InputIt>::difference_type ret = 0;
+    for (; first != last; ++first) {
+        if (p(*first)) ++ret;
+    }
+    return ret;
+}
+
+// Modifying sequence operations
+
+template<typename InputIt, typename OutputIt>
+OutputIt copy(InputIt first, InputIt last, OutputIt d_first) {
+    for (; first != last; ++first, ++d_first) {
+        *d_first = *first;
+    }
+    return d_first;
+}
+
+template<typename InputIt, typename OutputIt, typename UnaryPredicate>
+OutputIt copy_if(InputIt first, InputIt last, OutputIt d_first, UnaryPredicate pred) {
+    for (; first != last; ++first) {
+        if (pred(*first)) {
+            *d_first = *first;
+            ++d_first;
+        }
+    }
+    return d_first;
+}
+
+template<typename InputIt, typename Size, typename OutputIt>
+OutputIt copy_n(InputIt first, Size count, OutputIt result) {
+    for (Size i = 0; i < count; ++i, ++first, ++result) {
+        *result = *first;
+    }
+    return result;
+}
+
+template<typename BidirIt1, typename BidirIt2>
+BidirIt2 copy_backward(BidirIt1 first, BidirIt1 last, BidirIt2 d_last) {
+    while (first != last) {
+        *(--d_last) = *(--last);
+    }
+    return d_last;
+}
+
+template<typename InputIt, typename OutputIt>
+OutputIt move(InputIt first, InputIt last, OutputIt d_first) {
+    for (; first != last; ++first, ++d_first) {
+        *d_first = static_cast<typename iterator_traits<InputIt>::value_type&&>(*first);
+    }
+    return d_first;
+}
+
+template<typename ForwardIt, typename T>
+void fill(ForwardIt first, ForwardIt last, const T& value) {
+    for (; first != last; ++first) {
+        *first = value;
+    }
+}
+
+template<typename OutputIt, typename Size, typename T>
+OutputIt fill_n(OutputIt first, Size count, const T& value) {
+    for (Size i = 0; i < count; ++i, ++first) {
+        *first = value;
+    }
+    return first;
+}
+
+template<typename InputIt, typename OutputIt, typename UnaryOperation>
+OutputIt transform(InputIt first1, InputIt last1, OutputIt d_first, UnaryOperation unary_op) {
+    for (; first1 != last1; ++first1, ++d_first) {
+        *d_first = unary_op(*first1);
+    }
+    return d_first;
+}
+
+template<typename ForwardIt, typename Generator>
+void generate(ForwardIt first, ForwardIt last, Generator g) {
+    for (; first != last; ++first) {
+        *first = g();
+    }
+}
+
+template<typename ForwardIt, typename T>
+ForwardIt remove(ForwardIt first, ForwardIt last, const T& value) {
+    first = find(first, last, value);
+    if (first != last) {
+        for (ForwardIt i = first; ++i != last;) {
+            if (!(*i == value)) {
+                *first++ = static_cast<typename iterator_traits<ForwardIt>::value_type&&>(*i);
+            }
+        }
+    }
+    return first;
+}
+
+template<typename ForwardIt, typename UnaryPredicate>
+ForwardIt remove_if(ForwardIt first, ForwardIt last, UnaryPredicate p) {
+    first = find_if(first, last, p);
+    if (first != last) {
+        for (ForwardIt i = first; ++i != last;) {
+            if (!p(*i)) {
+                *first++ = static_cast<typename iterator_traits<ForwardIt>::value_type&&>(*i);
+            }
+        }
+    }
+    return first;
+}
+
+template<typename ForwardIt, typename T>
+void replace(ForwardIt first, ForwardIt last, const T& old_value, const T& new_value) {
+    for (; first != last; ++first) {
+        if (*first == old_value) {
+            *first = new_value;
+        }
+    }
+}
+
+template<typename ForwardIt>
+ForwardIt unique(ForwardIt first, ForwardIt last) {
+    if (first == last) return last;
+    ForwardIt result = first;
+    while (++first != last) {
+        if (!(*result == *first) && ++result != first) {
+            *result = static_cast<typename iterator_traits<ForwardIt>::value_type&&>(*first);
+        }
+    }
+    return ++result;
+}
+
+template<typename BidirIt>
+void reverse(BidirIt first, BidirIt last) {
+    while (first != last && first != --last) {
+        auto tmp = static_cast<typename iterator_traits<BidirIt>::value_type&&>(*first);
+        *first = static_cast<typename iterator_traits<BidirIt>::value_type&&>(*last);
+        *last = static_cast<typename iterator_traits<BidirIt>::value_type&&>(tmp);
+        ++first;
+    }
+}
+
+// Sorting operations
+
+template<typename T>
+void swap(T& a, T& b) noexcept {
+    T tmp = static_cast<T&&>(a);
+    a = static_cast<T&&>(b);
+    b = static_cast<T&&>(tmp);
+}
+
+template<typename ForwardIt1, typename ForwardIt2>
+void iter_swap(ForwardIt1 a, ForwardIt2 b) {
+    swap(*a, *b);
+}
+
+template<typename RandomIt>
+void sort(RandomIt first, RandomIt last) {
+    // Simple insertion sort for now
+    for (RandomIt i = first; i != last; ++i) {
+        for (RandomIt j = i; j != first; --j) {
+            RandomIt prev = j;
+            --prev;
+            if (*j < *prev) {
+                iter_swap(j, prev);
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+template<typename RandomIt, typename Compare>
+void sort(RandomIt first, RandomIt last, Compare comp) {
+    for (RandomIt i = first; i != last; ++i) {
+        for (RandomIt j = i; j != first; --j) {
+            RandomIt prev = j;
+            --prev;
+            if (comp(*j, *prev)) {
+                iter_swap(j, prev);
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+template<typename RandomIt>
+void stable_sort(RandomIt first, RandomIt last) {
+    sort(first, last);
+}
+
+template<typename RandomIt>
+void partial_sort(RandomIt first, RandomIt middle, RandomIt last) {
+    sort(first, last);
+}
+
+template<typename RandomIt>
+void nth_element(RandomIt first, RandomIt nth, RandomIt last) {
+    sort(first, last);
+}
+
+// Binary search operations (on sorted ranges)
+
+template<typename ForwardIt, typename T>
+ForwardIt lower_bound(ForwardIt first, ForwardIt last, const T& value) {
+    typename iterator_traits<ForwardIt>::difference_type count = 0;
+    for (ForwardIt it = first; it != last; ++it) ++count;
+    
+    while (count > 0) {
+        typename iterator_traits<ForwardIt>::difference_type step = count / 2;
+        ForwardIt it = first;
+        for (typename iterator_traits<ForwardIt>::difference_type i = 0; i < step; ++i) ++it;
+        
+        if (*it < value) {
+            first = ++it;
+            count -= step + 1;
+        } else {
+            count = step;
+        }
+    }
+    return first;
+}
+
+template<typename ForwardIt, typename T>
+ForwardIt upper_bound(ForwardIt first, ForwardIt last, const T& value) {
+    typename iterator_traits<ForwardIt>::difference_type count = 0;
+    for (ForwardIt it = first; it != last; ++it) ++count;
+    
+    while (count > 0) {
+        typename iterator_traits<ForwardIt>::difference_type step = count / 2;
+        ForwardIt it = first;
+        for (typename iterator_traits<ForwardIt>::difference_type i = 0; i < step; ++i) ++it;
+        
+        if (!(value < *it)) {
+            first = ++it;
+            count -= step + 1;
+        } else {
+            count = step;
+        }
+    }
+    return first;
+}
+
+template<typename ForwardIt, typename T>
+bool binary_search(ForwardIt first, ForwardIt last, const T& value) {
+    first = lower_bound(first, last, value);
+    return (first != last && !(value < *first));
+}
+
+// Min/max operations
+
+template<typename T>
+const T& min(const T& a, const T& b) {
+    return (b < a) ? b : a;
+}
+
+template<typename T, typename Compare>
+const T& min(const T& a, const T& b, Compare comp) {
+    return comp(b, a) ? b : a;
+}
+
+template<typename T>
+const T& max(const T& a, const T& b) {
+    return (a < b) ? b : a;
+}
+
+template<typename T, typename Compare>
+const T& max(const T& a, const T& b, Compare comp) {
+    return comp(a, b) ? b : a;
+}
+
+template<typename T>
+const T& clamp(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (hi < v) ? hi : v;
+}
+
+template<typename ForwardIt>
+ForwardIt min_element(ForwardIt first, ForwardIt last) {
+    if (first == last) return last;
+    ForwardIt smallest = first;
+    ++first;
+    for (; first != last; ++first) {
+        if (*first < *smallest) {
+            smallest = first;
+        }
+    }
+    return smallest;
+}
+
+template<typename ForwardIt>
+ForwardIt max_element(ForwardIt first, ForwardIt last) {
+    if (first == last) return last;
+    ForwardIt largest = first;
+    ++first;
+    for (; first != last; ++first) {
+        if (*largest < *first) {
+            largest = first;
+        }
+    }
+    return largest;
+}
+
+// Comparison operations
+
+template<typename InputIt1, typename InputIt2>
+bool equal(InputIt1 first1, InputIt1 last1, InputIt2 first2) {
+    for (; first1 != last1; ++first1, ++first2) {
+        if (!(*first1 == *first2)) return false;
+    }
+    return true;
+}
+
+template<typename InputIt1, typename InputIt2>
+bool lexicographical_compare(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2) {
+    for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
+        if (*first1 < *first2) return true;
+        if (*first2 < *first1) return false;
+    }
+    return first1 == last1 && first2 != last2;
+}
+
+// Numeric operations
+
+template<typename InputIt, typename T>
+T accumulate(InputIt first, InputIt last, T init) {
+    for (; first != last; ++first) {
+        init = init + *first;
+    }
+    return init;
+}
+
+template<typename InputIt, typename T, typename BinaryOperation>
+T accumulate(InputIt first, InputIt last, T init, BinaryOperation op) {
+    for (; first != last; ++first) {
+        init = op(init, *first);
+    }
+    return init;
+}
+
+template<typename ForwardIt, typename T>
+void iota(ForwardIt first, ForwardIt last, T value) {
+    while (first != last) {
+        *first++ = value;
+        ++value;
+    }
+}
+
+} // namespace std
+
+#endif // _ADEAD_CPP_ALGORITHM
