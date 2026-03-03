@@ -126,14 +126,7 @@ pm_start:
     jmp .print32
 .print32_done:
     
-    ; Copy kernel from 0x12000 to 0x100000
-    ; Kernel is embedded inside loader at offset 0x2000
-    ; Loader at 0x10000, so kernel at 0x10000 + 0x2000 = 0x12000
-    mov esi, 0x12000
-    mov edi, 0x100000
-    mov ecx, 2048           ; 8KB / 4 bytes (kernel is ~2KB, copy 8KB to be safe)
-    cld
-    rep movsd
+    ; Kernel copy moved to 64-bit mode (A20/paging guaranteed)
     
     ; Setup paging
     call setup_paging
@@ -244,6 +237,14 @@ lm_start:
     mov ss, ax
     mov rsp, STACK_ADDR
     
+    ; Copy kernel from 0x11000 to 0x100000 in 64-bit mode
+    ; Kernel is embedded in loader at offset 0x1000 (0x10000 + 0x1000 = 0x11000)
+    mov rsi, 0x11000
+    mov rdi, 0x100000
+    mov rcx, 1024           ; 8KB / 8 bytes per qword
+    cld
+    rep movsq
+    
     ; Clear screen with green on black
     mov rdi, 0xB8000
     mov rcx, 2000
@@ -321,35 +322,58 @@ lm_start:
     ; The kernel is loaded by the build script after the loader
     ; ============================================================
     
-    ; DEBUG: Show byte at 0x100000 on row 7
+    ; DEBUG: Show byte at 0x11000 (source) on row 7
     mov rdi, 0xB8000 + 1120  ; Row 7
-    mov byte [rdi], 'K'
+    mov byte [rdi], 'S'
     mov byte [rdi+1], 0x0A
     mov byte [rdi+2], ':'
     mov byte [rdi+3], 0x0A
-    mov byte [rdi+4], ' '
-    mov byte [rdi+5], 0x0A
-    ; Show hex of first byte
+    mov al, [0x11000]
+    mov bl, al
+    shr al, 4
+    add al, '0'
+    cmp al, '9'
+    jbe .s1
+    add al, 7
+.s1: mov [rdi+4], al
+    mov byte [rdi+5], 0x0E
+    mov al, bl
+    and al, 0x0F
+    add al, '0'
+    cmp al, '9'
+    jbe .s2
+    add al, 7
+.s2: mov [rdi+6], al
+    mov byte [rdi+7], 0x0E
+
+    ; DEBUG: Show byte at 0x100000 (dest) on row 7
+    mov byte [rdi+10], 'D'
+    mov byte [rdi+11], 0x0A
+    mov byte [rdi+12], ':'
+    mov byte [rdi+13], 0x0A
     mov al, [0x100000]
     mov bl, al
     shr al, 4
-    cmp al, 10
-    jb .d1
-    add al, 'A'-10
-    jmp .s1
-.d1: add al, '0'
-.s1: mov [rdi+6], al
-    mov byte [rdi+7], 0x0E
+    add al, '0'
+    cmp al, '9'
+    jbe .d1
+    add al, 7
+.d1: mov [rdi+14], al
+    mov byte [rdi+15], 0x0E
     mov al, bl
     and al, 0x0F
-    cmp al, 10
-    jb .d2
-    add al, 'A'-10
-    jmp .s2
-.d2: add al, '0'
-.s2: mov [rdi+8], al
-    mov byte [rdi+9], 0x0E
+    add al, '0'
+    cmp al, '9'
+    jbe .d2
+    add al, 7
+.d2: mov [rdi+16], al
+    mov byte [rdi+17], 0x0E
 
+    ; Check if kernel exists
+    mov al, [0x100000]
+    test al, al
+    jz .no_kernel
+    
     mov rax, 0x100000
     call rax
     

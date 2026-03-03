@@ -200,7 +200,7 @@ for ($i = 0; $i -lt $mbrData.Length; $i++) {
 $loaderData = [System.IO.File]::ReadAllBytes($loaderBin)
 if (Test-Path $kernelBin) {
     $kernelData = [System.IO.File]::ReadAllBytes($kernelBin)
-    $embedOffset = 8192  # 0x2000 inside loader
+    $embedOffset = 4096  # 0x1000 inside loader (sector 8, definitely loaded)
     $maxKernel = $loaderData.Length - $embedOffset
     $copyLen = [Math]::Min($kernelData.Length, $maxKernel)
     [Array]::Copy($kernelData, 0, $loaderData, $embedOffset, $copyLen)
