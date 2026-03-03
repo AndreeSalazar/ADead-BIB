@@ -1,8 +1,11 @@
 # FastOS v2.0 — ADead-BIB Native Operating System
 
-**Un OS moderno escrito en C puro, compilado con ADead-BIB.**
+> **Philosophy:** C is Master, Rust provides Safety  
+> **Compiler:** ADead-BIB  
+> **Format:** Po (PE + ELF + Win32 hybrid)  
+> **Security:** Binary Guardian (BG)  
+> **References:** ToaruOS, ReactOS, Linux kernel, Nouveau
 
-Inspirado en:
 - **Linux** — Arquitectura de kernel modular, syscalls POSIX
 - **Windows NT** — Diseño de drivers, formato ejecutable
 - **Pop!_OS** — Sistema de drivers GPU (System76-power style)
