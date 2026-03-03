@@ -372,10 +372,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 // ============================================================
 fn compile_c_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let output_file = get_output_filename(input_file, args);
+    
+    // Check for --flat flag (flat binary for bootloaders/OS)
+    let is_flat = args.iter().any(|a| a == "--flat");
+    let is_flat64 = args.iter().any(|a| a == "--flat64");
+    let is_flat16 = args.iter().any(|a| a == "--flat16");
+    let is_any_flat = is_flat || is_flat64 || is_flat16;
+    let org_address = parse_org_address(args);
+    let fixed_size = parse_fixed_size(args);
 
-    println!("🔨 ADead-BIB C Compiler");
-    println!("   Source: {}", input_file);
-    println!("   Target: {}", output_file);
+    if is_any_flat {
+        let mode_str = if is_flat64 { "64-bit Long Mode" } 
+                       else if is_flat16 { "16-bit Real Mode" }
+                       else { "64-bit Long Mode (default)" };
+        println!("🔨 ADead-BIB C Compiler (Flat Binary Mode)");
+        println!("   Source: {}", input_file);
+        println!("   Target: {}", output_file);
+        println!("   Mode:   {}", mode_str);
+        println!("   Origin: 0x{:X}", org_address);
+        if fixed_size > 0 {
+            println!("   Size:   {} bytes (fixed)", fixed_size);
+        }
+    } else {
+        println!("🔨 ADead-BIB C Compiler");
+        println!("   Source: {}", input_file);
+        println!("   Target: {}", output_file);
+    }
 
     // 1. Read source
     let source = fs::read_to_string(input_file)
@@ -389,36 +411,95 @@ fn compile_c_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std::
     println!("   Step 2: {} functions, {} structs found",
         program.functions.len(), program.structs.len());
 
-    // 3. Compile to native x86-64
-    println!("   Step 3: Compiling to native x86-64...");
-    let target = determine_target();
-    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+    // 3. Compile to native code
+    let target = if is_any_flat { Target::Raw } else { determine_target() };
+    
+    let mode_desc = if is_flat64 || is_flat { "x86-64 (64-bit long mode)" }
+                    else if is_flat16 { "x86 (16-bit real mode)" }
+                    else { "x86-64" };
+    println!("   Step 3: Compiling to native {}...", mode_desc);
+    
+    // Create compiler with appropriate CPU mode
+    let mut compiler = if is_flat16 {
+        adead_bib::isa::isa_compiler::IsaCompiler::new_real16()
+    } else if is_flat64 || is_flat {
+        // 64-bit long mode for flat binaries (bare metal kernel)
+        adead_bib::isa::isa_compiler::IsaCompiler::new_long64(Target::Raw)
+    } else {
+        adead_bib::isa::isa_compiler::IsaCompiler::new(target)
+    };
+    
     let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
 
     // 4. Generate binary
     println!("   Step 4: Generating binary...");
-    match target {
-        Target::Windows => {
-            adead_bib::backend::pe::generate_pe_with_offsets(
-                &opcodes, &data, &output_file, &iat_offsets, &string_offsets
-            )?;
+    
+    if is_any_flat {
+        // Flat binary mode - no PE/ELF headers
+        use adead_bib::backend::flat_binary::FlatBinaryGenerator;
+        let mut gen = FlatBinaryGenerator::new(org_address);
+        if fixed_size > 0 {
+            gen.set_fixed_size(fixed_size);
         }
-        Target::Linux => {
-            adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
-        }
-        Target::Raw => {
-            fs::write(&output_file, &opcodes)?;
-        }
-    }
-
-    if let Ok(meta) = fs::metadata(&output_file) {
-        println!("✅ C compilation complete: {} ({} bytes)", output_file, meta.len());
+        let binary = gen.generate(&opcodes, &data);
+        fs::write(&output_file, &binary)?;
+        println!("✅ Flat binary: {} ({} bytes, org=0x{:X})", 
+            output_file, binary.len(), org_address);
     } else {
-        println!("✅ C compilation complete: {}", output_file);
+        match target {
+            Target::Windows => {
+                adead_bib::backend::pe::generate_pe_with_offsets(
+                    &opcodes, &data, &output_file, &iat_offsets, &string_offsets
+                )?;
+            }
+            Target::Linux => {
+                adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
+            }
+            Target::Raw => {
+                fs::write(&output_file, &opcodes)?;
+            }
+        }
+        
+        if let Ok(meta) = fs::metadata(&output_file) {
+            println!("✅ C compilation complete: {} ({} bytes)", output_file, meta.len());
+        } else {
+            println!("✅ C compilation complete: {}", output_file);
+        }
     }
+    
     println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB");
 
     Ok(())
+}
+
+/// Parse --org=0xNNNN argument
+fn parse_org_address(args: &[String]) -> u64 {
+    for arg in args {
+        if arg.starts_with("--org=") {
+            let addr_str = arg.trim_start_matches("--org=");
+            if addr_str.starts_with("0x") || addr_str.starts_with("0X") {
+                return u64::from_str_radix(&addr_str[2..], 16).unwrap_or(0);
+            } else {
+                return addr_str.parse().unwrap_or(0);
+            }
+        }
+    }
+    0 // Default origin
+}
+
+/// Parse --size=NNNN argument for fixed size binaries
+fn parse_fixed_size(args: &[String]) -> usize {
+    for arg in args {
+        if arg.starts_with("--size=") {
+            let size_str = arg.trim_start_matches("--size=");
+            if size_str.starts_with("0x") || size_str.starts_with("0X") {
+                return usize::from_str_radix(&size_str[2..], 16).unwrap_or(0);
+            } else {
+                return size_str.parse().unwrap_or(0);
+            }
+        }
+    }
+    0 // No fixed size
 }
 
 // ============================================================

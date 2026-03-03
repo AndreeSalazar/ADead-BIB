@@ -393,7 +393,6 @@ impl IsaCompiler {
         self.collect_strings_from_stmts(&program.statements);
 
         // Fase 2: Registrar labels de funciones
-        let has_main = program.functions.iter().any(|f| f.name == "main");
         for func in &program.functions {
             let label = self.ir.new_label();
             self.functions.insert(func.name.clone(), CompiledFunction {
@@ -403,30 +402,44 @@ impl IsaCompiler {
             });
         }
 
-        // Fase 3: Si hay main, saltar a main (skip auxiliary functions and top-level code)
-        let main_label = self.functions.get("main").map(|f| f.label);
-        let needs_jmp = has_main && (program.functions.len() > 1 || !program.statements.is_empty());
+        // Fase 3: Determinar entry point
+        // Para binarios flat (bare metal), buscar _start o kernel_main primero
+        let entry_name = if self.target == Target::Raw {
+            if program.functions.iter().any(|f| f.name == "_start") {
+                "_start"
+            } else if program.functions.iter().any(|f| f.name == "kernel_main") {
+                "kernel_main"
+            } else {
+                "main"
+            }
+        } else {
+            "main"
+        };
+        
+        let has_entry = program.functions.iter().any(|f| f.name == entry_name);
+        let entry_label = self.functions.get(entry_name).map(|f| f.label);
+        let needs_jmp = has_entry && (program.functions.len() > 1 || !program.statements.is_empty());
         if needs_jmp {
-            if let Some(lbl) = main_label {
+            if let Some(lbl) = entry_label {
                 self.ir.emit(ADeadOp::Jmp { target: lbl });
             }
         }
 
-        // Fase 4: Compilar funciones auxiliares
+        // Fase 4: Compilar funciones auxiliares (todas excepto entry point)
         for func in &program.functions {
-            if func.name != "main" {
+            if func.name != entry_name {
                 self.compile_function(func);
             }
         }
 
-        // Fase 5: Compilar top-level statements (only when no main — script mode)
-        if !has_main && !program.statements.is_empty() {
+        // Fase 5: Compilar top-level statements (only when no entry — script mode)
+        if !has_entry && !program.statements.is_empty() {
             self.compile_top_level(&program.statements);
         }
 
-        // Fase 6: Compilar main
+        // Fase 6: Compilar entry point (main, _start, o kernel_main)
         for func in &program.functions {
-            if func.name == "main" {
+            if func.name == entry_name {
                 self.compile_function(func);
             }
         }

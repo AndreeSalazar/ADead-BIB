@@ -17,6 +17,7 @@ pub mod gpu;
 pub use cpu::pe;
 pub use cpu::elf;
 pub use cpu::pe_tiny;
+pub use cpu::flat_binary;
 
 // Legacy re-exports (use isa::codegen instead for new code)
 pub use cpu::codegen;
