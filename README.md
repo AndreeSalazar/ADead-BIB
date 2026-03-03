@@ -300,3 +300,20 @@ eddi.salazar.dev@gmail.com
 
 **ADead-BIB v3.5: ADead-BIB · C99 · C++ → Binario Nativo 💀🦈**
 **Sin NASM. Sin LLVM. Sin GCC. Sin Clang. Hecho en Perú 🇵🇪**
+
+**"LLVM me inspiró
+ pero no lo copié
+
+ LLVM no tiene identidad
+ no es falta de respeto
+ pero no tomaron
+ el camino correcto
+
+ ADead-BIB:
+ C = ASM viviente
+ C++ = zero overhead
+ Rust = guardian máximo
+
+ Ya no es imposible
+ ya está hecho"**
+ 
