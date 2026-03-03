@@ -13,6 +13,9 @@ STACK_ADDR      equ 0x90000
 LOAD_SEG        equ 0x1000
 
 stage2_start:
+    ; DL = boot drive number from MBR — save in BL temporarily
+    mov bl, dl
+    
     cli
     
     ; Setup DS to our segment (0x1000)
@@ -25,6 +28,9 @@ stage2_start:
     mov ss, ax
     mov sp, 0x9000
     sti
+    
+    ; Now save boot drive with correct DS
+    mov [boot_drive], bl
     
     ; Print stage2 message using BIOS
     mov si, msg_s2
@@ -39,82 +45,9 @@ stage2_start:
     mov si, msg_pm
     call print16
     
-    ; Load kernel from disk to 0x20000 (will be copied to 0x100000 in PM)
-    mov si, msg_load_kernel
-    call print16
-    
-    ; Kernel is at LBA 33 (offset 16896 bytes)
-    ; Floppy 1.44MB: 18 sectors/track, 2 heads, 80 cylinders
-    ; LBA 33: Track=33/18=1, Sector=(33%18)+1=16, Head=1%2=1, Cyl=1/2=0
-    ; So: Cylinder 0, Head 1, Sector 16
-    
-    mov ax, 0x2000          ; Segment 0x2000 = address 0x20000
-    mov es, ax
-    xor bx, bx              ; Offset 0
-    
-    ; Read 1: 3 sectors from C0 H1 S16 (sectors 16,17,18)
-    mov ah, 0x02
-    mov al, 3               ; 3 sectors
-    mov ch, 0               ; Cylinder 0
-    mov cl, 16              ; Sector 16
-    mov dh, 1               ; Head 1
-    mov dl, 0x00            ; Drive A:
-    int 0x13
-    jc .kernel_load_fail
-    
-    ; Read 2: 18 sectors from C1 H0 S1
-    mov bx, 3*512           ; Offset after first read
-    mov ah, 0x02
-    mov al, 18
-    mov ch, 1               ; Cylinder 1
-    mov cl, 1               ; Sector 1
-    mov dh, 0               ; Head 0
-    mov dl, 0x00
-    int 0x13
-    jc .kernel_load_fail
-    
-    ; Read 3: 18 sectors from C1 H1 S1
-    mov bx, (3+18)*512
-    mov ah, 0x02
-    mov al, 18
-    mov ch, 1
-    mov cl, 1
-    mov dh, 1               ; Head 1
-    mov dl, 0x00
-    int 0x13
-    jc .kernel_load_fail
-    
-    ; Read 4: 18 sectors from C2 H0 S1
-    mov bx, (3+18+18)*512
-    mov ah, 0x02
-    mov al, 18
-    mov ch, 2               ; Cylinder 2
-    mov cl, 1
-    mov dh, 0
-    mov dl, 0x00
-    int 0x13
-    jc .kernel_load_fail
-    
-    ; Read 5: 7 sectors from C2 H1 S1 (total: 3+18+18+18+7=64)
-    mov bx, (3+18+18+18)*512
-    mov ah, 0x02
-    mov al, 7
-    mov ch, 2
-    mov cl, 1
-    mov dh, 1
-    mov dl, 0x00
-    int 0x13
-    jc .kernel_load_fail
-    
+    ; Kernel already loaded by MBR to 0x20000
     mov si, msg_kernel_ok
     call print16
-    jmp .continue_boot
-    
-.kernel_load_fail:
-    mov si, msg_kernel_fail
-    call print16
-    
-.continue_boot:
     ; Restore DS
     mov ax, LOAD_SEG
     mov ds, ax
@@ -193,10 +126,12 @@ pm_start:
     jmp .print32
 .print32_done:
     
-    ; Copy kernel from 0x20000 to 0x100000 (32KB)
-    mov esi, 0x20000
+    ; Copy kernel from 0x12000 to 0x100000
+    ; Kernel is embedded inside loader at offset 0x2000
+    ; Loader at 0x10000, so kernel at 0x10000 + 0x2000 = 0x12000
+    mov esi, 0x12000
     mov edi, 0x100000
-    mov ecx, 8192           ; 32KB / 4 bytes
+    mov ecx, 2048           ; 8KB / 4 bytes (kernel is ~2KB, copy 8KB to be safe)
     cld
     rep movsd
     
@@ -226,6 +161,38 @@ pm_start:
     db 0xEA                        ; far jump opcode
     dd 0x10000 + lm_start          ; 32-bit offset
     dw 0x08                        ; segment selector
+
+; ============================================================
+; print_hex_byte32: Print AL as 2 hex chars to VGA at [edi]
+; AH = attribute, EDI = VGA ptr (updated), AL = byte
+; ============================================================
+print_hex_byte32:
+    push eax
+    push ebx
+    mov bl, al              ; save byte
+    shr al, 4              ; high nibble
+    call .nibble
+    mov al, bl
+    and al, 0x0F           ; low nibble
+    call .nibble
+    ; space separator
+    mov al, ' '
+    mov ah, 0x0A
+    stosw
+    pop ebx
+    pop eax
+    ret
+.nibble:
+    cmp al, 10
+    jb .digit
+    add al, 'A' - 10
+    jmp .store
+.digit:
+    add al, '0'
+.store:
+    mov ah, 0x0A           ; green
+    stosw
+    ret
 
 ; ============================================================
 ; Setup 4-Level Paging (Identity map first 4MB)
@@ -354,13 +321,42 @@ lm_start:
     ; The kernel is loaded by the build script after the loader
     ; ============================================================
     
-    ; Check if kernel exists (verify magic signature 0xDEADBEEF)
-    mov eax, [0x100000]
-    cmp eax, 0xDEADBEEF
-    jne .no_kernel
+    ; DEBUG: Show byte at 0x100000 on row 7
+    mov rdi, 0xB8000 + 1120  ; Row 7
+    mov byte [rdi], 'K'
+    mov byte [rdi+1], 0x0A
+    mov byte [rdi+2], ':'
+    mov byte [rdi+3], 0x0A
+    mov byte [rdi+4], ' '
+    mov byte [rdi+5], 0x0A
+    ; Show hex of first byte
+    mov al, [0x100000]
+    mov bl, al
+    shr al, 4
+    cmp al, 10
+    jb .d1
+    add al, 'A'-10
+    jmp .s1
+.d1: add al, '0'
+.s1: mov [rdi+6], al
+    mov byte [rdi+7], 0x0E
+    mov al, bl
+    and al, 0x0F
+    cmp al, 10
+    jb .d2
+    add al, 'A'-10
+    jmp .s2
+.d2: add al, '0'
+.s2: mov [rdi+8], al
+    mov byte [rdi+9], 0x0E
+
+    ; Check if kernel exists (verify first byte is JMP opcode 0xE9)
+    mov al, [0x100000]
+    test al, al
+    jz .no_kernel
     
-    ; Kernel found - skip magic signature and call entry point
-    mov rax, 0x100004       ; Skip 4-byte magic
+    ; Kernel found - call entry point directly
+    mov rax, 0x100000
     call rax
     
     ; If kernel returns, fall through to shell
@@ -828,6 +824,10 @@ msg_no_kernel: db "No kernel found, starting shell...", 0
 msg_load_kernel: db "Loading kernel from disk...", 13, 10, 0
 msg_kernel_ok: db "Kernel loaded OK", 13, 10, 0
 msg_kernel_fail: db "Kernel load failed", 13, 10, 0
+msg_dbg_src: db "src: ", 0
+msg_dbg_dst: db "dst: ", 0
+
+boot_drive: db 0
 
 ; Disk Address Packet for LBA read
 align 4

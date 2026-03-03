@@ -93,7 +93,7 @@ Write-Success "Loader: $loaderSize bytes"
 # ============================================================
 Write-Status "Step 3: Compiling kernel64.c with ADead-BIB..."
 
-$kernelSrc = "$KERNEL\kernel64.c"
+$kernelSrc = "$KERNEL\kernel_simple.c"
 $kernelBin = "$BUILD\kernel64.bin"
 
 # Compile kernel with ADead-BIB --flat
@@ -195,21 +195,19 @@ for ($i = 0; $i -lt $mbrData.Length; $i++) {
     $image[$i] = $mbrData[$i]
 }
 
-# Copy loader (sectors 1-32)
+# Inject kernel INTO loader at offset 8192 (0x2000)
+# This way MBR's single 32-sector read loads BOTH loader+kernel
 $loaderData = [System.IO.File]::ReadAllBytes($loaderBin)
-for ($i = 0; $i -lt $loaderData.Length; $i++) {
-    $image[512 + $i] = $loaderData[$i]
-}
-
-# Copy kernel (sectors 33+, at offset 0x4200 = 16896)
-# The kernel will be loaded to 0x100000 by the loader
 if (Test-Path $kernelBin) {
     $kernelData = [System.IO.File]::ReadAllBytes($kernelBin)
-    $kernelOffset = 512 + 16384  # After MBR + loader
-    for ($i = 0; $i -lt $kernelData.Length; $i++) {
-        $image[$kernelOffset + $i] = $kernelData[$i]
-    }
-    Write-Success "Kernel placed at offset $kernelOffset ($($kernelData.Length) bytes)"
+    $embedOffset = 8192  # 0x2000 inside loader
+    $maxKernel = $loaderData.Length - $embedOffset
+    $copyLen = [Math]::Min($kernelData.Length, $maxKernel)
+    [Array]::Copy($kernelData, 0, $loaderData, $embedOffset, $copyLen)
+    Write-Success "Kernel embedded in loader at offset $embedOffset ($copyLen bytes)"
+}
+for ($i = 0; $i -lt $loaderData.Length; $i++) {
+    $image[512 + $i] = $loaderData[$i]
 }
 
 $imagePath = "$BUILD\fastos64.img"
@@ -246,8 +244,7 @@ if ($Run) {
     
     if (Test-Path $qemu) {
         Write-Success "Running: $qemu"
-        # Boot from floppy - kernel is in the disk image
-        # The loader will load the kernel from disk sectors
+        # Boot from floppy - MBR loads loader+kernel
         & $qemu -drive "file=$imagePath,format=raw,if=floppy" -m 128M -boot a -cpu qemu64
     } else {
         Write-Error "QEMU not found"
