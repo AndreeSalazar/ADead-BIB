@@ -1,0 +1,15 @@
+﻿### test_forloop.exe
+ERROR: Excepción al llamar a "Substring" con los argumentos "2": "El índice y la longitud deben hacer referencia a una ubicación en la cadena.
+Nombre del parámetro: length"
+### test_counter.exe
+exitcode: 0
+After +1: total=1 pass=1\n\nAfter +1 again: total=2\n\nFinal: 1
+### test_recursion.exe
+exitcode: 0
+fib(10)=55\n\npower(2,10)=1024\n\npower(3,5)=2
+### test_bsort.exe
+exitcode: 0
+START\n\nadd=7\n\nsub=7\n\nmul=12\n\nsorted=[1,2,3]
+### test_while.exe
+exitcode: 0
+i=0\n\ni=1\n\ni=2\n\n

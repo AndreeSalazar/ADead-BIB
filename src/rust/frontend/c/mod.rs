@@ -42,6 +42,7 @@ pub mod c_lexer;
 pub mod c_ast;
 pub mod c_parser;
 pub mod c_to_ir;
+pub mod c_compiler_extensions;
 
 pub use c_to_ir::compile_c_to_program;
 pub use c_preprocessor::CPreprocessor;

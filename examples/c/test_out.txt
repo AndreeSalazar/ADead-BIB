@@ -1,6 +1,0 @@
-START
-add=7
-sub=7
-mul=12
-sorted=[1,2,3]
-DONE

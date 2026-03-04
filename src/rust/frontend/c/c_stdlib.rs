@@ -185,6 +185,27 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "jsmn.h" => Some(HEADER_JSMN),
         "libconfig.h" => Some(HEADER_LIBCONFIG),
 
+        // ==========================================
+        // Windows / MSVC (Fase 6)
+        // ==========================================
+        "windows.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINDOWS),
+        "winnt.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINNT),
+        "windef.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINDEF),
+        "intrin.h" | "_intrin.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_INTRIN),
+        "immintrin.h" | "emmintrin.h" | "xmmintrin.h"
+        | "smmintrin.h" | "tmmintrin.h" | "nmmintrin.h"
+        | "avxintrin.h" | "avx2intrin.h" | "avx512fintrin.h"
+        => Some(crate::frontend::c::c_compiler_extensions::HEADER_SIMD_INTRIN),
+
+        // ==========================================
+        // C99/C11 extra headers
+        // ==========================================
+        "complex.h"  => Some(crate::frontend::c::c_compiler_extensions::HEADER_COMPLEX),
+        "wchar.h"    => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCHAR),
+        "wctype.h"   => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCTYPE),
+        "uchar.h"    => Some(crate::frontend::c::c_compiler_extensions::HEADER_UCHAR),
+        "tgmath.h"   => Some(crate::frontend::c::c_compiler_extensions::HEADER_TGMATH),
+
         _ => None,
     }
 }
