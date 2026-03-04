@@ -1,9 +1,0 @@
-🔨 ADead-BIB C Compiler
-   Source: C:\Users\andre\OneDrive\Documentos\ADead-BIB\examples\c\test_while3.c
-   Target: examples\c\test_while3.exe
-   Step 1: Parsing C99...
-   Step 2: 2 functions, 1 structs found
-   Step 3: Compiling to native x86-64...
-   Step 4: Generating binary...
-✅ C compilation complete: examples\c\test_while3.exe (2048 bytes)
-   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB

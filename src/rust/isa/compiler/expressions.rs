@@ -228,8 +228,38 @@ impl IsaCompiler {
                     self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
                 }
             }
-            Expr::MethodCall { .. } => {
+            Expr::MethodCall { object, method: _, args } => {
+                // Primary resolution is in cpp_to_ir (converts to Expr::Call).
+                // This fallback handles any remaining unresolved MethodCalls.
+                self.emit_expression(object);
+                for arg in args.iter() {
+                    self.emit_expression(arg);
+                }
                 self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+            }
+            Expr::ArrowAccess { pointer: ptr_expr, field } => {
+                // If the pointer is 'this', look up 'this.fieldname' as a flat variable
+                let flat_name = match ptr_expr.as_ref() {
+                    Expr::Variable(n) => format!("{}.{}", n, field),
+                    _ => format!("this.{}", field),
+                };
+                if let Some(&offset) = self.variables.get(&flat_name) {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem { base: Reg::RBP, disp: offset },
+                    });
+                } else {
+                    // Pointer dereference fallback
+                    self.emit_expression(ptr_expr);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                    });
+                }
             }
             Expr::Ternary { condition, then_expr, else_expr } => {
                 let else_label = self.ir.new_label();
