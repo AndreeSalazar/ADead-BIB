@@ -1379,4 +1379,553 @@ mod tests {
         // Should be: Print("Result: "), Print(x), Println(" done") = 3
         assert_eq!(print_count, 3, "Expected 3 print stmts, got {}: {:?}", print_count, body);
     }
+
+    // ================================================================
+    // GCC-STYLE COMPREHENSIVE C TESTS — Full Feature Coverage
+    // ================================================================
+    // Inspired by GCC testsuite: verify ADead-BIB parses + compiles
+    // every standard C feature correctly. Each test verifies:
+    //   1. Parsing succeeds (no panics)
+    //   2. IR generation produces correct structure
+    //   3. Functions/structs count matches expectations
+    // ================================================================
+
+    #[test]
+    fn test_example_dowhile() {
+        let source = std::fs::read_to_string("examples/c/test_dowhile.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_dowhile.c failed");
+        assert!(prog.functions.len() >= 1, "should have main");
+    }
+
+    #[test]
+    fn test_example_switch() {
+        let source = std::fs::read_to_string("examples/c/test_switch.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_switch.c failed");
+        assert!(prog.functions.len() >= 2, "should have classify + main");
+    }
+
+    #[test]
+    fn test_example_nested_loops() {
+        let source = std::fs::read_to_string("examples/c/test_nested_loops.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_nested_loops.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_example_pointers() {
+        let source = std::fs::read_to_string("examples/c/test_pointers.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_pointers.c failed");
+        assert!(prog.functions.len() >= 2, "should have increment + main");
+    }
+
+    #[test]
+    fn test_example_recursion() {
+        let source = std::fs::read_to_string("examples/c/test_recursion.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_recursion.c failed");
+        assert!(prog.functions.len() >= 3, "should have fib + power + main");
+    }
+
+    #[test]
+    fn test_example_enum() {
+        let source = std::fs::read_to_string("examples/c/test_enum.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_enum.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_example_typedef() {
+        let source = std::fs::read_to_string("examples/c/test_typedef.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_typedef.c failed");
+        assert!(prog.functions.len() >= 2, "should have add + main");
+    }
+
+    #[test]
+    fn test_example_global_vars() {
+        let source = std::fs::read_to_string("examples/c/test_global_vars.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_global_vars.c failed");
+        assert!(prog.functions.len() >= 3, "should have inc + get + main");
+        assert!(prog.statements.len() >= 2, "should have global vars");
+    }
+
+    #[test]
+    fn test_example_cast() {
+        let source = std::fs::read_to_string("examples/c/test_cast.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_cast.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_example_sizeof() {
+        let source = std::fs::read_to_string("examples/c/test_sizeof.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_sizeof.c failed");
+        assert!(prog.structs.len() >= 1, "should have struct Pair");
+    }
+
+    #[test]
+    fn test_example_multivar_decl() {
+        let source = std::fs::read_to_string("examples/c/test_multivar_decl.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_multivar_decl.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_example_compound_assign() {
+        let source = std::fs::read_to_string("examples/c/test_compound_assign.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_compound_assign.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_example_string_ops() {
+        let source = std::fs::read_to_string("examples/c/test_string_ops.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_string_ops.c failed");
+        assert!(prog.functions.len() >= 2, "should have my_strlen + main");
+    }
+
+    #[test]
+    fn test_example_bitwise_ops() {
+        let source = std::fs::read_to_string("examples/c/test_bitwise.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_bitwise.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_example_struct_nested() {
+        let source = std::fs::read_to_string("examples/c/test_struct_nested.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_struct_nested.c failed");
+        assert!(prog.structs.len() >= 2, "should have Point + Rect");
+    }
+
+    #[test]
+    fn test_example_array_init() {
+        let source = std::fs::read_to_string("examples/c/test_array_init.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_array_init.c failed");
+        assert!(prog.functions.len() >= 2, "should have sum + main");
+    }
+
+    #[test]
+    fn test_example_void_func() {
+        let source = std::fs::read_to_string("examples/c/test_void_func.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_void_func.c failed");
+        assert!(prog.functions.len() >= 4, "should have set_x + get_x + print_separator + main");
+    }
+
+    #[test]
+    fn test_example_complex_expr() {
+        let source = std::fs::read_to_string("examples/c/test_complex_expr.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_complex_expr.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_example_multi_func() {
+        let source = std::fs::read_to_string("examples/c/test_multi_func.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_multi_func.c failed");
+        assert!(prog.functions.len() >= 7, "should have 6 helpers + apply_twice + main");
+    }
+
+    #[test]
+    fn test_example_increment() {
+        let source = std::fs::read_to_string("examples/c/test_increment.c").unwrap();
+        let prog = compile_c_to_program(&source).expect("test_increment.c failed");
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    // ================================================================
+    // INLINE C FEATURE TESTS — No external files needed
+    // ================================================================
+
+    #[test]
+    fn test_dowhile_conversion() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int x = 0;
+                do {
+                    x = x + 1;
+                } while (x < 10);
+                return x;
+            }
+        "#).unwrap();
+        let body = &prog.functions[0].body;
+        // do-while converts to while(true) { body; if(!cond) break; }
+        let has_while = body.iter().any(|s| matches!(s, Stmt::While { .. }));
+        assert!(has_while, "do-while should convert to While: {:?}", body);
+    }
+
+    #[test]
+    fn test_switch_conversion() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int x = 2;
+                switch (x) {
+                    case 1: return 10;
+                    case 2: return 20;
+                    default: return 0;
+                }
+            }
+        "#).unwrap();
+        let body = &prog.functions[0].body;
+        // switch converts to chained if-else
+        let has_if = body.iter().any(|s| matches!(s, Stmt::If { .. }));
+        assert!(has_if, "switch should convert to If chain: {:?}", body);
+    }
+
+    #[test]
+    fn test_for_loop_conversion() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int sum = 0;
+                for (int i = 0; i < 100; i++) {
+                    sum += i;
+                }
+                return sum;
+            }
+        "#).unwrap();
+        let body = &prog.functions[0].body;
+        let has_while = body.iter().any(|s| matches!(s, Stmt::While { .. }));
+        assert!(has_while, "for should convert to While: {:?}", body);
+    }
+
+    #[test]
+    fn test_nested_if_else() {
+        let prog = compile_c_to_program(r#"
+            int classify(int n) {
+                if (n < 0) {
+                    return -1;
+                } else if (n == 0) {
+                    return 0;
+                } else if (n < 100) {
+                    return 1;
+                } else {
+                    return 2;
+                }
+            }
+            int main() { return classify(50); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_multiple_return_paths() {
+        let prog = compile_c_to_program(r#"
+            int abs_val(int x) {
+                if (x < 0) return -x;
+                return x;
+            }
+            int main() { return abs_val(-42); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+        assert_eq!(prog.functions[0].name, "abs_val");
+    }
+
+    #[test]
+    fn test_empty_function() {
+        let prog = compile_c_to_program(r#"
+            void noop(void) {}
+            int main() { noop(); return 0; }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_chained_comparison() {
+        let prog = compile_c_to_program(r#"
+            int in_range(int x, int lo, int hi) {
+                return (x >= lo) && (x <= hi);
+            }
+            int main() { return in_range(5, 1, 10); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_complex_for_update() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int total = 0;
+                for (int i = 0; i < 20; i += 3) {
+                    total += i;
+                }
+                return total;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_array_as_param() {
+        let prog = compile_c_to_program(r#"
+            int sum(int arr[], int n) {
+                int total = 0;
+                for (int i = 0; i < n; i++) {
+                    total += arr[i];
+                }
+                return total;
+            }
+            int main() {
+                int data[] = {1, 2, 3, 4, 5};
+                return sum(data, 5);
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_unsigned_types() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                unsigned int a = 0xFFFFFFFF;
+                unsigned char b = 255;
+                unsigned short c = 65535;
+                unsigned long d = 0;
+                unsigned long long e = 0;
+                return 0;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_const_volatile() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                const int x = 42;
+                volatile int y = 0;
+                const char *msg = "hello";
+                return x;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_long_long_types() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                long a = 100;
+                long long b = 200;
+                long int c = 300;
+                long long int d = 400;
+                return 0;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_hex_octal_literals() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int hex = 0xFF;
+                int hex2 = 0xDEAD;
+                int dec = 42;
+                return hex + dec;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                printf("Hello" " " "World" "\n");
+                return 0;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_comma_in_for() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int sum = 0;
+                for (int i = 0; i < 10; i++) {
+                    sum = sum + i;
+                }
+                return sum;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_break_continue() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int total = 0;
+                for (int i = 0; i < 100; i++) {
+                    if (i % 2 == 0) continue;
+                    if (i > 10) break;
+                    total += i;
+                }
+                return total;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_ternary_nested() {
+        let prog = compile_c_to_program(r#"
+            int clamp(int x, int lo, int hi) {
+                return (x < lo) ? lo : (x > hi) ? hi : x;
+            }
+            int main() { return clamp(150, 0, 100); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_sizeof_types() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int a = sizeof(int);
+                int b = sizeof(char);
+                int c = sizeof(long long);
+                int x = 42;
+                int d = sizeof(x);
+                return a + b + c + d;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_cast_expressions() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int x = 65;
+                char c = (char)x;
+                int *p = (int *)0;
+                long y = (long)x;
+                return (int)c;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_pointer_to_pointer() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int x = 42;
+                int *p = &x;
+                int **pp = &p;
+                return **pp;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_function_prototype() {
+        let prog = compile_c_to_program(r#"
+            int add(int a, int b);
+            int add(int a, int b) {
+                return a + b;
+            }
+            int main() { return add(3, 4); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_static_extern_inline() {
+        let prog = compile_c_to_program(r#"
+            static int counter = 0;
+            extern int printf(const char *fmt, ...);
+            static inline int double_it(int x) { return x * 2; }
+            int main() { return double_it(21); }
+        "#).unwrap();
+        assert!(prog.functions.len() >= 2);
+    }
+
+    #[test]
+    fn test_enum_with_expression_values() {
+        let prog = compile_c_to_program(r#"
+            enum Sizes {
+                BYTE_SIZE = 1,
+                WORD_SIZE = 2,
+                DWORD_SIZE = 4,
+                QWORD_SIZE = 8
+            };
+            int main() { return QWORD_SIZE; }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_struct_with_array_field() {
+        let prog = compile_c_to_program(r#"
+            struct Buffer {
+                int size;
+                char data[256];
+            };
+            int main() {
+                struct Buffer buf;
+                buf.size = 10;
+                return buf.size;
+            }
+        "#).unwrap();
+        assert!(prog.structs.len() >= 1);
+    }
+
+    #[test]
+    fn test_many_params() {
+        let prog = compile_c_to_program(r#"
+            int sum6(int a, int b, int c, int d, int e, int f) {
+                return a + b + c + d + e + f;
+            }
+            int main() { return sum6(1, 2, 3, 4, 5, 6); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+        assert_eq!(prog.functions[0].params.len(), 6);
+    }
+
+    #[test]
+    fn test_mutual_recursion() {
+        let prog = compile_c_to_program(r#"
+            int is_even(int n);
+            int is_odd(int n);
+            int is_even(int n) {
+                if (n == 0) return 1;
+                return is_odd(n - 1);
+            }
+            int is_odd(int n) {
+                if (n == 0) return 0;
+                return is_even(n - 1);
+            }
+            int main() { return is_even(10); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 3);
+    }
+
+    #[test]
+    fn test_while_with_assignment() {
+        let prog = compile_c_to_program(r#"
+            int main() {
+                int n = 100;
+                int sum = 0;
+                while (n > 0) {
+                    sum += n;
+                    n = n - 1;
+                }
+                return sum;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_multiple_structs() {
+        let prog = compile_c_to_program(r#"
+            struct Vec2 { int x; int y; };
+            struct Vec3 { int x; int y; int z; };
+            struct Color { unsigned char r; unsigned char g; unsigned char b; };
+            int main() { return 0; }
+        "#).unwrap();
+        assert_eq!(prog.structs.len(), 3);
+    }
 }

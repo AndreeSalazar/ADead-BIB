@@ -2537,4 +2537,331 @@ fn main() {
             assert!(!s.is_empty());
         }
     }
+
+    // ================================================================
+    // END-TO-END C → MACHINE CODE TESTS
+    // ================================================================
+    // These tests verify the FULL pipeline:
+    //   C source → Lexer → Parser → C AST → IR → ISA Compiler → x86-64 bytes
+    //
+    // Inspired by GCC torture tests. Each test:
+    //   1. Parses C source with compile_c_to_program()
+    //   2. Compiles to machine code with IsaCompiler
+    //   3. Verifies non-empty code/data output
+    //   4. Verifies the ADeadIR is valid and printable
+    // ================================================================
+
+    fn compile_c_e2e(c_source: &str) -> (Vec<u8>, Vec<u8>, usize) {
+        use crate::frontend::c::compile_c_to_program;
+        let program = compile_c_to_program(c_source)
+            .expect("C parse failed");
+        let mut compiler = IsaCompiler::new(Target::Windows);
+        let (code, data, _, _) = compiler.compile(&program);
+        let ir_len = compiler.ir().ops().len();
+        // Verify every IR op is displayable
+        for op in compiler.ir().ops() {
+            let s = format!("{}", op);
+            assert!(!s.is_empty(), "IR op should be printable");
+        }
+        (code, data, ir_len)
+    }
+
+    #[test]
+    fn test_c_e2e_hello_world() {
+        let (code, data, ir_len) = compile_c_e2e(r#"
+            int main() {
+                printf("Hello from ADead-BIB C!\n");
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty(), "should generate code");
+        assert!(!data.is_empty(), "should have string data");
+        assert!(ir_len > 5, "should have multiple IR ops, got {}", ir_len);
+    }
+
+    #[test]
+    fn test_c_e2e_arithmetic() {
+        let (code, _, ir_len) = compile_c_e2e(r#"
+            int add(int a, int b) { return a + b; }
+            int sub(int a, int b) { return a - b; }
+            int mul(int a, int b) { return a * b; }
+            int main() {
+                int r = add(3, 4);
+                int s = sub(10, 3);
+                int m = mul(5, 6);
+                printf("r=%d s=%d m=%d\n", r, s, m);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+        assert!(ir_len > 20, "should have many IR ops for 4 functions");
+    }
+
+    #[test]
+    fn test_c_e2e_control_flow() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int main() {
+                int sum = 0;
+                for (int i = 0; i < 10; i++) {
+                    if (i % 2 == 0) {
+                        sum += i;
+                    }
+                }
+                int j = 100;
+                while (j > 0) {
+                    j = j - 10;
+                }
+                return sum;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_recursion() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int factorial(int n) {
+                if (n <= 1) return 1;
+                return n * factorial(n - 1);
+            }
+            int main() {
+                int r = factorial(10);
+                printf("10! = %d\n", r);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_arrays() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int main() {
+                int arr[5];
+                for (int i = 0; i < 5; i++) {
+                    arr[i] = (i + 1) * 10;
+                }
+                int total = 0;
+                for (int i = 0; i < 5; i++) {
+                    total += arr[i];
+                }
+                printf("total=%d\n", total);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_pointers() {
+        let (code, _, _) = compile_c_e2e(r#"
+            void swap(int *a, int *b) {
+                int temp = *a;
+                *a = *b;
+                *b = temp;
+            }
+            int main() {
+                int x = 10;
+                int y = 20;
+                swap(&x, &y);
+                printf("x=%d y=%d\n", x, y);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_switch() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int classify(int n) {
+                switch (n) {
+                    case 0: return 0;
+                    case 1: return 10;
+                    case 2: return 20;
+                    default: return -1;
+                }
+            }
+            int main() {
+                printf("0=%d 1=%d 2=%d 9=%d\n",
+                    classify(0), classify(1), classify(2), classify(9));
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_dowhile() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int main() {
+                int count = 0;
+                do {
+                    count++;
+                } while (count < 10);
+                printf("count=%d\n", count);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_ternary() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int max(int a, int b) { return (a > b) ? a : b; }
+            int min(int a, int b) { return (a < b) ? a : b; }
+            int main() {
+                printf("max=%d min=%d\n", max(10, 20), min(10, 20));
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_struct() {
+        let (code, _, _) = compile_c_e2e(r#"
+            struct Point { int x; int y; };
+            int main() {
+                struct Point p;
+                p.x = 10;
+                p.y = 20;
+                printf("point=(%d,%d)\n", p.x, p.y);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_enum() {
+        let (code, _, _) = compile_c_e2e(r#"
+            enum Color { RED = 0, GREEN = 1, BLUE = 2 };
+            int main() {
+                int c = GREEN;
+                printf("color=%d\n", c);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_multiple_strings() {
+        let (code, data, _) = compile_c_e2e(r#"
+            int main() {
+                printf("Line 1\n");
+                printf("Line 2\n");
+                printf("Line 3\n");
+                printf("Done\n");
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+        assert!(!data.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_nested_calls() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int square(int x) { return x * x; }
+            int add(int a, int b) { return a + b; }
+            int main() {
+                int r = add(square(3), square(4));
+                printf("3^2+4^2=%d\n", r);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_many_variables() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int main() {
+                int a = 1, b = 2, c = 3, d = 4, e = 5;
+                int f = 6, g = 7, h = 8;
+                int total = a + b + c + d + e + f + g + h;
+                printf("total=%d\n", total);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_bubble_sort() {
+        let (code, _, ir_len) = compile_c_e2e(r#"
+            void sort(int *arr, int n) {
+                for (int i = 0; i < n - 1; i++) {
+                    for (int j = 0; j < n - i - 1; j++) {
+                        if (arr[j] > arr[j + 1]) {
+                            int t = arr[j];
+                            arr[j] = arr[j + 1];
+                            arr[j + 1] = t;
+                        }
+                    }
+                }
+            }
+            int main() {
+                int a[] = {5, 3, 1, 4, 2};
+                sort(a, 5);
+                printf("sorted=%d %d %d %d %d\n",
+                    a[0], a[1], a[2], a[3], a[4]);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+        assert!(ir_len > 50, "bubble sort should generate many IR ops");
+    }
+
+    #[test]
+    fn test_c_e2e_bitwise_ops() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int main() {
+                int a = 0xFF;
+                int b = a & 0x0F;
+                int c = a | 0xF00;
+                int d = a ^ 0xFF;
+                int e = a << 4;
+                int f = a >> 4;
+                printf("b=%d c=%d d=%d e=%d f=%d\n", b, c, d, e, f);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_compound_assigns() {
+        let (code, _, _) = compile_c_e2e(r#"
+            int main() {
+                int x = 100;
+                x += 50;
+                x -= 30;
+                x *= 2;
+                x /= 3;
+                x %= 7;
+                printf("x=%d\n", x);
+                return 0;
+            }
+        "#);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_c_e2e_full_hello_c_example() {
+        // This is the big integration test — compile the full hello.c showcase
+        let source = std::fs::read_to_string("examples/c/hello.c")
+            .expect("hello.c should exist");
+        let program = crate::frontend::c::compile_c_to_program(&source)
+            .expect("hello.c should parse");
+        let mut compiler = IsaCompiler::new(Target::Windows);
+        let (code, data, _, _) = compiler.compile(&program);
+        assert!(!code.is_empty(), "hello.c should generate code");
+        assert!(!data.is_empty(), "hello.c should have string data");
+        assert!(compiler.ir().ops().len() > 100,
+            "hello.c should generate 100+ IR ops, got {}", compiler.ir().ops().len());
+    }
 }

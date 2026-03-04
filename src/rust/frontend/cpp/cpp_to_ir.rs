@@ -1051,4 +1051,414 @@ mod tests {
         let prog = result.unwrap();
         assert!(prog.functions.len() > 10, "cpp_stdlib_long.cpp should have many functions, got {}", prog.functions.len());
     }
+
+    // ================================================================
+    // GCC/LLVM/MSVC-INSPIRED C++ COMPREHENSIVE TESTS
+    // ================================================================
+    // Covers: classes, inheritance, templates, namespaces, enum class,
+    //         constexpr, auto, nullptr, type aliases, control flow
+    // Each test verifies parsing + IR generation for C++ features.
+    // ================================================================
+
+    // --- Example file tests (new test files) ---
+
+    #[test]
+    fn test_example_class_basic() {
+        let source = std::fs::read_to_string("examples/cpp/test_class_basic.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_class_basic.cpp failed");
+        assert!(prog.structs.len() >= 1, "should have Counter struct");
+        assert!(prog.functions.len() >= 1, "should have main + methods");
+    }
+
+    #[test]
+    fn test_example_inheritance() {
+        let source = std::fs::read_to_string("examples/cpp/test_inheritance.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_inheritance.cpp failed");
+        assert!(prog.structs.len() >= 3, "should have Shape + Circle + Rectangle, got {}", prog.structs.len());
+    }
+
+    #[test]
+    fn test_example_template_basic() {
+        let source = std::fs::read_to_string("examples/cpp/test_template_basic.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_template_basic.cpp failed");
+        assert!(prog.functions.len() >= 4, "should have max + min + abs + main");
+    }
+
+    #[test]
+    fn test_example_enum_class() {
+        let source = std::fs::read_to_string("examples/cpp/test_enum_class.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_enum_class.cpp failed");
+        assert_eq!(prog.functions.len(), 1, "should have main");
+    }
+
+    #[test]
+    fn test_example_constexpr() {
+        let source = std::fs::read_to_string("examples/cpp/test_constexpr.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_constexpr.cpp failed");
+        assert!(prog.functions.len() >= 4, "should have factorial + fib + square + cube + main");
+    }
+
+    #[test]
+    fn test_example_auto_nullptr() {
+        let source = std::fs::read_to_string("examples/cpp/test_auto_nullptr.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_auto_nullptr.cpp failed");
+        assert!(prog.functions.len() >= 3, "should have add + multiply + main");
+    }
+
+    #[test]
+    fn test_example_nested_namespace() {
+        let source = std::fs::read_to_string("examples/cpp/test_nested_namespace.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_nested_namespace.cpp failed");
+        assert!(prog.functions.len() >= 4, "should have multiple namespace functions + main");
+    }
+
+    #[test]
+    fn test_example_using_alias() {
+        let source = std::fs::read_to_string("examples/cpp/test_using_alias.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_using_alias.cpp failed");
+        assert!(prog.functions.len() >= 3, "should have double_val + triple_val + main");
+    }
+
+    #[test]
+    fn test_example_class_methods() {
+        let source = std::fs::read_to_string("examples/cpp/test_class_methods.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_class_methods.cpp failed");
+        assert!(prog.structs.len() >= 1, "should have Calculator struct");
+    }
+
+    #[test]
+    fn test_example_cpp_control_flow() {
+        let source = std::fs::read_to_string("examples/cpp/test_cpp_control_flow.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_cpp_control_flow.cpp failed");
+        assert!(prog.functions.len() >= 3, "should have fibonacci + is_prime + main");
+    }
+
+    // --- Existing .cpp test file validations ---
+
+    #[test]
+    fn test_example_test_minimal() {
+        let source = std::fs::read_to_string("examples/cpp/test_minimal.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_minimal.cpp failed");
+        assert!(prog.functions.len() >= 2);
+    }
+
+    #[test]
+    fn test_example_test_5func() {
+        let source = std::fs::read_to_string("examples/cpp/test_5func.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_5func.cpp failed");
+        assert!(prog.functions.len() >= 5);
+    }
+
+    #[test]
+    fn test_example_test_namespace() {
+        let source = std::fs::read_to_string("examples/cpp/test_namespace.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_namespace.cpp failed");
+        assert!(prog.functions.len() >= 4);
+    }
+
+    #[test]
+    fn test_example_test_recursion_cpp() {
+        let source = std::fs::read_to_string("examples/cpp/test_recursion.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_recursion.cpp failed");
+        assert!(prog.functions.len() >= 2);
+    }
+
+    #[test]
+    fn test_example_test_forloop_cpp() {
+        let source = std::fs::read_to_string("examples/cpp/test_forloop.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_forloop.cpp failed");
+        assert!(prog.functions.len() >= 1);
+    }
+
+    #[test]
+    fn test_example_test_gcd() {
+        let source = std::fs::read_to_string("examples/cpp/test_gcd.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_gcd.cpp failed");
+        assert!(prog.functions.len() >= 2);
+    }
+
+    #[test]
+    fn test_example_test_prime() {
+        let source = std::fs::read_to_string("examples/cpp/test_prime.cpp").unwrap();
+        let prog = compile_cpp_to_program(&source).expect("test_prime.cpp failed");
+        assert!(prog.functions.len() >= 2);
+    }
+
+    // --- Inline C++ feature tests (no external files) ---
+
+    #[test]
+    fn test_cpp_class_with_constructor() {
+        let prog = compile_cpp_to_program(r#"
+            class Vector2D {
+            public:
+                int x;
+                int y;
+                Vector2D(int px, int py) : x(px), y(py) {}
+                int dot(int ox, int oy) { return x * ox + y * oy; }
+                int magnitude_sq() { return x * x + y * y; }
+            };
+            int main() { return 0; }
+        "#).unwrap();
+        assert!(prog.structs.len() >= 1);
+    }
+
+    #[test]
+    fn test_cpp_multiple_classes() {
+        let prog = compile_cpp_to_program(r#"
+            class A {
+            public:
+                int val;
+                A(int v) : val(v) {}
+                int get() { return val; }
+            };
+            class B {
+            public:
+                int data;
+                B(int d) : data(d) {}
+                int get() { return data; }
+            };
+            int main() { return 0; }
+        "#).unwrap();
+        assert!(prog.structs.len() >= 2);
+    }
+
+    #[test]
+    fn test_cpp_namespace_with_classes() {
+        let prog = compile_cpp_to_program(r#"
+            namespace game {
+                class Entity {
+                public:
+                    int id;
+                    Entity(int i) : id(i) {}
+                };
+                int next_id() { return 42; }
+            }
+            int main() { return 0; }
+        "#).unwrap();
+        assert!(prog.functions.len() >= 1);
+    }
+
+    #[test]
+    fn test_cpp_virtual_method() {
+        let prog = compile_cpp_to_program(r#"
+            class Base {
+            public:
+                virtual int value() { return 0; }
+            };
+            class Derived : public Base {
+            public:
+                int value() override { return 42; }
+            };
+            int main() { return 0; }
+        "#).unwrap();
+        assert!(prog.structs.len() >= 2);
+    }
+
+    #[test]
+    fn test_cpp_explicit_constructor() {
+        let prog = compile_cpp_to_program(r#"
+            class Wrapper {
+            public:
+                int val;
+                explicit Wrapper(int v) : val(v) {}
+                int get() { return val; }
+            };
+            int main() {
+                Wrapper w(42);
+                return 0;
+            }
+        "#).unwrap();
+        assert!(prog.structs.len() >= 1);
+    }
+
+    #[test]
+    fn test_cpp_const_method() {
+        let prog = compile_cpp_to_program(r#"
+            class Buffer {
+            public:
+                int size;
+                Buffer(int s) : size(s) {}
+                int get_size() const { return size; }
+                bool empty() const { return size <= 0; }
+            };
+            int main() { return 0; }
+        "#).unwrap();
+        assert!(prog.structs.len() >= 1);
+    }
+
+    #[test]
+    fn test_cpp_noexcept() {
+        let prog = compile_cpp_to_program(r#"
+            class Safe {
+            public:
+                int val;
+                Safe() : val(0) {}
+                void reset() noexcept { val = 0; }
+                int get() noexcept { return val; }
+            };
+            int main() { return 0; }
+        "#).unwrap();
+        assert!(prog.structs.len() >= 1);
+    }
+
+    #[test]
+    fn test_cpp_for_loop_with_namespace() {
+        let prog = compile_cpp_to_program(r#"
+            namespace util {
+                int sum(int n) {
+                    int total = 0;
+                    for (int i = 1; i <= n; i++) {
+                        total = total + i;
+                    }
+                    return total;
+                }
+            }
+            int main() {
+                int s = util::sum(100);
+                return s;
+            }
+        "#).unwrap();
+        assert!(prog.functions.len() >= 2);
+    }
+
+    #[test]
+    fn test_cpp_while_loop() {
+        let prog = compile_cpp_to_program(r#"
+            int power(int base, int exp) {
+                int result = 1;
+                while (exp > 0) {
+                    result = result * base;
+                    exp = exp - 1;
+                }
+                return result;
+            }
+            int main() {
+                int r = power(2, 10);
+                return r;
+            }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_cpp_ternary_operator() {
+        let prog = compile_cpp_to_program(r#"
+            int abs_val(int x) {
+                return (x < 0) ? (0 - x) : x;
+            }
+            int max2(int a, int b) {
+                return (a > b) ? a : b;
+            }
+            int main() { return abs_val(-5) + max2(3, 7); }
+        "#).unwrap();
+        assert_eq!(prog.functions.len(), 3);
+    }
+
+    // --- End-to-end C++ → machine code tests ---
+
+    #[test]
+    fn test_cpp_e2e_hello() {
+        let prog = compile_cpp_to_program(r#"
+            int main() {
+                printf("Hello C++!\n");
+                return 0;
+            }
+        "#).unwrap();
+        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
+            crate::isa::isa_compiler::Target::Windows);
+        let (code, data, _, _) = compiler.compile(&prog);
+        assert!(!code.is_empty(), "should generate code");
+        assert!(!data.is_empty(), "should have string data");
+    }
+
+    #[test]
+    fn test_cpp_e2e_namespace() {
+        let prog = compile_cpp_to_program(r#"
+            namespace math {
+                int add(int a, int b) { return a + b; }
+                int mul(int a, int b) { return a * b; }
+            }
+            int main() {
+                int r = math::add(3, 4);
+                printf("result=%d\n", r);
+                return 0;
+            }
+        "#).unwrap();
+        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
+            crate::isa::isa_compiler::Target::Windows);
+        let (code, _, _, _) = compiler.compile(&prog);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_cpp_e2e_class() {
+        let prog = compile_cpp_to_program(r#"
+            class Point {
+            public:
+                int x;
+                int y;
+                Point(int px, int py) : x(px), y(py) {}
+                int sum() { return x + y; }
+            };
+            int main() {
+                printf("done\n");
+                return 0;
+            }
+        "#).unwrap();
+        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
+            crate::isa::isa_compiler::Target::Windows);
+        let (code, _, _, _) = compiler.compile(&prog);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_cpp_e2e_template() {
+        let prog = compile_cpp_to_program(r#"
+            template<typename T>
+            T add(T a, T b) { return a + b; }
+            int main() {
+                int r = add(10, 20);
+                printf("add=%d\n", r);
+                return 0;
+            }
+        "#).unwrap();
+        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
+            crate::isa::isa_compiler::Target::Windows);
+        let (code, _, _, _) = compiler.compile(&prog);
+        assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_cpp_e2e_full_oop_example() {
+        let source = std::fs::read_to_string("examples/cpp/cpp_oop.cpp")
+            .expect("cpp_oop.cpp should exist");
+        let prog = compile_cpp_to_program(&source).expect("cpp_oop.cpp should parse");
+        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
+            crate::isa::isa_compiler::Target::Windows);
+        let (code, data, _, _) = compiler.compile(&prog);
+        assert!(!code.is_empty(), "cpp_oop.cpp should generate code");
+        assert!(!data.is_empty(), "cpp_oop.cpp should have string data");
+    }
+
+    #[test]
+    fn test_cpp_e2e_full_templates_example() {
+        let source = std::fs::read_to_string("examples/cpp/cpp_templates.cpp")
+            .expect("cpp_templates.cpp should exist");
+        let prog = compile_cpp_to_program(&source).expect("cpp_templates.cpp should parse");
+        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
+            crate::isa::isa_compiler::Target::Windows);
+        let (code, _, _, _) = compiler.compile(&prog);
+        assert!(!code.is_empty(), "cpp_templates.cpp should generate code");
+    }
+
+    #[test]
+    fn test_cpp_e2e_full_modern_example() {
+        let source = std::fs::read_to_string("examples/cpp/cpp_modern.cpp")
+            .expect("cpp_modern.cpp should exist");
+        let prog = compile_cpp_to_program(&source).expect("cpp_modern.cpp should parse");
+        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
+            crate::isa::isa_compiler::Target::Windows);
+        let (code, _, _, _) = compiler.compile(&prog);
+        assert!(!code.is_empty(), "cpp_modern.cpp should generate code");
+    }
 }
