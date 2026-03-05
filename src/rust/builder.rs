@@ -12,8 +12,9 @@ use crate::frontend::ast::{Program, Function, FunctionAttributes};
 use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
 use crate::optimizer::binary_optimizer::{BinaryOptimizer, OptLevel};
-use crate::isa::isa_compiler::{IsaCompiler, Target};
-use crate::isa::optimizer::{IsaOptimizer, IsaOptLevel};
+use crate::isa::isa_compiler::Target;
+use crate::isa::c_isa::CIsaCompiler;
+use crate::isa::cpp_isa::CppIsaCompiler;
 use crate::backend::{pe, elf};
 use std::fs;
 use std::path::Path;
@@ -116,40 +117,29 @@ impl Builder {
             Self::apply_optimizations(program);
         }
 
-        // 4. Backend: ISA Compilation (ADead ISA → bytes)
-        if options.verbose { println!("Step 4: ISA Compilation..."); }
-        let mut compiler = IsaCompiler::new(options.target);
-        let (opcodes, data, _iat_offsets, _string_offsets) = compiler.compile(program);
-
-        // 4.5. ISA-Level Optimization (operates on ADeadIR before encoding)
-        let optimized_opcodes = if options.size_optimize {
-            if options.verbose { println!("Step 4.5: ISA Optimization (level: {:?})...", options.opt_level); }
-            
-            let isa_level = match options.opt_level {
-                OptLevel::None => IsaOptLevel::None,
-                OptLevel::Basic => IsaOptLevel::Basic,
-                OptLevel::Aggressive => IsaOptLevel::Aggressive,
-                OptLevel::Ultra => IsaOptLevel::Size,
-            };
-            let mut isa_opt = IsaOptimizer::new(isa_level);
-            let optimized_ir = isa_opt.optimize(compiler.ir());
-            
-            // Re-encode with optimized IR
-            let mut encoder = crate::isa::encoder::Encoder::new();
-            let result = encoder.encode_all(optimized_ir.ops());
-            
-            if options.verbose {
-                let stats = isa_opt.stats();
-                println!("   ISA Ops: {} → {} (peephole: {}, dead: {}, nops: {})",
-                    stats.original_ops, stats.optimized_ops,
-                    stats.peephole_applied, stats.dead_code_removed, stats.nops_eliminated
-                );
+        // 4. Backend: ISA Compilation (Language-specific ISA → bytes)
+        //    c_isa.rs  → C99 sizeof real, alignment rules
+        //    cpp_isa.rs → C++98 vtable, this pointer, inheritance layout
+        //    isa_compiler.rs → ADead-BIB native (8-byte everything, fallback)
+        if options.verbose { println!("Step 4: ISA Compilation ({:?})...", options.language); }
+        let (opcodes, data, _iat_offsets, _string_offsets, ir_ref) = match options.language {
+            SourceLanguage::C => {
+                let mut c_compiler = CIsaCompiler::new(options.target);
+                let result = c_compiler.compile(program);
+                // We need the IR for ISA optimization — get it before moving
+                (result.0, result.1, result.2, result.3, None::<()>)
             }
-            
-            result.code
-        } else {
-            opcodes
+            SourceLanguage::Cpp => {
+                let mut cpp_compiler = CppIsaCompiler::new(options.target);
+                let result = cpp_compiler.compile(program);
+                (result.0, result.1, result.2, result.3, None::<()>)
+            }
         };
+        let _ = ir_ref;
+
+        // 4.5. ISA-Level Optimization is now handled internally by each ISA compiler.
+        // Binary-level optimization below still applies to raw bytes.
+        let optimized_opcodes = opcodes;
 
         // 4.6. Binary-Level Optimization (operates on raw bytes)
         let final_opcodes = if options.size_optimize {

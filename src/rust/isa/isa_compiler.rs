@@ -376,6 +376,16 @@ impl IsaCompiler {
         self.cpu_mode
     }
 
+    /// Access class_layouts for external ISA compilers (c_isa, cpp_isa)
+    pub fn class_layouts(&self) -> &HashMap<String, ClassLayout> {
+        &self.class_layouts
+    }
+
+    /// Insert or override a class layout (used by c_isa/cpp_isa for specialized policies)
+    pub fn insert_class_layout(&mut self, name: String, layout: ClassLayout) {
+        self.class_layouts.insert(name, layout);
+    }
+
     /// Compila un programa completo y retorna (code_bytes, data_bytes, iat_offsets, string_offsets).
     pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
         // Fase 0: Registrar layouts de structs/clases del programa (MSVC ABI style)
