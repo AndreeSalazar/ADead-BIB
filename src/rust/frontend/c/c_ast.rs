@@ -162,6 +162,7 @@ pub enum CStmt {
     VarDecl {
         type_spec: CType,
         declarators: Vec<CDeclarator>,
+        is_static: bool,
     },
 
     // Compound statement (block): { ... }

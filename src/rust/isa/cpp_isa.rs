@@ -107,6 +107,7 @@ impl CppIsaCompiler {
             self.inner.insert_class_layout(st.name.clone(), ClassLayout {
                 name: st.name.clone(),
                 fields,
+                field_types: vec![],
                 size: offset,
                 real_size: offset,
             });
@@ -170,6 +171,7 @@ impl CppIsaCompiler {
         ClassLayout {
             name: class.name.clone(),
             fields,
+            field_types: vec![],
             size: offset,
             real_size: offset,
         }

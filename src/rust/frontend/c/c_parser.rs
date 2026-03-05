@@ -871,6 +871,9 @@ impl CParser {
     }
 
     fn parse_var_decl(&mut self) -> Result<CStmt, String> {
+        // Check for static keyword before the type
+        let is_static = *self.current() == CToken::Static;
+        // parse_type will skip the static token internally
         let type_spec = self.parse_type()?;
         let mut declarators = Vec::new();
 
@@ -890,7 +893,7 @@ impl CParser {
         }
         self.expect(&CToken::Semicolon)?;
 
-        Ok(CStmt::VarDecl { type_spec, declarators })
+        Ok(CStmt::VarDecl { type_spec, declarators, is_static })
     }
 
     fn parse_if(&mut self) -> Result<CStmt, String> {

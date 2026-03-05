@@ -66,6 +66,13 @@ impl CToIR {
         }
 
         // Second pass: functions and global vars
+        // Pre-scan: collect static locals from function bodies as globals
+        for decl in &unit.declarations {
+            if let CTopLevel::FunctionDef { body, .. } = decl {
+                self.collect_static_locals(body, &mut program.statements);
+            }
+        }
+
         for decl in &unit.declarations {
             match decl {
                 CTopLevel::FunctionDef { return_type, name, params, body } => {
@@ -195,6 +202,51 @@ impl CToIR {
         }
     }
 
+    /// Collect static local variables from function body and add them as globals
+    fn collect_static_locals(&self, stmts: &[CStmt], globals: &mut Vec<Stmt>) {
+        for stmt in stmts {
+            match stmt {
+                CStmt::VarDecl { type_spec, declarators, is_static } if *is_static => {
+                    for decl in declarators {
+                        let var_type = self.resolve_declarator_type(type_spec, &decl.derived_type);
+                        let init_val = if let Some(ref init) = decl.initializer {
+                            self.convert_expr(init).ok()
+                        } else {
+                            None
+                        };
+                        globals.push(Stmt::VarDecl {
+                            var_type,
+                            name: decl.name.clone(),
+                            value: init_val,
+                        });
+                    }
+                }
+                CStmt::Block(inner) => self.collect_static_locals(inner, globals),
+                CStmt::If { then_body, else_body, .. } => {
+                    if let CStmt::Block(inner) = then_body.as_ref() {
+                        self.collect_static_locals(inner, globals);
+                    }
+                    if let Some(eb) = else_body {
+                        if let CStmt::Block(inner) = eb.as_ref() {
+                            self.collect_static_locals(inner, globals);
+                        }
+                    }
+                }
+                CStmt::While { body, .. } | CStmt::DoWhile { body, .. } => {
+                    if let CStmt::Block(inner) = body.as_ref() {
+                        self.collect_static_locals(inner, globals);
+                    }
+                }
+                CStmt::For { body, .. } => {
+                    if let CStmt::Block(inner) = body.as_ref() {
+                        self.collect_static_locals(inner, globals);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // ========== Function conversion ==========
 
     fn convert_function(
@@ -244,7 +296,7 @@ impl CToIR {
                 Ok(vec![Stmt::Return(Some(val))])
             }
 
-            CStmt::VarDecl { type_spec, declarators } => {
+            CStmt::VarDecl { type_spec, declarators, is_static } => {
                 let mut stmts = Vec::new();
                 for decl in declarators {
                     let var_type = self.resolve_declarator_type(type_spec, &decl.derived_type);
@@ -255,12 +307,19 @@ impl CToIR {
                         None
                     };
 
-                    // Use VarDecl with full type info — not bare Assign
-                    stmts.push(Stmt::VarDecl {
-                        var_type,
-                        name: decl.name.clone(),
-                        value: init_val,
-                    });
+                    if *is_static {
+                        // Static local: emit nothing in function body.
+                        // The variable is pre-registered as a global in program.statements
+                        // by convert_function, so the ISA compiler will find it there.
+                        // Skip — no local VarDecl needed.
+                    } else {
+                        // Use VarDecl with full type info — not bare Assign
+                        stmts.push(Stmt::VarDecl {
+                            var_type,
+                            name: decl.name.clone(),
+                            value: init_val,
+                        });
+                    }
                 }
                 Ok(stmts)
             }

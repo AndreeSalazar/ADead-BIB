@@ -187,6 +187,7 @@ impl CIsaCompiler {
             self.inner.insert_class_layout(st.name.clone(), ClassLayout {
                 name: st.name.clone(),
                 fields,
+                field_types: vec![],
                 size: total_size,
                 real_size,
             });
