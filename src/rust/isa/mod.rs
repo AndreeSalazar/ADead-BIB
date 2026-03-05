@@ -392,8 +392,10 @@ pub enum CallTarget {
     Relative(Label),
     /// Call indirecto via RIP-relative (call [rip+disp], para IAT)
     RipRelative(i32),
-    /// Call a función por nombre (resolución diferida)
+    /// Call a función por nombre (se resuelve después)
     Name(String),
+    /// Call indirecto via registro (call rax) — function pointers
+    Register(Reg),
 }
 
 impl std::fmt::Display for CallTarget {
@@ -402,6 +404,7 @@ impl std::fmt::Display for CallTarget {
             CallTarget::Relative(label) => write!(f, "{}", label),
             CallTarget::RipRelative(disp) => write!(f, "[rip+{}]", disp),
             CallTarget::Name(name) => write!(f, "{}", name),
+            CallTarget::Register(reg) => write!(f, "*{:?}", reg),
         }
     }
 }
@@ -597,6 +600,10 @@ pub enum ADeadOp {
     /// Far JMP — Jump with segment selector change (for mode switching)
     FarJmp { selector: u16, offset: u32 },
 
+    /// LEA reg, [rip+label] — Load effective address of a label into register
+    /// Used for function pointers: fn_ptr = some_function
+    LeaLabel { dst: Reg, label: Label },
+
     /// Label address reference — emits the absolute address of a label as bytes
     /// Used for writing label addresses to memory (e.g., for far jump pointers)
     /// The encoder resolves this to the actual address after all labels are placed.
@@ -674,6 +681,9 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::ShrCl { dst } => write!(f, "shr {}, cl", dst),
             ADeadOp::FarJmp { selector, offset } => {
                 write!(f, "jmp 0x{:04X}:0x{:08X}", selector, offset)
+            }
+            ADeadOp::LeaLabel { dst, label } => {
+                write!(f, "lea {:?}, [rip+{}]", dst, label)
             }
             ADeadOp::LabelAddrRef { label, size, base_addr } => {
                 write!(f, "label_addr({}, size={}, base=0x{:X})", label, size, base_addr)

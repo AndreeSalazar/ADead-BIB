@@ -118,7 +118,7 @@ impl IsaCompiler {
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(32),
         });
-        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2040 });
+        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2050 });
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(32),
         });
@@ -193,7 +193,7 @@ impl IsaCompiler {
             self.ir.emit(ADeadOp::Sub {
                 dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(32),
             });
-            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2048 });
+            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2058 });
             self.ir.emit(ADeadOp::Add {
                 dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(32),
             });
@@ -238,7 +238,7 @@ impl IsaCompiler {
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(32),
         });
-        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2048 });
+        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2058 });
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(32),
         });

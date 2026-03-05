@@ -91,7 +91,8 @@ pub struct CompiledFunction {
 pub struct ClassLayout {
     pub name: String,
     pub fields: Vec<(String, i32)>, // (field_name, offset)
-    pub size: i32,
+    pub size: i32,          // Stack layout size (8-byte aligned slots)
+    pub real_size: i32,     // True C99 sizeof (for sizeof operator)
 }
 
 /// ISA Compiler — Compilador que genera ADeadIR en vez de bytes directos.
@@ -140,7 +141,7 @@ pub struct IsaCompiler {
 impl IsaCompiler {
     pub fn new(target: Target) -> Self {
         let (base, data_rva) = match target {
-            Target::Windows => (0x0000000140000000, 0x2078),
+            Target::Windows => (0x0000000140000000, 0x20A8),
             Target::Linux => (0x400000, 0x1000),
             Target::Raw => (0x0, 0x1000),
         };
@@ -152,69 +153,69 @@ impl IsaCompiler {
         class_layouts.insert("Counter".to_string(), ClassLayout {
             name: "Counter".to_string(),
             fields: vec![("value".to_string(), 0), ("max_value".to_string(), 8)],
-            size: 16,
+            size: 16, real_size: 16,
         });
         
         // Point2D class layout
         class_layouts.insert("Point2D".to_string(), ClassLayout {
             name: "Point2D".to_string(),
             fields: vec![("x".to_string(), 0), ("y".to_string(), 8)],
-            size: 16,
+            size: 16, real_size: 16,
         });
         
         // Shape class layout (base class for inheritance)
         class_layouts.insert("Shape".to_string(), ClassLayout {
             name: "Shape".to_string(),
             fields: vec![("id".to_string(), 0)],
-            size: 8,
+            size: 8, real_size: 8,
         });
         
         // Circle class layout (inherits Shape)
         class_layouts.insert("Circle".to_string(), ClassLayout {
             name: "Circle".to_string(),
             fields: vec![("id".to_string(), 0), ("radius".to_string(), 8)],
-            size: 16,
+            size: 16, real_size: 16,
         });
         
         // Rectangle class layout (inherits Shape)
         class_layouts.insert("Rectangle".to_string(), ClassLayout {
             name: "Rectangle".to_string(),
             fields: vec![("id".to_string(), 0), ("w".to_string(), 8), ("h".to_string(), 16)],
-            size: 24,
+            size: 24, real_size: 24,
         });
         
         // Rect class layout
         class_layouts.insert("Rect".to_string(), ClassLayout {
             name: "Rect".to_string(),
             fields: vec![("origin".to_string(), 0), ("width".to_string(), 16), ("height".to_string(), 24)],
-            size: 32,
+            size: 32, real_size: 32,
         });
         
         // Stack class layout
         class_layouts.insert("Stack".to_string(), ClassLayout {
             name: "Stack".to_string(),
             fields: vec![("data".to_string(), 0), ("top".to_string(), 8)],
-            size: 16,
+            size: 16, real_size: 16,
         });
         
         // Queue class layout
         class_layouts.insert("Queue".to_string(), ClassLayout {
             name: "Queue".to_string(),
             fields: vec![("data".to_string(), 0), ("front".to_string(), 8), ("rear".to_string(), 16), ("count".to_string(), 24)],
-            size: 32,
+            size: 32, real_size: 32,
         });
         
         // LinkedList/Node class layout
         class_layouts.insert("LinkedList".to_string(), ClassLayout {
             name: "LinkedList".to_string(),
             fields: vec![("head".to_string(), 0)],
-            size: 8,
+            size: 8, real_size: 8,
         });
         
         class_layouts.insert("Node".to_string(), ClassLayout {
             name: "Node".to_string(),
             fields: vec![("value".to_string(), 0), ("next".to_string(), 8)],
-            size: 16,
+            size: 16, real_size: 16,
         });
 
         Self {
@@ -298,6 +299,32 @@ impl IsaCompiler {
         self.get_field_offset(field_name)
     }
     
+    /// Compute sizeof for a Type, consulting class_layouts for structs
+    /// and computing real sizes for arrays.
+    fn sizeof_type(&self, ty: &Type) -> i64 {
+        match ty {
+            Type::Struct(name) | Type::Class(name) | Type::Named(name) => {
+                // Look up struct/class in registered layouts
+                if let Some(layout) = self.class_layouts.get(name.as_str()) {
+                    // Use real_size for sizeof (true C99 size)
+                    layout.real_size as i64
+                } else {
+                    // Try c99_sizeof for named primitive types
+                    let s = crate::isa::c_isa::c99_sizeof_for_expr(ty);
+                    if s > 0 { s } else { 8 }
+                }
+            }
+            Type::Array(inner, Some(count)) => {
+                // Array: element_size * count
+                let elem_size = self.sizeof_type(inner);
+                elem_size * (*count as i64)
+            }
+            Type::Array(_, None) => 8, // Flexible array → pointer
+            Type::Pointer(_) => 8,
+            _ => crate::isa::c_isa::c99_sizeof_for_expr(ty),
+        }
+    }
+
     /// Create compiler for 16-bit real mode (boot sectors)
     pub fn new_real16() -> Self {
         Self::with_cpu_mode(Target::Raw, CpuMode::Real16)
@@ -396,10 +423,16 @@ impl IsaCompiler {
                 fields.push((field.name.clone(), offset));
                 offset += 8; // MSVC x64: all fields aligned to 8 bytes
             }
+            let real_size_sum: i32 = st.fields.iter().map(|f| {
+                let s = crate::isa::c_isa::c99_sizeof(&f.field_type);
+                if s > 0 { s } else { 8 }
+            }).sum();
+            let real_size = real_size_sum;
             self.class_layouts.insert(st.name.clone(), ClassLayout {
                 name: st.name.clone(),
                 fields,
                 size: offset,
+                real_size,
             });
         }
         
@@ -615,6 +648,10 @@ impl IsaCompiler {
                     self.collect_strings_from_expr(object);
                     self.collect_strings_from_expr(value);
                 }
+                Stmt::DerefAssign { pointer, value } => {
+                    self.collect_strings_from_expr(pointer);
+                    self.collect_strings_from_expr(value);
+                }
                 _ => {}
             }
         }
@@ -647,9 +684,10 @@ impl IsaCompiler {
         self.variable_types.clear();
         self.array_vars.clear();
         self.struct_params.clear();
-        // Start at -40 because prologue pushes 4 callee-saved regs after mov rbp,rsp
+        // Start at -32 because prologue pushes 4 callee-saved regs after mov rbp,rsp
         // occupying [rbp-8], [rbp-16], [rbp-24], [rbp-32]
-        self.stack_offset = -40;
+        // With decrement-first convention, first var will be at -40
+        self.stack_offset = -32;
 
         let is_interrupt = func.attributes.is_interrupt;
         let is_exception = func.attributes.is_exception;
@@ -671,8 +709,8 @@ impl IsaCompiler {
             // Register and save parameters (MSVC x64: RCX, RDX, R8, R9)
             for (i, param) in func.params.iter().enumerate() {
                 let param_offset = if i <= 3 {
-                    let off = self.stack_offset;
                     self.stack_offset -= 8;
+                    let off = self.stack_offset;
                     off
                 } else {
                     16 + ((i - 4) as i32 * 8)
@@ -726,8 +764,9 @@ impl IsaCompiler {
         self.variables.clear();
         self.variable_types.clear();
         self.array_vars.clear();
-        // Start at -40 because prologue pushes 4 callee-saved regs after mov rbp,rsp
-        self.stack_offset = -40;
+        // Start at -32 because prologue pushes 4 callee-saved regs after mov rbp,rsp
+        // With decrement-first convention, first var will be at -40
+        self.stack_offset = -32;
 
         // For bare-metal (Target::Raw), emit instructions directly — no prologue/epilogue.
         // Boot sectors and flat binaries need raw machine code, not 64-bit function frames.
@@ -926,6 +965,26 @@ impl IsaCompiler {
                 });
             }
 
+            // ========== DEREF ASSIGN: *ptr = value ==========
+            Stmt::DerefAssign { pointer, value } => {
+                // Evaluate value first → RAX
+                self.emit_expression(value);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                // Evaluate pointer → RAX (address)
+                self.emit_expression(pointer);
+                // RAX = address, pop value into RBX
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                // Store value at [pointer]: *ptr = value
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Mem { base: Reg::RBX, disp: 0 },
+                    src: Operand::Reg(Reg::RAX),
+                });
+            }
+
             // OOP field assignment: self.field = value or obj.field = value (GCC/LLVM ABI)
             Stmt::FieldAssign { object, field, value } => {
                 // Check if object is 'this' pointer - need indirect access
@@ -950,6 +1009,57 @@ impl IsaCompiler {
                             src: Operand::Reg(Reg::RAX),
                         });
                         return;
+                    }
+                }
+                // Handle indexed struct: arr[i].field = value
+                if let Expr::Index { object: arr_obj, index: idx } = object {
+                    if let Expr::Variable(arr_name) = arr_obj.as_ref() {
+                        if let Some(&base_offset) = self.variables.get(arr_name.as_str()) {
+                            // Get struct layout for field offset
+                            let field_offset = self.get_field_offset(field);
+                            // Evaluate value → RAX
+                            self.emit_expression(value);
+                            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                            // Evaluate index → RAX
+                            self.emit_expression(idx);
+                            // Compute address: base + index * struct_stride + field_offset
+                            // Get struct type from variable_types to determine stride
+                            let stride = if let Some(ty) = self.variable_types.get(arr_name.as_str()) {
+                                match ty {
+                                    Type::Array(inner, _) => {
+                                        match inner.as_ref() {
+                                            Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                                                self.class_layouts.get(n).map(|l| l.size).unwrap_or(8)
+                                            }
+                                            _ => 8,
+                                        }
+                                    }
+                                    _ => 8,
+                                }
+                            } else { 8 };
+                            // RAX = index, multiply by stride
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Imm32(stride),
+                            });
+                            self.ir.emit(ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX });
+                            // RAX = index * stride, add base address
+                            self.ir.emit(ADeadOp::Lea {
+                                dst: Reg::RBX,
+                                src: Operand::Mem { base: Reg::RBP, disp: base_offset },
+                            });
+                            self.ir.emit(ADeadOp::Add {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                            // RBX = &arr[index], pop value and store at [RBX + field_offset]
+                            self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem { base: Reg::RBX, disp: field_offset },
+                                src: Operand::Reg(Reg::RAX),
+                            });
+                            return;
+                        }
                     }
                 }
                 // Regular field assignment: obj.field = value
@@ -1037,8 +1147,8 @@ impl IsaCompiler {
                     // which is not yet implemented. For now, structs are zero-initialized.
                 } else {
                     // SCALAR: single 8-byte slot
-                    let offset = self.stack_offset;
                     self.stack_offset -= 8;
+                    let offset = self.stack_offset;
                     self.variables.insert(name.clone(), offset);
                     
                     if let Some(val) = value {
@@ -1572,7 +1682,7 @@ impl IsaCompiler {
         });
         // call [rip+offset] — IAT printf at RVA 0x2040
         // El encoder calcula el offset RIP-relative automáticamente
-        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2040 });
+        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2050 });
         // Restaurar stack
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP),
@@ -1788,11 +1898,16 @@ impl IsaCompiler {
         } else {
             self.ir.emit(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
         }
-        // Epilogue
-        self.ir.emit(ADeadOp::Mov {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Reg(Reg::RBP),
+        // Full epilogue inline: must match emit_prologue's callee-saved register saves
+        // Prologue pushes: RBP, then RBX, R12, RSI, RDI (at RBP-8..-32)
+        self.ir.emit(ADeadOp::Lea {
+            dst: Reg::RSP,
+            src: Operand::Mem { base: Reg::RBP, disp: -32 },
         });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RDI });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RSI });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::R12 });
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
         self.ir.emit(ADeadOp::Pop { dst: Reg::RBP });
         self.ir.emit(ADeadOp::Ret);
     }
@@ -1882,6 +1997,13 @@ impl IsaCompiler {
                             src: Operand::Mem { base: Reg::RBP, disp: offset },
                         });
                     }
+                } else if let Some(func) = self.functions.get(name) {
+                    // Function name used as value = function pointer (address of function)
+                    let label = func.label;
+                    self.ir.emit(ADeadOp::LeaLabel {
+                        dst: Reg::RAX,
+                        label,
+                    });
                 } else {
                     self.ir.emit(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
                 }
@@ -2056,13 +2178,76 @@ impl IsaCompiler {
                 self.emit_expression(inner);
                 self.ir.emit(ADeadOp::BitwiseNot { dst: Reg::RAX });
             }
-            Expr::PreIncrement(inner) | Expr::PostIncrement(inner) => {
-                self.emit_expression(inner);
-                self.ir.emit(ADeadOp::Inc { dst: Operand::Reg(Reg::RAX) });
+            Expr::PostIncrement(inner) => {
+                // Post: return old value, then increment in memory
+                if let Expr::Variable(name) = inner.as_ref() {
+                    if let Some(&offset) = self.variables.get(name.as_str()) {
+                        // Load old value into RAX (this is the return value)
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                        // Increment the variable in memory
+                        self.ir.emit(ADeadOp::Inc {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                        // RAX still has old value
+                    }
+                } else {
+                    self.emit_expression(inner);
+                    self.ir.emit(ADeadOp::Inc { dst: Operand::Reg(Reg::RAX) });
+                }
             }
-            Expr::PreDecrement(inner) | Expr::PostDecrement(inner) => {
-                self.emit_expression(inner);
-                self.ir.emit(ADeadOp::Dec { dst: Operand::Reg(Reg::RAX) });
+            Expr::PreIncrement(inner) => {
+                // Pre: increment in memory, then return new value
+                if let Expr::Variable(name) = inner.as_ref() {
+                    if let Some(&offset) = self.variables.get(name.as_str()) {
+                        // Increment the variable in memory first
+                        self.ir.emit(ADeadOp::Inc {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                        // Load new value into RAX
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                    }
+                } else {
+                    self.emit_expression(inner);
+                    self.ir.emit(ADeadOp::Inc { dst: Operand::Reg(Reg::RAX) });
+                }
+            }
+            Expr::PostDecrement(inner) => {
+                if let Expr::Variable(name) = inner.as_ref() {
+                    if let Some(&offset) = self.variables.get(name.as_str()) {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                        self.ir.emit(ADeadOp::Dec {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                    }
+                } else {
+                    self.emit_expression(inner);
+                    self.ir.emit(ADeadOp::Dec { dst: Operand::Reg(Reg::RAX) });
+                }
+            }
+            Expr::PreDecrement(inner) => {
+                if let Expr::Variable(name) = inner.as_ref() {
+                    if let Some(&offset) = self.variables.get(name.as_str()) {
+                        self.ir.emit(ADeadOp::Dec {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                    }
+                } else {
+                    self.emit_expression(inner);
+                    self.ir.emit(ADeadOp::Dec { dst: Operand::Reg(Reg::RAX) });
+                }
             }
             Expr::Nullptr | Expr::Null => {
                 self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
@@ -2444,6 +2629,56 @@ impl IsaCompiler {
                     } else {
                         self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
                     }
+                } else if let Expr::Index { object, index } = inner.as_ref() {
+                    // &arr[i] — compute address of element
+                    if let Expr::Variable(arr_name) = object.as_ref() {
+                        if let Some(&base_offset) = self.variables.get(arr_name.as_str()) {
+                            let is_local_array = self.array_vars.contains(arr_name.as_str());
+                            // Determine element stride
+                            let stride = if let Some(ty) = self.variable_types.get(arr_name.as_str()) {
+                                match ty {
+                                    Type::Array(inner_ty, _) => {
+                                        match inner_ty.as_ref() {
+                                            Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                                                self.class_layouts.get(n).map(|l| l.size).unwrap_or(8)
+                                            }
+                                            _ => 8,
+                                        }
+                                    }
+                                    _ => 8,
+                                }
+                            } else { 8 };
+                            // Evaluate index → RAX
+                            self.emit_expression(index);
+                            // RAX = index, multiply by stride
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Imm32(stride),
+                            });
+                            self.ir.emit(ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX });
+                            if is_local_array {
+                                // Local array: LEA base, then add offset
+                                self.ir.emit(ADeadOp::Lea {
+                                    dst: Reg::RBX,
+                                    src: Operand::Mem { base: Reg::RBP, disp: base_offset },
+                                });
+                            } else {
+                                // Pointer param: load pointer value
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RBX),
+                                    src: Operand::Mem { base: Reg::RBP, disp: base_offset },
+                                });
+                            }
+                            self.ir.emit(ADeadOp::Add {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Reg(Reg::RBX),
+                            });
+                        } else {
+                            self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                        }
+                    } else {
+                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                    }
                 } else {
                     self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
                 }
@@ -2462,17 +2697,57 @@ impl IsaCompiler {
                 });
             }
             // ========== SIZEOF ==========
-            Expr::SizeOf(_) => {
-                // Default sizeof = 8 (64-bit)
+            Expr::SizeOf(arg) => {
+                let size: i64 = match arg.as_ref() {
+                    crate::frontend::ast::SizeOfArg::Type(ty) => {
+                        self.sizeof_type(ty)
+                    }
+                    crate::frontend::ast::SizeOfArg::Expr(inner_expr) => {
+                        match inner_expr {
+                            Expr::Variable(name) => {
+                                if let Some(ty) = self.variable_types.get(name.as_str()).cloned() {
+                                    self.sizeof_type(&ty)
+                                } else { 8 }
+                            }
+                            Expr::String(s) => (s.len() + 1) as i64,
+                            _ => 8,
+                        }
+                    }
+                };
                 self.ir.emit(ADeadOp::Mov {
                     dst: Operand::Reg(Reg::RAX),
-                    src: Operand::Imm64(8),
+                    src: Operand::Imm64(size as u64),
                 });
             }
             // ========== CAST ==========
-            Expr::Cast { expr: inner, .. } => {
+            Expr::Cast { target_type, expr: inner } => {
                 self.emit_expression(inner);
-                // Value already in RAX, cast is a no-op at machine level for integers
+                // Apply truncation based on target type size
+                let target_size = crate::isa::c_isa::c99_sizeof_for_expr(target_type);
+                match target_size {
+                    1 => {
+                        // Truncate to 8 bits (char): movzx rax, al
+                        self.ir.emit(ADeadOp::MovZx { dst: Reg::RAX, src: Reg::AL });
+                    }
+                    2 => {
+                        // Truncate to 16 bits (short): and rax, 0xFFFF
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RBX),
+                            src: Operand::Imm32(0xFFFF),
+                        });
+                        self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RBX });
+                    }
+                    4 => {
+                        // Truncate to 32 bits (int): mov eax, eax (zero-extends upper 32)
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::EAX),
+                            src: Operand::Reg(Reg::EAX),
+                        });
+                    }
+                    _ => {
+                        // 8 bytes or unknown — no truncation needed
+                    }
+                }
             }
             _ => {
                 self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
@@ -2528,7 +2803,35 @@ impl IsaCompiler {
                 dst: Operand::Reg(Reg::RSP),
                 src: Operand::Imm8(32),
             });
-            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2048 });
+            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2058 });
+            self.ir.emit(ADeadOp::Add {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm8(32),
+            });
+            return;
+        }
+
+        // Special handling for malloc — call via IAT
+        if name == "malloc" {
+            self.ir.emit(ADeadOp::Sub {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm8(32),
+            });
+            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2060 });
+            self.ir.emit(ADeadOp::Add {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm8(32),
+            });
+            return;
+        }
+
+        // Special handling for free — call via IAT
+        if name == "free" {
+            self.ir.emit(ADeadOp::Sub {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm8(32),
+            });
+            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2068 });
             self.ir.emit(ADeadOp::Add {
                 dst: Operand::Reg(Reg::RSP),
                 src: Operand::Imm8(32),
@@ -2542,10 +2845,19 @@ impl IsaCompiler {
             src: Operand::Imm8(32),
         });
 
-        // Call usando label de la función
+        // Call usando label de la función, o indirecto si es function pointer
         if let Some(func) = self.functions.get(name) {
             let label = func.label;
             self.ir.emit(ADeadOp::Call { target: CallTarget::Relative(label) });
+        } else if self.variables.contains_key(name) {
+            // Function pointer: load pointer from variable, call through R10
+            // (R10 is volatile and not used for args in Windows x64 ABI)
+            let offset = self.variables[name];
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(Reg::R10),
+                src: Operand::Mem { base: Reg::RBP, disp: offset },
+            });
+            self.ir.emit(ADeadOp::Call { target: CallTarget::Register(Reg::R10) });
         } else {
             self.ir.emit(ADeadOp::Call { target: CallTarget::Name(name.to_string()) });
         }
@@ -2582,7 +2894,7 @@ impl IsaCompiler {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Imm8(32),
         });
-        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2048 });
+        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2058 });
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Imm8(32),

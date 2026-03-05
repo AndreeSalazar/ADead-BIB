@@ -268,6 +268,21 @@ impl Encoder {
             ADeadOp::BitwiseNot { dst } => self.encode_bitwise_not(dst),
             ADeadOp::ShlCl { dst } => self.encode_shl_cl(dst),
             ADeadOp::ShrCl { dst } => self.encode_shr_cl(dst),
+            ADeadOp::LeaLabel { dst, label } => {
+                // LEA reg, [rip + disp32] — load function address into register
+                let (dst_idx, dst_ext) = reg_index(dst);
+                let rex = 0x48 | if dst_ext { 0x04 } else { 0x00 }; // REX.W + REX.R if needed
+                let modrm = (dst_idx << 3) | 0x05; // mod=00, rm=101 (RIP-relative)
+                self.emit(&[rex, 0x8D, modrm]);
+                let patch_offset = self.code.len();
+                self.emit_i32(0);
+                self.pending_patches.push(PendingPatch {
+                    code_offset: patch_offset,
+                    target: *label,
+                    kind: PatchKind::Rel32,
+                    op_idx: self.current_op_idx,
+                });
+            }
             ADeadOp::FarJmp { selector, offset } => self.encode_far_jmp(*selector, *offset),
             ADeadOp::LabelAddrRef { label, size, base_addr } => {
                 // Emit the absolute address of a label
@@ -586,6 +601,14 @@ impl Encoder {
                 let offset = self.code.len();
                 self.unresolved_calls.push((offset, name.clone()));
                 self.emit_i32(0);
+            }
+            CallTarget::Register(reg) => {
+                // call reg — FF /2 with ModR/M for register direct
+                let (idx, ext) = reg_index(reg);
+                if ext {
+                    self.emit(&[0x41]); // REX.B
+                }
+                self.emit(&[0xFF, 0xD0 | idx]);
             }
         }
     }

@@ -166,10 +166,29 @@ impl CIsaCompiler {
             // Align total struct size to its largest member alignment
             let total_size = align_to(offset, max_align.max(8));
 
+            // Compute real C99 sizeof (sum of actual field sizes with alignment)
+            let mut real_offset = 0i32;
+            for field in &st.fields {
+                let fs = c99_sizeof(&field.field_type);
+                let actual_fs = if fs == 0 {
+                    match &field.field_type {
+                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                            self.inner.class_layouts().get(n).map(|l| l.real_size).unwrap_or(8)
+                        }
+                        _ => 8,
+                    }
+                } else { fs };
+                let fa = c99_align(actual_fs);
+                real_offset = align_to(real_offset, fa);
+                real_offset += actual_fs;
+            }
+            let real_size = align_to(real_offset, max_align);
+
             self.inner.insert_class_layout(st.name.clone(), ClassLayout {
                 name: st.name.clone(),
                 fields,
                 size: total_size,
+                real_size,
             });
         }
     }

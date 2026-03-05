@@ -36,48 +36,66 @@ pub fn generate_pe_with_offsets(
     // .idata RVA: dynamically placed after .text
     let idata_rva: u32 = 0x1000 + text_virtual_pages * section_align;
     
-    // Layout offsets within .idata (v1.4.0):
+    // Layout offsets within .idata (v1.5.0):
     // 0x00-0x27: IDT (Import Directory Table) - 1 entry (msvcrt) + null (2 * 20 bytes = 40 bytes)
-    // 0x28-0x3F: ILT (Import Lookup Table) - 2 entries (printf, scanf) + null (3 * 8 = 24 bytes)
-    // 0x40-0x57: IAT (Import Address Table) - 2 entries (printf, scanf) + null (3 * 8 = 24 bytes)
-    // 0x58+: Strings area
+    // 0x28-0x4F: ILT (Import Lookup Table) - 4 entries (printf, scanf, malloc, free) + null (5 * 8 = 40 bytes)
+    // 0x50-0x77: IAT (Import Address Table) - 4 entries + null (5 * 8 = 40 bytes)
+    // 0x78+: Strings area
     
     // Reserve enough space for IDT+ILT+IAT+strings
     let mut idata = vec![0u8; file_align]; // initial capacity
     
     // IDT[0] for msvcrt.dll
     idata[0..4].copy_from_slice(&(idata_rva + 0x28).to_le_bytes());    // OriginalFirstThunk (ILT)
-    idata[12..16].copy_from_slice(&(idata_rva + 0x58).to_le_bytes());  // Name (DLL name)
-    idata[16..20].copy_from_slice(&(idata_rva + 0x40).to_le_bytes());  // FirstThunk (IAT)
+    idata[12..16].copy_from_slice(&(idata_rva + 0x78).to_le_bytes());  // Name (DLL name)
+    idata[16..20].copy_from_slice(&(idata_rva + 0x50).to_le_bytes());  // FirstThunk (IAT)
     
-    // ILT entries (PE32+ uses 64-bit thunks)
-    let printf_hint_rva: u32 = idata_rva + 0x64;
-    let scanf_hint_rva: u32 = idata_rva + 0x6E;
+    // ILT entries (PE32+ uses 64-bit thunks) — 4 entries + null
+    let printf_hint_rva: u32 = idata_rva + 0x84;
+    let scanf_hint_rva: u32 = idata_rva + 0x8E;
+    let malloc_hint_rva: u32 = idata_rva + 0x96;
+    let free_hint_rva: u32 = idata_rva + 0xA0;
     
-    // ILT[0] -> printf, ILT[1] -> scanf, ILT[2] = null
+    // ILT[0] -> printf, ILT[1] -> scanf, ILT[2] -> malloc, ILT[3] -> free, ILT[4] = null
     idata[0x28..0x30].copy_from_slice(&(printf_hint_rva as u64).to_le_bytes());
     idata[0x30..0x38].copy_from_slice(&(scanf_hint_rva as u64).to_le_bytes());
+    idata[0x38..0x40].copy_from_slice(&(malloc_hint_rva as u64).to_le_bytes());
+    idata[0x40..0x48].copy_from_slice(&(free_hint_rva as u64).to_le_bytes());
+    // ILT[4] = null (already zeros at 0x48)
     
-    // IAT entries (same as ILT initially, loader overwrites)
-    idata[0x40..0x48].copy_from_slice(&(printf_hint_rva as u64).to_le_bytes());
-    idata[0x48..0x50].copy_from_slice(&(scanf_hint_rva as u64).to_le_bytes());
+    // IAT entries (same as ILT initially, loader overwrites) — at 0x50
+    idata[0x50..0x58].copy_from_slice(&(printf_hint_rva as u64).to_le_bytes());
+    idata[0x58..0x60].copy_from_slice(&(scanf_hint_rva as u64).to_le_bytes());
+    idata[0x60..0x68].copy_from_slice(&(malloc_hint_rva as u64).to_le_bytes());
+    idata[0x68..0x70].copy_from_slice(&(free_hint_rva as u64).to_le_bytes());
+    // IAT[4] = null (already zeros at 0x70)
     
     // Strings
     let dll_name = b"msvcrt.dll\0";
-    idata[0x58..0x58+dll_name.len()].copy_from_slice(dll_name);
+    idata[0x78..0x78+dll_name.len()].copy_from_slice(dll_name);
     
-    // Hint/Name for printf @ 0x64
-    idata[0x64] = 0; idata[0x65] = 0; // Hint = 0
+    // Hint/Name for printf @ 0x84
+    idata[0x84] = 0; idata[0x85] = 0; // Hint = 0
     let printf_name = b"printf\0";
-    idata[0x66..0x66+printf_name.len()].copy_from_slice(printf_name);
+    idata[0x86..0x86+printf_name.len()].copy_from_slice(printf_name);
     
-    // Hint/Name for scanf @ 0x6E
-    idata[0x6E] = 0; idata[0x6F] = 0; // Hint = 0
+    // Hint/Name for scanf @ 0x8E
+    idata[0x8E] = 0; idata[0x8F] = 0; // Hint = 0
     let scanf_name = b"scanf\0";
-    idata[0x70..0x70+scanf_name.len()].copy_from_slice(scanf_name);
+    idata[0x90..0x90+scanf_name.len()].copy_from_slice(scanf_name);
     
-    // Append program strings to .idata after 0x78
-    let program_strings_offset = 0x78usize;
+    // Hint/Name for malloc @ 0x96
+    idata[0x96] = 0; idata[0x97] = 0; // Hint = 0
+    let malloc_name = b"malloc\0";
+    idata[0x98..0x98+malloc_name.len()].copy_from_slice(malloc_name);
+    
+    // Hint/Name for free @ 0xA0
+    idata[0xA0] = 0; idata[0xA1] = 0; // Hint = 0
+    let free_name = b"free\0";
+    idata[0xA2..0xA2+free_name.len()].copy_from_slice(free_name);
+    
+    // Append program strings to .idata after 0xA8
+    let program_strings_offset = 0xA8usize;
     if program_strings_offset + _data.len() > idata.len() {
         let needed = program_strings_offset + _data.len();
         let aligned = ((needed + file_align - 1) / file_align) * file_align;
@@ -98,8 +116,8 @@ pub fn generate_pe_with_offsets(
     let mut patched_opcodes = opcodes.to_vec();
     let iat_delta = idata_rva as i32 - 0x2000i32;
     let image_base: u64 = 0x0000000140000000;
-    let old_string_base = image_base + 0x2078;
-    let new_string_base = image_base + idata_rva as u64 + 0x78;
+    let old_string_base = image_base + 0x20A8;
+    let new_string_base = image_base + idata_rva as u64 + 0xA8;
     let string_delta = new_string_base as i64 - old_string_base as i64;
     
     if iat_delta != 0 || string_delta != 0 {
@@ -215,8 +233,8 @@ pub fn generate_pe_with_offsets(
     opt[124..128].copy_from_slice(&40u32.to_le_bytes());
     
     // Data Directory [12] IAT (Import Address Table)
-    opt[208..212].copy_from_slice(&(idata_rva + 0x40).to_le_bytes());
-    opt[212..216].copy_from_slice(&24u32.to_le_bytes());
+    opt[208..212].copy_from_slice(&(idata_rva + 0x50).to_le_bytes());
+    opt[212..216].copy_from_slice(&40u32.to_le_bytes()); // 5 entries * 8 = 40
     
     file.write_all(&opt)?;
     

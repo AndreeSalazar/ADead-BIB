@@ -425,15 +425,20 @@ impl CParser {
             };
 
             // Handle array parameter: int arr[], int arr[N]
-            if *self.current() == CToken::LBracket {
+            // C99 §6.7.5.3: array parameter is adjusted to pointer
+            let final_type = if *self.current() == CToken::LBracket {
                 self.advance();
                 while *self.current() != CToken::RBracket && *self.current() != CToken::Eof {
                     self.advance();
                 }
                 self.expect(&CToken::RBracket)?;
-            }
+                // int arr[] → int *arr (decay to pointer)
+                CType::Pointer(Box::new(param_type))
+            } else {
+                param_type
+            };
 
-            params.push(CParam { param_type, name });
+            params.push(CParam { param_type: final_type, name });
 
             if !self.eat(&CToken::Comma) {
                 break;

@@ -108,6 +108,7 @@ impl CppIsaCompiler {
                 name: st.name.clone(),
                 fields,
                 size: offset,
+                real_size: offset,
             });
         }
 
@@ -170,6 +171,7 @@ impl CppIsaCompiler {
             name: class.name.clone(),
             fields,
             size: offset,
+            real_size: offset,
         }
     }
 

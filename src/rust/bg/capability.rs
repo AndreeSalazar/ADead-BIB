@@ -96,6 +96,10 @@ impl CapabilityMapper {
                     CallTarget::Name(_) => {
                         map.control_flow_map.direct_calls += 1;
                     }
+                    CallTarget::Register(_) => {
+                        map.control_flow_map.indirect_calls += 1;
+                        map.control_flow_map.indirect_sites.push(i);
+                    }
                 },
                 ADeadOp::CallIAT { .. } => {
                     map.control_flow_map.indirect_calls += 1;
