@@ -161,7 +161,7 @@ impl Builder {
         if options.verbose { println!("Step 5: Writing Binary to {}...", options.output_path); }
         match options.target {
             Target::Windows => {
-                pe::generate_pe(&final_opcodes, &data, &options.output_path)?;
+                pe::generate_pe_with_offsets(&final_opcodes, &data, &options.output_path, &_iat_offsets, &_string_offsets)?;
             },
             Target::Linux => elf::generate_elf(&final_opcodes, &data, &options.output_path)?,
             Target::Raw => fs::write(&options.output_path, &final_opcodes)?,

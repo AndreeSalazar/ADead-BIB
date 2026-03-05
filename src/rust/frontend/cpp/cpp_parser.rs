@@ -1040,12 +1040,20 @@ impl CppParser {
                 });
             } else {
                 // Field — handle array dimensions: int data[32];
+                let mut field_type = member_type;
                 while *self.current() == CppToken::LBracket {
                     self.advance();
-                    if *self.current() != CppToken::RBracket {
-                        let _ = self.parse_assignment_expr()?;
-                    }
+                    let arr_size = if *self.current() != CppToken::RBracket {
+                        let size_expr = self.parse_assignment_expr()?;
+                        match size_expr {
+                            CppExpr::IntLiteral(n) => Some(n as usize),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
                     self.expect(&CppToken::RBracket)?;
+                    field_type = CppType::Array(Box::new(field_type), arr_size);
                 }
                 let default_value = if self.eat(&CppToken::Assign) {
                     Some(self.parse_expression()?)
@@ -1060,7 +1068,7 @@ impl CppParser {
                 self.expect(&CppToken::Semicolon)?;
                 members.push(CppClassMember::Field {
                     access: current_access,
-                    type_spec: member_type,
+                    type_spec: field_type,
                     name: member_name,
                     default_value,
                     is_static: quals.is_static,
