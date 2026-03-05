@@ -763,11 +763,15 @@ impl CppToIR {
                 let mut stmts = Vec::new();
                 for d in declarators {
                     let var_type = self.convert_type(type_spec);
-                    // For known class types, skip the parent VarDecl — flat sub-fields carry the data
+                    // For class types, emit a zero placeholder VarDecl so the ISA
+                    // can allocate the stack slot. Flat sub-fields carry the real values.
                     let is_known_class = if let CppType::Named(cn) | CppType::Class(cn) | CppType::Struct(cn) = type_spec {
                         self.class_fields.iter().any(|(n, _)| n == cn)
                     } else { false };
-                    if !is_known_class {
+                    if is_known_class {
+                        // Emit parent as zero (a placeholder); real data is in c.field vars
+                        stmts.push(Stmt::VarDecl { var_type, name: d.name.clone(), value: Some(Expr::Number(0)) });
+                    } else {
                         let init = if let Some(ref e) = d.initializer { Some(self.convert_expr(e)?) } else { None };
                         stmts.push(Stmt::VarDecl { var_type, name: d.name.clone(), value: init });
                     }
@@ -839,9 +843,13 @@ impl CppToIR {
                                                 CppExpr::InitList(items) => items.clone(),
                                                 other => vec![other.clone()],
                                             };
-                                            // Find base ctor with matching arity
+                                            // Find base ctor with exact arity match first
                                             let base_ctor = self.class_ctor_inits.iter()
-                                                .find(|(cn, params, _)| cn == init_name && (params.len() == base_ctor_args.len() || params.len() == 0))
+                                                .find(|(cn, params, _)| cn == init_name && params.len() == base_ctor_args.len())
+                                                .or_else(|| if base_ctor_args.is_empty() {
+                                                    // fallback to default ctor only when no args
+                                                    self.class_ctor_inits.iter().find(|(cn, params, _)| cn == init_name && params.is_empty())
+                                                } else { None })
                                                 .map(|(_, params, inits)| (params.clone(), inits.clone()));
                                             if let Some((base_params, base_inits)) = base_ctor {
                                                 // Build substitution of base ctor params with args

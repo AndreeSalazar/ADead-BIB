@@ -4,18 +4,26 @@
  * Writes directly to VGA text buffer at 0xB8000
  * ============================================================ */
 
-int VGA_BASE  = 0xB8000;
-int SCREEN_W  = 80;
-int SCREEN_H  = 25;
+void kernel_main();
 
-int COLOR_BLUE_WHITE = 0x1F;
-int COLOR_WHITE_BLUE = 0x17;
-int COLOR_GRAY_BLACK = 0x70;
-int COLOR_GREEN      = 0x0A;
-int COLOR_CYAN       = 0x0B;
-int COLOR_YELLOW     = 0x0E;
-int COLOR_RED        = 0x0C;
-int COLOR_MAGENTA    = 0x0D;
+void _start() {
+    kernel_main();
+    while (1) {
+    }
+}
+
+#define VGA_BASE  0xB8000
+#define SCREEN_W  80
+#define SCREEN_H  25
+
+#define COLOR_BLUE_WHITE 0x1F
+#define COLOR_WHITE_BLUE 0x17
+#define COLOR_GRAY_BLACK 0x70
+#define COLOR_GREEN      0x0A
+#define COLOR_CYAN       0x0B
+#define COLOR_YELLOW     0x0E
+#define COLOR_RED        0x0C
+#define COLOR_MAGENTA    0x0D
 
 void vga_clear(int attr) {
     int i = 0;
@@ -87,10 +95,4 @@ void kernel_main() {
     draw_desktop();
     draw_info();
     draw_prompt();
-}
-
-void _start() {
-    kernel_main();
-    while (1) {
-    }
 }

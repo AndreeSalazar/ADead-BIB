@@ -241,7 +241,7 @@ lm_start:
     ; Kernel is embedded in loader at offset 0x1000 (0x10000 + 0x1000 = 0x11000)
     mov rsi, 0x11000
     mov rdi, 0x100000
-    mov rcx, 1024           ; 8KB / 8 bytes per qword
+    mov rcx, 4096           ; 32KB / 8 bytes per qword (kernel size is 32768)
     cld
     rep movsq
     

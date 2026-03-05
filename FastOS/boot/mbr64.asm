@@ -24,12 +24,12 @@ _start:
     mov si, msg
     call print
     
-    ; Load 32 sectors (loader + embedded kernel) to 0x1000:0x0000
+    ; Load 96 sectors (loader 16KB + embedded kernel 32KB) to 0x1000:0x0000
     mov ax, 0x1000
     mov es, ax
     xor bx, bx
     mov ah, 0x02
-    mov al, 32
+    mov al, 96        ; Read 96 sectors (48KB total)
     mov ch, 0
     mov cl, 2
     mov dh, 0
