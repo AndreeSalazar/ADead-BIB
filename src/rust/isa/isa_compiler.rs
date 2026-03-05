@@ -113,6 +113,7 @@ pub struct IsaCompiler {
     variables: HashMap<String, i32>,
     variable_types: HashMap<String, Type>,
     array_vars: std::collections::HashSet<String>,
+    struct_params: std::collections::HashSet<String>, // Struct parameters (passed by pointer)
     stack_offset: i32,
 
     // Configuración
@@ -226,6 +227,7 @@ impl IsaCompiler {
             variables: HashMap::new(),
             variable_types: HashMap::new(),
             array_vars: std::collections::HashSet::new(),
+            struct_params: std::collections::HashSet::new(),
             stack_offset: 0,
             target,
             base_address: base,
@@ -281,8 +283,10 @@ impl IsaCompiler {
         }
     }
     
-    /// Get field offset for a specific class (MSVC ABI)
+    /// Get field offset for a specific class/struct (MSVC x64 ABI)
+    /// First tries class_layouts, then falls back to generic field offset
     fn get_class_field_offset(&self, class_name: &str, field_name: &str) -> i32 {
+        // Try exact class layout first
         if let Some(layout) = self.class_layouts.get(class_name) {
             for (name, offset) in &layout.fields {
                 if name == field_name {
@@ -290,9 +294,10 @@ impl IsaCompiler {
                 }
             }
         }
+        // Fallback to generic field offset
         self.get_field_offset(field_name)
     }
-
+    
     /// Create compiler for 16-bit real mode (boot sectors)
     pub fn new_real16() -> Self {
         Self::with_cpu_mode(Target::Raw, CpuMode::Real16)
@@ -631,6 +636,7 @@ impl IsaCompiler {
         self.variables.clear();
         self.variable_types.clear();
         self.array_vars.clear();
+        self.struct_params.clear();
         // Start at -40 because prologue pushes 4 callee-saved regs after mov rbp,rsp
         // occupying [rbp-8], [rbp-16], [rbp-24], [rbp-32]
         self.stack_offset = -40;
@@ -652,7 +658,7 @@ impl IsaCompiler {
             // Normal function prologue
             self.emit_prologue();
 
-            // Registrar y guardar parámetros
+            // Register and save parameters (MSVC x64: RCX, RDX, R8, R9)
             for (i, param) in func.params.iter().enumerate() {
                 let param_offset = if i <= 3 {
                     let off = self.stack_offset;
@@ -664,19 +670,23 @@ impl IsaCompiler {
                 self.variables.insert(param.name.clone(), param_offset);
                 self.variable_types.insert(param.name.clone(), param.param_type.clone());
 
-                // Guardar parámetros de registros en stack
+                // Save register params to stack
                 if i <= 3 {
                     let src_reg = match i {
                         0 => Reg::RCX,
                         1 => Reg::RDX,
                         2 => Reg::R8,
-                        3 => Reg::R9,
-                        _ => unreachable!(),
+                        _ => Reg::R9,
                     };
                     self.ir.emit(ADeadOp::Mov {
                         dst: Operand::Mem { base: Reg::RBP, disp: param_offset },
                         src: Operand::Reg(src_reg),
                     });
+                }
+                
+                // Mark struct parameters for pointer-based field access
+                if matches!(&param.param_type, Type::Struct(_) | Type::Named(_) | Type::Class(_)) {
+                    self.struct_params.insert(param.name.clone());
                 }
             }
         }
@@ -941,105 +951,93 @@ impl IsaCompiler {
                 self.emit_assign(&var_name, value);
             }
 
-            // Pointer/memory statements (v3.2)
+            // ========== VARIABLE DECLARATION (C/C++ structs, arrays, scalars) ==========
             Stmt::VarDecl { var_type, name, value } => {
-                // Track variable type for stride-aware pointer indexing
                 self.variable_types.insert(name.clone(), var_type.clone());
                 
-                // Calculate allocation size based on type
-                // For structs/classes, allocate space for multiple fields (estimate 8 fields max)
-                let (alloc_size, is_struct) = match var_type {
-                    Type::Array(_, Some(n)) => ((*n as i32) * 8, false),
-                    Type::Array(_, None) => (8, false),
-                    Type::Named(_) | Type::Struct(_) | Type::Class(_) => (64, true), // 8 fields * 8 bytes
-                    _ => (8, false),
-                };
+                // Determine variable category and allocation
+                let is_array = matches!(var_type, Type::Array(_, _));
+                let is_struct = matches!(var_type, Type::Struct(_) | Type::Named(_) | Type::Class(_));
                 
-                if let Some(val) = value {
-                    // Check if it's an array initializer list
-                    if let Expr::Array(elements) = val {
-                        let count = elements.len();
-                        let arr_alloc = (count as i32) * 8;
-                        self.stack_offset -= arr_alloc;
-                        let base = self.stack_offset;
-                        self.variables.insert(name.clone(), base);
-                        self.array_vars.insert(name.clone());
+                if is_array {
+                    // ARRAY: allocate contiguous slots
+                    let count = match var_type {
+                        Type::Array(_, Some(n)) => *n as i32,
+                        _ => if let Some(Expr::Array(elems)) = value { elems.len() as i32 } else { 8 },
+                    };
+                    let arr_size = count * 8;
+                    self.stack_offset -= arr_size;
+                    let base = self.stack_offset;
+                    self.variables.insert(name.clone(), base);
+                    self.array_vars.insert(name.clone());
+                    
+                    // Initialize array
+                    if let Some(Expr::Array(elements)) = value {
                         for (i, elem) in elements.iter().enumerate() {
                             self.emit_expression(elem);
-                            let elem_offset = base + (i as i32 * 8);
                             self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                dst: Operand::Mem { base: Reg::RBP, disp: base + (i as i32 * 8) },
                                 src: Operand::Reg(Reg::RAX),
                             });
                         }
-                    } else if is_struct {
-                        // Struct/class with initializer - allocate space and register fields
-                        self.stack_offset -= alloc_size;
-                        let base = self.stack_offset;
-                        self.variables.insert(name.clone(), base);
-                        // Register common field names (value, x, y, etc.)
-                        let common_fields = ["value", "max_value", "x", "y", "z", "w", "h", 
-                                           "width", "height", "data", "top", "front", "rear", 
-                                           "count", "head", "next", "id", "radius"];
-                        for (i, field) in common_fields.iter().enumerate() {
-                            let field_name = format!("{}.{}", name, field);
-                            let field_offset = base + (i as i32 * 8);
-                            self.variables.insert(field_name, field_offset);
-                        }
+                    } else {
                         // Zero-initialize
                         self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
-                        for i in 0..(alloc_size / 8) {
+                        for i in 0..count {
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Mem { base: Reg::RBP, disp: base + (i * 8) },
                                 src: Operand::Reg(Reg::RAX),
                             });
                         }
-                        // If there's an initializer expression, evaluate it
-                        self.emit_expression(val);
-                    } else {
-                        self.emit_assign(name, val);
                     }
-                } else {
-                    if matches!(var_type, Type::Array(_, _)) {
-                        self.stack_offset -= alloc_size;
-                        let base = self.stack_offset;
-                        self.variables.insert(name.clone(), base);
-                        self.array_vars.insert(name.clone());
-                        let num_qwords = alloc_size / 8;
-                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
-                        for i in 0..num_qwords {
-                            let elem_offset = base + (i * 8);
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
-                                src: Operand::Reg(Reg::RAX),
-                            });
-                        }
-                    } else if is_struct {
-                        // Struct/class without initializer - allocate and register fields
-                        self.stack_offset -= alloc_size;
-                        let base = self.stack_offset;
-                        self.variables.insert(name.clone(), base);
-                        let common_fields = ["value", "max_value", "x", "y", "z", "w", "h",
-                                           "width", "height", "data", "top", "front", "rear",
-                                           "count", "head", "next", "id", "radius"];
-                        for (i, field) in common_fields.iter().enumerate() {
-                            let field_name = format!("{}.{}", name, field);
-                            let field_offset = base + (i as i32 * 8);
-                            self.variables.insert(field_name, field_offset);
-                        }
-                        // Zero-initialize all fields
-                        self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
-                        for i in 0..(alloc_size / 8) {
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Mem { base: Reg::RBP, disp: base + (i * 8) },
-                                src: Operand::Reg(Reg::RAX),
-                            });
-                        }
+                } else if is_struct {
+                    // STRUCT/CLASS: allocate space and register fields
+                    let struct_name = match var_type {
+                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => n.clone(),
+                        _ => String::new(),
+                    };
+                    
+                    // Get layout from class_layouts (registered during compile phase 0)
+                    let (struct_size, fields) = if let Some(layout) = self.class_layouts.get(&struct_name) {
+                        (layout.size, layout.fields.clone())
                     } else {
-                        // Scalar variable
-                        let offset = self.stack_offset;
-                        self.variables.insert(name.clone(), offset);
-                        self.stack_offset -= 8;
+                        // Fallback: common C struct fields
+                        (16, vec![("x".to_string(), 0), ("y".to_string(), 8)])
+                    };
+                    
+                    // Allocate stack space
+                    self.stack_offset -= struct_size;
+                    let base = self.stack_offset;
+                    self.variables.insert(name.clone(), base);
+                    
+                    // Register each field as "var.field" with correct offset
+                    for (field_name, field_off) in &fields {
+                        self.variables.insert(format!("{}.{}", name, field_name), base + field_off);
+                    }
+                    
+                    // Zero-initialize struct
+                    self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                    for i in 0..(struct_size / 8) {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Mem { base: Reg::RBP, disp: base + (i * 8) },
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                    }
+                    // Note: struct initialization from function call requires hidden pointer ABI
+                    // which is not yet implemented. For now, structs are zero-initialized.
+                } else {
+                    // SCALAR: single 8-byte slot
+                    let offset = self.stack_offset;
+                    self.stack_offset -= 8;
+                    self.variables.insert(name.clone(), offset);
+                    
+                    if let Some(val) = value {
+                        self.emit_expression(val);
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Mem { base: Reg::RBP, disp: offset },
+                            src: Operand::Reg(Reg::RAX),
+                        });
+                    } else {
                         self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
                         self.ir.emit(ADeadOp::Mov {
                             dst: Operand::Mem { base: Reg::RBP, disp: offset },
@@ -1470,7 +1468,13 @@ impl IsaCompiler {
             let is_float = matches!(expr, Expr::Float(_));
             let is_integer = matches!(expr,
                 Expr::Number(_) | Expr::Variable(_) | Expr::BinaryOp { .. } |
-                Expr::Bool(_) | Expr::Call { .. } | Expr::IntCast(_) | Expr::Len(_)
+                Expr::Bool(_) | Expr::Call { .. } | Expr::IntCast(_) | Expr::Len(_) |
+                Expr::FieldAccess { .. } | Expr::ArrowAccess { .. } | Expr::Index { .. } |
+                Expr::Comparison { .. } | Expr::Ternary { .. } | Expr::UnaryOp { .. } |
+                Expr::SizeOf(_) | Expr::Deref(_) | Expr::Cast { .. } |
+                Expr::BitwiseOp { .. } | Expr::BitwiseNot(_) |
+                Expr::PreIncrement(_) | Expr::PreDecrement(_) |
+                Expr::PostIncrement(_) | Expr::PostDecrement(_)
             );
 
             match self.target {
@@ -1668,15 +1672,29 @@ impl IsaCompiler {
     fn emit_while(&mut self, condition: &Expr, body: &[Stmt]) {
         let loop_start = self.ir.new_label();
         let loop_end = self.ir.new_label();
+        let continue_label = self.ir.new_label();
 
-        self.loop_stack.push((loop_end, loop_start));
+        self.loop_stack.push((loop_end, continue_label));
 
         self.ir.emit(ADeadOp::Label(loop_start));
         self.emit_condition(condition);
         self.ir.emit(ADeadOp::Test { left: Reg::RAX, right: Reg::RAX });
         self.ir.emit(ADeadOp::Jcc { cond: Condition::Equal, target: loop_end });
 
-        for stmt in body {
+        // Detect for-loop pattern: if last stmt is Increment/CompoundAssign/Assign,
+        // treat it as the "update" part. continue should jump to it, not skip it.
+        let update_count = Self::count_trailing_update(body);
+        let main_body = &body[..body.len() - update_count];
+        let update_body = &body[body.len() - update_count..];
+
+        for stmt in main_body {
+            self.emit_statement(stmt);
+        }
+
+        // continue lands here — before the update, so update always runs
+        self.ir.emit(ADeadOp::Label(continue_label));
+
+        for stmt in update_body {
             self.emit_statement(stmt);
         }
 
@@ -1684,6 +1702,22 @@ impl IsaCompiler {
         self.ir.emit(ADeadOp::Label(loop_end));
 
         self.loop_stack.pop();
+    }
+
+    /// Detect how many trailing statements in a while body are "for-loop update" statements.
+    /// The C frontend converts `for(init;cond;update) body` into:
+    ///   init; while(cond) { body; update; }
+    /// We detect the trailing update so `continue` jumps to it instead of skipping it.
+    fn count_trailing_update(body: &[Stmt]) -> usize {
+        if body.is_empty() { return 0; }
+        let last = &body[body.len() - 1];
+        match last {
+            Stmt::Increment { .. } => 1,
+            Stmt::CompoundAssign { .. } => 1,
+            Stmt::Assign { .. } => 1,
+            Stmt::Expr(_) => 1,
+            _ => 0,
+        }
     }
 
     fn emit_for(&mut self, var: &str, start: &Expr, end: &Expr, body: &[Stmt]) {
@@ -1744,6 +1778,7 @@ impl IsaCompiler {
         } else {
             self.ir.emit(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
         }
+        // Epilogue
         self.ir.emit(ADeadOp::Mov {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Reg(Reg::RBP),
@@ -2045,21 +2080,73 @@ impl IsaCompiler {
                     src: Operand::Imm64(addr),
                 });
             }
-            // OOP field access: self.field or obj.field → load from namespaced variable
+            // ========== FIELD ACCESS: obj.field ==========
             Expr::FieldAccess { object, field } => {
-                let var_name = match object.as_ref() {
-                    Expr::This => format!("self.{}", field),
-                    Expr::Variable(obj_name) => format!("{}.{}", obj_name, field),
-                    _ => format!("__field.{}", field),
-                };
-                if let Some(&offset) = self.variables.get(&var_name) {
-                    self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Mem { base: Reg::RBP, disp: offset },
-                    });
-                } else {
-                    self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
+                if let Expr::Variable(obj_name) = object.as_ref() {
+                    // Get struct type name for proper field offset lookup
+                    let struct_name = self.variable_types.get(obj_name)
+                        .and_then(|ty| match ty {
+                            Type::Struct(n) | Type::Named(n) | Type::Class(n) => Some(n.clone()),
+                            _ => None,
+                        });
+                    
+                    if self.struct_params.contains(obj_name) {
+                        // STRUCT PARAMETER: access through pointer (passed by reference)
+                        if let Some(&ptr_offset) = self.variables.get(obj_name) {
+                            let field_offset = struct_name.as_ref()
+                                .map(|sn| self.get_class_field_offset(sn, field))
+                                .unwrap_or_else(|| self.get_field_offset(field));
+                            // Load pointer from stack
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Mem { base: Reg::RBP, disp: ptr_offset },
+                            });
+                            // Load field at [pointer + field_offset]
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Mem { base: Reg::RBX, disp: field_offset },
+                            });
+                            return;
+                        }
+                    }
+                    
+                    // LOCAL STRUCT: try registered "var.field" first
+                    let var_field = format!("{}.{}", obj_name, field);
+                    if let Some(&offset) = self.variables.get(&var_field) {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                        return;
+                    }
+                    
+                    // Fallback: compute offset from base
+                    if let Some(&base_offset) = self.variables.get(obj_name) {
+                        let field_offset = struct_name.as_ref()
+                            .map(|sn| self.get_class_field_offset(sn, field))
+                            .unwrap_or_else(|| self.get_field_offset(field));
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: base_offset + field_offset },
+                        });
+                        return;
+                    }
                 }
+                
+                // Handle Expr::This for C++ methods
+                if let Expr::This = object.as_ref() {
+                    let var_name = format!("self.{}", field);
+                    if let Some(&offset) = self.variables.get(&var_name) {
+                        self.ir.emit(ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Mem { base: Reg::RBP, disp: offset },
+                        });
+                        return;
+                    }
+                }
+                
+                // Default: zero
+                self.ir.emit(ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX });
             }
             // Arrow access: ptr->field — load pointer, then access field at offset (GCC/LLVM ABI)
             Expr::ArrowAccess { pointer, field } => {
@@ -2390,7 +2477,25 @@ impl IsaCompiler {
         let arg_count = args.len().min(4);
 
         // Phase 1: Evaluate each arg, push result to stack
+        // For struct arguments, pass address (LEA) instead of value (MSVC x64 ABI)
         for arg in args.iter().take(4) {
+            // Check if argument is a struct variable - pass by reference
+            if let Expr::Variable(var_name) = arg {
+                if let Some(ty) = self.variable_types.get(var_name) {
+                    if matches!(ty, Type::Struct(_) | Type::Named(_) | Type::Class(_)) {
+                        // Struct: pass address instead of value
+                        if let Some(&offset) = self.variables.get(var_name) {
+                            self.ir.emit(ADeadOp::Lea {
+                                dst: Reg::RAX,
+                                src: Operand::Mem { base: Reg::RBP, disp: offset },
+                            });
+                            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                            continue;
+                        }
+                    }
+                }
+            }
+            // Normal argument: evaluate expression
             self.emit_expression(arg);
             self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
         }

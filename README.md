@@ -10,31 +10,31 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Tu Código (.c / .cpp)                                               │
 │                    ↓                                                 │
-│  ┌────────────────────────────────────────────────────────────────┐   │
-│  │              ADead-BIB Compiler (adeadc)                      │   │
-│  │                                                               │   │
-│  │   .c   ──→ CPreprocessor → CLexer → CParser → CAST ──┐       │   │
-│  │   .cpp ──→ CppPreprocessor → CppLexer → CppParser ───┤       │   │
-│  │                                                       ↓       │   │
-│  │                                              CToIR / CppToIR  │   │
-│  │                                                       ↓       │   │
-│  │                                              Program (IR)     │   │
-│  │                                                       ↓       │   │
-│  │                                              IsaCompiler      │   │
-│  │                                              (ADeadOp stream) │   │
-│  │                                                       ↓       │   │
-│  │                                              Optimizer        │   │
-│  │                                              (DCE, Fold,      │   │
-│  │                                               Inline, Peep)   │   │
-│  │                                                       ↓       │   │
-│  │                                              Encoder          │   │
-│  │                                              (FASM-style,     │   │
-│  │                                               x86-64 bytes)   │   │
-│  │                                                       ↓       │   │
-│  │                                              PE / ELF / Raw   │   │
-│  └────────────────────────────────────────────────────────────────┘   │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │              ADead-BIB Compiler (adeadc)                       │  │
+│  │                                                                │  │
+│  │   .c   ──→ CPreprocessor → CLexer → CParser → CAST ──┐         │  │
+│  │   .cpp ──→ CppPreprocessor → CppLexer → CppParser ───┤         │  │
+│  │                                                       ↓        │  │
+│  │                                              CToIR / CppToIR   │  │
+│  │                                                       ↓        │  │
+│  │                                              Program (IR)      │  │
+│  │                                                       ↓        │  │
+│  │                                              IsaCompiler       │  │
+│  │                                              (ADeadOp stream)  │  │
+│  │                                                       ↓        │  │
+│  │                                              Optimizer         │  │
+│  │                                              (DCE, Fold,       │  │
+│  │                                               Inline, Peep)    │  │
+│  │                                                       ↓        │  │
+│  │                                              Encoder           │  │
+│  │                                              (FASM-style,      │  │
+│  │                                               x86-64 bytes)    │  │
+│  │                                                       ↓        │  │
+│  │                                              PE / ELF / Raw    │  │
+│  └────────────────────────────────────────────────────────────────┘  │
 │                    ↓                                                 │
-│             .exe / .elf / .bin                                        │
+│             .exe / .elf / .bin                                       │
 │           (Machine Code Puro)                                        │
 └──────────────────────────────────────────────────────────────────────┘
 ```
