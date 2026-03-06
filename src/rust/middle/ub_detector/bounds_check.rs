@@ -84,6 +84,58 @@ fn check_stmt_bounds(
                 check_stmt_bounds(s, func_name, reports, arrays, current_line);
             }
         }
+        Stmt::Assign { value, .. } => {
+            check_expr_bounds(value, func_name, reports, arrays, current_line);
+        }
+        Stmt::VarDecl { value: Some(val), .. } => {
+            check_expr_bounds(val, func_name, reports, arrays, current_line);
+        }
+        Stmt::Expr(expr) | Stmt::Print(expr) | Stmt::Println(expr) | Stmt::PrintNum(expr) => {
+            check_expr_bounds(expr, func_name, reports, arrays, current_line);
+        }
+        _ => {}
+    }
+}
+
+fn check_expr_bounds(
+    expr: &Expr,
+    func_name: &str,
+    reports: &mut Vec<UBReport>,
+    arrays: &mut HashMap<String, i64>,
+    current_line: &mut usize,
+) {
+    match expr {
+        Expr::Index { object, index } => {
+            if let Some(size) = get_array_size(object, arrays) {
+                if let Some(idx) = get_constant_index(index) {
+                    if idx < 0 || idx >= size {
+                        reports.push(
+                            UBReport::new(
+                                UBSeverity::Error,
+                                UBKind::ArrayOutOfBounds,
+                                format!("Array index {} out of bounds [0..{}) [C99 §6.5.6, C++17 §8.3.1]", idx, size),
+                            )
+                            .with_location(func_name.to_string(), *current_line)
+                            .with_suggestion(format!("Index must be in range [0..{})", size)),
+                        );
+                    }
+                }
+            }
+            check_expr_bounds(object, func_name, reports, arrays, current_line);
+            check_expr_bounds(index, func_name, reports, arrays, current_line);
+        }
+        Expr::BinaryOp { left, right, .. } => {
+            check_expr_bounds(left, func_name, reports, arrays, current_line);
+            check_expr_bounds(right, func_name, reports, arrays, current_line);
+        }
+        Expr::UnaryOp { expr: inner, .. } => {
+            check_expr_bounds(inner, func_name, reports, arrays, current_line);
+        }
+        Expr::Call { args, .. } => {
+            for arg in args {
+                check_expr_bounds(arg, func_name, reports, arrays, current_line);
+            }
+        }
         _ => {}
     }
 }

@@ -93,23 +93,87 @@ fn check_stmt_null(
             ..
         } => {
             check_expr_null(condition, func_name, reports, null_vars, current_line);
+            
+            let not_null_var_then = get_null_checked_var(condition, true);
+            let not_null_var_else = get_null_checked_var(condition, false);
+            
+            // then branch
+            let mut then_vars = null_vars.clone();
+            if let Some(ref var) = not_null_var_then {
+                then_vars.insert(var.clone(), false);
+            }
             for s in then_body {
-                check_stmt_null(s, func_name, reports, null_vars, current_line);
+                check_stmt_null(s, func_name, reports, &mut then_vars, current_line);
+            }
+            
+            // else branch
+            let mut else_vars = null_vars.clone();
+            if let Some(ref var) = not_null_var_else {
+                else_vars.insert(var.clone(), false);
             }
             if let Some(eb) = else_body {
                 for s in eb {
-                    check_stmt_null(s, func_name, reports, null_vars, current_line);
+                    check_stmt_null(s, func_name, reports, &mut else_vars, current_line);
+                }
+            }
+            
+            // Merge states conservatively: if a var is null in either branch, it's null afterwards.
+            for (k, v) in then_vars {
+                if v || *else_vars.get(&k).unwrap_or(&false) {
+                    null_vars.insert(k, true);
+                } else {
+                    null_vars.insert(k, false);
                 }
             }
         }
         Stmt::While { condition, body } => {
             check_expr_null(condition, func_name, reports, null_vars, current_line);
+            
+            let not_null_var_then = get_null_checked_var(condition, true);
+            
+            let mut body_vars = null_vars.clone();
+            if let Some(ref var) = not_null_var_then {
+                body_vars.insert(var.clone(), false);
+            }
             for s in body {
-                check_stmt_null(s, func_name, reports, null_vars, current_line);
+                check_stmt_null(s, func_name, reports, &mut body_vars, current_line);
+            }
+            
+            // Merge back conservatively
+            for (k, v) in body_vars {
+                if v {
+                    null_vars.insert(k, true);
+                }
             }
         }
         _ => {}
     }
+}
+
+fn get_null_checked_var(expr: &Expr, is_true_branch: bool) -> Option<String> {
+    if let Expr::Comparison { op, left, right } = expr {
+        let is_left_null = is_null_literal(left);
+        let is_right_null = is_null_literal(right);
+        
+        if is_left_null || is_right_null {
+            let var_expr = if is_left_null { right } else { left };
+            if let Expr::Variable(name) = &**var_expr {
+                let checks_not_null = match op {
+                    crate::ast::CmpOp::Ne => is_true_branch,
+                    crate::ast::CmpOp::Eq => !is_true_branch,
+                    _ => false,
+                };
+                if checks_not_null {
+                    return Some(name.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn is_null_literal(expr: &Expr) -> bool {
+    matches!(expr, Expr::Nullptr | Expr::Number(0) | Expr::Null)
 }
 
 fn check_expr_null(

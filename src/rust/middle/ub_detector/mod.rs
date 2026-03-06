@@ -23,6 +23,7 @@ pub mod report;
 pub mod type_check;
 pub mod uninit_check;
 pub mod useafter_check;
+pub mod unsequenced_check;
 
 use crate::ast::Program;
 pub use report::{UBKind, UBReport, UBSeverity};
@@ -97,6 +98,10 @@ impl UBDetector {
         // 8. Análisis de data races y stack overflow
         let race_reports = race_check::analyze_concurrency(program);
         self.reports.extend(race_reports);
+
+        // 9. Unsequenced modifications
+        let unseq_reports = unsequenced_check::analyze_unsequenced(program);
+        self.reports.extend(unseq_reports);
 
         // Ordenar por severidad (Error > Warning > Info)
         self.reports.sort_by(|a, b| b.severity.cmp(&a.severity));

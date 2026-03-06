@@ -5,19 +5,23 @@
 use super::report::{UBKind, UBReport, UBSeverity};
 use crate::ast::{BinOp, Expr, Program, Stmt};
 
+use std::collections::HashMap;
+
 pub fn analyze_overflow(program: &Program) -> Vec<UBReport> {
     let mut reports = Vec::new();
+    let mut global_env = HashMap::new();
 
     for func in &program.functions {
         let mut current_line = 0;
+        let mut local_env = global_env.clone();
         for stmt in &func.body {
-            check_stmt_overflow(stmt, &func.name, &mut reports, &mut current_line);
+            check_stmt_overflow(stmt, &func.name, &mut reports, &mut current_line, &mut local_env);
         }
     }
 
     let mut current_line = 0;
     for stmt in &program.statements {
-        check_stmt_overflow(stmt, "main", &mut reports, &mut current_line);
+        check_stmt_overflow(stmt, "main", &mut reports, &mut current_line, &mut global_env);
     }
 
     reports
@@ -28,18 +32,29 @@ fn check_stmt_overflow(
     func_name: &str,
     reports: &mut Vec<UBReport>,
     current_line: &mut usize,
+    env: &mut HashMap<String, i64>,
 ) {
     match stmt {
         Stmt::LineMarker(l) => {
             *current_line = *l;
         }
-        Stmt::Assign { value, .. } => {
-            check_expr_overflow(value, func_name, reports, current_line);
+        Stmt::Assign { name, value } => {
+            check_expr_overflow(value, func_name, reports, current_line, env);
+            if let Some(val) = eval_expr(value, env) {
+                env.insert(name.clone(), val);
+            } else {
+                env.remove(name);
+            }
         }
         Stmt::VarDecl {
-            value: Some(val), ..
+            name,
+            value: Some(value),
+            ..
         } => {
-            check_expr_overflow(val, func_name, reports, current_line);
+            check_expr_overflow(value, func_name, reports, current_line, env);
+            if let Some(val) = eval_expr(value, env) {
+                env.insert(name.clone(), val);
+            }
         }
         Stmt::If {
             condition,
@@ -47,23 +62,37 @@ fn check_stmt_overflow(
             else_body,
             ..
         } => {
-            check_expr_overflow(condition, func_name, reports, current_line);
+            check_expr_overflow(condition, func_name, reports, current_line, env);
             for s in then_body {
-                check_stmt_overflow(s, func_name, reports, current_line);
+                check_stmt_overflow(s, func_name, reports, current_line, env);
             }
             if let Some(eb) = else_body {
                 for s in eb {
-                    check_stmt_overflow(s, func_name, reports, current_line);
+                    check_stmt_overflow(s, func_name, reports, current_line, env);
                 }
             }
         }
         Stmt::While { condition, body } => {
-            check_expr_overflow(condition, func_name, reports, current_line);
+            check_expr_overflow(condition, func_name, reports, current_line, env);
             for s in body {
-                check_stmt_overflow(s, func_name, reports, current_line);
+                check_stmt_overflow(s, func_name, reports, current_line, env);
             }
         }
+        Stmt::Expr(expr) | Stmt::Print(expr) | Stmt::Println(expr) | Stmt::PrintNum(expr) => {
+            check_expr_overflow(expr, func_name, reports, current_line, env);
+        }
         _ => {}
+    }
+}
+
+fn eval_expr(expr: &Expr, env: &HashMap<String, i64>) -> Option<i64> {
+    match expr {
+        Expr::Number(n) => Some(*n),
+        Expr::Variable(name) => env.get(name).copied(),
+        Expr::UnaryOp { op: crate::ast::UnaryOp::Neg, expr: inner } => {
+            eval_expr(inner, env).map(|v| -v)
+        }
+        _ => None,
     }
 }
 
@@ -72,19 +101,20 @@ fn check_expr_overflow(
     func_name: &str,
     reports: &mut Vec<UBReport>,
     current_line: &mut usize,
+    env: &mut HashMap<String, i64>,
 ) {
     match expr {
         Expr::BinaryOp { op, left, right } => {
             // Detectar overflow en operaciones aritméticas
-            if let (Expr::Number(l), Expr::Number(r)) = (left.as_ref(), right.as_ref()) {
+            if let (Some(l), Some(r)) = (eval_expr(left, env), eval_expr(right, env)) {
                 match op {
                     BinOp::Add => {
-                        if will_overflow_add(*l, *r) {
+                        if (l as i32).checked_add(r as i32).is_none() {
                             reports.push(
                                 UBReport::new(
                                     UBSeverity::Error,
                                     UBKind::IntegerOverflow,
-                                    format!("Integer overflow in addition: {} + {}", l, r),
+                                    format!("Integer overflow in addition: {} + {} [C99 §6.5.5, C++17 §8]", l, r),
                                 )
                                 .with_location(func_name.to_string(), *current_line)
                                 .with_suggestion(
@@ -94,36 +124,36 @@ fn check_expr_overflow(
                         }
                     }
                     BinOp::Sub => {
-                        if will_underflow_sub(*l, *r) {
+                        if (l as i32).checked_sub(r as i32).is_none() {
                             reports.push(
                                 UBReport::new(
                                     UBSeverity::Error,
                                     UBKind::IntegerUnderflow,
-                                    format!("Integer underflow in subtraction: {} - {}", l, r),
+                                    format!("Integer underflow in subtraction: {} - {} [C99 §6.5.5]", l, r),
                                 )
                                 .with_location(func_name.to_string(), *current_line),
                             );
                         }
                     }
                     BinOp::Mul => {
-                        if will_overflow_mul(*l, *r) {
+                        if (l as i32).checked_mul(r as i32).is_none() {
                             reports.push(
                                 UBReport::new(
                                     UBSeverity::Error,
                                     UBKind::IntegerOverflow,
-                                    format!("Integer overflow in multiplication: {} * {}", l, r),
+                                    format!("Integer overflow in multiplication: {} * {} [C99 §6.5.5]", l, r),
                                 )
                                 .with_location(func_name.to_string(), *current_line),
                             );
                         }
                     }
                     BinOp::Div => {
-                        if *r == 0 {
+                        if r == 0 {
                             reports.push(
                                 UBReport::new(
                                     UBSeverity::Error,
                                     UBKind::DivisionByZero,
-                                    format!("Division by zero: {} / 0", l),
+                                    format!("Division by zero: {} / 0 [C99 §6.5.5, C++17 §8.6]", l),
                                 )
                                 .with_location(func_name.to_string(), *current_line)
                                 .with_suggestion("Add zero check before division".to_string()),
@@ -131,12 +161,12 @@ fn check_expr_overflow(
                         }
                     }
                     BinOp::Mod => {
-                        if *r == 0 {
+                        if r == 0 {
                             reports.push(
                                 UBReport::new(
                                     UBSeverity::Error,
                                     UBKind::DivisionByZero,
-                                    format!("Modulo by zero: {} % 0", l),
+                                    format!("Modulo by zero: {} % 0 [C99 §6.5.5]", l),
                                 )
                                 .with_location(func_name.to_string(), *current_line),
                             );
@@ -145,34 +175,45 @@ fn check_expr_overflow(
                     _ => {}
                 }
             }
-            check_expr_overflow(left, func_name, reports, current_line);
-            check_expr_overflow(right, func_name, reports, current_line);
+            check_expr_overflow(left, func_name, reports, current_line, env);
+            check_expr_overflow(right, func_name, reports, current_line, env);
+        }
+        Expr::BitwiseOp { op, left, right } => {
+            if let (Some(l), Some(r)) = (eval_expr(left, env), eval_expr(right, env)) {
+                if matches!(op, crate::ast::BitwiseOp::LeftShift | crate::ast::BitwiseOp::RightShift) {
+                    if r < 0 || r >= 32 { // Assuming 32-bit int since C standard rules
+                        reports.push(
+                            UBReport::new(
+                                UBSeverity::Error,
+                                UBKind::ShiftOverflow,
+                                format!("Shift amount out of bounds: {} shifted by {} [C99 6.5.7, C++17 8.5.7]", l, r),
+                            )
+                            .with_location(func_name.to_string(), *current_line)
+                            .with_suggestion("Shift amount must be >= 0 and < bit width".to_string()),
+                        );
+                    } else if matches!(op, crate::ast::BitwiseOp::LeftShift) && l < 0 {
+                        reports.push(
+                            UBReport::new(
+                                UBSeverity::Warning,
+                                UBKind::ShiftOverflow,
+                                format!("Left shift of negative value: {} << {} [C99 6.5.7, C++98, changed in C++20]", l, r),
+                            )
+                            .with_location(func_name.to_string(), *current_line)
+                            .with_suggestion("Left shift is undefined for negative signed values before C++20".to_string()),
+                        );
+                    }
+                }
+            }
+            check_expr_overflow(left, func_name, reports, current_line, env);
+            check_expr_overflow(right, func_name, reports, current_line, env);
         }
         _ => {}
     }
 }
 
-fn will_overflow_add(a: i64, b: i64) -> bool {
-    a.checked_add(b).is_none()
-}
-
-fn will_underflow_sub(a: i64, b: i64) -> bool {
-    a.checked_sub(b).is_none()
-}
-
-fn will_overflow_mul(a: i64, b: i64) -> bool {
-    a.checked_mul(b).is_none()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_overflow_detection() {
-        assert!(will_overflow_add(i64::MAX, 1));
-        assert!(!will_overflow_add(100, 200));
-    }
 
     #[test]
     fn test_division_by_zero() {

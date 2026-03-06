@@ -250,7 +250,27 @@ impl CppLexer {
     }
 
     fn skip_preprocessor_line(&mut self) {
-        while self.pos < self.chars.len() && self.peek() != '\n' {
+        let mut line_str = String::new();
+        while self.pos < self.chars.len() {
+            let ch = self.peek();
+            if ch == '\n' {
+                // Check if this was a line marker from gcc (e.g. `# 12 "file.c"`)
+                let parts: Vec<&str> = line_str.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(num) = parts[1].parse::<usize>() {
+                        // The advance() below will consume \n and add 1
+                        self.line = num.saturating_sub(1);
+                    }
+                }
+                self.advance();
+                break;
+            }
+            if ch == '\\' && self.peek_at(1) == '\n' {
+                self.advance(); // consume \
+                self.advance(); // consume \n
+                continue;
+            }
+            line_str.push(ch);
             self.advance();
         }
     }

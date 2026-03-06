@@ -42,6 +42,7 @@ struct UseAfterAnalyzer {
     func_name: String,
     /// Estado de punteros: nombre -> estado
     ptr_states: HashMap<String, PtrState>,
+    alias_map: HashMap<String, String>,
     /// Nivel de scope actual (para detectar dangling)
     scope_depth: usize,
     /// Variables declaradas en cada scope
@@ -55,6 +56,7 @@ impl UseAfterAnalyzer {
         Self {
             func_name: func_name.to_string(),
             ptr_states: HashMap::new(),
+            alias_map: HashMap::new(),
             scope_depth: 0,
             scope_vars: vec![Vec::new()],
             current_line: 0,
@@ -69,10 +71,7 @@ impl UseAfterAnalyzer {
             }
             Stmt::Free(expr) => {
                 if let Expr::Variable(name) = expr {
-                    if self.ptr_states.get(name) == Some(&PtrState::Freed) {
-                        // Double free ya lo detecta lifetime.rs
-                    }
-                    self.ptr_states.insert(name.clone(), PtrState::Freed);
+                    self.mark_freed(name.clone());
                 }
             }
             Stmt::VarDecl { name, .. } => {
@@ -86,19 +85,42 @@ impl UseAfterAnalyzer {
                 if is_address_of_local(value) {
                     self.ptr_states
                         .insert(name.clone(), PtrState::PointsToStack);
-                } else {
-                    // Si se reasigna, ya no apunta a memoria free'd
+                    self.alias_map.remove(name);
+                } else if let Expr::Variable(rhs) = value {
                     self.ptr_states.remove(name);
+                    self.alias_map.insert(name.clone(), rhs.clone());
+                    // Heredar estado si el rhs ya está freed
+                    if self.is_freed(rhs) {
+                        self.ptr_states.insert(name.clone(), PtrState::Freed);
+                    }
+                } else {
+                    // Si se reasigna a algo más, ya no apunta a memoria free'd
+                    self.ptr_states.remove(name);
+                    self.alias_map.remove(name);
                 }
             }
-            Stmt::Expr(expr) => {
+            Stmt::Expr(expr) | Stmt::Print(expr) | Stmt::Println(expr) | Stmt::PrintNum(expr) => {
                 self.check_expr_use(expr);
                 
                 // Marcar como freed DESPUÉS de evaluar, sino marca el argumento de free() como Use-After-Free
                 if let Expr::Call { name, args } = expr {
                     if name == "free" && args.len() == 1 {
-                        if let Expr::Variable(ptr_name) = &args[0] {
-                            self.ptr_states.insert(ptr_name.clone(), PtrState::Freed);
+                        if !args.is_empty() {
+                            if let Expr::Variable(ptr_name) = &args[0] {
+                                self.mark_freed(ptr_name.clone());
+                            }
+                        }
+                    } else {
+                        // Si pasamos un puntero a una función (como libera(ptr))
+                        // conservadoramente podríamos asumir que puede liberarlo (cross-function)
+                        // Para este engine: marcamos parámetros que son punteros si la función se llama "libera" o "free" o similar.
+                        // Como es genérico, revisemos si es un puntero siendo pasado como arg único a algo que suena a free/realloc
+                        if name.contains("free") || name.contains("libera") || name == "realloc" {
+                            if !args.is_empty() {
+                                if let Expr::Variable(ptr_name) = &args[0] {
+                                    self.mark_freed(ptr_name.clone());
+                                }
+                            }
                         }
                     }
                 }
@@ -114,17 +136,34 @@ impl UseAfterAnalyzer {
                 ..
             } => {
                 self.check_expr_use(condition);
+                
+                let state_before = self.ptr_states.clone();
+                let alias_before = self.alias_map.clone();
+                
                 self.enter_scope();
                 for s in then_body {
                     self.check_stmt(s);
                 }
                 self.leave_scope();
+                
+                let state_then = self.ptr_states.clone();
+                
+                self.ptr_states = state_before.clone();
+                self.alias_map = alias_before.clone();
+                
                 if let Some(eb) = else_body {
                     self.enter_scope();
                     for s in eb {
                         self.check_stmt(s);
                     }
                     self.leave_scope();
+                }
+                
+                // Conservador: si un puntero se libera en cualquier rama, consideramos que está liberado
+                for (k, v) in state_then {
+                    if v == PtrState::Freed {
+                        self.ptr_states.insert(k, PtrState::Freed);
+                    }
                 }
             }
             Stmt::While { condition, body } => {
@@ -137,6 +176,35 @@ impl UseAfterAnalyzer {
             }
             _ => {}
         }
+    }
+
+    fn mark_freed(&mut self, name: String) {
+        self.ptr_states.insert(name.clone(), PtrState::Freed);
+        
+        // Marcar todos los aliases
+        let mut to_mark = Vec::new();
+        for (alias, original) in &self.alias_map {
+            if original == &name || alias == &name {
+                to_mark.push(alias.clone());
+                to_mark.push(original.clone());
+            }
+        }
+        for a in to_mark {
+            self.ptr_states.insert(a, PtrState::Freed);
+        }
+    }
+
+    fn is_freed(&self, name: &str) -> bool {
+        if self.ptr_states.get(name) == Some(&PtrState::Freed) {
+            return true;
+        }
+        // Check alias
+        if let Some(original) = self.alias_map.get(name) {
+            if self.ptr_states.get(original) == Some(&PtrState::Freed) {
+                return true;
+            }
+        }
+        false
     }
 
     fn enter_scope(&mut self) {
@@ -162,7 +230,7 @@ impl UseAfterAnalyzer {
                             UBSeverity::Warning,
                             UBKind::DanglingPointer,
                             format!(
-                                "Pointer '{}' may dangle after '{}' leaves scope",
+                                "Pointer '{}' may dangle after '{}' leaves scope [C99 §6.2.4, C++17 §6.7.3]",
                                 ptr_name, var
                             ),
                         )
@@ -180,12 +248,12 @@ impl UseAfterAnalyzer {
     fn check_expr_use(&mut self, expr: &Expr) {
         match expr {
             Expr::Variable(name) => {
-                if self.ptr_states.get(name) == Some(&PtrState::Freed) {
+                if self.is_freed(name) {
                     self.reports.push(
                         UBReport::new(
                             UBSeverity::Error,
                             UBKind::UseAfterFree,
-                            format!("Use of freed pointer '{}'", name),
+                            format!("Use of freed pointer '{}' [C99 §7.20.3, C++98]", name),
                         )
                         .with_location(self.func_name.clone(), self.current_line)
                         .with_suggestion("Do not use pointer after free()".to_string()),

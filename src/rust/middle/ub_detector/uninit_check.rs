@@ -20,11 +20,11 @@ pub fn analyze_uninitialized(program: &Program) -> Vec<UBReport> {
         reports.extend(analyzer.reports);
     }
 
+    let mut analyzer = UninitAnalyzer::new("main");
     for stmt in &program.statements {
-        let mut analyzer = UninitAnalyzer::new("main");
         analyzer.check_stmt(stmt);
-        reports.extend(analyzer.reports);
     }
+    reports.extend(analyzer.reports);
 
     reports
 }
@@ -61,7 +61,11 @@ impl UninitAnalyzer {
                 value: Some(val),
                 ..
             } => {
+                // Temporarily mark as uninit to catch `int b = b;` self-assignment
+                self.declared_uninit.insert(name.clone());
                 self.check_expr_use(val);
+                self.declared_uninit.remove(name);
+                
                 self.initialized.insert(name.clone());
             }
             // Variable declarada SIN valor → no inicializada
@@ -100,6 +104,14 @@ impl UninitAnalyzer {
                     self.check_expr_use(object);
                 }
             }
+            Stmt::DerefAssign { pointer, value } => {
+                self.check_expr_use(pointer);
+                self.check_expr_use(value);
+            }
+            Stmt::ArrowAssign { pointer, value, .. } => {
+                self.check_expr_use(pointer);
+                self.check_expr_use(value);
+            }
             // Return con valor → verificar uso
             Stmt::Return(Some(expr)) => {
                 self.check_expr_use(expr);
@@ -111,22 +123,52 @@ impl UninitAnalyzer {
                 ..
             } => {
                 self.check_expr_use(condition);
+                
+                let init_before = self.initialized.clone();
+                let uninit_before = self.declared_uninit.clone();
+                
                 for s in then_body {
                     self.check_stmt(s);
                 }
+                let init_then = self.initialized.clone();
+                
+                self.initialized = init_before.clone();
+                self.declared_uninit = uninit_before.clone();
+                
                 if let Some(eb) = else_body {
                     for s in eb {
                         self.check_stmt(s);
                     }
                 }
+                let init_else = self.initialized.clone();
+                
+                // Merge conservatively: only initialized if initialized in both branches
+                let mut new_init = HashSet::new();
+                for var in init_then {
+                    if init_else.contains(&var) {
+                        new_init.insert(var);
+                    }
+                }
+                self.initialized = new_init.clone();
+                
+                // Keep declared_uninit accurate
+                self.declared_uninit = uninit_before;
+                for var in &self.initialized {
+                    self.declared_uninit.remove(var);
+                }
             }
             Stmt::While { condition, body } => {
                 self.check_expr_use(condition);
+                let init_before = self.initialized.clone();
+                let uninit_before = self.declared_uninit.clone();
                 for s in body {
                     self.check_stmt(s);
                 }
+                // Conservatively assume 0 iterations might run
+                self.initialized = init_before;
+                self.declared_uninit = uninit_before;
             }
-            Stmt::Expr(expr) => {
+            Stmt::Expr(expr) | Stmt::Print(expr) | Stmt::Println(expr) | Stmt::PrintNum(expr) => {
                 self.check_expr_use(expr);
             }
             _ => {}

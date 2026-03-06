@@ -117,6 +117,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        "--test-lexer" => {
+            let file = &args[2];
+            let source = std::fs::read_to_string(file).unwrap();
+            let mut lexer = adead_bib::frontend::c::c_lexer::CLexer::new(&source);
+            loop {
+                let t = lexer.next_token();
+                println!("line: {} token: {:?}", lexer.line, t);
+                if t == adead_bib::frontend::c::c_lexer::CToken::Eof { break; }
+            }
+        }
+
         // ============================================================
         // NANO/MICRO/TINY — Minimal PE generators (no source needed)
         // ============================================================

@@ -111,6 +111,7 @@ pub struct CLexer {
     current_char: Option<char>,
     pub line: usize,
     pub column: usize,
+    pub token_start_line: usize,
 }
 
 impl CLexer {
@@ -123,6 +124,7 @@ impl CLexer {
             current_char: current,
             line: 1,
             column: 1,
+            token_start_line: 1,
         }
     }
 
@@ -181,9 +183,21 @@ impl CLexer {
     }
 
     fn skip_preprocessor_line(&mut self) {
+        let mut line_str = String::new();
         // Skip # and entire line
         while let Some(ch) = self.current_char {
             if ch == '\n' {
+                // Check if this was a line marker from gcc (e.g. `# 12 "file.c"`)
+                let parts: Vec<&str> = line_str.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(num) = parts[1].parse::<usize>() {
+                        // The preprocessor tells us the NEXT line is `num`
+                        // Since `self.advance()` right below will consume the `\n` and increment `self.line` by 1
+                        // we set `self.line` to `num - 1` so it becomes exactly `num`.
+                        self.line = num.saturating_sub(1);
+                    }
+                }
+                
                 self.advance();
                 break;
             }
@@ -195,6 +209,7 @@ impl CLexer {
                     continue;
                 }
             }
+            line_str.push(ch);
             self.advance();
         }
     }
@@ -399,6 +414,7 @@ impl CLexer {
 
     pub fn next_token(&mut self) -> CToken {
         self.skip_whitespace();
+        self.token_start_line = self.line;
 
         match self.current_char {
             None => CToken::Eof,
@@ -707,8 +723,8 @@ impl CLexer {
         let mut tokens = Vec::new();
         let mut lines = Vec::new();
         loop {
-            let line = self.line;
             let tok = self.next_token();
+            let line = self.token_start_line;
             let is_eof = tok == CToken::Eof;
             tokens.push(tok);
             lines.push(line);

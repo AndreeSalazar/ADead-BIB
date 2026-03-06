@@ -46,7 +46,8 @@ impl CPreprocessor {
         let mut skip_depth: i32 = 0;
         let mut skip_else_ok = false;
 
-        for line in source.lines() {
+        for (i, line) in source.lines().enumerate() {
+            let source_line = i + 1;
             let trimmed = line.trim();
 
             // Handle conditional compilation skip mode
@@ -108,21 +109,33 @@ impl CPreprocessor {
                     }
                     self.included.insert(header_name.clone());
 
+                    // Wait, track if we injected lines
+                    let mut lines_injected = false;
+
                     // Inject common prologue on first include
                     if !self.prologue_injected {
                         self.prologue_injected = true;
+                        output.push_str(&format!("# 1 \"<common_prologue>\"\n"));
                         output.push_str(c_stdlib::COMMON_PROLOGUE);
                         output.push('\n');
+                        lines_injected = true;
                     }
 
                     // Look up header declarations
                     if let Some(declarations) = c_stdlib::get_header(&header_name) {
+                        output.push_str(&format!("# 1 \"{}\"\n", header_name));
                         output.push_str(declarations);
                         output.push('\n');
+                        lines_injected = true;
                     } else {
                         // Unknown header — skip with warning
                         eprintln!("ADead-BIB: unknown header <{}> — skipped", header_name);
                         output.push('\n');
+                    }
+
+                    if lines_injected {
+                        // Resync to main file line
+                        output.push_str(&format!("# {} \"main\"\n", source_line + 1));
                     }
                 } else {
                     output.push('\n'); // malformed include
