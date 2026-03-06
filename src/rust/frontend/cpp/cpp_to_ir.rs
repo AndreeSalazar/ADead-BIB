@@ -21,6 +21,80 @@ use crate::frontend::ast::{
 };
 use crate::frontend::types::Type;
 
+fn flatten_namespaces(decls: Vec<CppTopLevel>, prefix: &str) -> Vec<CppTopLevel> {
+    let mut flat = Vec::new();
+    for decl in decls {
+        match decl {
+            CppTopLevel::Namespace { name, declarations } => {
+                let new_prefix = if prefix.is_empty() { name.clone() } else { format!("{}::{}", prefix, name) };
+                flat.extend(flatten_namespaces(declarations, &new_prefix));
+            }
+            CppTopLevel::ClassDef { name, template_params, bases, members, is_struct } => {
+                let new_name = if prefix.is_empty() { name } else { format!("{}::{}", prefix, name) };
+                flat.push(CppTopLevel::ClassDef {
+                    name: new_name,
+                    template_params,
+                    bases,
+                    members,
+                    is_struct,
+                });
+            }
+            CppTopLevel::FunctionDef { return_type, name, template_params, params, qualifiers, body } => {
+                let new_name = if prefix.is_empty() { name } else { format!("{}::{}", prefix, name) };
+                flat.push(CppTopLevel::FunctionDef {
+                    return_type,
+                    name: new_name,
+                    template_params,
+                    params,
+                    qualifiers,
+                    body,
+                });
+            }
+            CppTopLevel::FunctionDecl { return_type, name, template_params, params, qualifiers } => {
+                let new_name = if prefix.is_empty() { name } else { format!("{}::{}", prefix, name) };
+                flat.push(CppTopLevel::FunctionDecl {
+                    return_type,
+                    name: new_name,
+                    template_params,
+                    params,
+                    qualifiers,
+                });
+            }
+            CppTopLevel::EnumDef { name, is_class, underlying_type, values } => {
+                let new_name = if prefix.is_empty() { name } else { format!("{}::{}", prefix, name) };
+                flat.push(CppTopLevel::EnumDef {
+                    name: new_name,
+                    is_class,
+                    underlying_type,
+                    values,
+                });
+            }
+            CppTopLevel::GlobalVar { type_spec, declarators } => {
+                let new_declarators = declarators.into_iter().map(|mut d| {
+                    if !prefix.is_empty() {
+                        d.name = format!("{}::{}", prefix, d.name);
+                    }
+                    d
+                }).collect();
+                flat.push(CppTopLevel::GlobalVar {
+                    type_spec,
+                    declarators: new_declarators,
+                });
+            }
+            CppTopLevel::TypeAlias { new_name, original, template_params } => {
+                let new_new_name = if prefix.is_empty() { new_name } else { format!("{}::{}", prefix, new_name) };
+                flat.push(CppTopLevel::TypeAlias {
+                    new_name: new_new_name,
+                    original,
+                    template_params,
+                });
+            }
+            other => flat.push(other),
+        }
+    }
+    flat
+}
+
 pub struct CppToIR {
     type_aliases: Vec<(String, CppType)>,
     class_methods: Vec<(String, String, Vec<CppParam>, CppType)>, // (class, method, params, ret)
@@ -473,8 +547,10 @@ impl CppToIR {
         let mut program = Program::new();
         program.attributes = ProgramAttributes::default();
 
+        let flat_decls = flatten_namespaces(unit.declarations.clone(), "");
+
         // First pass: collect type aliases, class info, field names, and ctor inits
-        for decl in &unit.declarations {
+        for decl in &flat_decls {
             match decl {
                 CppTopLevel::TypeAlias {
                     new_name, original, ..
@@ -638,7 +714,7 @@ impl CppToIR {
         }
 
         // Second pass: convert declarations
-        for decl in &unit.declarations {
+        for decl in &flat_decls {
             match decl {
                 CppTopLevel::FunctionDef {
                     return_type,
@@ -703,67 +779,8 @@ impl CppToIR {
                         }
                     }
                 }
-                CppTopLevel::Namespace {
-                    name: ns_name,
-                    declarations,
-                } => {
-                    // Collect all function names in this namespace for unqualified call resolution
-                    self.namespace_functions.clear();
-                    for inner_decl in declarations.iter() {
-                        if let CppTopLevel::FunctionDef { name: fname, .. } = inner_decl {
-                            self.namespace_functions.push(fname.clone());
-                        }
-                    }
-                    self.current_namespace = Some(ns_name.clone());
-
-                    // Flatten namespace â€” prefix function names with ns::
-                    for inner_decl in declarations {
-                        match inner_decl {
-                            CppTopLevel::FunctionDef {
-                                return_type,
-                                name: fname,
-                                params,
-                                body,
-                                ..
-                            } => {
-                                let qualified = format!("{}::{}", ns_name, fname);
-                                let func =
-                                    self.convert_function(return_type, &qualified, params, body)?;
-                                program.functions.push(func);
-                            }
-                            CppTopLevel::Namespace {
-                                name: inner_ns,
-                                declarations: inner_decls,
-                            } => {
-                                // Nested namespace: ns::inner::func
-                                for inner2 in inner_decls {
-                                    if let CppTopLevel::FunctionDef {
-                                        return_type,
-                                        name: fname,
-                                        params,
-                                        body,
-                                        ..
-                                    } = inner2
-                                    {
-                                        let qualified =
-                                            format!("{}::{}::{}", ns_name, inner_ns, fname);
-                                        let func = self.convert_function(
-                                            return_type,
-                                            &qualified,
-                                            params,
-                                            body,
-                                        )?;
-                                        program.functions.push(func);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    self.current_namespace = None;
-                    self.namespace_functions.clear();
-                }
+                // Namespace flattening is now handled by flatten_namespaces
+                CppTopLevel::Namespace { .. } => {}
                 CppTopLevel::EnumDef {
                     name: _, values, ..
                 } => {

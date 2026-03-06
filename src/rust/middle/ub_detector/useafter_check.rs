@@ -81,14 +81,20 @@ impl UseAfterAnalyzer {
                 }
             }
             Stmt::Assign { name, value } => {
+                self.check_expr_use(value);
                 // Si se asigna la direccion de una variable local
                 if is_address_of_local(value) {
                     self.ptr_states
                         .insert(name.clone(), PtrState::PointsToStack);
+                } else {
+                    // Si se reasigna, ya no apunta a memoria free'd
+                    self.ptr_states.remove(name);
                 }
-                self.check_expr_use(value);
             }
             Stmt::Expr(expr) => {
+                self.check_expr_use(expr);
+                
+                // Marcar como freed DESPUÉS de evaluar, sino marca el argumento de free() como Use-After-Free
                 if let Expr::Call { name, args } = expr {
                     if name == "free" && args.len() == 1 {
                         if let Expr::Variable(ptr_name) = &args[0] {
@@ -96,7 +102,6 @@ impl UseAfterAnalyzer {
                         }
                     }
                 }
-                self.check_expr_use(expr);
             }
             Stmt::DerefAssign { pointer, value } => {
                 self.check_expr_use(pointer);

@@ -6,7 +6,7 @@
 // ============================================================
 
 use super::report::{UBKind, UBReport, UBSeverity};
-use crate::ast::{Expr, Program, Stmt};
+use crate::ast::{Expr, Program, Stmt, Type};
 use std::collections::HashSet;
 
 pub fn analyze_uninitialized(program: &Program) -> Vec<UBReport> {
@@ -66,15 +66,39 @@ impl UninitAnalyzer {
             }
             // Variable declarada SIN valor → no inicializada
             Stmt::VarDecl {
-                name, value: None, ..
+                name, value: None, var_type, ..
             } => {
-                self.declared_uninit.insert(name.clone());
+                // Arrays and Structs are implicitly given their base addresses
+                if matches!(var_type, Type::Array(_, _) | Type::Struct(_)) {
+                    self.initialized.insert(name.clone());
+                } else {
+                    self.declared_uninit.insert(name.clone());
+                }
             }
             // Asignacion → marca como inicializada
             Stmt::Assign { name, value } => {
                 self.check_expr_use(value);
                 self.initialized.insert(name.clone());
                 self.declared_uninit.remove(name);
+            }
+            Stmt::IndexAssign { object, index, value } => {
+                self.check_expr_use(index);
+                self.check_expr_use(value);
+                if let Expr::Variable(name) = object {
+                    self.initialized.insert(name.clone());
+                    self.declared_uninit.remove(name);
+                } else {
+                    self.check_expr_use(object);
+                }
+            }
+            Stmt::FieldAssign { object, field: _, value } => {
+                self.check_expr_use(value);
+                if let Expr::Variable(name) = object {
+                    self.initialized.insert(name.clone());
+                    self.declared_uninit.remove(name);
+                } else {
+                    self.check_expr_use(object);
+                }
             }
             // Return con valor → verificar uso
             Stmt::Return(Some(expr)) => {
@@ -130,6 +154,14 @@ impl UninitAnalyzer {
             }
             Expr::Deref(inner) => {
                 self.check_expr_use(inner);
+            }
+            Expr::AddressOf(inner) => {
+                if let Expr::Variable(name) = &**inner {
+                    self.initialized.insert(name.clone());
+                    self.declared_uninit.remove(name);
+                } else {
+                    self.check_expr_use(inner);
+                }
             }
             Expr::Call { args, .. } => {
                 for arg in args {

@@ -34,7 +34,7 @@ $c_files = Get-ChildItem "Test-Canon\C99\*.c" | Sort-Object Name
 foreach ($f in $c_files) {
     $total++
     $out = "Test-Canon\C99\" + $f.BaseName + ".exe"
-    $result = & $compiler cc $f.FullName -o $out 2>&1
+    $result = & $compiler cc $f.FullName -o $out --warn-ub 2>&1
     if ($LASTEXITCODE -eq 0) {
         $size = (Get-Item $out -ErrorAction SilentlyContinue).Length
         Write-Host "  OK  $($f.Name) -> $size bytes" -ForegroundColor Green
@@ -54,7 +54,7 @@ $cpp_files = Get-ChildItem "Test-Canon\Cpp98\*.cpp" | Sort-Object Name
 foreach ($f in $cpp_files) {
     $total++
     $out = "Test-Canon\Cpp98\" + $f.BaseName + ".exe"
-    $result = & $compiler cxx $f.FullName -o $out 2>&1
+    $result = & $compiler cxx $f.FullName -o $out --warn-ub 2>&1
     if ($LASTEXITCODE -eq 0) {
         $size = (Get-Item $out -ErrorAction SilentlyContinue).Length
         Write-Host "  OK  $($f.Name) -> $size bytes" -ForegroundColor Green
