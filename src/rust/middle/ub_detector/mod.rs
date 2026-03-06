@@ -17,6 +17,11 @@ pub mod null_check;
 pub mod bounds_check;
 pub mod overflow_check;
 pub mod lifetime;
+pub mod uninit_check;
+pub mod useafter_check;
+pub mod type_check;
+pub mod race_check;
+pub mod cache;
 pub mod report;
 
 use crate::ast::Program;
@@ -29,11 +34,20 @@ pub struct UBDetector {
 }
 
 impl UBDetector {
+    /// Crea UBDetector con modo estricto (default).
+    /// En modo estricto, errores UB bloquean compilacion.
     pub fn new() -> Self {
         Self {
             reports: Vec::new(),
-            strict_mode: false,
+            strict_mode: true, // Default: modo estricto — se detiene en UB
         }
+    }
+
+    /// Desactiva modo estricto (--warn-ub): avisa y continua.
+    /// Tu responsabilidad.
+    pub fn with_warn_mode(mut self) -> Self {
+        self.strict_mode = false;
+        self
     }
 
     pub fn with_strict_mode(mut self) -> Self {
@@ -60,6 +74,22 @@ impl UBDetector {
         // 4. Análisis de lifetime (use-after-free)
         let lifetime_reports = lifetime::analyze_lifetimes(program);
         self.reports.extend(lifetime_reports);
+
+        // 5. Análisis de variables no inicializadas
+        let uninit_reports = uninit_check::analyze_uninitialized(program);
+        self.reports.extend(uninit_reports);
+
+        // 6. Análisis de use-after-free y dangling pointers
+        let useafter_reports = useafter_check::analyze_use_after_free(program);
+        self.reports.extend(useafter_reports);
+
+        // 7. Análisis de type confusion e invalid casts
+        let type_reports = type_check::analyze_type_safety(program);
+        self.reports.extend(type_reports);
+
+        // 8. Análisis de data races y stack overflow
+        let race_reports = race_check::analyze_concurrency(program);
+        self.reports.extend(race_reports);
 
         // Ordenar por severidad (Error > Warning > Info)
         self.reports.sort_by(|a, b| b.severity.cmp(&a.severity));
@@ -101,12 +131,12 @@ mod tests {
     fn test_ub_detector_creation() {
         let detector = UBDetector::new();
         assert_eq!(detector.reports.len(), 0);
-        assert!(!detector.strict_mode);
+        assert!(detector.strict_mode); // Estricto por default
     }
 
     #[test]
-    fn test_strict_mode() {
-        let detector = UBDetector::new().with_strict_mode();
-        assert!(detector.strict_mode);
+    fn test_warn_mode() {
+        let detector = UBDetector::new().with_warn_mode();
+        assert!(!detector.strict_mode); // --warn-ub desactiva estricto
     }
 }

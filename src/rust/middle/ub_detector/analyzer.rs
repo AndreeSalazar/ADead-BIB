@@ -2,7 +2,7 @@
 // UB Analyzer — Análisis general de patrones UB
 // ============================================================
 
-use crate::middle::ir::Program;
+use crate::ast::Program;
 use super::report::UBReport;
 
 /// Analizador general que coordina todos los sub-analizadores

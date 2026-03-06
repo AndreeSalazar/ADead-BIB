@@ -1,16 +1,19 @@
 // ============================================================
-// Lifetime Analysis — Use-After-Free Detection
+// Uninitialized Variable Detection
+// ============================================================
+// Detecta variables usadas antes de ser inicializadas.
+// UBKind::UninitializedVariable
 // ============================================================
 
 use crate::ast::{Program, Stmt, Expr};
 use super::report::{UBReport, UBSeverity, UBKind};
 use std::collections::HashSet;
 
-pub fn analyze_lifetimes(program: &Program) -> Vec<UBReport> {
+pub fn analyze_uninitialized(program: &Program) -> Vec<UBReport> {
     let mut reports = Vec::new();
 
     for func in &program.functions {
-        let mut analyzer = LifetimeAnalyzer::new(&func.name);
+        let mut analyzer = UninitAnalyzer::new(&func.name);
         for stmt in &func.body {
             analyzer.check_stmt(stmt);
         }
@@ -18,7 +21,7 @@ pub fn analyze_lifetimes(program: &Program) -> Vec<UBReport> {
     }
 
     for stmt in &program.statements {
-        let mut analyzer = LifetimeAnalyzer::new("main");
+        let mut analyzer = UninitAnalyzer::new("main");
         analyzer.check_stmt(stmt);
         reports.extend(analyzer.reports);
     }
@@ -26,57 +29,44 @@ pub fn analyze_lifetimes(program: &Program) -> Vec<UBReport> {
     reports
 }
 
-struct LifetimeAnalyzer {
+struct UninitAnalyzer {
     func_name: String,
-    freed_vars: HashSet<String>,
+    /// Variables que han sido inicializadas
+    initialized: HashSet<String>,
+    /// Variables declaradas sin valor inicial
+    declared_uninit: HashSet<String>,
     reports: Vec<UBReport>,
 }
 
-impl LifetimeAnalyzer {
+impl UninitAnalyzer {
     fn new(func_name: &str) -> Self {
         Self {
             func_name: func_name.to_string(),
-            freed_vars: HashSet::new(),
+            initialized: HashSet::new(),
+            declared_uninit: HashSet::new(),
             reports: Vec::new(),
         }
     }
 
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::Free(expr) => {
-                if let Expr::Variable(name) = expr {
-                    if self.freed_vars.contains(name) {
-                        self.reports.push(
-                            UBReport::new(
-                                UBSeverity::Error,
-                                UBKind::DoubleFree,
-                                format!("Double free of variable '{}'", name),
-                            )
-                            .with_location(self.func_name.clone(), 0)
-                            .with_suggestion("Remove duplicate free() call".to_string())
-                        );
-                    } else {
-                        self.freed_vars.insert(name.clone());
-                    }
-                }
+            // Variable declarada con valor → inicializada
+            Stmt::VarDecl { name, value: Some(_), .. } => {
+                self.initialized.insert(name.clone());
             }
+            // Variable declarada SIN valor → no inicializada
+            Stmt::VarDecl { name, value: None, .. } => {
+                self.declared_uninit.insert(name.clone());
+            }
+            // Asignacion → marca como inicializada
             Stmt::Assign { name, value } => {
-                if self.freed_vars.contains(name) {
-                    self.reports.push(
-                        UBReport::new(
-                            UBSeverity::Error,
-                            UBKind::UseAfterFree,
-                            format!("Use of freed variable '{}'", name),
-                        )
-                        .with_location(self.func_name.clone(), 0)
-                        .with_suggestion("Do not use variable after free()".to_string())
-                    );
-                }
                 self.check_expr_use(value);
+                self.initialized.insert(name.clone());
+                self.declared_uninit.remove(name);
             }
-            Stmt::DerefAssign { pointer, value } => {
-                self.check_expr_use(pointer);
-                self.check_expr_use(value);
+            // Return con valor → verificar uso
+            Stmt::Return(Some(expr)) => {
+                self.check_expr_use(expr);
             }
             Stmt::If { condition, then_body, else_body, .. } => {
                 self.check_expr_use(condition);
@@ -95,6 +85,9 @@ impl LifetimeAnalyzer {
                     self.check_stmt(s);
                 }
             }
+            Stmt::Expr(expr) => {
+                self.check_expr_use(expr);
+            }
             _ => {}
         }
     }
@@ -102,23 +95,29 @@ impl LifetimeAnalyzer {
     fn check_expr_use(&mut self, expr: &Expr) {
         match expr {
             Expr::Variable(name) => {
-                if self.freed_vars.contains(name) {
+                if self.declared_uninit.contains(name) && !self.initialized.contains(name) {
                     self.reports.push(
                         UBReport::new(
                             UBSeverity::Error,
-                            UBKind::UseAfterFree,
-                            format!("Use of freed variable '{}'", name),
+                            UBKind::UninitializedVariable,
+                            format!("Variable '{}' used before initialization", name),
                         )
                         .with_location(self.func_name.clone(), 0)
+                        .with_suggestion(format!("Initialize '{}' before use", name))
                     );
                 }
-            }
-            Expr::Deref(inner) => {
-                self.check_expr_use(inner);
             }
             Expr::BinaryOp { left, right, .. } => {
                 self.check_expr_use(left);
                 self.check_expr_use(right);
+            }
+            Expr::Deref(inner) => {
+                self.check_expr_use(inner);
+            }
+            Expr::Call { args, .. } => {
+                for arg in args {
+                    self.check_expr_use(arg);
+                }
             }
             _ => {}
         }
@@ -130,9 +129,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lifetime_analysis() {
+    fn test_uninit_detection() {
         let program = Program::new();
-        let reports = analyze_lifetimes(&program);
+        let reports = analyze_uninitialized(&program);
         assert_eq!(reports.len(), 0);
     }
 }

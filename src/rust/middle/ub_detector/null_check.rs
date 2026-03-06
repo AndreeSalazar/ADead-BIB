@@ -52,17 +52,18 @@ fn check_stmt_null(stmt: &Stmt, func_name: &str, reports: &mut Vec<UBReport>) {
         }
         Stmt::If { condition, then_body, else_body, .. } => {
             check_expr_null(condition, func_name, reports);
-            check_stmt_null(then_body, func_name, reports);
+            for s in then_body {
+                check_stmt_null(s, func_name, reports);
+            }
             if let Some(eb) = else_body {
-                check_stmt_null(eb, func_name, reports);
+                for s in eb {
+                    check_stmt_null(s, func_name, reports);
+                }
             }
         }
         Stmt::While { condition, body } => {
             check_expr_null(condition, func_name, reports);
-            check_stmt_null(body, func_name, reports);
-        }
-        Stmt::Block(stmts) => {
-            for s in stmts {
+            for s in body {
                 check_stmt_null(s, func_name, reports);
             }
         }

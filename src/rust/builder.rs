@@ -11,11 +11,15 @@ use crate::frontend::type_checker::TypeChecker;
 use crate::frontend::ast::{Program, Function, FunctionAttributes};
 use crate::optimizer::branch_detector::{BranchDetector, BranchPattern};
 use crate::optimizer::branchless::BranchlessTransformer;
+use crate::optimizer::const_prop::ConstPropagator;
+use crate::optimizer::dead_code::DeadCodeEliminator;
 use crate::optimizer::binary_optimizer::{BinaryOptimizer, OptLevel};
 use crate::isa::isa_compiler::Target;
 use crate::isa::c_isa::CIsaCompiler;
 use crate::isa::cpp_isa::CppIsaCompiler;
 use crate::backend::{pe, elf};
+use crate::output::OutputFormat;
+use crate::middle::ub_detector::{UBDetector, UBReport};
 use std::fs;
 use std::path::Path;
 
@@ -35,6 +39,8 @@ pub struct BuildOptions {
     pub opt_level: OptLevel,
     pub size_optimize: bool,
     pub language: SourceLanguage,
+    pub warn_ub: bool,
+    pub output_format: OutputFormat,
 }
 
 impl Default for BuildOptions {
@@ -47,6 +53,19 @@ impl Default for BuildOptions {
             opt_level: OptLevel::Basic,
             size_optimize: false,
             language: SourceLanguage::C,
+            warn_ub: false,
+            output_format: OutputFormat::WindowsPE,
+        }
+    }
+}
+
+impl BuildOptions {
+    /// Infer output_format from target if not explicitly set
+    pub fn infer_output_format(target: Target) -> OutputFormat {
+        match target {
+            Target::Windows => OutputFormat::WindowsPE,
+            Target::Linux => OutputFormat::LinuxELF,
+            Target::Raw => OutputFormat::FastOS,
         }
     }
 }
@@ -106,6 +125,19 @@ impl Builder {
         let mut type_checker = TypeChecker::new();
         let _types = type_checker.check_program(program);
 
+        // 2.1 UB Detection (ANTES de optimizar — cobertura total)
+        if options.verbose { println!("Step 2.1: UB Detection..."); }
+        let mut ub_detector = if options.warn_ub {
+            UBDetector::new().with_warn_mode()
+        } else {
+            UBDetector::new()
+        };
+        let _ub_reports = ub_detector.analyze(program);
+        ub_detector.print_reports();
+        if !options.warn_ub && ub_detector.has_errors() {
+            return Err("UB detected in strict mode. Fix UB or use --warn-ub.".into());
+        }
+
         // 2.5. Constant Folding (always on — safe and always beneficial)
         if options.verbose { println!("Step 2.5: Constant Folding..."); }
         let folder = crate::optimizer::const_fold::ConstFolder::new();
@@ -159,12 +191,18 @@ impl Builder {
 
         // 5. Linking / Binary Generation
         if options.verbose { println!("Step 5: Writing Binary to {}...", options.output_path); }
-        match options.target {
-            Target::Windows => {
+        match options.output_format {
+            OutputFormat::WindowsPE => {
                 pe::generate_pe_with_offsets(&final_opcodes, &data, &options.output_path, &_iat_offsets, &_string_offsets)?;
-            },
-            Target::Linux => elf::generate_elf(&final_opcodes, &data, &options.output_path)?,
-            Target::Raw => fs::write(&options.output_path, &final_opcodes)?,
+            }
+            OutputFormat::LinuxELF => {
+                elf::generate_elf(&final_opcodes, &data, &options.output_path)?;
+            }
+            OutputFormat::FastOS => {
+                let po = crate::output::po::PoOutput::new();
+                let size = po.generate(&final_opcodes, &data, &options.output_path)?;
+                if options.verbose { println!("   .Po size: {} bytes", size); }
+            }
         }
 
         if options.verbose { println!("Build successful!"); }
@@ -206,6 +244,15 @@ impl Builder {
     
     /// Apply AST-level optimizations
     fn apply_optimizations(program: &mut Program) {
+        // 1. Constant propagation
+        let propagator = ConstPropagator::new();
+        propagator.propagate(program);
+
+        // 2. Dead code elimination (SIN explotar UB)
+        let dce = DeadCodeEliminator::new();
+        dce.eliminate(program);
+
+        // 3. Branchless transforms
         let detector = BranchDetector::new();
         let transformer = BranchlessTransformer::new();
         
@@ -251,6 +298,38 @@ impl Builder {
                 Some(transformer.transform(pattern.clone()))
             }
             _ => None,
+        }
+    }
+
+    /// Parse + type check + UB detection WITHOUT codegen
+    pub fn check_file(path: &str, warn_ub: bool, verbose: bool) -> Result<Vec<UBReport>, Box<dyn std::error::Error>> {
+        if verbose { println!("Checking file: {}", path); }
+        let source = fs::read_to_string(path)?;
+        let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        let program = match ext {
+            "c" | "h" => compile_c_to_program(&source)?,
+            "cpp" | "cxx" | "cc" => compile_cpp_to_program(&source)?,
+            _ => return Err(format!("Unknown extension: .{}", ext).into()),
+        };
+
+        // Type check
+        let mut type_checker = TypeChecker::new();
+        type_checker.check_program(&program);
+
+        // UB Detection
+        let mut detector = if warn_ub {
+            UBDetector::new().with_warn_mode()
+        } else {
+            UBDetector::new()
+        };
+        let reports = detector.analyze(&program);
+        detector.print_reports();
+
+        if !warn_ub && detector.has_errors() {
+            Err("UB detected.".into())
+        } else {
+            Ok(reports)
         }
     }
 }

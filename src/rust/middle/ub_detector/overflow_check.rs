@@ -2,8 +2,7 @@
 // Integer Overflow/Underflow Detection
 // ============================================================
 
-use crate::ast::{Program, Stmt, Expr};
-use crate::middle::ir::BinaryOp;
+use crate::ast::{Program, Stmt, Expr, BinOp};
 use super::report::{UBReport, UBSeverity, UBKind};
 
 pub fn analyze_overflow(program: &Program) -> Vec<UBReport> {
@@ -32,17 +31,18 @@ fn check_stmt_overflow(stmt: &Stmt, func_name: &str, reports: &mut Vec<UBReport>
         }
         Stmt::If { condition, then_body, else_body, .. } => {
             check_expr_overflow(condition, func_name, reports);
-            check_stmt_overflow(then_body, func_name, reports);
+            for s in then_body {
+                check_stmt_overflow(s, func_name, reports);
+            }
             if let Some(eb) = else_body {
-                check_stmt_overflow(eb, func_name, reports);
+                for s in eb {
+                    check_stmt_overflow(s, func_name, reports);
+                }
             }
         }
         Stmt::While { condition, body } => {
             check_expr_overflow(condition, func_name, reports);
-            check_stmt_overflow(body, func_name, reports);
-        }
-        Stmt::Block(stmts) => {
-            for s in stmts {
+            for s in body {
                 check_stmt_overflow(s, func_name, reports);
             }
         }
@@ -56,7 +56,7 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
             // Detectar overflow en operaciones aritméticas
             if let (Expr::Number(l), Expr::Number(r)) = (left.as_ref(), right.as_ref()) {
                 match op {
-                    BinaryOp::Add => {
+                    BinOp::Add => {
                         if will_overflow_add(*l, *r) {
                             reports.push(
                                 UBReport::new(
@@ -69,7 +69,7 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                             );
                         }
                     }
-                    BinaryOp::Sub => {
+                    BinOp::Sub => {
                         if will_underflow_sub(*l, *r) {
                             reports.push(
                                 UBReport::new(
@@ -81,7 +81,7 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                             );
                         }
                     }
-                    BinaryOp::Mul => {
+                    BinOp::Mul => {
                         if will_overflow_mul(*l, *r) {
                             reports.push(
                                 UBReport::new(
@@ -93,7 +93,7 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                             );
                         }
                     }
-                    BinaryOp::Div => {
+                    BinOp::Div => {
                         if *r == 0 {
                             reports.push(
                                 UBReport::new(
@@ -106,7 +106,7 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                             );
                         }
                     }
-                    BinaryOp::Mod => {
+                    BinOp::Mod => {
                         if *r == 0 {
                             reports.push(
                                 UBReport::new(

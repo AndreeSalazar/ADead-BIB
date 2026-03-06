@@ -26,6 +26,7 @@ pub enum UBKind {
     DataRace,
     InvalidCast,
     DanglingPointer,
+    ShiftOverflow,
 }
 
 impl fmt::Display for UBKind {
@@ -44,6 +45,7 @@ impl fmt::Display for UBKind {
             UBKind::DataRace => write!(f, "Data Race"),
             UBKind::InvalidCast => write!(f, "Invalid Cast"),
             UBKind::DanglingPointer => write!(f, "Dangling Pointer"),
+            UBKind::ShiftOverflow => write!(f, "Shift Overflow"),
         }
     }
 }

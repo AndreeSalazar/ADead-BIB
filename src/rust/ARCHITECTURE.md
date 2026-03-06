@@ -1,281 +1,206 @@
-# ADead-BIB Compiler Architecture v4.0
+# ADead-BIB Compiler Architecture v5.0
 
-## Inspirado en los Mejores Compiladores del Mundo
+> Grace Hopper: 'la maquina sirve al humano'
+> Dennis Ritchie: 'small is beautiful'
+> Ken Thompson: 'trust only code you created'
+> Bjarne Stroustrup: 'within C++ a smaller cleaner language struggles to get out'
+> ADead-BIB 2026: cumple los 5 💀🦈 🇵🇪
 
-Este compilador toma lo mejor de:
-- **LLVM**: Sistema de IR y passes de optimización
-- **GCC**: Optimizaciones agresivas y soporte multi-target
-- **MSVC**: Integración Windows y ABI perfecta
-- **FASM**: Generación directa de bytes sin ensamblador externo
-- **Rust**: Seguridad de tipos y sistema de módulos
-
-## Arquitectura de 3 Capas
+## Pipeline Completo
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        FRONTEND                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
-│  │   C Lexer   │  │  C++ Lexer  │  │ Preprocessor│              │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘              │
-│         │                │                │                     │
-│  ┌──────▼──────┐  ┌──────▼──────┐         │                     │
-│  │  C Parser   │  │ C++ Parser  │◄────────┘                     │
-│  └──────┬──────┘  └──────┬──────┘                               │
-│         │                │                                      │
-│  ┌──────▼────────────────▼──────┐                               │
-│  │         Unified AST          │                               │
-│  └──────────────┬───────────────┘                               │
-└─────────────────┼───────────────────────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────────────────────┐
-│                      MIDDLE-END (IR)                            │
-│  ┌──────────────────────────────┐                               │
-│  │      AST → IR Lowering       │  (Similar a LLVM IR)          │
-│  └──────────────┬───────────────┘                               │
-│                 │                                               │
-│  ┌──────────────▼───────────────┐                               │
-│  │    Optimization Pipeline     │                               │
-│  │  ┌─────────────────────────┐ │                               │
-│  │  │ Pass 1: Constant Fold   │ │  (GCC -O1)                    │
-│  │  │ Pass 2: Dead Code Elim  │ │  (GCC -O1)                    │
-│  │  │ Pass 3: Inlining        │ │  (GCC -O2)                    │
-│  │  │ Pass 4: Loop Unroll     │ │  (GCC -O3)                    │
-│  │  │ Pass 5: Vectorization   │ │  (GCC -O3 + SIMD)             │
-│  │  │ Pass 6: Reg Allocation  │ │  (Linear Scan / Graph Color)  │
-│  │  └─────────────────────────┘ │                               │
-│  └──────────────┬───────────────┘                               │
-└─────────────────┼───────────────────────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────────────────────┐
-│                        BACKEND                                  │
-│  ┌──────────────────────────────┐                               │
-│  │    Target Selection Layer    │                               │
-│  │  ┌────────┐ ┌────────┐ ┌───┐ │                               │
-│  │  │x86-64  │ │ ARM64  │ │GPU│ │                               │
-│  │  └───┬────┘ └───┬────┘ └─┬─┘ │                               │
-│  └──────┼──────────┼────────┼───┘                               │
-│         │          │        │                                   │
-│  ┌──────▼──────────▼────────▼───┐                               │
-│  │   FASM-Style Byte Encoder    │  (Bytes directos, sin ASM)    │
-│  │  ┌─────────────────────────┐ │                               │
-│  │  │ Instruction Tables      │ │  (Como FASM TABLES.INC)       │
-│  │  │ ModR/M + SIB Encoding   │ │                               │
-│  │  │ REX Prefix Generation   │ │                               │
-│  │  │ Multi-pass Optimization │ │  (Short jumps, alignment)     │
-│  │  └─────────────────────────┘ │                               │
-│  └──────────────┬───────────────┘                               │
-│                 │                                               │
-│  ┌──────────────▼───────────────┐                               │
-│  │     Binary Format Writers    │                               │
-│  │  ┌────┐ ┌────┐ ┌─────┐ ┌───┐ │                               │
-│  │  │ PE │ │ELF │ │Mach-O│ │Raw│ │                              │
-│  │  └────┘ └────┘ └─────┘ └───┘ │                               │
-│  └──────────────────────────────┘                               │
-└─────────────────────────────────────────────────────────────────┘
+C99/C++98 codigo fuente
+        │
+        ▼
+[ PREPROCESSOR ]  ←── preprocessor/
+  header_main.h resolution
+  fastos.bib cache (CACHE HIT = nanosegundos)
+  symbol deduplication
+  C++11-C++17 → C++98 expansion
+        │
+        ▼
+[ PARSER / AST ]  ←── frontend/c/ + frontend/cpp/
+  C99 parser separado
+  C++98 parser separado
+  tipos resueltos
+        │
+        ▼
+[ IR — ADeadOp ]  ←── middle/ir/
+  AST → operaciones abstractas
+  tipos explicitos, flujo claro
+        │
+        ▼
+[ UB_DETECTOR ]  ←── middle/ub_detector/  (UNICO EN EL MUNDO)
+  Analiza IR completo ANTES de codegen
+  13 tipos de UB detectados
+  Modo Estricto (default) → SE DETIENE
+  --warn-ub → avisa y continua
+        │
+        ▼
+[ OPTIMIZER ]  ←── optimizer/
+  Dead code elimination, Constant folding
+  Constant propagation, Redundant ops removal
+  Inline expansion — SIN explotar UB
+        │
+        ▼
+[ REGISTER ALLOCATOR ]  ←── isa/reg_alloc.rs
+  IR variables → registros fisicos x86-64
+  Linear Scan (v1), Graph Coloring (v2 futuro)
+        │
+        ▼
+[ ISA COMPILER ]  ←── isa/
+  c_isa.rs  → C99 layout/sizeof/alignment
+  cpp_isa.rs → C++98 vtable/this/constructors
+  encoder.rs → bytes x86-64 directos
+        │
+        ▼
+[ OUTPUT ]  ←── output/
+  --target fastos  → .po  (24 bytes header)
+  --target windows → .exe (PE)
+  --target linux   → .elf (ELF)
 ```
 
-## Estructura de Directorios
+## Estructura de Directorios (Real)
 
 ```
 src/rust/
-├── lib.rs                    # Exports públicos
-├── main.rs                   # CLI driver
+├── lib.rs                    # Exports publicos + re-exports
+├── main.rs                   # CLI: adeadc cc/cxx/build/run
+├── builder.rs                # Orchestrador del pipeline
 │
-├── frontend/                 # FRONTEND - Parsing
+├── preprocessor/             # Sin CMake, Sin Linker
 │   ├── mod.rs
-│   ├── common/               # Compartido entre C y C++
-│   │   ├── mod.rs
-│   │   ├── source.rs         # Source location tracking
-│   │   ├── diagnostics.rs    # Error/warning reporting (como Clang)
-│   │   └── preprocessor.rs   # Unified C/C++ preprocessor
-│   │
-│   ├── c/                    # C Frontend (C99/C11/C17)
-│   │   ├── mod.rs
-│   │   ├── lexer.rs
-│   │   ├── parser.rs
-│   │   ├── ast.rs
-│   │   ├── sema.rs           # Semantic analysis
-│   │   └── stdlib.rs         # C standard library stubs
-│   │
-│   ├── cpp/                  # C++ Frontend (C++11/14/17/20)
-│   │   ├── mod.rs
-│   │   ├── lexer.rs
-│   │   ├── parser.rs
-│   │   ├── ast.rs
-│   │   ├── sema.rs           # Semantic analysis + templates
-│   │   ├── mangler.rs        # Name mangling (Itanium ABI)
-│   │   └── stdlib.rs         # C++ standard library stubs
-│   │
-│   └── ast/                  # Unified AST
-│       ├── mod.rs
-│       ├── types.rs          # Type system
-│       ├── expr.rs           # Expressions
-│       ├── stmt.rs           # Statements
-│       └── decl.rs           # Declarations
+│   ├── resolver.rs           # Header resolution automatica
+│   ├── dedup.rs              # Symbol Table deduplication
+│   └── expander.rs           # C++11-C++17 → C++98 canon
 │
-├── middle/                   # MIDDLE-END - IR & Optimization
+├── frontend/                 # C/C++ Parsing
 │   ├── mod.rs
+│   ├── ast.rs                # Unified AST (Program, Stmt, Expr)
+│   ├── types.rs              # Type system
+│   ├── type_checker.rs       # Static analysis
+│   ├── c/                    # C99 Frontend
+│   │   ├── c_lexer.rs
+│   │   ├── c_parser.rs
+│   │   ├── c_ast.rs
+│   │   ├── c_preprocessor.rs
+│   │   ├── c_stdlib.rs
+│   │   └── c_to_ir.rs
+│   └── cpp/                  # C++98 Frontend
+│       ├── cpp_lexer.rs
+│       ├── cpp_parser.rs
+│       ├── cpp_ast.rs
+│       ├── cpp_preprocessor.rs
+│       ├── cpp_stdlib.rs
+│       └── cpp_to_ir.rs
+│
+├── middle/                   # IR + UB Detection + Analysis
+│   ├── mod.rs
+│   ├── ir/                   # ADeadOp IR (SSA-form)
+│   │   ├── module.rs
+│   │   ├── function.rs
+│   │   ├── basicblock.rs
+│   │   ├── instruction.rs
+│   │   ├── types.rs
+│   │   ├── value.rs
+│   │   └── builder.rs
 │   │
-│   ├── ir/                   # Intermediate Representation
-│   │   ├── mod.rs
-│   │   ├── module.rs         # IR Module (like LLVM Module)
-│   │   ├── function.rs       # IR Function
-│   │   ├── basicblock.rs     # Basic blocks (CFG)
-│   │   ├── instruction.rs    # IR Instructions
-│   │   ├── types.rs          # IR Type system
-│   │   ├── value.rs          # SSA Values
-│   │   └── builder.rs        # IR Builder (like LLVM IRBuilder)
+│   ├── ub_detector/          # UB Detection (UNICO EN EL MUNDO)
+│   │   ├── mod.rs            # Orquesta todos los detectores
+│   │   ├── null_check.rs     # NullPointerDereference
+│   │   ├── bounds_check.rs   # ArrayOutOfBounds
+│   │   ├── overflow_check.rs # IntegerOverflow/Underflow/DivByZero
+│   │   ├── uninit_check.rs   # UninitializedVariable
+│   │   ├── useafter_check.rs # UseAfterFree, DanglingPointer
+│   │   ├── type_check.rs     # TypeConfusion, InvalidCast
+│   │   ├── race_check.rs     # DataRace, StackOverflow
+│   │   ├── lifetime.rs       # Lifetime analysis
+│   │   ├── report.rs         # UBReport, UBKind (14 tipos)
+│   │   ├── cache.rs          # UB results para fastos.bib
+│   │   └── analyzer.rs       # Coordinator general
 │   │
+│   ├── analysis/             # CFG, Dominators, Loops
 │   ├── lowering/             # AST → IR
-│   │   ├── mod.rs
-│   │   ├── c_lower.rs        # C AST → IR
-│   │   └── cpp_lower.rs      # C++ AST → IR
-│   │
-│   ├── analysis/             # Program Analysis
-│   │   ├── mod.rs
-│   │   ├── cfg.rs            # Control Flow Graph
-│   │   ├── domtree.rs        # Dominator Tree
-│   │   ├── loops.rs          # Loop detection
-│   │   ├── alias.rs          # Alias analysis
-│   │   └── liveness.rs       # Liveness analysis
-│   │
-│   └── passes/               # Optimization Passes (LLVM-style)
-│       ├── mod.rs
-│       ├── pass_manager.rs   # Pass scheduling
-│       │
-│       ├── transform/        # Transformation passes
-│       │   ├── mod.rs
-│       │   ├── dce.rs        # Dead Code Elimination
-│       │   ├── constfold.rs  # Constant Folding
-│       │   ├── inline.rs     # Function Inlining
-│       │   ├── mem2reg.rs    # Memory to Register (SSA)
-│       │   ├── gvn.rs        # Global Value Numbering
-│       │   ├── licm.rs       # Loop Invariant Code Motion
-│       │   ├── unroll.rs     # Loop Unrolling
-│       │   ├── vectorize.rs  # Auto-vectorization
-│       │   └── tailcall.rs   # Tail Call Optimization
-│       │
-│       └── codegen/          # Codegen preparation
-│           ├── mod.rs
-│           ├── legalize.rs   # Legalize for target
-│           ├── isel.rs       # Instruction Selection
-│           └── regalloc.rs   # Register Allocation
+│   └── passes/               # Optimization passes (LLVM-style)
 │
-├── backend/                  # BACKEND - Code Generation
+├── optimizer/                # AST-level + Binary-level optimizations
 │   ├── mod.rs
-│   │
-│   ├── target/               # Target Descriptions
-│   │   ├── mod.rs
-│   │   ├── x86_64/           # x86-64 Target
-│   │   │   ├── mod.rs
-│   │   │   ├── abi.rs        # Calling conventions (Win64/SysV)
-│   │   │   ├── registers.rs  # Register definitions
-│   │   │   └── features.rs   # CPU features (SSE, AVX, etc.)
-│   │   │
-│   │   ├── arm64/            # ARM64 Target (future)
-│   │   │   └── mod.rs
-│   │   │
-│   │   └── gpu/              # GPU Targets
-│   │       ├── mod.rs
-│   │       ├── spirv.rs      # SPIR-V generation
-│   │       └── cuda.rs       # CUDA/PTX generation
-│   │
-│   ├── encoder/              # FASM-Style Instruction Encoder
-│   │   ├── mod.rs
-│   │   ├── x86_64/           # x86-64 Encoder
-│   │   │   ├── mod.rs
-│   │   │   ├── tables.rs     # Instruction tables (FASM TABLES.INC)
-│   │   │   ├── modrm.rs      # ModR/M + SIB encoding
-│   │   │   ├── rex.rs        # REX prefix generation
-│   │   │   ├── vex.rs        # VEX/EVEX for AVX
-│   │   │   ├── encode.rs     # Main encoder
-│   │   │   └── reloc.rs      # Relocations
-│   │   │
-│   │   └── multipass.rs      # Multi-pass optimization (short jumps)
-│   │
-│   └── format/               # Binary Format Writers
-│       ├── mod.rs
-│       ├── pe.rs             # Windows PE/COFF
-│       ├── elf.rs            # Linux ELF
-│       ├── macho.rs          # macOS Mach-O (future)
-│       └── raw.rs            # Raw binary (bootloaders)
+│   ├── dead_code.rs          # Dead code elimination
+│   ├── const_fold.rs         # Constant folding
+│   ├── const_prop.rs         # Constant propagation
+│   ├── redundant.rs          # Redundant ops removal
+│   ├── inline_exp.rs         # Inline expansion
+│   ├── binary_optimizer.rs   # Binary-level size optimization
+│   ├── branch_detector.rs    # Branch pattern detection
+│   ├── branchless.rs         # Branchless transforms
+│   └── simd.rs               # SIMD code generation
 │
-├── driver/                   # Compilation Driver
-│   ├── mod.rs
-│   ├── session.rs            # Compilation session
-│   ├── config.rs             # Compiler configuration
-│   └── pipeline.rs           # Full compilation pipeline
+├── isa/                      # ISA Layer — x86-64
+│   ├── mod.rs                # Reg, ADeadOp, ADeadIR
+│   ├── c_isa.rs              # C99: sizeof, alignment
+│   ├── cpp_isa.rs            # C++98: vtable, this, ctors
+│   ├── isa_compiler.rs       # Main ISA compiler
+│   ├── encoder.rs            # ADeadOp → bytes x86-64
+│   ├── decoder.rs            # bytes → ADeadOp
+│   ├── reg_alloc.rs          # Register Allocator
+│   ├── optimizer.rs          # ISA-level peephole opts
+│   └── compiler/             # Modular compilation stages
 │
-└── support/                  # Support Libraries
-    ├── mod.rs
-    ├── arena.rs              # Memory arena allocator
-    ├── interner.rs           # String interning
-    └── timing.rs             # Compilation timing
+├── cache/                    # fastos.bib System
+│   ├── mod.rs                # ADeadCache struct
+│   ├── serializer.rs         # Cache → bytes
+│   ├── deserializer.rs       # bytes → Cache
+│   ├── hasher.rs             # FNV-1a header hashing
+│   └── validator.rs          # Cache hit/stale/miss/corrupt
+│
+├── output/                   # Binary Output Formats
+│   ├── mod.rs                # OutputFormat enum
+│   ├── pe.rs                 # Windows PE (.exe)
+│   ├── elf.rs                # Linux ELF
+│   └── po.rs                 # FastOS .Po (24-byte header)
+│
+├── backend/                  # Low-level code generation
+│   ├── cpu/                  # x86-64 backends (PE, ELF, flat)
+│   └── gpu/                  # GPU backends (Vulkan, CUDA, HIP)
+│
+├── bg/                       # Binary Guardian (security)
+├── runtime/                  # CPU/GPU detection + dispatch
+└── toolchain/                # GCC/LLVM/MSVC compatibility
 ```
 
-## IR Design (Inspirado en LLVM)
+## Los 14 Tipos de UB Detectados
 
 ```rust
-// Ejemplo de IR generado
-fn @main() -> i32 {
-entry:
-    %0 = alloca i32              ; int x
-    store i32 5, %0              ; x = 5
-    %1 = load i32, %0            ; load x
-    %2 = add i32 %1, 10          ; x + 10
-    ret i32 %2
+pub enum UBKind {
+    NullPointerDereference,   // ptr usado sin check NULL
+    UseAfterFree,             // ptr usado despues de free()
+    DoubleFree,               // free() llamado dos veces
+    DanglingPointer,          // ptr a stack variable fuera de scope
+    ArrayOutOfBounds,         // index >= size
+    IntegerOverflow,          // signed int overflow
+    IntegerUnderflow,         // signed int underflow
+    DivisionByZero,           // division por cero
+    ShiftOverflow,            // shift >= sizeof(tipo) * 8
+    UninitializedVariable,    // variable usada sin inicializar
+    TypeConfusion,            // cast invalido entre tipos
+    InvalidCast,              // downcast sin verificar
+    DataRace,                 // acceso concurrente sin sync
+    StackOverflow,            // recursion infinita
 }
 ```
 
-## Optimization Levels (Como GCC)
+## Modos de Operacion
 
-- **-O0**: Sin optimización (debug)
-- **-O1**: Optimizaciones básicas (DCE, const fold)
-- **-O2**: Optimizaciones estándar (inline, GVN, LICM)
-- **-O3**: Optimizaciones agresivas (unroll, vectorize)
-- **-Os**: Optimizar para tamaño
-- **-Ofast**: Máxima velocidad (puede romper IEEE float)
+- **Modo Estricto** (default): UB encontrado → SE DETIENE
+- **--warn-ub**: UB encontrado → AVISA Y CONTINUA (tu responsabilidad)
 
-## FASM-Style Encoding
+## Orden Critico del Pipeline
 
-El encoder genera bytes directamente sin ensamblador externo:
-
-```rust
-// Ejemplo: MOV RAX, RBX
-fn encode_mov_rr(dst: Reg, src: Reg) -> Vec<u8> {
-    let rex = rex_wrxb(true, src.needs_rex(), false, dst.needs_rex());
-    let modrm = modrm_rr(src.code(), dst.code());
-    vec![rex, 0x89, modrm]  // REX.W + MOV r/m64, r64
-}
 ```
-
-## Calling Conventions
-
-### Windows x64 (MSVC ABI)
-- Args: RCX, RDX, R8, R9, stack
-- Return: RAX (int), XMM0 (float)
-- Shadow space: 32 bytes
-- Callee-saved: RBX, RBP, RDI, RSI, R12-R15
-
-### System V AMD64 (Linux/macOS)
-- Args: RDI, RSI, RDX, RCX, R8, R9, stack
-- Return: RAX (int), XMM0 (float)
-- Red zone: 128 bytes
-- Callee-saved: RBX, RBP, R12-R15
-
-## Herencia de Rust
-
-El compilador está escrito en Rust y hereda:
-- **Ownership**: Gestión de memoria sin GC
-- **Pattern Matching**: Para AST y IR
-- **Enums**: Para representar instrucciones
-- **Traits**: Para polimorfismo de targets
-- **Modules**: Para organización clara
-
-## Roadmap
-
-1. **v4.0**: Reorganización completa (actual)
-2. **v4.1**: IR completo con SSA
-3. **v4.2**: Passes de optimización
-4. **v4.3**: ARM64 backend
-5. **v5.0**: Self-hosting (compilar ADead-BIB con ADead-BIB)
+IR → UB_Detector → Optimizer → Reg_Allocator → Encoder
+         ↑
+   ANTES de optimizar = cobertura total garantizada
+   Si fuera DESPUES, el optimizer podria eliminar checks
+   = exactamente lo que hace GCC ❌
+   ADead-BIB: UB primero, optimizacion despues ✓
+```

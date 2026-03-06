@@ -17,9 +17,12 @@
 pub mod backend;
 pub mod bg;
 pub mod builder;
+pub mod cache;
 pub mod frontend;
 pub mod isa;
 pub mod optimizer;
+pub mod output;
+pub mod preprocessor;
 pub mod runtime;
 
 // Middle-end (LLVM-style IR and passes)
@@ -55,6 +58,16 @@ pub use runtime::{CPUFeatures, ComputeBackend};
 pub use middle::ir::{Module as IRModule, Function as IRFunction, Type as IRType};
 pub use middle::passes::{PassManager, OptLevel};
 pub use middle::lowering::lower_to_ir;
+pub use middle::ub_detector::{UBDetector, UBReport, UBKind};
+
+// Preprocessor re-exports (Sin CMake, Sin Linker)
+pub use preprocessor::{HeaderResolver, SymbolDedup, MacroExpander};
+
+// Cache re-exports (fastos.bib system)
+pub use cache::ADeadCache;
+
+// Output re-exports
+pub use output::OutputFormat;
 
 // ── Toolchain Heritage re-exports ────────────────────────────────────────────
 // LLVM: attributes, intrinsics, calling conventions

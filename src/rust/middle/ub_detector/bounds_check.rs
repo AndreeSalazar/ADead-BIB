@@ -2,7 +2,7 @@
 // Array Bounds Check Detection
 // ============================================================
 
-use crate::ast::{Program, Stmt, Expr, Type};
+use crate::ast::{Program, Stmt, Expr};
 use super::report::{UBReport, UBSeverity, UBKind};
 
 pub fn analyze_bounds(program: &Program) -> Vec<UBReport> {
@@ -41,16 +41,17 @@ fn check_stmt_bounds(stmt: &Stmt, func_name: &str, reports: &mut Vec<UBReport>) 
             }
         }
         Stmt::If { then_body, else_body, .. } => {
-            check_stmt_bounds(then_body, func_name, reports);
+            for s in then_body {
+                check_stmt_bounds(s, func_name, reports);
+            }
             if let Some(eb) = else_body {
-                check_stmt_bounds(eb, func_name, reports);
+                for s in eb {
+                    check_stmt_bounds(s, func_name, reports);
+                }
             }
         }
         Stmt::While { body, .. } => {
-            check_stmt_bounds(body, func_name, reports);
-        }
-        Stmt::Block(stmts) => {
-            for s in stmts {
+            for s in body {
                 check_stmt_bounds(s, func_name, reports);
             }
         }
