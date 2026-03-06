@@ -106,10 +106,10 @@ impl BinaryRaw {
         // ============ HOT LOOP - 8 BYTES EXACTOS ============
         // inc rcx (3 bytes)
         self.emit_bytes(&[0x48, 0xFF, 0xC1]);
-        
+
         // cmp rcx, r8 (3 bytes)
         self.emit_bytes(&[0x4C, 0x39, 0xC1]);
-        
+
         // jl loop_start (2 bytes) - offset = -8
         self.emit_bytes(&[0x7C, 0xF8]);
         // ============ FIN HOT LOOP ============
@@ -139,7 +139,7 @@ impl BinaryRaw {
         // .loop:
         // inc rax (3 bytes)
         self.emit_bytes(&[0x48, 0xFF, 0xC0]);
-        
+
         // loop .loop (2 bytes) - decrementa RCX y salta si RCX != 0
         self.emit_bytes(&[0xE2, 0xFB]); // loop -5
 
@@ -183,13 +183,13 @@ impl BinaryRaw {
 
         // ============ LOOP UNROLLED x4 ============
         let loop_start = self.code.len();
-        
+
         // add rcx, 4 (una sola instrucción para 4 incrementos!)
         self.emit_bytes(&[0x48, 0x83, 0xC1, 0x04]);
-        
+
         // dec r9
         self.emit_bytes(&[0x49, 0xFF, 0xC9]);
-        
+
         // jnz loop_start
         let offset = (loop_start as i64 - self.code.len() as i64 - 2) as i8;
         self.emit_bytes(&[0x75, offset as u8]);
@@ -223,7 +223,7 @@ impl BinaryRaw {
     /// Genera un ejecutable PE mínimo con el código
     pub fn generate_pe(&self, entry_code: &[u8]) -> Vec<u8> {
         let mut pe = Vec::new();
-        
+
         // DOS Header
         pe.extend_from_slice(&[0x4D, 0x5A]); // MZ
         pe.extend_from_slice(&[0x90; 58]); // padding
@@ -273,7 +273,7 @@ impl BinaryRaw {
 
         // Code section
         pe.extend_from_slice(entry_code);
-        
+
         // Padding hasta múltiplo de 0x200
         while pe.len() % 0x200 != 0 {
             pe.push(0);

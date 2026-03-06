@@ -13,22 +13,22 @@ use std::io::Write;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MicroOp {
-    Exit = 0x0,      // Termina con acc como código
-    Load = 0x1,      // acc = operand
-    Add = 0x2,       // acc += operand
-    Sub = 0x3,       // acc -= operand
-    Mul = 0x4,       // acc *= operand
-    Div = 0x5,       // acc /= operand (si operand != 0)
-    And = 0x6,       // acc &= operand
-    Or = 0x7,        // acc |= operand
-    Xor = 0x8,       // acc ^= operand
-    Not = 0x9,       // acc = !acc (operand ignorado)
-    Jmp = 0xA,       // pc = operand
-    Jz = 0xB,        // if acc == 0: pc = operand
-    Jnz = 0xC,       // if acc != 0: pc = operand
-    Push = 0xD,      // stack.push(acc)
-    Pop = 0xE,       // acc = stack.pop()
-    Nop = 0xF,       // No operation
+    Exit = 0x0, // Termina con acc como código
+    Load = 0x1, // acc = operand
+    Add = 0x2,  // acc += operand
+    Sub = 0x3,  // acc -= operand
+    Mul = 0x4,  // acc *= operand
+    Div = 0x5,  // acc /= operand (si operand != 0)
+    And = 0x6,  // acc &= operand
+    Or = 0x7,   // acc |= operand
+    Xor = 0x8,  // acc ^= operand
+    Not = 0x9,  // acc = !acc (operand ignorado)
+    Jmp = 0xA,  // pc = operand
+    Jz = 0xB,   // if acc == 0: pc = operand
+    Jnz = 0xC,  // if acc != 0: pc = operand
+    Push = 0xD, // stack.push(acc)
+    Pop = 0xE,  // acc = stack.pop()
+    Nop = 0xF,  // No operation
 }
 
 impl From<u8> for MicroOp {
@@ -57,10 +57,10 @@ impl From<u8> for MicroOp {
 /// Micro-VM: Intérprete de bytecode ultra-compacto
 /// Estado: 1 acumulador (8 bits), 1 PC, stack pequeño
 pub struct MicroVM {
-    acc: u8,           // Acumulador
-    pc: usize,         // Program counter
-    stack: Vec<u8>,    // Stack (máximo 16 elementos)
-    memory: Vec<u8>,   // Memoria de programa
+    acc: u8,         // Acumulador
+    pc: usize,       // Program counter
+    stack: Vec<u8>,  // Stack (máximo 16 elementos)
+    memory: Vec<u8>, // Memoria de programa
     halted: bool,
 }
 
@@ -74,7 +74,7 @@ impl MicroVM {
             halted: false,
         }
     }
-    
+
     /// Ejecuta el programa completo
     pub fn run(&mut self) -> u8 {
         while !self.halted && self.pc < self.memory.len() * 2 {
@@ -82,17 +82,17 @@ impl MicroVM {
         }
         self.acc
     }
-    
+
     /// Ejecuta una instrucción
     fn step(&mut self) {
         let byte_idx = self.pc / 2;
         let is_high = self.pc % 2 == 0;
-        
+
         if byte_idx >= self.memory.len() {
             self.halted = true;
             return;
         }
-        
+
         let byte = self.memory[byte_idx];
         let (opcode, operand) = if is_high {
             ((byte >> 4) & 0x0F, byte & 0x0F)
@@ -101,9 +101,9 @@ impl MicroVM {
             // Simplificación: operand = 0 para instrucciones impares
             (byte & 0x0F, 0)
         };
-        
+
         let op = MicroOp::from(opcode);
-        
+
         match op {
             MicroOp::Exit => {
                 self.halted = true;
@@ -163,7 +163,7 @@ impl MicroVM {
             }
             MicroOp::Nop => {}
         }
-        
+
         self.pc += 1;
     }
 }
@@ -172,12 +172,12 @@ impl MicroVM {
 /// Formato: [opcode:4][operand:4] = 1 byte por instrucción
 pub fn compile_microvm(instructions: &[(MicroOp, u8)]) -> Vec<u8> {
     let mut bytecode = Vec::new();
-    
+
     for (op, operand) in instructions {
         let byte = ((*op as u8) << 4) | (operand & 0x0F);
         bytecode.push(byte);
     }
-    
+
     bytecode
 }
 
@@ -207,74 +207,71 @@ pub fn generate_microvm_runtime_x64() -> Vec<u8> {
     // Simplificado: solo soporta EXIT y LOAD por ahora
     vec![
         // Prólogo
-        0x55,                   // push rbp
-        0x48, 0x89, 0xE5,       // mov rbp, rsp
-        
+        0x55, // push rbp
+        0x48, 0x89, 0xE5, // mov rbp, rsp
         // RDI = puntero al bytecode
         // RSI = longitud del bytecode
-        
+
         // Inicializar registros
-        0x31, 0xC0,             // xor eax, eax (acc = 0)
-        0x31, 0xC9,             // xor ecx, ecx (pc = 0)
-        
+        0x31, 0xC0, // xor eax, eax (acc = 0)
+        0x31, 0xC9, // xor ecx, ecx (pc = 0)
         // Loop principal
         // loop_start:
-        0x48, 0x39, 0xF1,       // cmp rcx, rsi
-        0x7D, 0x1A,             // jge exit_loop
-        
+        0x48, 0x39, 0xF1, // cmp rcx, rsi
+        0x7D, 0x1A, // jge exit_loop
         // Leer byte
         0x0F, 0xB6, 0x14, 0x0F, // movzx edx, byte [rdi+rcx]
-        
         // Extraer opcode (high nibble)
-        0x89, 0xD3,             // mov ebx, edx
-        0xC1, 0xEB, 0x04,       // shr ebx, 4
-        
+        0x89, 0xD3, // mov ebx, edx
+        0xC1, 0xEB, 0x04, // shr ebx, 4
         // Extraer operand (low nibble)
-        0x83, 0xE2, 0x0F,       // and edx, 0x0F
-        
+        0x83, 0xE2, 0x0F, // and edx, 0x0F
         // Check opcode
-        0x83, 0xFB, 0x00,       // cmp ebx, 0 (EXIT)
-        0x74, 0x08,             // je exit_loop
-        
-        0x83, 0xFB, 0x01,       // cmp ebx, 1 (LOAD)
-        0x75, 0x02,             // jne skip_load
-        0x89, 0xD0,             // mov eax, edx (acc = operand)
-        
+        0x83, 0xFB, 0x00, // cmp ebx, 0 (EXIT)
+        0x74, 0x08, // je exit_loop
+        0x83, 0xFB, 0x01, // cmp ebx, 1 (LOAD)
+        0x75, 0x02, // jne skip_load
+        0x89, 0xD0, // mov eax, edx (acc = operand)
         // skip_load:
-        0x48, 0xFF, 0xC1,       // inc rcx
-        0xEB, 0xDE,             // jmp loop_start
-        
+        0x48, 0xFF, 0xC1, // inc rcx
+        0xEB, 0xDE, // jmp loop_start
         // exit_loop:
-        0x5D,                   // pop rbp
-        0xC3,                   // ret
+        0x5D, // pop rbp
+        0xC3, // ret
     ]
 }
 
 /// Genera un ejecutable PE con MicroVM embebida + bytecode
-pub fn generate_microvm_pe(bytecode: &[u8], output_path: &str) -> Result<usize, Box<dyn std::error::Error>> {
+pub fn generate_microvm_pe(
+    bytecode: &[u8],
+    output_path: &str,
+) -> Result<usize, Box<dyn std::error::Error>> {
     let runtime = generate_microvm_runtime_x64();
-    
+
     // Combinar runtime + bytecode
     let mut code = runtime.clone();
     let bytecode_offset = code.len();
     code.extend_from_slice(bytecode);
-    
+
     // Generar PE con el código combinado
     super::pe_tiny::generate_pe_tiny(&code, output_path)?;
-    
+
     println!("✅ MicroVM PE generated:");
     println!("   Runtime: {} bytes", runtime.len());
     println!("   Bytecode: {} bytes", bytecode.len());
     println!("   Bytecode offset: 0x{:X}", bytecode_offset);
-    
+
     Ok(code.len())
 }
 
 /// Guarda bytecode MicroVM a archivo
-pub fn save_bytecode(bytecode: &[u8], output_path: &str) -> Result<usize, Box<dyn std::error::Error>> {
+pub fn save_bytecode(
+    bytecode: &[u8],
+    output_path: &str,
+) -> Result<usize, Box<dyn std::error::Error>> {
     let mut file = File::create(output_path)?;
     file.write_all(bytecode)?;
-    
+
     println!("✅ MicroVM bytecode saved: {} bytes", bytecode.len());
     Ok(bytecode.len())
 }
@@ -294,17 +291,17 @@ impl BitVM {
     pub fn new() -> Self {
         BitVM {
             actions: vec![
-                || 0,  // Bit 0 = retorna 0
-                || 1,  // Bit 1 = retorna 1
+                || 0, // Bit 0 = retorna 0
+                || 1, // Bit 1 = retorna 1
             ],
         }
     }
-    
+
     /// Ejecuta un programa de 1 bit
     pub fn execute_1bit(&self, bit: bool) -> u8 {
         self.actions[bit as usize]()
     }
-    
+
     /// Ejecuta un programa de N bits (2^N acciones posibles)
     pub fn execute_nbits(&self, bits: &[bool]) -> u8 {
         let mut index = 0usize;
@@ -342,35 +339,29 @@ pub fn theoretical_minimum(num_decisions: usize) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_microvm_load_exit() {
-        let bytecode = compile_microvm(&[
-            (MicroOp::Load, 5),
-            (MicroOp::Exit, 0),
-        ]);
+        let bytecode = compile_microvm(&[(MicroOp::Load, 5), (MicroOp::Exit, 0)]);
         let mut vm = MicroVM::new(&bytecode);
         assert_eq!(vm.run(), 5);
     }
-    
+
     #[test]
     fn test_microvm_math() {
-        let bytecode = compile_microvm(&[
-            (MicroOp::Load, 3),
-            (MicroOp::Add, 2),
-            (MicroOp::Exit, 0),
-        ]);
+        let bytecode =
+            compile_microvm(&[(MicroOp::Load, 3), (MicroOp::Add, 2), (MicroOp::Exit, 0)]);
         let mut vm = MicroVM::new(&bytecode);
         assert_eq!(vm.run(), 5);
     }
-    
+
     #[test]
     fn test_bitvm_1bit() {
         let vm = BitVM::new();
         assert_eq!(vm.execute_1bit(false), 0);
         assert_eq!(vm.execute_1bit(true), 1);
     }
-    
+
     #[test]
     fn test_theoretical_minimum() {
         // 1 decisión = 0.125 bytes (1 bit)

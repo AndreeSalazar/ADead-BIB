@@ -5,7 +5,7 @@
 // Inspired by LLVM PassManager
 // ============================================================
 
-use crate::middle::ir::{Module, Function};
+use crate::middle::ir::{Function, Module};
 
 /// Optimization level
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,15 +47,15 @@ pub enum PassKind {
 pub trait Pass: Send + Sync {
     /// Pass name
     fn name(&self) -> &'static str;
-    
+
     /// Pass kind
     fn kind(&self) -> PassKind;
-    
+
     /// Run pass on module
     fn run_on_module(&self, _module: &mut Module) -> bool {
         false
     }
-    
+
     /// Run pass on function
     fn run_on_function(&self, _func: &mut Function) -> bool {
         false
@@ -66,13 +66,13 @@ pub trait Pass: Send + Sync {
 pub struct PassManager {
     /// Registered passes
     passes: Vec<Box<dyn Pass>>,
-    
+
     /// Optimization level
     opt_level: OptLevel,
-    
+
     /// Enable debug output
     debug: bool,
-    
+
     /// Statistics
     stats: PassStats,
 }
@@ -95,21 +95,21 @@ impl PassManager {
             stats: PassStats::default(),
         }
     }
-    
+
     /// Enable debug output
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
     }
-    
+
     /// Add a pass
     pub fn add_pass<P: Pass + 'static>(&mut self, pass: P) {
         self.passes.push(Box::new(pass));
     }
-    
+
     /// Add standard passes for optimization level
     pub fn add_standard_passes(&mut self) {
         use super::transform::*;
-        
+
         match self.opt_level {
             OptLevel::O0 => {
                 // No optimization passes
@@ -149,18 +149,18 @@ impl PassManager {
             }
         }
     }
-    
+
     /// Run all passes on module
     pub fn run(&mut self, module: &mut Module) -> bool {
         let mut changed = false;
-        
+
         for pass in &self.passes {
             self.stats.passes_run += 1;
-            
+
             if self.debug {
                 println!("[PassManager] Running pass: {}", pass.name());
             }
-            
+
             match pass.kind() {
                 PassKind::Module | PassKind::Analysis => {
                     if pass.run_on_module(module) {
@@ -177,15 +177,15 @@ impl PassManager {
                 }
             }
         }
-        
+
         changed
     }
-    
+
     /// Get statistics
     pub fn stats(&self) -> &PassStats {
         &self.stats
     }
-    
+
     /// Reset statistics
     pub fn reset_stats(&mut self) {
         self.stats = PassStats::default();
@@ -195,21 +195,27 @@ impl PassManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     struct DummyPass;
-    
+
     impl Pass for DummyPass {
-        fn name(&self) -> &'static str { "dummy" }
-        fn kind(&self) -> PassKind { PassKind::Function }
-        fn run_on_function(&self, _func: &mut Function) -> bool { false }
+        fn name(&self) -> &'static str {
+            "dummy"
+        }
+        fn kind(&self) -> PassKind {
+            PassKind::Function
+        }
+        fn run_on_function(&self, _func: &mut Function) -> bool {
+            false
+        }
     }
-    
+
     #[test]
     fn test_pass_manager_creation() {
         let pm = PassManager::new(OptLevel::O2);
         assert_eq!(pm.opt_level, OptLevel::O2);
     }
-    
+
     #[test]
     fn test_add_pass() {
         let mut pm = PassManager::new(OptLevel::O0);

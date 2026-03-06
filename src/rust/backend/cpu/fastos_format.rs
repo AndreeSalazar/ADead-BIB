@@ -75,7 +75,7 @@ impl FastOSCpuMode {
     /// Tamaño de dirección por defecto para este modo
     pub fn address_size(&self) -> u8 {
         match self {
-            FastOSCpuMode::Real16 => 20,  // 1MB address space
+            FastOSCpuMode::Real16 => 20,      // 1MB address space
             FastOSCpuMode::Protected32 => 32, // 4GB
             FastOSCpuMode::Long64 => 64,      // Virtual 64-bit
         }
@@ -155,10 +155,18 @@ impl FastOSSectionFlags {
     pub const EXEC: u8 = 0x04;
     pub const ALLOC: u8 = 0x08; // Ocupa memoria en runtime
 
-    pub fn text() -> Self { Self(Self::READ | Self::EXEC | Self::ALLOC) }
-    pub fn data() -> Self { Self(Self::READ | Self::WRITE | Self::ALLOC) }
-    pub fn rodata() -> Self { Self(Self::READ | Self::ALLOC) }
-    pub fn bss() -> Self { Self(Self::READ | Self::WRITE | Self::ALLOC) }
+    pub fn text() -> Self {
+        Self(Self::READ | Self::EXEC | Self::ALLOC)
+    }
+    pub fn data() -> Self {
+        Self(Self::READ | Self::WRITE | Self::ALLOC)
+    }
+    pub fn rodata() -> Self {
+        Self(Self::READ | Self::ALLOC)
+    }
+    pub fn bss() -> Self {
+        Self(Self::READ | Self::WRITE | Self::ALLOC)
+    }
 }
 
 /// Entrada de sección en el header FastOS (32 bytes)
@@ -245,21 +253,21 @@ impl FastOSHeader {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(FASTOS_HEADER_SIZE);
 
-        buf.extend_from_slice(&self.magic);                          // [0..4]
-        buf.extend_from_slice(&self.version.to_le_bytes());          // [4..6]
-        buf.push(self.cpu_mode as u8);                               // [6]
-        buf.push(self.binary_type as u8);                            // [7]
-        buf.extend_from_slice(&self.entry_point.to_le_bytes());      // [8..16]
-        buf.extend_from_slice(&self.base_address.to_le_bytes());     // [16..24]
+        buf.extend_from_slice(&self.magic); // [0..4]
+        buf.extend_from_slice(&self.version.to_le_bytes()); // [4..6]
+        buf.push(self.cpu_mode as u8); // [6]
+        buf.push(self.binary_type as u8); // [7]
+        buf.extend_from_slice(&self.entry_point.to_le_bytes()); // [8..16]
+        buf.extend_from_slice(&self.base_address.to_le_bytes()); // [16..24]
         buf.extend_from_slice(&self.section_table_offset.to_le_bytes()); // [24..28]
-        buf.extend_from_slice(&self.section_count.to_le_bytes());    // [28..30]
-        buf.extend_from_slice(&self.total_file_size.to_le_bytes());  // [30..34]
-        buf.extend_from_slice(&self.code_size.to_le_bytes());        // [34..38]
-        buf.extend_from_slice(&self.data_size.to_le_bytes());        // [38..42]
-        buf.extend_from_slice(&self.bss_size.to_le_bytes());         // [42..46]
-        buf.extend_from_slice(&self.checksum.to_le_bytes());         // [46..50]
-        buf.extend_from_slice(&self.flags.to_le_bytes());            // [50..58]
-        buf.extend_from_slice(&[0u8; 6]);                            // [58..64] reserved
+        buf.extend_from_slice(&self.section_count.to_le_bytes()); // [28..30]
+        buf.extend_from_slice(&self.total_file_size.to_le_bytes()); // [30..34]
+        buf.extend_from_slice(&self.code_size.to_le_bytes()); // [34..38]
+        buf.extend_from_slice(&self.data_size.to_le_bytes()); // [38..42]
+        buf.extend_from_slice(&self.bss_size.to_le_bytes()); // [42..46]
+        buf.extend_from_slice(&self.checksum.to_le_bytes()); // [46..50]
+        buf.extend_from_slice(&self.flags.to_le_bytes()); // [50..58]
+        buf.extend_from_slice(&[0u8; 6]); // [58..64] reserved
 
         assert_eq!(buf.len(), FASTOS_HEADER_SIZE);
         buf
@@ -501,11 +509,13 @@ impl FastOSGenerator {
     // ---- Internal helpers ----
 
     fn calculate_next_offset(&self) -> usize {
-        let table_end = FASTOS_HEADER_SIZE
-            + (self.sections.len() + 1) * FASTOS_SECTION_ENTRY_SIZE;
+        let table_end = FASTOS_HEADER_SIZE + (self.sections.len() + 1) * FASTOS_SECTION_ENTRY_SIZE;
 
         // Find end of last section data
-        let data_end: usize = self.sections.iter().zip(self.section_data.iter())
+        let data_end: usize = self
+            .sections
+            .iter()
+            .zip(self.section_data.iter())
             .map(|(s, d)| s.file_offset as usize + d.len())
             .max()
             .unwrap_or(0);
@@ -518,14 +528,14 @@ impl FastOSGenerator {
     fn serialize_section(&self, section: &FastOSSection) -> Vec<u8> {
         let mut buf = Vec::with_capacity(FASTOS_SECTION_ENTRY_SIZE);
 
-        buf.push(section.section_type as u8);           // [0]
-        buf.push(section.flags.0);                       // [1]
-        buf.extend_from_slice(&[0u8; 2]);                // [2..4] reserved
-        buf.extend_from_slice(&section.file_offset.to_le_bytes());  // [4..8]
-        buf.extend_from_slice(&section.file_size.to_le_bytes());    // [8..12]
-        buf.extend_from_slice(&section.vaddr.to_le_bytes());        // [12..20]
-        buf.extend_from_slice(&section.mem_size.to_le_bytes());     // [20..28]
-        buf.extend_from_slice(&section.alignment.to_le_bytes());    // [28..32]
+        buf.push(section.section_type as u8); // [0]
+        buf.push(section.flags.0); // [1]
+        buf.extend_from_slice(&[0u8; 2]); // [2..4] reserved
+        buf.extend_from_slice(&section.file_offset.to_le_bytes()); // [4..8]
+        buf.extend_from_slice(&section.file_size.to_le_bytes()); // [8..12]
+        buf.extend_from_slice(&section.vaddr.to_le_bytes()); // [12..20]
+        buf.extend_from_slice(&section.mem_size.to_le_bytes()); // [20..28]
+        buf.extend_from_slice(&section.alignment.to_le_bytes()); // [28..32]
 
         assert_eq!(buf.len(), FASTOS_SECTION_ENTRY_SIZE);
         buf
@@ -728,7 +738,10 @@ mod tests {
     #[test]
     fn test_fastos_cpu_mode_from_byte() {
         assert_eq!(FastOSCpuMode::from_byte(0x10), Some(FastOSCpuMode::Real16));
-        assert_eq!(FastOSCpuMode::from_byte(0x20), Some(FastOSCpuMode::Protected32));
+        assert_eq!(
+            FastOSCpuMode::from_byte(0x20),
+            Some(FastOSCpuMode::Protected32)
+        );
         assert_eq!(FastOSCpuMode::from_byte(0x40), Some(FastOSCpuMode::Long64));
         assert_eq!(FastOSCpuMode::from_byte(0xFF), None);
     }

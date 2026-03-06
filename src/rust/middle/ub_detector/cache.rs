@@ -6,7 +6,7 @@
 // Nadie mas cachea el UB analysis. UNICO en el mundo.
 // ============================================================
 
-use super::report::{UBReport, UBSeverity, UBKind};
+use super::report::{UBKind, UBReport, UBSeverity};
 
 /// UB report serializable para cache
 #[derive(Debug, Clone)]
@@ -98,13 +98,12 @@ mod tests {
     #[test]
     fn test_cache_roundtrip() {
         let mut cache = UBCache::new(0xABCD);
-        let reports = vec![
-            UBReport::new(
-                UBSeverity::Error,
-                UBKind::NullPointerDereference,
-                "test null deref".to_string(),
-            ).with_location("test_fn".to_string(), 42),
-        ];
+        let reports = vec![UBReport::new(
+            UBSeverity::Error,
+            UBKind::NullPointerDereference,
+            "test null deref".to_string(),
+        )
+        .with_location("test_fn".to_string(), 42)];
         cache.cache_results(&reports);
         let restored = cache.restore_reports();
         assert_eq!(restored.len(), 1);

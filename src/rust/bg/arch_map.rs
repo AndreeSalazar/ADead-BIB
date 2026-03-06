@@ -11,8 +11,8 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
 // ============================================================
 // Instruction Classification
@@ -76,7 +76,9 @@ impl InstructionMap {
 
     /// Porcentaje de instrucciones safe.
     pub fn safe_ratio(&self) -> f64 {
-        if self.total == 0 { return 1.0; }
+        if self.total == 0 {
+            return 1.0;
+        }
         self.safe_count as f64 / self.total as f64
     }
 }
@@ -374,10 +376,18 @@ impl ImportExportMap {
 
         // Manipulación de memoria
         const MEMORY_APIS: &[&str] = &[
-            "VIRTUALALLOC", "VIRTUALPROTECT", "VIRTUALFREE", "VIRTUALALLOCEX",
-            "VIRTUALPROTECTEX", "HEAPALLOC", "HEAPFREE",
-            "NTMAPVIEWOFSECTION", "NTUNMAPVIEWOFSECTION",
-            "MMAP", "MPROTECT", "MUNMAP",
+            "VIRTUALALLOC",
+            "VIRTUALPROTECT",
+            "VIRTUALFREE",
+            "VIRTUALALLOCEX",
+            "VIRTUALPROTECTEX",
+            "HEAPALLOC",
+            "HEAPFREE",
+            "NTMAPVIEWOFSECTION",
+            "NTUNMAPVIEWOFSECTION",
+            "MMAP",
+            "MPROTECT",
+            "MUNMAP",
         ];
         for pat in MEMORY_APIS {
             if upper.contains(pat) {
@@ -388,10 +398,14 @@ impl ImportExportMap {
 
         // Inyección de proceso
         const INJECTION_APIS: &[&str] = &[
-            "WRITEPROCESSMEMORY", "READPROCESSMEMORY",
-            "CREATEREMOTETHREAD", "NTQUEUEAPCTHREAD",
-            "SETWINDOWSHOOKEX", "SETTHREADCONTEXT",
-            "NTWRITEVIRTUALMEMORY", "NTREADVIRTUALMEMORY",
+            "WRITEPROCESSMEMORY",
+            "READPROCESSMEMORY",
+            "CREATEREMOTETHREAD",
+            "NTQUEUEAPCTHREAD",
+            "SETWINDOWSHOOKEX",
+            "SETTHREADCONTEXT",
+            "NTWRITEVIRTUALMEMORY",
+            "NTREADVIRTUALMEMORY",
             "PTRACE",
         ];
         for pat in INJECTION_APIS {
@@ -403,9 +417,18 @@ impl ImportExportMap {
 
         // Red/Socket
         const NETWORK_APIS: &[&str] = &[
-            "WSASTARTUP", "SOCKET", "CONNECT", "SEND", "RECV",
-            "BIND", "LISTEN", "ACCEPT", "GETADDRINFO",
-            "INTERNETOPEN", "HTTPOPENREQUEST", "URLDOWNLOAD",
+            "WSASTARTUP",
+            "SOCKET",
+            "CONNECT",
+            "SEND",
+            "RECV",
+            "BIND",
+            "LISTEN",
+            "ACCEPT",
+            "GETADDRINFO",
+            "INTERNETOPEN",
+            "HTTPOPENREQUEST",
+            "URLDOWNLOAD",
             "WINHTTP",
         ];
         for pat in NETWORK_APIS {
@@ -417,9 +440,20 @@ impl ImportExportMap {
 
         // Filesystem
         const FS_APIS: &[&str] = &[
-            "CREATEFILE", "WRITEFILE", "READFILE", "DELETEFILE",
-            "MOVEFILE", "COPYFILE", "FINDFIRSTFILE", "FINDNEXTFILE",
-            "OPEN", "WRITE", "READ", "UNLINK", "STAT", "FSTAT",
+            "CREATEFILE",
+            "WRITEFILE",
+            "READFILE",
+            "DELETEFILE",
+            "MOVEFILE",
+            "COPYFILE",
+            "FINDFIRSTFILE",
+            "FINDNEXTFILE",
+            "OPEN",
+            "WRITE",
+            "READ",
+            "UNLINK",
+            "STAT",
+            "FSTAT",
         ];
         for pat in FS_APIS {
             if upper.contains(pat) {
@@ -430,8 +464,12 @@ impl ImportExportMap {
 
         // Criptografía
         const CRYPTO_APIS: &[&str] = &[
-            "CRYPTACQUIRECONTEXT", "CRYPTENCRYPT", "CRYPTDECRYPT",
-            "CRYPTGENRANDOM", "BCRYPT", "NCRYPT",
+            "CRYPTACQUIRECONTEXT",
+            "CRYPTENCRYPT",
+            "CRYPTDECRYPT",
+            "CRYPTGENRANDOM",
+            "BCRYPT",
+            "NCRYPT",
         ];
         for pat in CRYPTO_APIS {
             if upper.contains(pat) {
@@ -491,9 +529,7 @@ impl Capabilities {
 
     /// True si el binario es puramente computacional (safe para Ring 3).
     pub fn is_pure_userspace(&self) -> bool {
-        !self.requires_kernel()
-            && !self.self_modifying_code
-            && !self.far_jumps
+        !self.requires_kernel() && !self.self_modifying_code && !self.far_jumps
     }
 
     /// Cuenta cuántas capacidades están activas.
@@ -573,80 +609,207 @@ impl fmt::Display for ArchitectureMap {
 
         // Instruction Map
         writeln!(f, "  ┌─ Instruction Map ──────────────────────┐")?;
-        writeln!(f, "  │ Total:          {:>8}               │", self.instruction_map.total)?;
-        writeln!(f, "  │ Safe:           {:>8}  ({:.1}%)       │",
+        writeln!(
+            f,
+            "  │ Total:          {:>8}               │",
+            self.instruction_map.total
+        )?;
+        writeln!(
+            f,
+            "  │ Safe:           {:>8}  ({:.1}%)       │",
             self.instruction_map.safe_count,
-            self.instruction_map.safe_ratio() * 100.0)?;
-        writeln!(f, "  │ Restricted:     {:>8}               │", self.instruction_map.restricted_count)?;
-        writeln!(f, "  │ Privileged:     {:>8}               │", self.instruction_map.privileged_count)?;
+            self.instruction_map.safe_ratio() * 100.0
+        )?;
+        writeln!(
+            f,
+            "  │ Restricted:     {:>8}               │",
+            self.instruction_map.restricted_count
+        )?;
+        writeln!(
+            f,
+            "  │ Privileged:     {:>8}               │",
+            self.instruction_map.privileged_count
+        )?;
         writeln!(f, "  └────────────────────────────────────────┘")?;
         writeln!(f)?;
 
         // Memory Map
         writeln!(f, "  ┌─ Memory Map ────────────────────────────┐")?;
-        writeln!(f, "  │ Regions:        {:>8}               │", self.memory_map.regions.len())?;
-        writeln!(f, "  │ Code size:      {:>8} bytes         │", self.memory_map.total_code_size)?;
-        writeln!(f, "  │ Data size:      {:>8} bytes         │", self.memory_map.total_data_size)?;
-        writeln!(f, "  │ RWX regions:    {:>8}               │", self.memory_map.rwx_count)?;
-        writeln!(f, "  │ Self-modifying: {:>8}               │",
-            if self.memory_map.self_modifying_code { "YES ⚠" } else { "no" })?;
+        writeln!(
+            f,
+            "  │ Regions:        {:>8}               │",
+            self.memory_map.regions.len()
+        )?;
+        writeln!(
+            f,
+            "  │ Code size:      {:>8} bytes         │",
+            self.memory_map.total_code_size
+        )?;
+        writeln!(
+            f,
+            "  │ Data size:      {:>8} bytes         │",
+            self.memory_map.total_data_size
+        )?;
+        writeln!(
+            f,
+            "  │ RWX regions:    {:>8}               │",
+            self.memory_map.rwx_count
+        )?;
+        writeln!(
+            f,
+            "  │ Self-modifying: {:>8}               │",
+            if self.memory_map.self_modifying_code {
+                "YES ⚠"
+            } else {
+                "no"
+            }
+        )?;
         writeln!(f, "  └────────────────────────────────────────┘")?;
         writeln!(f)?;
 
         // Syscall Map
         writeln!(f, "  ┌─ Syscall Map ───────────────────────────┐")?;
-        writeln!(f, "  │ Syscalls:       {:>8}               │", self.syscall_map.syscall_count)?;
-        writeln!(f, "  │ INT vectors:    {:?}", self.syscall_map.interrupt_vectors)?;
-        writeln!(f, "  │ Uses SYSCALL:   {:>8}               │",
-            if self.syscall_map.uses_syscall_instruction { "yes" } else { "no" })?;
+        writeln!(
+            f,
+            "  │ Syscalls:       {:>8}               │",
+            self.syscall_map.syscall_count
+        )?;
+        writeln!(
+            f,
+            "  │ INT vectors:    {:?}",
+            self.syscall_map.interrupt_vectors
+        )?;
+        writeln!(
+            f,
+            "  │ Uses SYSCALL:   {:>8}               │",
+            if self.syscall_map.uses_syscall_instruction {
+                "yes"
+            } else {
+                "no"
+            }
+        )?;
         writeln!(f, "  └────────────────────────────────────────┘")?;
         writeln!(f)?;
 
         // IO Map
         writeln!(f, "  ┌─ IO Map ────────────────────────────────┐")?;
-        writeln!(f, "  │ Port accesses:  {:>8}               │", self.io_map.accesses.len())?;
+        writeln!(
+            f,
+            "  │ Port accesses:  {:>8}               │",
+            self.io_map.accesses.len()
+        )?;
         writeln!(f, "  │ Unique ports:   {:?}", self.io_map.unique_ports())?;
         writeln!(f, "  └────────────────────────────────────────┘")?;
         writeln!(f)?;
 
         // Control Flow Map
         writeln!(f, "  ┌─ Control Flow Map ──────────────────────┐")?;
-        writeln!(f, "  │ Direct jumps:   {:>8}               │", self.control_flow_map.direct_jumps)?;
-        writeln!(f, "  │ Indirect jumps: {:>8}               │", self.control_flow_map.indirect_jumps)?;
-        writeln!(f, "  │ Direct calls:   {:>8}               │", self.control_flow_map.direct_calls)?;
-        writeln!(f, "  │ Indirect calls: {:>8}               │", self.control_flow_map.indirect_calls)?;
-        writeln!(f, "  │ Conditionals:   {:>8}               │", self.control_flow_map.conditional_branches)?;
-        writeln!(f, "  │ Far jumps:      {:>8}               │", self.control_flow_map.far_jumps)?;
+        writeln!(
+            f,
+            "  │ Direct jumps:   {:>8}               │",
+            self.control_flow_map.direct_jumps
+        )?;
+        writeln!(
+            f,
+            "  │ Indirect jumps: {:>8}               │",
+            self.control_flow_map.indirect_jumps
+        )?;
+        writeln!(
+            f,
+            "  │ Direct calls:   {:>8}               │",
+            self.control_flow_map.direct_calls
+        )?;
+        writeln!(
+            f,
+            "  │ Indirect calls: {:>8}               │",
+            self.control_flow_map.indirect_calls
+        )?;
+        writeln!(
+            f,
+            "  │ Conditionals:   {:>8}               │",
+            self.control_flow_map.conditional_branches
+        )?;
+        writeln!(
+            f,
+            "  │ Far jumps:      {:>8}               │",
+            self.control_flow_map.far_jumps
+        )?;
         writeln!(f, "  └────────────────────────────────────────┘")?;
         writeln!(f)?;
 
         // Structural Integrity — NUEVO
         writeln!(f, "  ┌─ Structural Integrity ──────────────────┐")?;
         if self.integrity.entry_point_checked {
-            writeln!(f, "  │ Entry valid:    {:>8}               │",
-                if self.integrity.entry_point_valid { "yes ✓ " } else { "NO ⚠ " })?;
+            writeln!(
+                f,
+                "  │ Entry valid:    {:>8}               │",
+                if self.integrity.entry_point_valid {
+                    "yes ✓ "
+                } else {
+                    "NO ⚠ "
+                }
+            )?;
         }
-        writeln!(f, "  │ Code/data:      {:>7.1}%               │", self.integrity.code_to_data_ratio * 100.0)?;
-        writeln!(f, "  │ Overlapping:    {:>8}               │",
-            if self.integrity.overlapping_sections { "YES ⚠ " } else { "no    " })?;
-        writeln!(f, "  │ Anomalous perms:{:>8}               │", self.integrity.anomalous_permissions)?;
+        writeln!(
+            f,
+            "  │ Code/data:      {:>7.1}%               │",
+            self.integrity.code_to_data_ratio * 100.0
+        )?;
+        writeln!(
+            f,
+            "  │ Overlapping:    {:>8}               │",
+            if self.integrity.overlapping_sections {
+                "YES ⚠ "
+            } else {
+                "no    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ Anomalous perms:{:>8}               │",
+            self.integrity.anomalous_permissions
+        )?;
         writeln!(f, "  └────────────────────────────────────────┘")?;
         writeln!(f)?;
 
         // Import/Export Map — NUEVO
         if self.import_export_map.import_count > 0 || self.import_export_map.export_count > 0 {
             writeln!(f, "  ┌─ Import/Export Map ─────────────────────┐")?;
-            writeln!(f, "  │ Imports:        {:>8}               │", self.import_export_map.import_count)?;
-            writeln!(f, "  │ Exports:        {:>8}               │", self.import_export_map.export_count)?;
-            writeln!(f, "  │ Libraries:      {:>8}               │", self.import_export_map.imports_by_library.len())?;
+            writeln!(
+                f,
+                "  │ Imports:        {:>8}               │",
+                self.import_export_map.import_count
+            )?;
+            writeln!(
+                f,
+                "  │ Exports:        {:>8}               │",
+                self.import_export_map.export_count
+            )?;
+            writeln!(
+                f,
+                "  │ Libraries:      {:>8}               │",
+                self.import_export_map.imports_by_library.len()
+            )?;
             if !self.import_export_map.memory_manipulation_apis.is_empty() {
-                writeln!(f, "  │ Memory APIs:    {:>8}               │", self.import_export_map.memory_manipulation_apis.len())?;
+                writeln!(
+                    f,
+                    "  │ Memory APIs:    {:>8}               │",
+                    self.import_export_map.memory_manipulation_apis.len()
+                )?;
             }
             if !self.import_export_map.process_injection_apis.is_empty() {
-                writeln!(f, "  │ Injection APIs: {:>8} ⚠             │", self.import_export_map.process_injection_apis.len())?;
+                writeln!(
+                    f,
+                    "  │ Injection APIs: {:>8} ⚠             │",
+                    self.import_export_map.process_injection_apis.len()
+                )?;
             }
             if !self.import_export_map.network_apis.is_empty() {
-                writeln!(f, "  │ Network APIs:   {:>8}               │", self.import_export_map.network_apis.len())?;
+                writeln!(
+                    f,
+                    "  │ Network APIs:   {:>8}               │",
+                    self.import_export_map.network_apis.len()
+                )?;
             }
             writeln!(f, "  └────────────────────────────────────────┘")?;
             writeln!(f)?;
@@ -654,25 +817,92 @@ impl fmt::Display for ArchitectureMap {
 
         // Capabilities
         writeln!(f, "  ┌─ Capabilities ──────────────────────────┐")?;
-        writeln!(f, "  │ Requires kernel:  {}                    │",
-            if self.capabilities.requires_kernel() { "YES ⚠" } else { "no    " })?;
-        writeln!(f, "  │ Pure userspace:   {}                    │",
-            if self.capabilities.is_pure_userspace() { "yes ✓ " } else { "NO    " })?;
-        writeln!(f, "  │ IO access:        {}                    │",
-            if self.capabilities.io_port_access { "YES ⚠" } else { "no    " })?;
-        writeln!(f, "  │ CR access:        {}                    │",
-            if self.capabilities.control_register_access { "YES ⚠" } else { "no    " })?;
-        writeln!(f, "  │ MSR access:       {}                    │",
-            if self.capabilities.msr_access { "YES ⚠" } else { "no    " })?;
-        writeln!(f, "  │ INT control:      {}                    │",
-            if self.capabilities.interrupt_control { "YES ⚠" } else { "no    " })?;
-        writeln!(f, "  │ Desc tables:      {}                    │",
-            if self.capabilities.descriptor_table_access { "YES ⚠" } else { "no    " })?;
-        writeln!(f, "  │ Struct clean:     {}                    │",
-            if self.integrity.is_clean() { "yes ✓ " } else { "NO ⚠ " })?;
-        writeln!(f, "  │ Import clean:     {}                    │",
-            if self.import_export_map.is_clean() { "yes ✓ " } else { "NO ⚠ " })?;
-        writeln!(f, "  │ Active caps:      {:>3}                    │", self.capabilities.active_count())?;
+        writeln!(
+            f,
+            "  │ Requires kernel:  {}                    │",
+            if self.capabilities.requires_kernel() {
+                "YES ⚠"
+            } else {
+                "no    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ Pure userspace:   {}                    │",
+            if self.capabilities.is_pure_userspace() {
+                "yes ✓ "
+            } else {
+                "NO    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ IO access:        {}                    │",
+            if self.capabilities.io_port_access {
+                "YES ⚠"
+            } else {
+                "no    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ CR access:        {}                    │",
+            if self.capabilities.control_register_access {
+                "YES ⚠"
+            } else {
+                "no    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ MSR access:       {}                    │",
+            if self.capabilities.msr_access {
+                "YES ⚠"
+            } else {
+                "no    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ INT control:      {}                    │",
+            if self.capabilities.interrupt_control {
+                "YES ⚠"
+            } else {
+                "no    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ Desc tables:      {}                    │",
+            if self.capabilities.descriptor_table_access {
+                "YES ⚠"
+            } else {
+                "no    "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ Struct clean:     {}                    │",
+            if self.integrity.is_clean() {
+                "yes ✓ "
+            } else {
+                "NO ⚠ "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ Import clean:     {}                    │",
+            if self.import_export_map.is_clean() {
+                "yes ✓ "
+            } else {
+                "NO ⚠ "
+            }
+        )?;
+        writeln!(
+            f,
+            "  │ Active caps:      {:>3}                    │",
+            self.capabilities.active_count()
+        )?;
         writeln!(f, "  └────────────────────────────────────────┘")?;
         writeln!(f, "═══════════════════════════════════════════════")?;
         Ok(())

@@ -55,7 +55,7 @@ impl CpuMode {
     /// En modo protegido, 0x66 cambia a operandos de 16-bit.
     pub fn operand_size_prefix(&self) -> Option<u8> {
         match self {
-            CpuMode::Real16 => Some(0x66),     // Override a 32-bit en real mode
+            CpuMode::Real16 => Some(0x66),      // Override a 32-bit en real mode
             CpuMode::Protected32 => Some(0x66), // Override a 16-bit en protected mode
             CpuMode::Long64 => None,            // REX prefix maneja todo
         }
@@ -64,7 +64,7 @@ impl CpuMode {
     /// Retorna el prefijo de address size override para este modo.
     pub fn address_size_prefix(&self) -> Option<u8> {
         match self {
-            CpuMode::Real16 => Some(0x67),     // Override a 32-bit addressing
+            CpuMode::Real16 => Some(0x67),      // Override a 32-bit addressing
             CpuMode::Protected32 => Some(0x67), // Override a 16-bit addressing
             CpuMode::Long64 => None,
         }
@@ -262,21 +262,21 @@ impl RealModeCodegen {
     /// Imprime string null-terminated apuntada por SI
     pub fn bios_print_routine(&mut self) {
         let start = self.pos();
-        self.lodsb();           // al = [si++]
-        self.or_al_al();        // test al, al
-        self.jz_short(4);       // jz done (skip 4 bytes: mov ah + int + jmp)
+        self.lodsb(); // al = [si++]
+        self.or_al_al(); // test al, al
+        self.jz_short(4); // jz done (skip 4 bytes: mov ah + int + jmp)
         self.mov_ah_imm8(0x0E); // ah = 0x0E (teletype)
-        self.int(0x10);         // BIOS video interrupt
+        self.int(0x10); // BIOS video interrupt
         self.jmp_short(-((self.pos() - start + 2) as i8)); // loop back
-        // done: (falls through here)
+                                                           // done: (falls through here)
     }
 
     /// Genera secuencia de habilitación de A20 gate via puerto 0x92
     pub fn enable_a20_fast(&mut self) {
-        self.in_al_imm8(0x92);       // in al, 0x92
-        self.emit(&[0x0C, 0x02]);    // or al, 2
-        self.emit(&[0x24, 0xFE]);    // and al, 0xFE (no reset)
-        self.out_imm8_al(0x92);      // out 0x92, al
+        self.in_al_imm8(0x92); // in al, 0x92
+        self.emit(&[0x0C, 0x02]); // or al, 2
+        self.emit(&[0x24, 0xFE]); // and al, 0xFE (no reset)
+        self.out_imm8_al(0x92); // out 0x92, al
     }
 
     /// Resuelve saltos pendientes y retorna el código final.
@@ -345,13 +345,19 @@ impl ProtectedModeCodegen {
     }
 
     /// CLI
-    pub fn cli(&mut self) { self.emit(&[0xFA]); }
+    pub fn cli(&mut self) {
+        self.emit(&[0xFA]);
+    }
 
     /// STI
-    pub fn sti(&mut self) { self.emit(&[0xFB]); }
+    pub fn sti(&mut self) {
+        self.emit(&[0xFB]);
+    }
 
     /// HLT
-    pub fn hlt(&mut self) { self.emit(&[0xF4]); }
+    pub fn hlt(&mut self) {
+        self.emit(&[0xF4]);
+    }
 
     /// LGDT [mem32]
     pub fn lgdt(&mut self, addr: u32) {
@@ -498,7 +504,7 @@ impl InterruptHandlerGen {
                 code.push(0x59); // pop rcx
                 code.push(0x5B); // pop rbx
                 code.push(0x58); // pop rax
-                // IRETQ (REX.W + IRET)
+                                 // IRETQ (REX.W + IRET)
                 code.extend_from_slice(&[0x48, 0xCF]);
                 code
             }
@@ -535,8 +541,8 @@ impl InterruptHandlerGen {
 #[derive(Debug, Clone)]
 pub struct PackedField {
     pub name: String,
-    pub size: usize,    // Tamaño en bytes
-    pub offset: usize,  // Offset desde el inicio del struct
+    pub size: usize,   // Tamaño en bytes
+    pub offset: usize, // Offset desde el inicio del struct
 }
 
 /// Struct con layout exacto en memoria (sin padding).
@@ -617,8 +623,12 @@ impl GdtEntry {
     /// Crea una entrada null (requerida como primera entrada).
     pub fn null() -> Self {
         Self {
-            limit_low: 0, base_low: 0, base_mid: 0,
-            access: 0, flags_limit: 0, base_high: 0,
+            limit_low: 0,
+            base_low: 0,
+            base_mid: 0,
+            access: 0,
+            flags_limit: 0,
+            base_high: 0,
         }
     }
 
@@ -628,7 +638,7 @@ impl GdtEntry {
             limit_low: 0xFFFF,
             base_low: 0x0000,
             base_mid: 0x00,
-            access: 0x9A,     // Present, Ring 0, Code, Execute/Read
+            access: 0x9A,      // Present, Ring 0, Code, Execute/Read
             flags_limit: 0xAF, // Long mode, 4KB granularity, limit[19:16]=0xF
             base_high: 0x00,
         }
@@ -640,7 +650,7 @@ impl GdtEntry {
             limit_low: 0xFFFF,
             base_low: 0x0000,
             base_mid: 0x00,
-            access: 0x92,     // Present, Ring 0, Data, Read/Write
+            access: 0x92,      // Present, Ring 0, Data, Read/Write
             flags_limit: 0xCF, // 32-bit, 4KB granularity
             base_high: 0x00,
         }
@@ -652,7 +662,7 @@ impl GdtEntry {
             limit_low: 0xFFFF,
             base_low: 0x0000,
             base_mid: 0x00,
-            access: 0xFA,     // Present, Ring 3, Code, Execute/Read
+            access: 0xFA,      // Present, Ring 3, Code, Execute/Read
             flags_limit: 0xAF, // Long mode
             base_high: 0x00,
         }
@@ -664,7 +674,7 @@ impl GdtEntry {
             limit_low: 0xFFFF,
             base_low: 0x0000,
             base_mid: 0x00,
-            access: 0xF2,     // Present, Ring 3, Data, Read/Write
+            access: 0xF2, // Present, Ring 3, Data, Read/Write
             flags_limit: 0xCF,
             base_high: 0x00,
         }
@@ -676,7 +686,7 @@ impl GdtEntry {
             limit_low: 0xFFFF,
             base_low: 0x0000,
             base_mid: 0x00,
-            access: 0x9A,     // Present, Ring 0, Code, Execute/Read
+            access: 0x9A,      // Present, Ring 0, Code, Execute/Read
             flags_limit: 0xCF, // 32-bit, 4KB granularity
             base_high: 0x00,
         }
@@ -719,20 +729,20 @@ impl GdtGenerator {
     /// Genera la GDT estándar para un OS (null + kernel code + kernel data + user code + user data).
     pub fn generate_standard_gdt() -> Self {
         let mut gdt = Self::new();
-        gdt.add_entry(GdtEntry::null());          // 0x00: Null
+        gdt.add_entry(GdtEntry::null()); // 0x00: Null
         gdt.add_entry(GdtEntry::kernel_code_64()); // 0x08: Kernel Code 64
-        gdt.add_entry(GdtEntry::kernel_data());    // 0x10: Kernel Data
-        gdt.add_entry(GdtEntry::user_code_64());   // 0x18: User Code 64
-        gdt.add_entry(GdtEntry::user_data());      // 0x20: User Data
+        gdt.add_entry(GdtEntry::kernel_data()); // 0x10: Kernel Data
+        gdt.add_entry(GdtEntry::user_code_64()); // 0x18: User Code 64
+        gdt.add_entry(GdtEntry::user_data()); // 0x20: User Data
         gdt
     }
 
     /// Genera la GDT para boot (null + code32 + data).
     pub fn generate_boot_gdt() -> Self {
         let mut gdt = Self::new();
-        gdt.add_entry(GdtEntry::null());           // 0x00: Null
+        gdt.add_entry(GdtEntry::null()); // 0x00: Null
         gdt.add_entry(GdtEntry::kernel_code_32()); // 0x08: Code 32-bit
-        gdt.add_entry(GdtEntry::kernel_data());    // 0x10: Data
+        gdt.add_entry(GdtEntry::kernel_data()); // 0x10: Data
         gdt
     }
 
@@ -773,21 +783,26 @@ impl GdtGenerator {
 /// Entrada de la IDT para modo largo (64-bit) — 16 bytes.
 #[derive(Debug, Clone, Copy)]
 pub struct IdtEntry64 {
-    pub offset_low: u16,    // Bits 0-15 del handler address
-    pub selector: u16,      // Code segment selector (GDT)
-    pub ist: u8,            // Interrupt Stack Table index (0 = no IST)
-    pub type_attr: u8,      // Type + DPL + Present
-    pub offset_mid: u16,    // Bits 16-31 del handler address
-    pub offset_high: u32,   // Bits 32-63 del handler address
-    pub reserved: u32,      // Must be 0
+    pub offset_low: u16,  // Bits 0-15 del handler address
+    pub selector: u16,    // Code segment selector (GDT)
+    pub ist: u8,          // Interrupt Stack Table index (0 = no IST)
+    pub type_attr: u8,    // Type + DPL + Present
+    pub offset_mid: u16,  // Bits 16-31 del handler address
+    pub offset_high: u32, // Bits 32-63 del handler address
+    pub reserved: u32,    // Must be 0
 }
 
 impl IdtEntry64 {
     /// Crea una entrada IDT vacía (not present).
     pub fn empty() -> Self {
         Self {
-            offset_low: 0, selector: 0, ist: 0, type_attr: 0,
-            offset_mid: 0, offset_high: 0, reserved: 0,
+            offset_low: 0,
+            selector: 0,
+            ist: 0,
+            type_attr: 0,
+            offset_mid: 0,
+            offset_high: 0,
+            reserved: 0,
         }
     }
 
@@ -888,12 +903,12 @@ impl IdtGenerator {
 // ============================================================
 
 /// Flags de página x86-64.
-pub const PAGE_PRESENT: u64    = 1 << 0;
-pub const PAGE_WRITABLE: u64   = 1 << 1;
-pub const PAGE_USER: u64       = 1 << 2;
+pub const PAGE_PRESENT: u64 = 1 << 0;
+pub const PAGE_WRITABLE: u64 = 1 << 1;
+pub const PAGE_USER: u64 = 1 << 2;
 pub const PAGE_WRITE_THROUGH: u64 = 1 << 3;
 pub const PAGE_CACHE_DISABLE: u64 = 1 << 4;
-pub const PAGE_HUGE: u64       = 1 << 7;  // 2MB page (PD level) or 1GB page (PDPT level)
+pub const PAGE_HUGE: u64 = 1 << 7; // 2MB page (PD level) or 1GB page (PDPT level)
 pub const PAGE_NO_EXECUTE: u64 = 1 << 63;
 
 /// Generador de tablas de paginación x86-64.
@@ -1108,7 +1123,7 @@ impl RustKernelBridge {
              /* Auto-generated — Do not edit */\n\n\
              #ifndef ADEAD_KERNEL_H\n\
              #define ADEAD_KERNEL_H\n\n\
-             #include <stdint.h>\n\n"
+             #include <stdint.h>\n\n",
         );
 
         header.push_str("/* Functions exported by ADead-BIB */\n");

@@ -2,55 +2,77 @@
 // Integer Overflow/Underflow Detection
 // ============================================================
 
-use crate::ast::{Program, Stmt, Expr, BinOp};
-use super::report::{UBReport, UBSeverity, UBKind};
+use super::report::{UBKind, UBReport, UBSeverity};
+use crate::ast::{BinOp, Expr, Program, Stmt};
 
 pub fn analyze_overflow(program: &Program) -> Vec<UBReport> {
     let mut reports = Vec::new();
 
     for func in &program.functions {
+        let mut current_line = 0;
         for stmt in &func.body {
-            check_stmt_overflow(stmt, &func.name, &mut reports);
+            check_stmt_overflow(stmt, &func.name, &mut reports, &mut current_line);
         }
     }
 
+    let mut current_line = 0;
     for stmt in &program.statements {
-        check_stmt_overflow(stmt, "main", &mut reports);
+        check_stmt_overflow(stmt, "main", &mut reports, &mut current_line);
     }
 
     reports
 }
 
-fn check_stmt_overflow(stmt: &Stmt, func_name: &str, reports: &mut Vec<UBReport>) {
+fn check_stmt_overflow(
+    stmt: &Stmt,
+    func_name: &str,
+    reports: &mut Vec<UBReport>,
+    current_line: &mut usize,
+) {
     match stmt {
+        Stmt::LineMarker(l) => {
+            *current_line = *l;
+        }
         Stmt::Assign { value, .. } => {
-            check_expr_overflow(value, func_name, reports);
+            check_expr_overflow(value, func_name, reports, current_line);
         }
-        Stmt::VarDecl { value: Some(val), .. } => {
-            check_expr_overflow(val, func_name, reports);
+        Stmt::VarDecl {
+            value: Some(val), ..
+        } => {
+            check_expr_overflow(val, func_name, reports, current_line);
         }
-        Stmt::If { condition, then_body, else_body, .. } => {
-            check_expr_overflow(condition, func_name, reports);
+        Stmt::If {
+            condition,
+            then_body,
+            else_body,
+            ..
+        } => {
+            check_expr_overflow(condition, func_name, reports, current_line);
             for s in then_body {
-                check_stmt_overflow(s, func_name, reports);
+                check_stmt_overflow(s, func_name, reports, current_line);
             }
             if let Some(eb) = else_body {
                 for s in eb {
-                    check_stmt_overflow(s, func_name, reports);
+                    check_stmt_overflow(s, func_name, reports, current_line);
                 }
             }
         }
         Stmt::While { condition, body } => {
-            check_expr_overflow(condition, func_name, reports);
+            check_expr_overflow(condition, func_name, reports, current_line);
             for s in body {
-                check_stmt_overflow(s, func_name, reports);
+                check_stmt_overflow(s, func_name, reports, current_line);
             }
         }
         _ => {}
     }
 }
 
-fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>) {
+fn check_expr_overflow(
+    expr: &Expr,
+    func_name: &str,
+    reports: &mut Vec<UBReport>,
+    current_line: &mut usize,
+) {
     match expr {
         Expr::BinaryOp { op, left, right } => {
             // Detectar overflow en operaciones aritméticas
@@ -64,8 +86,10 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                                     UBKind::IntegerOverflow,
                                     format!("Integer overflow in addition: {} + {}", l, r),
                                 )
-                                .with_location(func_name.to_string(), 0)
-                                .with_suggestion("Use checked arithmetic or wider type".to_string())
+                                .with_location(func_name.to_string(), *current_line)
+                                .with_suggestion(
+                                    "Use checked arithmetic or wider type".to_string(),
+                                ),
                             );
                         }
                     }
@@ -77,7 +101,7 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                                     UBKind::IntegerUnderflow,
                                     format!("Integer underflow in subtraction: {} - {}", l, r),
                                 )
-                                .with_location(func_name.to_string(), 0)
+                                .with_location(func_name.to_string(), *current_line),
                             );
                         }
                     }
@@ -89,7 +113,7 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                                     UBKind::IntegerOverflow,
                                     format!("Integer overflow in multiplication: {} * {}", l, r),
                                 )
-                                .with_location(func_name.to_string(), 0)
+                                .with_location(func_name.to_string(), *current_line),
                             );
                         }
                     }
@@ -101,8 +125,8 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                                     UBKind::DivisionByZero,
                                     format!("Division by zero: {} / 0", l),
                                 )
-                                .with_location(func_name.to_string(), 0)
-                                .with_suggestion("Add zero check before division".to_string())
+                                .with_location(func_name.to_string(), *current_line)
+                                .with_suggestion("Add zero check before division".to_string()),
                             );
                         }
                     }
@@ -114,15 +138,15 @@ fn check_expr_overflow(expr: &Expr, func_name: &str, reports: &mut Vec<UBReport>
                                     UBKind::DivisionByZero,
                                     format!("Modulo by zero: {} % 0", l),
                                 )
-                                .with_location(func_name.to_string(), 0)
+                                .with_location(func_name.to_string(), *current_line),
                             );
                         }
                     }
                     _ => {}
                 }
             }
-            check_expr_overflow(left, func_name, reports);
-            check_expr_overflow(right, func_name, reports);
+            check_expr_overflow(left, func_name, reports, current_line);
+            check_expr_overflow(right, func_name, reports, current_line);
         }
         _ => {}
     }

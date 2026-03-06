@@ -2,8 +2,8 @@
 // Lifetime Analysis — Use-After-Free Detection
 // ============================================================
 
-use crate::ast::{Program, Stmt, Expr};
-use super::report::{UBReport, UBSeverity, UBKind};
+use super::report::{UBKind, UBReport, UBSeverity};
+use crate::ast::{Expr, Program, Stmt};
 use std::collections::HashSet;
 
 pub fn analyze_lifetimes(program: &Program) -> Vec<UBReport> {
@@ -53,7 +53,7 @@ impl LifetimeAnalyzer {
                                 format!("Double free of variable '{}'", name),
                             )
                             .with_location(self.func_name.clone(), 0)
-                            .with_suggestion("Remove duplicate free() call".to_string())
+                            .with_suggestion("Remove duplicate free() call".to_string()),
                         );
                     } else {
                         self.freed_vars.insert(name.clone());
@@ -69,7 +69,7 @@ impl LifetimeAnalyzer {
                             format!("Use of freed variable '{}'", name),
                         )
                         .with_location(self.func_name.clone(), 0)
-                        .with_suggestion("Do not use variable after free()".to_string())
+                        .with_suggestion("Do not use variable after free()".to_string()),
                     );
                 }
                 self.check_expr_use(value);
@@ -78,7 +78,12 @@ impl LifetimeAnalyzer {
                 self.check_expr_use(pointer);
                 self.check_expr_use(value);
             }
-            Stmt::If { condition, then_body, else_body, .. } => {
+            Stmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 self.check_expr_use(condition);
                 for s in then_body {
                     self.check_stmt(s);
@@ -109,7 +114,7 @@ impl LifetimeAnalyzer {
                             UBKind::UseAfterFree,
                             format!("Use of freed variable '{}'", name),
                         )
-                        .with_location(self.func_name.clone(), 0)
+                        .with_location(self.func_name.clone(), 0),
                     );
                 }
             }

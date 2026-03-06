@@ -61,32 +61,52 @@ impl StandardCppAttr {
     /// Parse a standard C++ attribute from the `[[X]]` content.
     pub fn parse(text: &str) -> Option<Self> {
         let text = text.trim();
-        if text == "noreturn"             { return Some(Self::NoReturn); }
-        if text == "carries_dependency"   { return Some(Self::CarriesDependency); }
-        if text == "maybe_unused"         { return Some(Self::MaybeUnused); }
-        if text == "fallthrough"          { return Some(Self::Fallthrough); }
-        if text == "likely"               { return Some(Self::Likely); }
-        if text == "unlikely"             { return Some(Self::Unlikely); }
-        if text == "no_unique_address"    { return Some(Self::NoUniqueAddress); }
+        if text == "noreturn" {
+            return Some(Self::NoReturn);
+        }
+        if text == "carries_dependency" {
+            return Some(Self::CarriesDependency);
+        }
+        if text == "maybe_unused" {
+            return Some(Self::MaybeUnused);
+        }
+        if text == "fallthrough" {
+            return Some(Self::Fallthrough);
+        }
+        if text == "likely" {
+            return Some(Self::Likely);
+        }
+        if text == "unlikely" {
+            return Some(Self::Unlikely);
+        }
+        if text == "no_unique_address" {
+            return Some(Self::NoUniqueAddress);
+        }
         if text.starts_with("deprecated") {
-            let msg = text.trim_start_matches("deprecated")
-                         .trim()
-                         .trim_start_matches('(')
-                         .trim_end_matches(')')
-                         .trim_matches('"');
-            return Some(Self::Deprecated(
-                if msg.is_empty() { None } else { Some(msg.to_string()) }
-            ));
+            let msg = text
+                .trim_start_matches("deprecated")
+                .trim()
+                .trim_start_matches('(')
+                .trim_end_matches(')')
+                .trim_matches('"');
+            return Some(Self::Deprecated(if msg.is_empty() {
+                None
+            } else {
+                Some(msg.to_string())
+            }));
         }
         if text.starts_with("nodiscard") {
-            let msg = text.trim_start_matches("nodiscard")
-                         .trim()
-                         .trim_start_matches('(')
-                         .trim_end_matches(')')
-                         .trim_matches('"');
-            return Some(Self::NoDiscard(
-                if msg.is_empty() { None } else { Some(msg.to_string()) }
-            ));
+            let msg = text
+                .trim_start_matches("nodiscard")
+                .trim()
+                .trim_start_matches('(')
+                .trim_end_matches(')')
+                .trim_matches('"');
+            return Some(Self::NoDiscard(if msg.is_empty() {
+                None
+            } else {
+                Some(msg.to_string())
+            }));
         }
         if text.starts_with("assume(") {
             let expr = text.trim_start_matches("assume(").trim_end_matches(')');
@@ -165,32 +185,32 @@ impl VendorCppAttr {
         let nm = name.to_lowercase();
         match ns.as_str() {
             "gnu" => match nm.as_str() {
-                "always_inline"         => Self::AlwaysInline,
-                "noinline"              => Self::NoInline,
-                "cold"                  => Self::Cold,
-                "hot"                   => Self::Hot,
-                "pure"                  => Self::Pure,
-                "const"                 => Self::Const,
-                "flatten"               => Self::Flatten,
-                "malloc"                => Self::Malloc,
-                "packed"                => Self::Packed,
-                "weak"                  => Self::Weak,
-                other                   => Self::Unknown(format!("gnu::{}", other)),
+                "always_inline" => Self::AlwaysInline,
+                "noinline" => Self::NoInline,
+                "cold" => Self::Cold,
+                "hot" => Self::Hot,
+                "pure" => Self::Pure,
+                "const" => Self::Const,
+                "flatten" => Self::Flatten,
+                "malloc" => Self::Malloc,
+                "packed" => Self::Packed,
+                "weak" => Self::Weak,
+                other => Self::Unknown(format!("gnu::{}", other)),
             },
             "clang" => match nm.as_str() {
-                "always_inline"         => Self::AlwaysInline,
-                "noinline"              => Self::NoInline,
-                "vectorize"             => Self::Vectorize,
-                "loop_unroll"           => Self::LoopUnroll,
-                "noescape"              => Self::NoEscape,
-                "no_sanitize_address"   => Self::NoSanitizeAddress,
-                other                   => Self::Unknown(format!("clang::{}", other)),
+                "always_inline" => Self::AlwaysInline,
+                "noinline" => Self::NoInline,
+                "vectorize" => Self::Vectorize,
+                "loop_unroll" => Self::LoopUnroll,
+                "noescape" => Self::NoEscape,
+                "no_sanitize_address" => Self::NoSanitizeAddress,
+                other => Self::Unknown(format!("clang::{}", other)),
             },
             "msvc" => match nm.as_str() {
-                "forceinline"           => Self::MsvcForceInline,
-                "noinline"              => Self::MsvcNoInline,
-                "intrinsic"             => Self::MsvcIntrinsic,
-                other                   => Self::Unknown(format!("msvc::{}", other)),
+                "forceinline" => Self::MsvcForceInline,
+                "noinline" => Self::MsvcNoInline,
+                "intrinsic" => Self::MsvcIntrinsic,
+                other => Self::Unknown(format!("msvc::{}", other)),
             },
             _ => Self::Unknown(format!("{}::{}", namespace, name)),
         }
@@ -228,8 +248,11 @@ pub fn parse_cpp_attribute(text: &str) -> CppAttr {
 
     // Check for namespace prefix: "gnu::pure", "clang::noinline", etc.
     if let Some(pos) = text.find("::") {
-        let ns   = &text[..pos];
-        let name = text[pos + 2..].split('(').next().unwrap_or(&text[pos + 2..]);
+        let ns = &text[..pos];
+        let name = text[pos + 2..]
+            .split('(')
+            .next()
+            .unwrap_or(&text[pos + 2..]);
         return CppAttr::Vendor(VendorCppAttr::parse(ns, name));
     }
 
@@ -245,7 +268,7 @@ pub fn parse_cpp_attribute(text: &str) -> CppAttr {
 pub fn attr_implies_no_return(attr: &CppAttr) -> bool {
     match attr {
         CppAttr::Standard(s) => s.implies_no_return(),
-        _                    => false,
+        _ => false,
     }
 }
 
@@ -253,7 +276,7 @@ pub fn attr_implies_no_return(attr: &CppAttr) -> bool {
 pub fn attr_forces_inline(attr: &CppAttr) -> bool {
     match attr {
         CppAttr::Vendor(v) => v.forces_inlining(),
-        _                  => false,
+        _ => false,
     }
 }
 
@@ -261,6 +284,6 @@ pub fn attr_forces_inline(attr: &CppAttr) -> bool {
 pub fn attr_blocks_inline(attr: &CppAttr) -> bool {
     match attr {
         CppAttr::Vendor(v) => v.blocks_inlining(),
-        _                  => false,
+        _ => false,
     }
 }

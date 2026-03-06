@@ -20,15 +20,15 @@
 // Email: eddi.salazar.dev@gmail.com
 // ============================================================
 
+pub mod analyzer;
 pub mod arch_map;
+pub mod binary_loader;
 pub mod capability;
 pub mod policy;
-pub mod analyzer;
-pub mod binary_loader;
 
 // Re-exports — API ergonómica
-pub use analyzer::{BinaryGuardian, AnalysisResult};
-pub use arch_map::{ArchitectureMap, InstructionClass, Capabilities};
+pub use analyzer::{AnalysisResult, BinaryGuardian};
+pub use arch_map::{ArchitectureMap, Capabilities, InstructionClass};
+pub use binary_loader::{BinaryInfo, BinaryLoader, SectionInfo, SectionKind};
 pub use capability::CapabilityMapper;
-pub use policy::{PolicyEngine, SecurityPolicy, SecurityLevel, Verdict, Violation, ViolationType};
-pub use binary_loader::{BinaryLoader, BinaryInfo, SectionInfo, SectionKind};
+pub use policy::{PolicyEngine, SecurityLevel, SecurityPolicy, Verdict, Violation, ViolationType};

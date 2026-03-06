@@ -16,8 +16,8 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use std::fmt;
 use super::arch_map::*;
+use std::fmt;
 
 // ============================================================
 // Security Level (mapea a CPU rings)
@@ -561,14 +561,19 @@ impl PolicyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::isa::*;
     use crate::bg::capability::CapabilityMapper;
+    use crate::isa::*;
 
     #[test]
     fn test_safe_approved() {
         let ops = vec![
-            ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RBP), src: Operand::Reg(Reg::RSP) },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP),
+            },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBP),
+                src: Operand::Reg(Reg::RSP),
+            },
             ADeadOp::Ret,
         ];
         let map = CapabilityMapper::analyze(&ops);
@@ -586,7 +591,14 @@ mod tests {
 
     #[test]
     fn test_kernel_approved_for_kernel() {
-        let ops = vec![ADeadOp::Cli, ADeadOp::MovToCr { cr: 0, src: Reg::RAX }, ADeadOp::Wrmsr];
+        let ops = vec![
+            ADeadOp::Cli,
+            ADeadOp::MovToCr {
+                cr: 0,
+                src: Reg::RAX,
+            },
+            ADeadOp::Wrmsr,
+        ];
         let map = CapabilityMapper::analyze(&ops);
         let verdict = PolicyEngine::evaluate(&map, &SecurityPolicy::kernel());
         assert!(verdict.is_approved());
@@ -594,11 +606,23 @@ mod tests {
 
     #[test]
     fn test_infer_levels() {
-        let user_ops = vec![ADeadOp::Add { dst: Operand::Reg(Reg::RAX), src: Operand::Imm8(1) }];
-        assert_eq!(PolicyEngine::infer_minimum_level(&CapabilityMapper::analyze(&user_ops)), SecurityLevel::User);
+        let user_ops = vec![ADeadOp::Add {
+            dst: Operand::Reg(Reg::RAX),
+            src: Operand::Imm8(1),
+        }];
+        assert_eq!(
+            PolicyEngine::infer_minimum_level(&CapabilityMapper::analyze(&user_ops)),
+            SecurityLevel::User
+        );
 
-        let kern_ops = vec![ADeadOp::MovToCr { cr: 3, src: Reg::RAX }];
-        assert_eq!(PolicyEngine::infer_minimum_level(&CapabilityMapper::analyze(&kern_ops)), SecurityLevel::Kernel);
+        let kern_ops = vec![ADeadOp::MovToCr {
+            cr: 3,
+            src: Reg::RAX,
+        }];
+        assert_eq!(
+            PolicyEngine::infer_minimum_level(&CapabilityMapper::analyze(&kern_ops)),
+            SecurityLevel::Kernel
+        );
     }
 
     #[test]
@@ -613,8 +637,14 @@ mod tests {
 
         let verdict = PolicyEngine::evaluate(&map, &SecurityPolicy::user());
         assert!(verdict.is_denied());
-        assert!(verdict.violations().iter().any(|v| v.kind == ViolationType::InvalidEntryPoint));
-        assert!(verdict.violations().iter().any(|v| v.kind == ViolationType::OverlappingSections));
+        assert!(verdict
+            .violations()
+            .iter()
+            .any(|v| v.kind == ViolationType::InvalidEntryPoint));
+        assert!(verdict
+            .violations()
+            .iter()
+            .any(|v| v.kind == ViolationType::OverlappingSections));
     }
 
     #[test]
@@ -623,11 +653,16 @@ mod tests {
         let mut map = CapabilityMapper::analyze(&ops);
 
         // Simular import de API de inyección
-        map.import_export_map.process_injection_apis.push("WriteProcessMemory".into());
+        map.import_export_map
+            .process_injection_apis
+            .push("WriteProcessMemory".into());
 
         let verdict = PolicyEngine::evaluate(&map, &SecurityPolicy::user());
         assert!(verdict.is_denied());
-        assert!(verdict.violations().iter().any(|v| v.kind == ViolationType::ProcessInjectionImports));
+        assert!(verdict
+            .violations()
+            .iter()
+            .any(|v| v.kind == ViolationType::ProcessInjectionImports));
     }
 
     #[test]
@@ -638,7 +673,9 @@ mod tests {
         // Even with structural issues and injection APIs, kernel allows everything
         map.integrity.entry_point_checked = true;
         map.integrity.entry_point_valid = false;
-        map.import_export_map.process_injection_apis.push("WriteProcessMemory".into());
+        map.import_export_map
+            .process_injection_apis
+            .push("WriteProcessMemory".into());
 
         let verdict = PolicyEngine::evaluate(&map, &SecurityPolicy::kernel());
         assert!(verdict.is_approved());

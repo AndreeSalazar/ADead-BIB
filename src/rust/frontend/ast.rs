@@ -2,8 +2,8 @@
 // Lenguaje de uso general con OOP - Binario + HEX
 
 // Use unified type system
-pub use super::types::Type;
 pub use super::types::RegSize;
+pub use super::types::Type;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -433,6 +433,10 @@ pub enum Stmt {
         count: usize,
         byte: u8,
     },
+
+    // ========== DEBUGINFO (v5.0) ==========
+    /// Line tracking from parser for UB detector
+    LineMarker(usize),
 }
 
 /// Case de switch
@@ -461,8 +465,8 @@ pub enum CompoundOp {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
-    pub param_type: Type,              // Unified type (always present)
-    pub default_value: Option<Expr>,   // Default value
+    pub param_type: Type,            // Unified type (always present)
+    pub default_value: Option<Expr>, // Default value
 }
 
 impl Param {
@@ -632,7 +636,7 @@ pub enum CpuModeAttr {
     Real16,      // 16-bit real mode (boot sector)
     Protected32, // 32-bit protected mode
     #[default]
-    Long64,      // 64-bit long mode (default)
+    Long64, // 64-bit long mode (default)
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

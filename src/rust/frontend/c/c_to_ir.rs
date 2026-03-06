@@ -14,8 +14,8 @@
 
 use super::c_ast::*;
 use crate::frontend::ast::{
-    self, BinOp, BitwiseOp, CmpOp, Expr, Function, FunctionAttributes,
-    Param, Program, ProgramAttributes, Stmt, Struct, StructField, UnaryOp,
+    self, BinOp, BitwiseOp, CmpOp, Expr, Function, FunctionAttributes, Param, Program,
+    ProgramAttributes, Stmt, Struct, StructField, UnaryOp,
 };
 use crate::frontend::types::Type;
 
@@ -75,16 +75,25 @@ impl CToIR {
 
         for decl in &unit.declarations {
             match decl {
-                CTopLevel::FunctionDef { return_type, name, params, body } => {
+                CTopLevel::FunctionDef {
+                    return_type,
+                    name,
+                    params,
+                    body,
+                } => {
                     let func = self.convert_function(return_type, name, params, body)?;
                     program.functions.push(func);
                 }
                 CTopLevel::FunctionDecl { .. } => {
                     // Prototypes — skip (resolved at link time)
                 }
-                CTopLevel::GlobalVar { type_spec, declarators } => {
+                CTopLevel::GlobalVar {
+                    type_spec,
+                    declarators,
+                } => {
                     for decl_item in declarators {
-                        let var_type = self.resolve_declarator_type(type_spec, &decl_item.derived_type);
+                        let var_type =
+                            self.resolve_declarator_type(type_spec, &decl_item.derived_type);
                         let init_val = if let Some(ref init) = decl_item.initializer {
                             Some(self.convert_expr(init)?)
                         } else {
@@ -136,7 +145,10 @@ impl CToIR {
                     Type::Named(name.clone())
                 }
             }
-            CType::Function { return_type, params } => {
+            CType::Function {
+                return_type,
+                params,
+            } => {
                 let ret = self.convert_type(return_type);
                 let args: Vec<Type> = params.iter().map(|p| self.convert_type(p)).collect();
                 Type::Function(args, Box::new(ret))
@@ -151,11 +163,13 @@ impl CToIR {
         match derived {
             None => base_type,
             Some(CDerivedType::Pointer(inner)) => {
-                let inner_type = self.resolve_declarator_type(base, &inner.as_ref().map(|b| *b.clone()));
+                let inner_type =
+                    self.resolve_declarator_type(base, &inner.as_ref().map(|b| *b.clone()));
                 Type::Pointer(Box::new(inner_type))
             }
             Some(CDerivedType::Array(size, inner)) => {
-                let inner_type = self.resolve_declarator_type(base, &inner.as_ref().map(|b| *b.clone()));
+                let inner_type =
+                    self.resolve_declarator_type(base, &inner.as_ref().map(|b| *b.clone()));
                 Type::Array(Box::new(inner_type), *size)
             }
         }
@@ -206,7 +220,11 @@ impl CToIR {
     fn collect_static_locals(&self, stmts: &[CStmt], globals: &mut Vec<Stmt>) {
         for stmt in stmts {
             match stmt {
-                CStmt::VarDecl { type_spec, declarators, is_static } if *is_static => {
+                CStmt::VarDecl {
+                    type_spec,
+                    declarators,
+                    is_static,
+                } if *is_static => {
                     for decl in declarators {
                         let var_type = self.resolve_declarator_type(type_spec, &decl.derived_type);
                         let init_val = if let Some(ref init) = decl.initializer {
@@ -222,7 +240,11 @@ impl CToIR {
                     }
                 }
                 CStmt::Block(inner) => self.collect_static_locals(inner, globals),
-                CStmt::If { then_body, else_body, .. } => {
+                CStmt::If {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
                     if let CStmt::Block(inner) = then_body.as_ref() {
                         self.collect_static_locals(inner, globals);
                     }
@@ -288,6 +310,7 @@ impl CToIR {
 
     fn convert_stmt(&self, stmt: &CStmt) -> Result<Vec<Stmt>, String> {
         match stmt {
+            CStmt::LineMarker(l) => Ok(vec![Stmt::LineMarker(*l)]),
             CStmt::Expr(expr) => self.convert_expr_to_stmt(expr),
 
             CStmt::Return(None) => Ok(vec![Stmt::Return(None)]),
@@ -296,7 +319,11 @@ impl CToIR {
                 Ok(vec![Stmt::Return(Some(val))])
             }
 
-            CStmt::VarDecl { type_spec, declarators, is_static } => {
+            CStmt::VarDecl {
+                type_spec,
+                declarators,
+                is_static,
+            } => {
                 let mut stmts = Vec::new();
                 for decl in declarators {
                     let var_type = self.resolve_declarator_type(type_spec, &decl.derived_type);
@@ -332,7 +359,11 @@ impl CToIR {
                 Ok(result)
             }
 
-            CStmt::If { condition, then_body, else_body } => {
+            CStmt::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 let cond = self.convert_expr(condition)?;
                 let then_stmts = self.convert_stmt(then_body)?;
                 let else_stmts = if let Some(else_b) = else_body {
@@ -373,7 +404,12 @@ impl CToIR {
                 }])
             }
 
-            CStmt::For { init, condition, update, body } => {
+            CStmt::For {
+                init,
+                condition,
+                update,
+                body,
+            } => {
                 let mut result = Vec::new();
 
                 if let Some(init_stmt) = init {
@@ -506,12 +542,15 @@ impl CToIR {
                             };
                             return Ok(vec![Stmt::Return(Some(code))]);
                         }
-                        "memset" | "memcpy" | "memmove" | "strcpy" | "strncpy"
-                        | "strcat" | "strlen" | "strcmp" | "atoi" | "atof" => {
+                        "memset" | "memcpy" | "memmove" | "strcpy" | "strncpy" | "strcat"
+                        | "strlen" | "strcmp" | "atoi" | "atof" => {
                             // Map to generic call
                             let a: Result<Vec<Expr>, String> =
                                 args.iter().map(|a| self.convert_expr(a)).collect();
-                            return Ok(vec![Stmt::Expr(Expr::Call { name: name.clone(), args: a? })]);
+                            return Ok(vec![Stmt::Expr(Expr::Call {
+                                name: name.clone(),
+                                args: a?,
+                            })]);
                         }
                         _ => {}
                     }
@@ -521,42 +560,40 @@ impl CToIR {
                 Ok(vec![Stmt::Expr(call_expr)])
             }
 
-            CExpr::Assign { op, target, value } => {
-                self.convert_assignment(op, target, value)
-            }
+            CExpr::Assign { op, target, value } => self.convert_assignment(op, target, value),
 
-            CExpr::UnaryOp { op, expr: inner, .. } => {
-                match op {
-                    CUnaryOp::PreInc | CUnaryOp::PostInc => {
-                        if let CExpr::Identifier(name) = inner.as_ref() {
-                            Ok(vec![Stmt::Increment {
-                                name: name.clone(),
-                                is_pre: matches!(op, CUnaryOp::PreInc),
-                                is_increment: true,
-                            }])
-                        } else {
-                            let e = self.convert_expr(expr)?;
-                            Ok(vec![Stmt::Expr(e)])
-                        }
-                    }
-                    CUnaryOp::PreDec | CUnaryOp::PostDec => {
-                        if let CExpr::Identifier(name) = inner.as_ref() {
-                            Ok(vec![Stmt::Increment {
-                                name: name.clone(),
-                                is_pre: matches!(op, CUnaryOp::PreDec),
-                                is_increment: false,
-                            }])
-                        } else {
-                            let e = self.convert_expr(expr)?;
-                            Ok(vec![Stmt::Expr(e)])
-                        }
-                    }
-                    _ => {
+            CExpr::UnaryOp {
+                op, expr: inner, ..
+            } => match op {
+                CUnaryOp::PreInc | CUnaryOp::PostInc => {
+                    if let CExpr::Identifier(name) = inner.as_ref() {
+                        Ok(vec![Stmt::Increment {
+                            name: name.clone(),
+                            is_pre: matches!(op, CUnaryOp::PreInc),
+                            is_increment: true,
+                        }])
+                    } else {
                         let e = self.convert_expr(expr)?;
                         Ok(vec![Stmt::Expr(e)])
                     }
                 }
-            }
+                CUnaryOp::PreDec | CUnaryOp::PostDec => {
+                    if let CExpr::Identifier(name) = inner.as_ref() {
+                        Ok(vec![Stmt::Increment {
+                            name: name.clone(),
+                            is_pre: matches!(op, CUnaryOp::PreDec),
+                            is_increment: false,
+                        }])
+                    } else {
+                        let e = self.convert_expr(expr)?;
+                        Ok(vec![Stmt::Expr(e)])
+                    }
+                }
+                _ => {
+                    let e = self.convert_expr(expr)?;
+                    Ok(vec![Stmt::Expr(e)])
+                }
+            },
 
             CExpr::Comma(exprs) => {
                 let mut stmts = Vec::new();
@@ -586,7 +623,10 @@ impl CToIR {
         match target {
             CExpr::Identifier(name) => {
                 let final_value = self.apply_compound_op(op, &Expr::Variable(name.clone()), rhs);
-                Ok(vec![Stmt::Assign { name: name.clone(), value: final_value }])
+                Ok(vec![Stmt::Assign {
+                    name: name.clone(),
+                    value: final_value,
+                }])
             }
             CExpr::Index { array, index } => {
                 let obj = self.convert_expr(array)?;
@@ -657,9 +697,7 @@ impl CToIR {
                     value: final_rhs,
                 }])
             }
-            _ => {
-                Ok(vec![Stmt::Expr(rhs)])
-            }
+            _ => Ok(vec![Stmt::Expr(rhs)]),
         }
     }
 
@@ -779,7 +817,9 @@ impl CToIR {
                     i += 1;
                 }
 
-                if i >= chars.len() { break; }
+                if i >= chars.len() {
+                    break;
+                }
 
                 // Flush text before format specifier
                 if !current_str.is_empty() {
@@ -789,8 +829,8 @@ impl CToIR {
 
                 // Process conversion specifier
                 match chars[i] {
-                    'd' | 'i' | 'u' | 'x' | 'X' | 'o' | 'c' | 'f' | 'e' | 'E'
-                    | 'g' | 'G' | 's' | 'p' => {
+                    'd' | 'i' | 'u' | 'x' | 'X' | 'o' | 'c' | 'f' | 'e' | 'E' | 'g' | 'G' | 's'
+                    | 'p' => {
                         if arg_idx < args.len() {
                             let val = self.convert_expr(&args[arg_idx])?;
                             stmts.push(Stmt::Print(val));
@@ -835,12 +875,16 @@ impl CToIR {
                 stmts.last(),
                 Some(Stmt::Println(Expr::String(s))) if s.is_empty()
             );
-            if !is_empty_println { break; }
+            if !is_empty_println {
+                break;
+            }
 
             // Check if previous is a Print we can upgrade
             let prev_idx = stmts.len() - 2;
             let can_merge = matches!(&stmts[prev_idx], Stmt::Print(_));
-            if !can_merge { break; }
+            if !can_merge {
+                break;
+            }
 
             stmts.pop(); // remove Println("")
             if let Some(Stmt::Print(expr)) = stmts.pop() {
@@ -911,32 +955,112 @@ impl CToIR {
                 let l = self.convert_expr(left)?;
                 let r = self.convert_expr(right)?;
                 Ok(match op {
-                    CBinOp::Add => Expr::BinaryOp { op: BinOp::Add, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Sub => Expr::BinaryOp { op: BinOp::Sub, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Mul => Expr::BinaryOp { op: BinOp::Mul, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Div => Expr::BinaryOp { op: BinOp::Div, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Mod => Expr::BinaryOp { op: BinOp::Mod, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Eq => Expr::Comparison { op: CmpOp::Eq, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Ne => Expr::Comparison { op: CmpOp::Ne, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Lt => Expr::Comparison { op: CmpOp::Lt, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Gt => Expr::Comparison { op: CmpOp::Gt, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Le => Expr::Comparison { op: CmpOp::Le, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Ge => Expr::Comparison { op: CmpOp::Ge, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::LogAnd => Expr::BinaryOp { op: BinOp::And, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::LogOr => Expr::BinaryOp { op: BinOp::Or, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::BitAnd => Expr::BitwiseOp { op: BitwiseOp::And, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::BitOr => Expr::BitwiseOp { op: BitwiseOp::Or, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::BitXor => Expr::BitwiseOp { op: BitwiseOp::Xor, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Shl => Expr::BitwiseOp { op: BitwiseOp::LeftShift, left: Box::new(l), right: Box::new(r) },
-                    CBinOp::Shr => Expr::BitwiseOp { op: BitwiseOp::RightShift, left: Box::new(l), right: Box::new(r) },
+                    CBinOp::Add => Expr::BinaryOp {
+                        op: BinOp::Add,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Sub => Expr::BinaryOp {
+                        op: BinOp::Sub,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Mul => Expr::BinaryOp {
+                        op: BinOp::Mul,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Div => Expr::BinaryOp {
+                        op: BinOp::Div,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Mod => Expr::BinaryOp {
+                        op: BinOp::Mod,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Eq => Expr::Comparison {
+                        op: CmpOp::Eq,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Ne => Expr::Comparison {
+                        op: CmpOp::Ne,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Lt => Expr::Comparison {
+                        op: CmpOp::Lt,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Gt => Expr::Comparison {
+                        op: CmpOp::Gt,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Le => Expr::Comparison {
+                        op: CmpOp::Le,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Ge => Expr::Comparison {
+                        op: CmpOp::Ge,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::LogAnd => Expr::BinaryOp {
+                        op: BinOp::And,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::LogOr => Expr::BinaryOp {
+                        op: BinOp::Or,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::BitAnd => Expr::BitwiseOp {
+                        op: BitwiseOp::And,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::BitOr => Expr::BitwiseOp {
+                        op: BitwiseOp::Or,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::BitXor => Expr::BitwiseOp {
+                        op: BitwiseOp::Xor,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Shl => Expr::BitwiseOp {
+                        op: BitwiseOp::LeftShift,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
+                    CBinOp::Shr => Expr::BitwiseOp {
+                        op: BitwiseOp::RightShift,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    },
                 })
             }
 
-            CExpr::UnaryOp { op, expr: inner, .. } => {
+            CExpr::UnaryOp {
+                op, expr: inner, ..
+            } => {
                 let e = self.convert_expr(inner)?;
                 Ok(match op {
-                    CUnaryOp::Neg => Expr::UnaryOp { op: UnaryOp::Neg, expr: Box::new(e) },
-                    CUnaryOp::LogNot => Expr::UnaryOp { op: UnaryOp::Not, expr: Box::new(e) },
+                    CUnaryOp::Neg => Expr::UnaryOp {
+                        op: UnaryOp::Neg,
+                        expr: Box::new(e),
+                    },
+                    CUnaryOp::LogNot => Expr::UnaryOp {
+                        op: UnaryOp::Not,
+                        expr: Box::new(e),
+                    },
                     CUnaryOp::BitNot => Expr::BitwiseNot(Box::new(e)),
                     CUnaryOp::PreInc => Expr::PreIncrement(Box::new(e)),
                     CUnaryOp::PreDec => Expr::PreDecrement(Box::new(e)),
@@ -1047,10 +1171,16 @@ impl CToIR {
                 })
             }
 
-            CExpr::Cast { target_type, expr: inner } => {
+            CExpr::Cast {
+                target_type,
+                expr: inner,
+            } => {
                 let e = self.convert_expr(inner)?;
                 let ty = self.convert_type(target_type);
-                Ok(Expr::Cast { target_type: ty, expr: Box::new(e) })
+                Ok(Expr::Cast {
+                    target_type: ty,
+                    expr: Box::new(e),
+                })
             }
 
             CExpr::SizeofType(ty) => {
@@ -1062,7 +1192,11 @@ impl CToIR {
                 Ok(Expr::SizeOf(Box::new(ast::SizeOfArg::Expr(e))))
             }
 
-            CExpr::Ternary { condition, then_expr, else_expr } => {
+            CExpr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
                 let c = self.convert_expr(condition)?;
                 let t = self.convert_expr(then_expr)?;
                 let e = self.convert_expr(else_expr)?;
@@ -1137,10 +1271,10 @@ pub fn compile_c_to_program(source: &str) -> Result<Program, String> {
     let preprocessed = preprocessor.process(source);
 
     // Phase 2: Lex — tokenize preprocessed source
-    let tokens = CLexer::new(&preprocessed).tokenize();
+    let (tokens, lines) = CLexer::new(&preprocessed).tokenize();
 
     // Phase 3: Parse — tokens → C AST
-    let unit = CParser::new(tokens).parse_translation_unit()?;
+    let unit = CParser::new(tokens, lines).parse_translation_unit()?;
 
     // Phase 4: Lower — C AST → ADead-BIB IR
     let mut converter = CToIR::new();
@@ -1153,13 +1287,16 @@ mod tests {
 
     #[test]
     fn test_hello_world() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             #include <stdio.h>
             int main() {
                 printf("Hello from C!\n");
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(program.functions.len(), 1);
         assert_eq!(program.functions[0].name, "main");
@@ -1168,48 +1305,61 @@ mod tests {
 
     #[test]
     fn test_no_string_duplication() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int main() {
                 printf("test\n");
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         // Should generate Println("test"), not Println("testtest")
         let body = &program.functions[0].body;
-        let found_println = body.iter().any(|s| {
-            matches!(s, Stmt::Println(Expr::String(s)) if s == "test")
-        });
+        let found_println = body
+            .iter()
+            .any(|s| matches!(s, Stmt::Println(Expr::String(s)) if s == "test"));
         assert!(found_println, "Expected Println(\"test\"), got: {:?}", body);
     }
 
     #[test]
     fn test_printf_format_specifiers() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int main() {
                 int x = 42;
                 printf("value=%d\n", x);
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         // Should NOT produce Println("") for trailing newline
         let body = &program.functions[0].body;
-        let has_empty_println = body.iter().any(|s| {
-            matches!(s, Stmt::Println(Expr::String(s)) if s.is_empty())
-        });
-        assert!(!has_empty_println, "Should not have empty Println: {:?}", body);
+        let has_empty_println = body
+            .iter()
+            .any(|s| matches!(s, Stmt::Println(Expr::String(s)) if s.is_empty()));
+        assert!(
+            !has_empty_println,
+            "Should not have empty Println: {:?}",
+            body
+        );
     }
 
     #[test]
     fn test_vardecl_has_type() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int main() {
                 int x = 5;
                 char c = 'A';
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         let body = &program.functions[0].body;
         let has_vardecl = body.iter().any(|s| matches!(s, Stmt::VarDecl { .. }));
@@ -1218,7 +1368,8 @@ mod tests {
 
     #[test]
     fn test_variables_and_math() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int add(int a, int b) {
                 return a + b;
             }
@@ -1228,7 +1379,9 @@ mod tests {
                 int z = add(x, y);
                 return z;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(program.functions.len(), 2);
         assert_eq!(program.functions[0].name, "add");
@@ -1237,7 +1390,8 @@ mod tests {
 
     #[test]
     fn test_control_flow() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int main() {
                 int sum = 0;
                 for (int i = 0; i < 10; i++) {
@@ -1249,14 +1403,17 @@ mod tests {
                     return 0;
                 }
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(program.functions.len(), 1);
     }
 
     #[test]
     fn test_struct() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             struct Point {
                 int x;
                 int y;
@@ -1264,7 +1421,9 @@ mod tests {
             int main() {
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(program.structs.len(), 1);
         assert_eq!(program.structs[0].name, "Point");
@@ -1273,42 +1432,56 @@ mod tests {
 
     #[test]
     fn test_null_handling() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int main() {
                 int *p = NULL;
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(program.functions.len(), 1);
     }
 
     #[test]
     fn test_global_var_uninitialized() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int counter;
             int main() {
                 return counter;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         // Should have a VarDecl at top level for 'counter'
-        let has_global = program.statements.iter().any(|s| {
-            matches!(s, Stmt::VarDecl { name, .. } if name == "counter")
-        });
-        assert!(has_global, "Uninitialized global should be declared: {:?}", program.statements);
+        let has_global = program
+            .statements
+            .iter()
+            .any(|s| matches!(s, Stmt::VarDecl { name, .. } if name == "counter"));
+        assert!(
+            has_global,
+            "Uninitialized global should be declared: {:?}",
+            program.statements
+        );
     }
 
     #[test]
     fn test_compound_assign_array() {
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int main() {
                 int arr[5];
                 arr[0] = 10;
                 arr[0] += 5;
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(program.functions.len(), 1);
     }
@@ -1326,21 +1499,33 @@ mod tests {
     fn test_example_c_algorithms() {
         let source = std::fs::read_to_string("examples/c/c_algorithms.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_algorithms.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_algorithms.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_c_bitwise() {
         let source = std::fs::read_to_string("examples/c/c_bitwise.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_bitwise.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_bitwise.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_c_compression() {
         let source = std::fs::read_to_string("examples/c/c_compression.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_compression.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_compression.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
@@ -1354,21 +1539,33 @@ mod tests {
     fn test_example_c_database() {
         let source = std::fs::read_to_string("examples/c/c_database.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_database.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_database.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_c_fastos_base() {
         let source = std::fs::read_to_string("examples/c/c_fastos_base.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_fastos_base.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_fastos_base.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_c_fastos_complete() {
         let source = std::fs::read_to_string("examples/c/c_fastos_complete.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_fastos_complete.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_fastos_complete.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
@@ -1389,30 +1586,50 @@ mod tests {
     fn test_example_c_network() {
         let source = std::fs::read_to_string("examples/c/c_network.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_network.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_network.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_c_structs() {
         let source = std::fs::read_to_string("examples/c/c_structs.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_structs.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_structs.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_c_threading() {
         let source = std::fs::read_to_string("examples/c/c_threading.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_threading.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_threading.c failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_c_stdlib_long() {
         let source = std::fs::read_to_string("examples/c/c_stdlib_long.c").unwrap();
         let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_stdlib_long.c failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "c_stdlib_long.c failed: {}",
+            result.unwrap_err()
+        );
         let prog = result.unwrap();
-        assert!(prog.functions.len() > 20, "c_stdlib_long.c should have many functions, got {}", prog.functions.len());
+        assert!(
+            prog.functions.len() > 20,
+            "c_stdlib_long.c should have many functions, got {}",
+            prog.functions.len()
+        );
     }
 
     #[test]
@@ -1422,21 +1639,29 @@ mod tests {
         //   Print("Result: "), Print(x), Println("")  ← OLD (bad)
         //   Print("Result: "), Print(x), Print("\n")   ← STILL BAD
         //   Print("Result: "), Print(x), <nothing — the \n is absorbed by string segment logic>
-        let program = compile_c_to_program(r#"
+        let program = compile_c_to_program(
+            r#"
             int main() {
                 int x = 42;
                 printf("Result: %d done\n", x);
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         let body = &program.functions[0].body;
         // Count total Print/Println statements (excluding VarDecl/Return)
-        let print_count = body.iter().filter(|s| {
-            matches!(s, Stmt::Print(_) | Stmt::Println(_))
-        }).count();
+        let print_count = body
+            .iter()
+            .filter(|s| matches!(s, Stmt::Print(_) | Stmt::Println(_)))
+            .count();
         // Should be: Print("Result: "), Print(x), Println(" done") = 3
-        assert_eq!(print_count, 3, "Expected 3 print stmts, got {}: {:?}", print_count, body);
+        assert_eq!(
+            print_count, 3,
+            "Expected 3 print stmts, got {}: {:?}",
+            print_count, body
+        );
     }
 
     // ================================================================
@@ -1566,7 +1791,10 @@ mod tests {
     fn test_example_void_func() {
         let source = std::fs::read_to_string("examples/c/test_void_func.c").unwrap();
         let prog = compile_c_to_program(&source).expect("test_void_func.c failed");
-        assert!(prog.functions.len() >= 4, "should have set_x + get_x + print_separator + main");
+        assert!(
+            prog.functions.len() >= 4,
+            "should have set_x + get_x + print_separator + main"
+        );
     }
 
     #[test]
@@ -1580,7 +1808,10 @@ mod tests {
     fn test_example_multi_func() {
         let source = std::fs::read_to_string("examples/c/test_multi_func.c").unwrap();
         let prog = compile_c_to_program(&source).expect("test_multi_func.c failed");
-        assert!(prog.functions.len() >= 7, "should have 6 helpers + apply_twice + main");
+        assert!(
+            prog.functions.len() >= 7,
+            "should have 6 helpers + apply_twice + main"
+        );
     }
 
     #[test]
@@ -1596,7 +1827,8 @@ mod tests {
 
     #[test]
     fn test_dowhile_conversion() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int x = 0;
                 do {
@@ -1604,7 +1836,9 @@ mod tests {
                 } while (x < 10);
                 return x;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         let body = &prog.functions[0].body;
         // do-while converts to while(true) { body; if(!cond) break; }
         let has_while = body.iter().any(|s| matches!(s, Stmt::While { .. }));
@@ -1613,7 +1847,8 @@ mod tests {
 
     #[test]
     fn test_switch_conversion() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int x = 2;
                 switch (x) {
@@ -1622,7 +1857,9 @@ mod tests {
                     default: return 0;
                 }
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         let body = &prog.functions[0].body;
         // switch converts to chained if-else
         let has_if = body.iter().any(|s| matches!(s, Stmt::If { .. }));
@@ -1631,7 +1868,8 @@ mod tests {
 
     #[test]
     fn test_for_loop_conversion() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int sum = 0;
                 for (int i = 0; i < 100; i++) {
@@ -1639,7 +1877,9 @@ mod tests {
                 }
                 return sum;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         let body = &prog.functions[0].body;
         let has_while = body.iter().any(|s| matches!(s, Stmt::While { .. }));
         assert!(has_while, "for should convert to While: {:?}", body);
@@ -1647,7 +1887,8 @@ mod tests {
 
     #[test]
     fn test_nested_if_else() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int classify(int n) {
                 if (n < 0) {
                     return -1;
@@ -1660,46 +1901,58 @@ mod tests {
                 }
             }
             int main() { return classify(50); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
     }
 
     #[test]
     fn test_multiple_return_paths() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int abs_val(int x) {
                 if (x < 0) return -x;
                 return x;
             }
             int main() { return abs_val(-42); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
         assert_eq!(prog.functions[0].name, "abs_val");
     }
 
     #[test]
     fn test_empty_function() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             void noop(void) {}
             int main() { noop(); return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
     }
 
     #[test]
     fn test_chained_comparison() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int in_range(int x, int lo, int hi) {
                 return (x >= lo) && (x <= hi);
             }
             int main() { return in_range(5, 1, 10); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
     }
 
     #[test]
     fn test_complex_for_update() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int total = 0;
                 for (int i = 0; i < 20; i += 3) {
@@ -1707,13 +1960,16 @@ mod tests {
                 }
                 return total;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_array_as_param() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int sum(int arr[], int n) {
                 int total = 0;
                 for (int i = 0; i < n; i++) {
@@ -1725,13 +1981,16 @@ mod tests {
                 int data[] = {1, 2, 3, 4, 5};
                 return sum(data, 5);
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
     }
 
     #[test]
     fn test_unsigned_types() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 unsigned int a = 0xFFFFFFFF;
                 unsigned char b = 255;
@@ -1740,26 +1999,32 @@ mod tests {
                 unsigned long long e = 0;
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_const_volatile() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 const int x = 42;
                 volatile int y = 0;
                 const char *msg = "hello";
                 return x;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_long_long_types() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 long a = 100;
                 long long b = 200;
@@ -1767,37 +2032,46 @@ mod tests {
                 long long int d = 400;
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_hex_octal_literals() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int hex = 0xFF;
                 int hex2 = 0xDEAD;
                 int dec = 42;
                 return hex + dec;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_string_concatenation() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 printf("Hello" " " "World" "\n");
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_comma_in_for() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int sum = 0;
                 for (int i = 0; i < 10; i++) {
@@ -1805,13 +2079,16 @@ mod tests {
                 }
                 return sum;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_break_continue() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int total = 0;
                 for (int i = 0; i < 100; i++) {
@@ -1821,24 +2098,30 @@ mod tests {
                 }
                 return total;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_ternary_nested() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int clamp(int x, int lo, int hi) {
                 return (x < lo) ? lo : (x > hi) ? hi : x;
             }
             int main() { return clamp(150, 0, 100); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
     }
 
     #[test]
     fn test_sizeof_types() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int a = sizeof(int);
                 int b = sizeof(char);
@@ -1847,13 +2130,16 @@ mod tests {
                 int d = sizeof(x);
                 return a + b + c + d;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_cast_expressions() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int x = 65;
                 char c = (char)x;
@@ -1861,49 +2147,61 @@ mod tests {
                 long y = (long)x;
                 return (int)c;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_pointer_to_pointer() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int x = 42;
                 int *p = &x;
                 int **pp = &p;
                 return **pp;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_function_prototype() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int add(int a, int b);
             int add(int a, int b) {
                 return a + b;
             }
             int main() { return add(3, 4); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
     }
 
     #[test]
     fn test_static_extern_inline() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             static int counter = 0;
             extern int printf(const char *fmt, ...);
             static inline int double_it(int x) { return x * 2; }
             int main() { return double_it(21); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.functions.len() >= 2);
     }
 
     #[test]
     fn test_enum_with_expression_values() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             enum Sizes {
                 BYTE_SIZE = 1,
                 WORD_SIZE = 2,
@@ -1911,13 +2209,16 @@ mod tests {
                 QWORD_SIZE = 8
             };
             int main() { return QWORD_SIZE; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_struct_with_array_field() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             struct Buffer {
                 int size;
                 char data[256];
@@ -1927,25 +2228,31 @@ mod tests {
                 buf.size = 10;
                 return buf.size;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.structs.len() >= 1);
     }
 
     #[test]
     fn test_many_params() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int sum6(int a, int b, int c, int d, int e, int f) {
                 return a + b + c + d + e + f;
             }
             int main() { return sum6(1, 2, 3, 4, 5, 6); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
         assert_eq!(prog.functions[0].params.len(), 6);
     }
 
     #[test]
     fn test_mutual_recursion() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int is_even(int n);
             int is_odd(int n);
             int is_even(int n) {
@@ -1957,13 +2264,16 @@ mod tests {
                 return is_even(n - 1);
             }
             int main() { return is_even(10); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 3);
     }
 
     #[test]
     fn test_while_with_assignment() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             int main() {
                 int n = 100;
                 int sum = 0;
@@ -1973,18 +2283,23 @@ mod tests {
                 }
                 return sum;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 1);
     }
 
     #[test]
     fn test_multiple_structs() {
-        let prog = compile_c_to_program(r#"
+        let prog = compile_c_to_program(
+            r#"
             struct Vec2 { int x; int y; };
             struct Vec3 { int x; int y; int z; };
             struct Color { unsigned char r; unsigned char g; unsigned char b; };
             int main() { return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.structs.len(), 3);
     }
 }

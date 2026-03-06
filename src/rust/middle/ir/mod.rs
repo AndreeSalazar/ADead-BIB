@@ -11,19 +11,19 @@
 // - Value: Typed result of an instruction
 // ============================================================
 
-mod module;
-mod function;
 pub mod basicblock;
+mod builder;
+mod function;
 mod instruction;
+mod module;
+pub mod pdp11_heritage;
 mod types;
 mod value;
-mod builder;
-pub mod pdp11_heritage;
 
-pub use module::{Module, GlobalVariable};
-pub use function::Function;
 pub use basicblock::BasicBlock;
-pub use instruction::{Instruction, Opcode, BinaryOp, CompareOp, CastOp};
-pub use types::Type;
-pub use value::{Value, ValueId, Constant};
 pub use builder::IRBuilder;
+pub use function::Function;
+pub use instruction::{BinaryOp, CastOp, CompareOp, Instruction, Opcode};
+pub use module::{GlobalVariable, Module};
+pub use types::Type;
+pub use value::{Constant, Value, ValueId};

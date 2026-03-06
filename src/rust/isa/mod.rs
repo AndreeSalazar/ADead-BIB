@@ -18,18 +18,20 @@
 // Email: eddi.salazar.dev@gmail.com
 // ============================================================
 
+pub mod c_isa;
+pub mod codegen;
+pub mod compiler;
+pub mod cpp_isa;
 pub mod decoder;
 pub mod encoder;
-pub mod codegen;
 pub mod isa_compiler;
-pub mod c_isa;
-pub mod cpp_isa;
 pub mod optimizer;
 pub mod reg_alloc;
-pub mod compiler;
 
 // Re-export modular compiler
-pub use compiler::{IsaCompiler as IsaCompilerModular, Target as TargetModular, CpuMode as CpuModeModular};
+pub use compiler::{
+    CpuMode as CpuModeModular, IsaCompiler as IsaCompilerModular, Target as TargetModular,
+};
 
 // ============================================================
 // Registers
@@ -285,7 +287,12 @@ pub enum Operand {
     Mem { base: Reg, disp: i32 },
     /// Memoria con SIB: [base + index*scale + disp] (arrays, structs)
     /// scale must be 1, 2, 4, or 8
-    MemSIB { base: Reg, index: Reg, scale: u8, disp: i32 },
+    MemSIB {
+        base: Reg,
+        index: Reg,
+        scale: u8,
+        disp: i32,
+    },
     /// RIP-relative: [rip + disp] (para call indirecto via IAT)
     RipRel(i32),
 }
@@ -305,7 +312,12 @@ impl std::fmt::Display for Operand {
                     write!(f, "[{}{}]", base, disp)
                 }
             }
-            Operand::MemSIB { base, index, scale, disp } => {
+            Operand::MemSIB {
+                base,
+                index,
+                scale,
+                disp,
+            } => {
                 if *disp >= 0 {
                     write!(f, "[{}+{}*{}+{}]", base, index, scale, disp)
                 } else {
@@ -685,8 +697,16 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::LeaLabel { dst, label } => {
                 write!(f, "lea {:?}, [rip+{}]", dst, label)
             }
-            ADeadOp::LabelAddrRef { label, size, base_addr } => {
-                write!(f, "label_addr({}, size={}, base=0x{:X})", label, size, base_addr)
+            ADeadOp::LabelAddrRef {
+                label,
+                size,
+                base_addr,
+            } => {
+                write!(
+                    f,
+                    "label_addr({}, size={}, base=0x{:X})",
+                    label, size, base_addr
+                )
             }
         }
     }

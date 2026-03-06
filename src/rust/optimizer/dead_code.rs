@@ -9,7 +9,9 @@ use crate::frontend::ast::*;
 pub struct DeadCodeEliminator;
 
 impl DeadCodeEliminator {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn eliminate(&self, program: &mut Program) {
         for func in &mut program.functions {
@@ -32,7 +34,11 @@ impl DeadCodeEliminator {
 
     fn eliminate_stmt(&self, stmt: &Stmt) -> Stmt {
         match stmt {
-            Stmt::If { condition, then_body, else_body } => {
+            Stmt::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 // if (false) { ... } → eliminate then branch
                 if Self::is_always_false(condition) {
                     if let Some(eb) = else_body {
@@ -60,20 +66,21 @@ impl DeadCodeEliminator {
                     body: self.eliminate_stmts(body),
                 }
             }
-            Stmt::DoWhile { body, condition } => {
-                Stmt::DoWhile {
-                    body: self.eliminate_stmts(body),
-                    condition: condition.clone(),
-                }
-            }
-            Stmt::For { var, start, end, body } => {
-                Stmt::For {
-                    var: var.clone(),
-                    start: start.clone(),
-                    end: end.clone(),
-                    body: self.eliminate_stmts(body),
-                }
-            }
+            Stmt::DoWhile { body, condition } => Stmt::DoWhile {
+                body: self.eliminate_stmts(body),
+                condition: condition.clone(),
+            },
+            Stmt::For {
+                var,
+                start,
+                end,
+                body,
+            } => Stmt::For {
+                var: var.clone(),
+                start: start.clone(),
+                end: end.clone(),
+                body: self.eliminate_stmts(body),
+            },
             _ => stmt.clone(),
         }
     }
@@ -92,5 +99,7 @@ impl DeadCodeEliminator {
 }
 
 impl Default for DeadCodeEliminator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

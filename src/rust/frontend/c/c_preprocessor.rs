@@ -8,8 +8,8 @@
 // No GCC. No Clang. ADead-BIB owns the headers. 💀🦈
 // ============================================================
 
-use std::collections::{HashSet, HashMap};
 use super::c_stdlib;
+use std::collections::{HashMap, HashSet};
 
 /// A #define macro: either object-like or function-like
 #[derive(Debug, Clone)]
@@ -45,21 +45,32 @@ impl CPreprocessor {
         let mut skip_mode = false;
         let mut skip_depth: i32 = 0;
         let mut skip_else_ok = false;
-        
+
         for line in source.lines() {
             let trimmed = line.trim();
-            
+
             // Handle conditional compilation skip mode
             if skip_mode {
-                if trimmed.starts_with("#ifdef") || trimmed.starts_with("#ifndef") || trimmed.starts_with("#if ") {
+                if trimmed.starts_with("#ifdef")
+                    || trimmed.starts_with("#ifndef")
+                    || trimmed.starts_with("#if ")
+                {
                     skip_depth += 1;
-                } else if trimmed == "#endif" || trimmed.starts_with("#endif ") || trimmed.starts_with("#endif/") {
+                } else if trimmed == "#endif"
+                    || trimmed.starts_with("#endif ")
+                    || trimmed.starts_with("#endif/")
+                {
                     skip_depth -= 1;
                     if skip_depth <= 0 {
                         skip_mode = false;
                         skip_depth = 0;
                     }
-                } else if (trimmed == "#else" || trimmed.starts_with("#else ") || trimmed.starts_with("#else/")) && skip_depth == 1 && skip_else_ok {
+                } else if (trimmed == "#else"
+                    || trimmed.starts_with("#else ")
+                    || trimmed.starts_with("#else/"))
+                    && skip_depth == 1
+                    && skip_else_ok
+                {
                     skip_mode = false;
                     skip_depth = 0;
                     // But we need to mark that the next #else/#elif should skip
@@ -68,21 +79,25 @@ impl CPreprocessor {
                 output.push('\n');
                 continue;
             }
-            
+
             // Handle #endif when not in skip mode (from #else branch)
-            if trimmed == "#endif" || trimmed.starts_with("#endif ") || trimmed.starts_with("#endif/") {
+            if trimmed == "#endif"
+                || trimmed.starts_with("#endif ")
+                || trimmed.starts_with("#endif/")
+            {
                 output.push('\n');
                 continue;
             }
             // Handle #else when not skipping (we were in the true branch, now skip)
-            if (trimmed == "#else" || trimmed.starts_with("#else ") || trimmed.starts_with("#else/")) {
+            if trimmed == "#else" || trimmed.starts_with("#else ") || trimmed.starts_with("#else/")
+            {
                 skip_mode = true;
                 skip_depth = 1;
                 skip_else_ok = false;
                 output.push('\n');
                 continue;
             }
-            
+
             if trimmed.starts_with("#include") {
                 // Extract header name from #include <header.h> or #include "header.h"
                 if let Some(header_name) = self.extract_include(trimmed) {
@@ -92,14 +107,14 @@ impl CPreprocessor {
                         continue;
                     }
                     self.included.insert(header_name.clone());
-                    
+
                     // Inject common prologue on first include
                     if !self.prologue_injected {
                         self.prologue_injected = true;
                         output.push_str(c_stdlib::COMMON_PROLOGUE);
                         output.push('\n');
                     }
-                    
+
                     // Look up header declarations
                     if let Some(declarations) = c_stdlib::get_header(&header_name) {
                         output.push_str(declarations);
@@ -165,15 +180,15 @@ impl CPreprocessor {
                 output.push('\n');
             }
         }
-        
+
         output
     }
-    
+
     /// Extract header name from #include directive
     /// Handles: #include <stdio.h>, #include "myheader.h", #include <sys/types.h>
     fn extract_include(&self, line: &str) -> Option<String> {
         let after_include = line.strip_prefix("#include")?.trim();
-        
+
         if after_include.starts_with('<') {
             // Angle bracket include: #include <header.h>
             let end = after_include.find('>')?;
@@ -187,11 +202,13 @@ impl CPreprocessor {
             None
         }
     }
-    
+
     /// Parse a #define directive and store the macro
     fn parse_define(&mut self, line: &str) {
         let rest = line.strip_prefix("#define").unwrap().trim();
-        if rest.is_empty() { return; }
+        if rest.is_empty() {
+            return;
+        }
 
         // Check for function-like macro: NAME(params) body
         if let Some(paren_pos) = rest.find('(') {
@@ -207,7 +224,8 @@ impl CPreprocessor {
                         .filter(|p| !p.is_empty())
                         .collect();
                     let body = after_name[close + 1..].trim().to_string();
-                    self.macros.insert(name.to_string(), Macro::Function { params, body });
+                    self.macros
+                        .insert(name.to_string(), Macro::Function { params, body });
                     return;
                 }
             }
@@ -216,7 +234,9 @@ impl CPreprocessor {
         // Object-like macro: NAME value
         let mut parts = rest.splitn(2, |c: char| c == ' ' || c == '\t');
         let name = parts.next().unwrap_or("").trim();
-        if name.is_empty() { return; }
+        if name.is_empty() {
+            return;
+        }
         // Check for trailing // comment
         let value = parts.next().unwrap_or("").trim();
         let value = if let Some(comment_pos) = value.find("//") {
@@ -224,12 +244,15 @@ impl CPreprocessor {
         } else {
             value
         };
-        self.macros.insert(name.to_string(), Macro::Object(value.to_string()));
+        self.macros
+            .insert(name.to_string(), Macro::Object(value.to_string()));
     }
 
     /// Expand macros in a line of code
     fn expand_macros(&self, line: &str) -> String {
-        if self.macros.is_empty() { return line.to_string(); }
+        if self.macros.is_empty() {
+            return line.to_string();
+        }
 
         let mut result = line.to_string();
         // Multiple passes to handle nested macros (limit to prevent infinite loops)
@@ -246,7 +269,9 @@ impl CPreprocessor {
                     }
                 }
             }
-            if result == prev { break; }
+            if result == prev {
+                break;
+            }
         }
         result
     }
@@ -280,7 +305,13 @@ impl CPreprocessor {
     }
 
     /// Expand function-like macro invocations: NAME(arg1, arg2)
-    fn expand_function_macro(&self, text: &str, name: &str, params: &[String], body: &str) -> String {
+    fn expand_function_macro(
+        &self,
+        text: &str,
+        name: &str,
+        params: &[String],
+        body: &str,
+    ) -> String {
         let mut result = String::new();
         let chars: Vec<char> = text.chars().collect();
         let name_chars: Vec<char> = name.chars().collect();
@@ -320,7 +351,11 @@ impl CPreprocessor {
 
     /// Extract comma-separated arguments from a function-like macro call
     /// Returns (args, position after closing paren)
-    fn extract_macro_args(&self, chars: &[char], open_paren: usize) -> Option<(Vec<String>, usize)> {
+    fn extract_macro_args(
+        &self,
+        chars: &[char],
+        open_paren: usize,
+    ) -> Option<(Vec<String>, usize)> {
         let mut depth = 0;
         let mut args = Vec::new();
         let mut current = String::new();
@@ -330,7 +365,9 @@ impl CPreprocessor {
             let c = chars[i];
             if c == '(' {
                 depth += 1;
-                if depth > 1 { current.push(c); }
+                if depth > 1 {
+                    current.push(c);
+                }
             } else if c == ')' {
                 depth -= 1;
                 if depth == 0 {
@@ -358,21 +395,33 @@ impl CPreprocessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_extract_angle_include() {
         let pp = CPreprocessor::new();
-        assert_eq!(pp.extract_include("#include <stdio.h>"), Some("stdio.h".to_string()));
-        assert_eq!(pp.extract_include("#include <sys/types.h>"), Some("sys/types.h".to_string()));
-        assert_eq!(pp.extract_include("#include <vulkan/vulkan.h>"), Some("vulkan/vulkan.h".to_string()));
+        assert_eq!(
+            pp.extract_include("#include <stdio.h>"),
+            Some("stdio.h".to_string())
+        );
+        assert_eq!(
+            pp.extract_include("#include <sys/types.h>"),
+            Some("sys/types.h".to_string())
+        );
+        assert_eq!(
+            pp.extract_include("#include <vulkan/vulkan.h>"),
+            Some("vulkan/vulkan.h".to_string())
+        );
     }
-    
+
     #[test]
     fn test_extract_quote_include() {
         let pp = CPreprocessor::new();
-        assert_eq!(pp.extract_include("#include \"myheader.h\""), Some("myheader.h".to_string()));
+        assert_eq!(
+            pp.extract_include("#include \"myheader.h\""),
+            Some("myheader.h".to_string())
+        );
     }
-    
+
     #[test]
     fn test_no_double_include() {
         let mut pp = CPreprocessor::new();
@@ -382,7 +431,7 @@ mod tests {
         let count = result.matches("int printf").count();
         assert_eq!(count, 1, "printf should be declared only once");
     }
-    
+
     #[test]
     fn test_preserves_code() {
         let mut pp = CPreprocessor::new();
@@ -391,7 +440,7 @@ mod tests {
         assert!(result.contains("int main()"));
         assert!(result.contains("return 0;"));
     }
-    
+
     #[test]
     fn test_skips_define() {
         let mut pp = CPreprocessor::new();
@@ -400,7 +449,7 @@ mod tests {
         assert!(!result.contains("#define"));
         assert!(result.contains("int x;"));
     }
-    
+
     #[test]
     fn test_multiple_headers() {
         let mut pp = CPreprocessor::new();

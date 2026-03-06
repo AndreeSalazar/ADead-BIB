@@ -63,7 +63,7 @@ pub enum LlvmAttribute {
     /// Argument has a compile-time-known alignment, `align N`.
     Align(u64),
     /// Function returns a freshly-allocated pointer.
-    NoAliasFn,    // `noalias` on return value
+    NoAliasFn, // `noalias` on return value
 
     // ── Stack / calling ─────────────────────────────────────
     /// No red zone (used in kernel / signal handlers).
@@ -102,32 +102,32 @@ impl LlvmAttribute {
     /// Convert textual LLVM attribute name to enum variant.
     pub fn parse(name: &str) -> Option<Self> {
         match name {
-            "alwaysinline"    => Some(Self::AlwaysInline),
-            "noinline"        => Some(Self::NoInline),
-            "optsize"         => Some(Self::OptSize),
-            "optnone"         => Some(Self::OptNone),
-            "cold"            => Some(Self::Cold),
-            "hot"             => Some(Self::Hot),
-            "noreturn"        => Some(Self::NoReturn),
-            "nounwind"        => Some(Self::NoUnwind),
-            "willreturn"      => Some(Self::WillReturn),
-            "naked"           => Some(Self::Naked),
-            "noalias"         => Some(Self::NoAlias),
-            "nocapture"       => Some(Self::NoCapture),
-            "readonly"        => Some(Self::ReadOnly),
-            "writeonly"       => Some(Self::WriteOnly),
-            "readnone"        => Some(Self::ReadNone),
-            "returned"        => Some(Self::Returned),
-            "nonnull"         => Some(Self::NonNull),
-            "noredzone"       => Some(Self::NoRedZone),
-            "softfloat"       => Some(Self::SoftFloat),
-            "ssp"             => Some(Self::StackProtect),
-            "sspreq"          => Some(Self::StackProtectReq),
-            "sspstrong"       => Some(Self::StackProtectStrong),
-            "sanitize_address"=> Some(Self::SanitizeAddress),
+            "alwaysinline" => Some(Self::AlwaysInline),
+            "noinline" => Some(Self::NoInline),
+            "optsize" => Some(Self::OptSize),
+            "optnone" => Some(Self::OptNone),
+            "cold" => Some(Self::Cold),
+            "hot" => Some(Self::Hot),
+            "noreturn" => Some(Self::NoReturn),
+            "nounwind" => Some(Self::NoUnwind),
+            "willreturn" => Some(Self::WillReturn),
+            "naked" => Some(Self::Naked),
+            "noalias" => Some(Self::NoAlias),
+            "nocapture" => Some(Self::NoCapture),
+            "readonly" => Some(Self::ReadOnly),
+            "writeonly" => Some(Self::WriteOnly),
+            "readnone" => Some(Self::ReadNone),
+            "returned" => Some(Self::Returned),
+            "nonnull" => Some(Self::NonNull),
+            "noredzone" => Some(Self::NoRedZone),
+            "softfloat" => Some(Self::SoftFloat),
+            "ssp" => Some(Self::StackProtect),
+            "sspreq" => Some(Self::StackProtectReq),
+            "sspstrong" => Some(Self::StackProtectStrong),
+            "sanitize_address" => Some(Self::SanitizeAddress),
             "sanitize_memory" => Some(Self::SanitizeMemory),
             "sanitize_thread" => Some(Self::SanitizeThread),
-            _                 => None,
+            _ => None,
         }
     }
 
@@ -151,51 +151,64 @@ impl LlvmAttribute {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LlvmIntrinsic {
     // Memory
-    MemCpy,        // llvm.memcpy
-    MemMove,       // llvm.memmove
-    MemSet,        // llvm.memset
-    MemCmp,        // llvm.memcmp (not standard LLVM but common)
+    MemCpy,  // llvm.memcpy
+    MemMove, // llvm.memmove
+    MemSet,  // llvm.memset
+    MemCmp,  // llvm.memcmp (not standard LLVM but common)
 
     // Bit manipulation
-    Bswap16,       // llvm.bswap.i16
-    Bswap32,       // llvm.bswap.i32
-    Bswap64,       // llvm.bswap.i64
-    Ctlz32,        // llvm.ctlz.i32  (count leading zeros)
-    Ctlz64,        // llvm.ctlz.i64
-    Cttz32,        // llvm.cttz.i32  (count trailing zeros)
-    Cttz64,        // llvm.cttz.i64
-    Popcount32,    // llvm.ctpop.i32
-    Popcount64,    // llvm.ctpop.i64
-    BitReverse32,  // llvm.bitreverse.i32
-    BitReverse64,  // llvm.bitreverse.i64
+    Bswap16,      // llvm.bswap.i16
+    Bswap32,      // llvm.bswap.i32
+    Bswap64,      // llvm.bswap.i64
+    Ctlz32,       // llvm.ctlz.i32  (count leading zeros)
+    Ctlz64,       // llvm.ctlz.i64
+    Cttz32,       // llvm.cttz.i32  (count trailing zeros)
+    Cttz64,       // llvm.cttz.i64
+    Popcount32,   // llvm.ctpop.i32
+    Popcount64,   // llvm.ctpop.i64
+    BitReverse32, // llvm.bitreverse.i32
+    BitReverse64, // llvm.bitreverse.i64
 
     // Math
-    Sqrt32,        // llvm.sqrt.f32
-    Sqrt64,        // llvm.sqrt.f64
-    Fma32,         // llvm.fma.f32
-    Fma64,         // llvm.fma.f64
-    Abs32,         // llvm.abs.i32
-    Abs64,         // llvm.abs.i64
-    SMin32, SMax32, UMin32, UMax32,
-    SMin64, SMax64, UMin64, UMax64,
-    MinNum64, MaxNum64,  // llvm.minnum / llvm.maxnum (NaN-aware)
-    Floor64, Ceil64, Round64, Trunc64,
+    Sqrt32, // llvm.sqrt.f32
+    Sqrt64, // llvm.sqrt.f64
+    Fma32,  // llvm.fma.f32
+    Fma64,  // llvm.fma.f64
+    Abs32,  // llvm.abs.i32
+    Abs64,  // llvm.abs.i64
+    SMin32,
+    SMax32,
+    UMin32,
+    UMax32,
+    SMin64,
+    SMax64,
+    UMin64,
+    UMax64,
+    MinNum64,
+    MaxNum64, // llvm.minnum / llvm.maxnum (NaN-aware)
+    Floor64,
+    Ceil64,
+    Round64,
+    Trunc64,
     Fabs64,
 
     // Overflow-checked arithmetic
-    SAddOverflow, UAddOverflow,
-    SSubOverflow, USubOverflow,
-    SMulOverflow, UMulOverflow,
+    SAddOverflow,
+    UAddOverflow,
+    SSubOverflow,
+    USubOverflow,
+    SMulOverflow,
+    UMulOverflow,
 
     // Prefetch
-    Prefetch,      // llvm.prefetch
+    Prefetch, // llvm.prefetch
 
     // Control flow
-    Trap,          // llvm.trap
-    Debugtrap,     // llvm.debugtrap
-    Unreachable,   // llvm.unreachable (UB-marker)
-    Assume,        // llvm.assume
-    Expect,        // llvm.expect (branch prediction hint)
+    Trap,                  // llvm.trap
+    Debugtrap,             // llvm.debugtrap
+    Unreachable,           // llvm.unreachable (UB-marker)
+    Assume,                // llvm.assume
+    Expect,                // llvm.expect (branch prediction hint)
     ExpectWithProbability, // llvm.expect.with.probability
 
     // Stack
@@ -222,34 +235,34 @@ impl LlvmIntrinsic {
     pub fn parse(name: &str) -> Option<Self> {
         let name = name.trim_start_matches("llvm.");
         match name {
-            "memcpy" | "memcpy.p0.p0.i64"   => Some(Self::MemCpy),
-            "memmove"| "memmove.p0.p0.i64"  => Some(Self::MemMove),
-            "memset" | "memset.p0.i64"       => Some(Self::MemSet),
+            "memcpy" | "memcpy.p0.p0.i64" => Some(Self::MemCpy),
+            "memmove" | "memmove.p0.p0.i64" => Some(Self::MemMove),
+            "memset" | "memset.p0.i64" => Some(Self::MemSet),
             "bswap.i16" => Some(Self::Bswap16),
             "bswap.i32" => Some(Self::Bswap32),
             "bswap.i64" => Some(Self::Bswap64),
-            "ctlz.i32"  => Some(Self::Ctlz32),
-            "ctlz.i64"  => Some(Self::Ctlz64),
-            "cttz.i32"  => Some(Self::Cttz32),
-            "cttz.i64"  => Some(Self::Cttz64),
+            "ctlz.i32" => Some(Self::Ctlz32),
+            "ctlz.i64" => Some(Self::Ctlz64),
+            "cttz.i32" => Some(Self::Cttz32),
+            "cttz.i64" => Some(Self::Cttz64),
             "ctpop.i32" => Some(Self::Popcount32),
             "ctpop.i64" => Some(Self::Popcount64),
-            "sqrt.f32"  => Some(Self::Sqrt32),
-            "sqrt.f64"  => Some(Self::Sqrt64),
-            "fma.f32"   => Some(Self::Fma32),
-            "fma.f64"   => Some(Self::Fma64),
-            "abs.i32"   => Some(Self::Abs32),
-            "abs.i64"   => Some(Self::Abs64),
-            "trap"      => Some(Self::Trap),
+            "sqrt.f32" => Some(Self::Sqrt32),
+            "sqrt.f64" => Some(Self::Sqrt64),
+            "fma.f32" => Some(Self::Fma32),
+            "fma.f64" => Some(Self::Fma64),
+            "abs.i32" => Some(Self::Abs32),
+            "abs.i64" => Some(Self::Abs64),
+            "trap" => Some(Self::Trap),
             "debugtrap" => Some(Self::Debugtrap),
-            "assume"    => Some(Self::Assume),
-            "expect"    => Some(Self::Expect),
+            "assume" => Some(Self::Assume),
+            "expect" => Some(Self::Expect),
             "expect.with.probability" => Some(Self::ExpectWithProbability),
-            "frameaddress"  => Some(Self::FrameAddress),
+            "frameaddress" => Some(Self::FrameAddress),
             "returnaddress" => Some(Self::ReturnAddress),
-            "stacksave"     => Some(Self::Stacksave),
-            "stackrestore"  => Some(Self::Stackrestore),
-            "prefetch"      => Some(Self::Prefetch),
+            "stacksave" => Some(Self::Stacksave),
+            "stackrestore" => Some(Self::Stackrestore),
+            "prefetch" => Some(Self::Prefetch),
             _ => None,
         }
     }
@@ -304,16 +317,16 @@ impl LlvmCallingConv {
     /// Parse from numeric or symbolic LLVM CC identifier.
     pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "0" | "ccc" | "C"               => Some(Self::C),
-            "8" | "fastcc" | "Fast"         => Some(Self::Fast),
-            "9" | "coldcc" | "Cold"         => Some(Self::Cold),
-            "64" | "win64cc" | "Win64"      => Some(Self::Win64),
-            "78" | "x86_64_sysvcc"          => Some(Self::X86_64SysV),
-            "x86_stdcallcc"                 => Some(Self::X86StdCall),
-            "x86_fastcallcc"                => Some(Self::X86FastCall),
-            "x86_thiscallcc"                => Some(Self::X86ThisCall),
-            "x86_vectorcallcc"              => Some(Self::X86VectorCall),
-            _                               => None,
+            "0" | "ccc" | "C" => Some(Self::C),
+            "8" | "fastcc" | "Fast" => Some(Self::Fast),
+            "9" | "coldcc" | "Cold" => Some(Self::Cold),
+            "64" | "win64cc" | "Win64" => Some(Self::Win64),
+            "78" | "x86_64_sysvcc" => Some(Self::X86_64SysV),
+            "x86_stdcallcc" => Some(Self::X86StdCall),
+            "x86_fastcallcc" => Some(Self::X86FastCall),
+            "x86_thiscallcc" => Some(Self::X86ThisCall),
+            "x86_vectorcallcc" => Some(Self::X86VectorCall),
+            _ => None,
         }
     }
 

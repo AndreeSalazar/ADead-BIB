@@ -16,8 +16,8 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
+use super::isa_compiler::{ClassLayout, IsaCompiler, Target};
 use crate::frontend::ast::Type;
-use super::isa_compiler::{IsaCompiler, Target, ClassLayout};
 
 // ============================================================
 // C99 Size Policy — Real sizeof semantics
@@ -29,23 +29,23 @@ use super::isa_compiler::{IsaCompiler, Target, ClassLayout};
 pub fn c99_sizeof(ty: &Type) -> i32 {
     match ty {
         // Exact-width integer types
-        Type::I8 | Type::U8 | Type::Bool => 1,      // char, unsigned char, _Bool
-        Type::I16 | Type::U16 => 2,                   // short, unsigned short
-        Type::I32 | Type::U32 => 4,                   // int, unsigned int
-        Type::I64 | Type::U64 => 8,                   // long long, unsigned long long
-        Type::F32 => 4,                                // float
-        Type::F64 => 8,                                // double
+        Type::I8 | Type::U8 | Type::Bool => 1, // char, unsigned char, _Bool
+        Type::I16 | Type::U16 => 2,            // short, unsigned short
+        Type::I32 | Type::U32 => 4,            // int, unsigned int
+        Type::I64 | Type::U64 => 8,            // long long, unsigned long long
+        Type::F32 => 4,                        // float
+        Type::F64 => 8,                        // double
 
         // C named types
         Type::Named(name) => match name.as_str() {
             "char" | "signed char" | "unsigned char" | "_Bool" => 1,
             "short" | "unsigned short" => 2,
             "int" | "unsigned int" | "unsigned" => 4,
-            "long" | "unsigned long" => 8,             // LP64 model (Linux/macOS)
+            "long" | "unsigned long" => 8, // LP64 model (Linux/macOS)
             "long long" | "unsigned long long" => 8,
             "float" => 4,
             "double" => 8,
-            "long double" => 8,                        // Simplified: treat as double
+            "long double" => 8, // Simplified: treat as double
             "size_t" | "ptrdiff_t" | "intptr_t" | "uintptr_t" => 8,
             "void" => 0,
             _ => 8, // Unknown named type → pointer-sized default
@@ -56,10 +56,10 @@ pub fn c99_sizeof(ty: &Type) -> i32 {
 
         // Arrays: element_size * count
         Type::Array(inner, Some(count)) => c99_sizeof(inner) * (*count as i32),
-        Type::Array(_, None) => 8,                     // Flexible array → pointer
+        Type::Array(_, None) => 8, // Flexible array → pointer
 
         // Struct/Class types — resolved dynamically via class_layouts
-        Type::Struct(_) | Type::Class(_) => 0,         // Sentinel: look up in layouts
+        Type::Struct(_) | Type::Class(_) => 0, // Sentinel: look up in layouts
 
         // Void
         Type::Void => 0,
@@ -83,7 +83,9 @@ pub fn c99_align(size: i32) -> i32 {
 
 /// Align an offset to the given alignment boundary.
 pub fn align_to(offset: i32, align: i32) -> i32 {
-    if align <= 1 { return offset; }
+    if align <= 1 {
+        return offset;
+    }
     (offset + align - 1) & !(align - 1)
 }
 
@@ -111,7 +113,10 @@ impl CIsaCompiler {
     ///
     /// The key difference: struct layouts use C99 alignment rules
     /// instead of 8-byte-everything.
-    pub fn compile(&mut self, program: &crate::frontend::ast::Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
+    pub fn compile(
+        &mut self,
+        program: &crate::frontend::ast::Program,
+    ) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
         // Override struct layouts with C99-compliant offsets BEFORE compilation
         self.register_c99_layouts(program);
 
@@ -138,11 +143,12 @@ impl CIsaCompiler {
                 let actual_size = if field_size == 0 {
                     // It's a struct type — look up its layout
                     match &field.field_type {
-                        Type::Struct(name) | Type::Named(name) | Type::Class(name) => {
-                            self.inner.class_layouts().get(name)
-                                .map(|l| l.size)
-                                .unwrap_or(8)
-                        }
+                        Type::Struct(name) | Type::Named(name) | Type::Class(name) => self
+                            .inner
+                            .class_layouts()
+                            .get(name)
+                            .map(|l| l.size)
+                            .unwrap_or(8),
                         _ => 8,
                     }
                 } else {
@@ -150,7 +156,9 @@ impl CIsaCompiler {
                 };
 
                 let field_align = c99_align(actual_size);
-                if field_align > max_align { max_align = field_align; }
+                if field_align > max_align {
+                    max_align = field_align;
+                }
 
                 // Align the current offset
                 offset = align_to(offset, field_align);
@@ -172,25 +180,33 @@ impl CIsaCompiler {
                 let fs = c99_sizeof(&field.field_type);
                 let actual_fs = if fs == 0 {
                     match &field.field_type {
-                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
-                            self.inner.class_layouts().get(n).map(|l| l.real_size).unwrap_or(8)
-                        }
+                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => self
+                            .inner
+                            .class_layouts()
+                            .get(n)
+                            .map(|l| l.real_size)
+                            .unwrap_or(8),
                         _ => 8,
                     }
-                } else { fs };
+                } else {
+                    fs
+                };
                 let fa = c99_align(actual_fs);
                 real_offset = align_to(real_offset, fa);
                 real_offset += actual_fs;
             }
             let real_size = align_to(real_offset, max_align);
 
-            self.inner.insert_class_layout(st.name.clone(), ClassLayout {
-                name: st.name.clone(),
-                fields,
-                field_types: vec![],
-                size: total_size,
-                real_size,
-            });
+            self.inner.insert_class_layout(
+                st.name.clone(),
+                ClassLayout {
+                    name: st.name.clone(),
+                    fields,
+                    field_types: vec![],
+                    size: total_size,
+                    real_size,
+                },
+            );
         }
     }
 

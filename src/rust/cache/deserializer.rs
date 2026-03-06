@@ -2,7 +2,7 @@
 // Cache Deserializer — bytes → AST desde fastos.bib
 // ============================================================
 
-use super::{ADeadCache, CACHE_MAGIC, CACHE_VERSION, TypeTable, SymbolTable, ImplTable};
+use super::{ADeadCache, ImplTable, SymbolTable, TypeTable, CACHE_MAGIC, CACHE_VERSION};
 
 /// Error de deserializacion
 #[derive(Debug)]
@@ -16,9 +16,14 @@ pub enum DeserializeError {
 impl std::fmt::Display for DeserializeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            DeserializeError::InvalidMagic => write!(f, "Invalid cache magic bytes (not fastos.bib)"),
-            DeserializeError::VersionMismatch { expected, got } =>
-                write!(f, "Cache version mismatch: expected {}, got {}", expected, got),
+            DeserializeError::InvalidMagic => {
+                write!(f, "Invalid cache magic bytes (not fastos.bib)")
+            }
+            DeserializeError::VersionMismatch { expected, got } => write!(
+                f,
+                "Cache version mismatch: expected {}, got {}",
+                expected, got
+            ),
             DeserializeError::TruncatedData => write!(f, "Cache file truncated"),
             DeserializeError::IoError(e) => write!(f, "IO error: {}", e),
         }
@@ -57,14 +62,12 @@ pub fn deserialize(bytes: &[u8]) -> Result<ADeadCache, DeserializeError> {
 
     // Timestamp
     let timestamp = u64::from_le_bytes([
-        bytes[12], bytes[13], bytes[14], bytes[15],
-        bytes[16], bytes[17], bytes[18], bytes[19],
+        bytes[12], bytes[13], bytes[14], bytes[15], bytes[16], bytes[17], bytes[18], bytes[19],
     ]);
 
     // Hash
     let hash = u64::from_le_bytes([
-        bytes[20], bytes[21], bytes[22], bytes[23],
-        bytes[24], bytes[25], bytes[26], bytes[27],
+        bytes[20], bytes[21], bytes[22], bytes[23], bytes[24], bytes[25], bytes[26], bytes[27],
     ]);
 
     // AST data length

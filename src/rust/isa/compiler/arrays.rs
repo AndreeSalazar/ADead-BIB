@@ -2,9 +2,9 @@
 // ISA Compiler — Array access and assignment
 // ============================================================
 
-use crate::frontend::ast::*;
-use crate::isa::{ADeadOp, Reg, Operand};
 use super::core::IsaCompiler;
+use crate::frontend::ast::*;
+use crate::isa::{ADeadOp, Operand, Reg};
 
 impl IsaCompiler {
     /// Array index assignment: arr[i] = value
@@ -16,15 +16,23 @@ impl IsaCompiler {
                     let elem_offset = base_offset - (*idx as i32 * 8);
                     self.emit_expression(value);
                     self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp: elem_offset,
+                        },
                         src: Operand::Reg(Reg::RAX),
                     });
                 } else {
                     // Dynamic index
                     self.emit_expression(value);
-                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    self.ir.emit(ADeadOp::Push {
+                        src: Operand::Reg(Reg::RAX),
+                    });
                     self.emit_expression(index);
-                    self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
+                    self.ir.emit(ADeadOp::Shl {
+                        dst: Reg::RAX,
+                        amount: 3,
+                    });
                     // RAX = i*8, need base_offset - i*8
                     self.ir.emit(ADeadOp::Mov {
                         dst: Operand::Reg(Reg::RBX),
@@ -44,7 +52,10 @@ impl IsaCompiler {
                     });
                     self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
                     self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Mem { base: Reg::RAX, disp: 0 },
+                        dst: Operand::Mem {
+                            base: Reg::RAX,
+                            disp: 0,
+                        },
                         src: Operand::Reg(Reg::RCX),
                     });
                 }
@@ -52,19 +63,29 @@ impl IsaCompiler {
         } else {
             // Non-variable object — evaluate as pointer
             self.emit_expression(value);
-            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+            self.ir.emit(ADeadOp::Push {
+                src: Operand::Reg(Reg::RAX),
+            });
             self.emit_expression(index);
-            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+            self.ir.emit(ADeadOp::Push {
+                src: Operand::Reg(Reg::RAX),
+            });
             self.emit_expression(object);
             self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
-            self.ir.emit(ADeadOp::Shl { dst: Reg::RBX, amount: 3 });
+            self.ir.emit(ADeadOp::Shl {
+                dst: Reg::RBX,
+                amount: 3,
+            });
             self.ir.emit(ADeadOp::Add {
                 dst: Operand::Reg(Reg::RAX),
                 src: Operand::Reg(Reg::RBX),
             });
             self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
             self.ir.emit(ADeadOp::Mov {
-                dst: Operand::Mem { base: Reg::RAX, disp: 0 },
+                dst: Operand::Mem {
+                    base: Reg::RAX,
+                    disp: 0,
+                },
                 src: Operand::Reg(Reg::RCX),
             });
         }
@@ -79,12 +100,18 @@ impl IsaCompiler {
                     let elem_offset = base_offset - (*idx as i32 * 8);
                     self.ir.emit(ADeadOp::Mov {
                         dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                        src: Operand::Mem {
+                            base: Reg::RBP,
+                            disp: elem_offset,
+                        },
                     });
                 } else {
                     // Dynamic index
                     self.emit_expression(index);
-                    self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 });
+                    self.ir.emit(ADeadOp::Shl {
+                        dst: Reg::RAX,
+                        amount: 3,
+                    });
                     self.ir.emit(ADeadOp::Mov {
                         dst: Operand::Reg(Reg::RBX),
                         src: Operand::Reg(Reg::RAX),
@@ -107,16 +134,24 @@ impl IsaCompiler {
                     });
                     self.ir.emit(ADeadOp::Mov {
                         dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                        src: Operand::Mem {
+                            base: Reg::RBX,
+                            disp: 0,
+                        },
                     });
                 }
             } else {
                 // Unknown variable — evaluate as pointer
                 self.emit_expression(index);
-                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.ir.emit(ADeadOp::Push {
+                    src: Operand::Reg(Reg::RAX),
+                });
                 self.emit_expression(object);
                 self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
-                self.ir.emit(ADeadOp::Shl { dst: Reg::RBX, amount: 3 });
+                self.ir.emit(ADeadOp::Shl {
+                    dst: Reg::RBX,
+                    amount: 3,
+                });
                 self.ir.emit(ADeadOp::Add {
                     dst: Operand::Reg(Reg::RAX),
                     src: Operand::Reg(Reg::RBX),
@@ -127,16 +162,24 @@ impl IsaCompiler {
                 });
                 self.ir.emit(ADeadOp::Mov {
                     dst: Operand::Reg(Reg::RAX),
-                    src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                    src: Operand::Mem {
+                        base: Reg::RBX,
+                        disp: 0,
+                    },
                 });
             }
         } else {
             // Non-variable object
             self.emit_expression(index);
-            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+            self.ir.emit(ADeadOp::Push {
+                src: Operand::Reg(Reg::RAX),
+            });
             self.emit_expression(object);
             self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
-            self.ir.emit(ADeadOp::Shl { dst: Reg::RBX, amount: 3 });
+            self.ir.emit(ADeadOp::Shl {
+                dst: Reg::RBX,
+                amount: 3,
+            });
             self.ir.emit(ADeadOp::Add {
                 dst: Operand::Reg(Reg::RAX),
                 src: Operand::Reg(Reg::RBX),
@@ -147,7 +190,10 @@ impl IsaCompiler {
             });
             self.ir.emit(ADeadOp::Mov {
                 dst: Operand::Reg(Reg::RAX),
-                src: Operand::Mem { base: Reg::RBX, disp: 0 },
+                src: Operand::Mem {
+                    base: Reg::RBX,
+                    disp: 0,
+                },
             });
         }
     }

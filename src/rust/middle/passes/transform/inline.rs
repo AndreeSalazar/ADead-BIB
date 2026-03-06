@@ -18,7 +18,7 @@ impl InlinePass {
     pub fn new(threshold: usize) -> Self {
         InlinePass { threshold }
     }
-    
+
     /// Calculate the cost of inlining a function
     fn calculate_cost(&self, _func: &Function) -> usize {
         // Simple cost model: count instructions
@@ -34,11 +34,11 @@ impl Pass for InlinePass {
     fn name(&self) -> &'static str {
         "inline"
     }
-    
+
     fn kind(&self) -> PassKind {
         PassKind::Module
     }
-    
+
     fn run_on_function(&self, _func: &mut Function) -> bool {
         // TODO: Implement full inlining
         // For now, just a placeholder
@@ -50,13 +50,13 @@ impl Pass for InlinePass {
 mod tests {
     use super::*;
     use crate::middle::ir::Type;
-    
+
     #[test]
     fn test_inline_pass_creation() {
         let pass = InlinePass::new(225);
         assert_eq!(pass.threshold, 225);
     }
-    
+
     #[test]
     fn test_cost_calculation() {
         let pass = InlinePass::new(100);

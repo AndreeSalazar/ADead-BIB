@@ -10,8 +10,8 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use std::path::Path;
 use std::fmt;
+use std::path::Path;
 
 /// Tipo de formato binario detectado.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,7 +68,9 @@ pub struct SectionInfo {
 
 impl fmt::Display for SectionInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "    {:16} {:6}  offset=0x{:08X}  size={}  VA=0x{:08X}  [{}{}{}]",
+        write!(
+            f,
+            "    {:16} {:6}  offset=0x{:08X}  size={}  VA=0x{:08X}  [{}{}{}]",
             self.name,
             self.kind,
             self.offset,
@@ -138,8 +140,8 @@ pub struct BinaryLoader;
 impl BinaryLoader {
     /// Carga un binario desde un archivo y extrae su información.
     pub fn load_file(path: &Path) -> Result<BinaryInfo, String> {
-        let data = std::fs::read(path)
-            .map_err(|e| format!("Cannot read '{}': {}", path.display(), e))?;
+        let data =
+            std::fs::read(path).map_err(|e| format!("Cannot read '{}': {}", path.display(), e))?;
         let name = path.to_string_lossy().to_string();
         Self::load_bytes(&data, &name)
     }
@@ -158,19 +160,22 @@ impl BinaryLoader {
         let mut sections = Vec::new();
         let mut code_bytes = Vec::new();
         let mut rwx_count = 0;
-        let header_size = pe.header.optional_header
+        let header_size = pe
+            .header
+            .optional_header
             .map(|oh| oh.windows_fields.size_of_headers as usize)
             .unwrap_or(0);
 
         for section in &pe.sections {
             let sec_name = String::from_utf8_lossy(
-                &section.name[..section.name.iter().position(|&b| b == 0).unwrap_or(8)]
-            ).to_string();
+                &section.name[..section.name.iter().position(|&b| b == 0).unwrap_or(8)],
+            )
+            .to_string();
 
             let characteristics = section.characteristics;
             let executable = characteristics & 0x20000000 != 0; // IMAGE_SCN_MEM_EXECUTE
-            let writable = characteristics & 0x80000000 != 0;   // IMAGE_SCN_MEM_WRITE
-            let readable = characteristics & 0x40000000 != 0;   // IMAGE_SCN_MEM_READ
+            let writable = characteristics & 0x80000000 != 0; // IMAGE_SCN_MEM_WRITE
+            let readable = characteristics & 0x40000000 != 0; // IMAGE_SCN_MEM_READ
 
             let kind = if executable && writable {
                 rwx_count += 1;
@@ -215,7 +220,9 @@ impl BinaryLoader {
         }
 
         // Extract exports
-        let exports: Vec<String> = pe.exports.iter()
+        let exports: Vec<String> = pe
+            .exports
+            .iter()
             .filter_map(|e| e.name.map(|n| n.to_string()))
             .collect();
 
@@ -242,7 +249,9 @@ impl BinaryLoader {
         let mut rwx_count = 0;
 
         // Estimate header size from first section offset
-        let header_size = elf.section_headers.first()
+        let header_size = elf
+            .section_headers
+            .first()
             .map(|s| s.sh_offset as usize)
             .unwrap_or(64);
 
@@ -250,7 +259,7 @@ impl BinaryLoader {
             let sec_name = elf.shdr_strtab.get_at(sh.sh_name).unwrap_or("").to_string();
 
             let executable = sh.sh_flags & 0x4 != 0; // SHF_EXECINSTR
-            let writable = sh.sh_flags & 0x1 != 0;   // SHF_WRITE
+            let writable = sh.sh_flags & 0x1 != 0; // SHF_WRITE
             let allocatable = sh.sh_flags & 0x2 != 0; // SHF_ALLOC
 
             let kind = if executable && writable {
@@ -305,11 +314,17 @@ impl BinaryLoader {
         }
 
         // Extract exports from dynamic symbols
-        let exports: Vec<String> = elf.dynsyms.iter()
+        let exports: Vec<String> = elf
+            .dynsyms
+            .iter()
             .filter(|s| !s.is_import() && s.st_bind() == goblin::elf::sym::STB_GLOBAL)
             .filter_map(|s| {
                 let n = elf.dynstrtab.get_at(s.st_name).unwrap_or("");
-                if n.is_empty() { None } else { Some(n.to_string()) }
+                if n.is_empty() {
+                    None
+                } else {
+                    Some(n.to_string())
+                }
             })
             .collect();
 
@@ -362,7 +377,8 @@ impl BinaryLoader {
             true // Raw binaries always start at 0
         } else {
             info.sections.iter().any(|s| {
-                s.executable && info.entry_point >= s.virtual_address
+                s.executable
+                    && info.entry_point >= s.virtual_address
                     && info.entry_point < s.virtual_address + s.size
             })
         };
@@ -380,7 +396,9 @@ impl BinaryLoader {
         }
 
         // 3. Contar permisos anómalos (data sections con execute flag)
-        let anomalous = info.sections.iter()
+        let anomalous = info
+            .sections
+            .iter()
             .filter(|s| s.kind == SectionKind::RWX || (s.executable && s.writable))
             .count();
 

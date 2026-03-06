@@ -1,5 +1,5 @@
 // ============================================================
-// ADead-BIB v4.0 - Main Library
+// ADead-BIB v5.0 - Main Library
 // ============================================================
 // ADead = ASM Dead | BIB = Binary Is Binary
 //
@@ -39,7 +39,7 @@ pub use backend::elf;
 pub use backend::pe;
 
 // Security module
-pub use bg::{BinaryGuardian, SecurityPolicy, SecurityLevel, Verdict};
+pub use bg::{BinaryGuardian, SecurityLevel, SecurityPolicy, Verdict};
 
 // Frontend re-exports
 pub use frontend::ast;
@@ -48,20 +48,20 @@ pub use frontend::cpp;
 pub use frontend::type_checker;
 
 // ISA layer re-exports
-pub use isa::isa_compiler::IsaCompiler;
 pub use isa::codegen;
+pub use isa::isa_compiler::IsaCompiler;
 
 // Runtime re-exports
 pub use runtime::{CPUFeatures, ComputeBackend};
 
 // Middle-end re-exports
-pub use middle::ir::{Module as IRModule, Function as IRFunction, Type as IRType};
-pub use middle::passes::{PassManager, OptLevel};
+pub use middle::ir::{Function as IRFunction, Module as IRModule, Type as IRType};
 pub use middle::lowering::lower_to_ir;
-pub use middle::ub_detector::{UBDetector, UBReport, UBKind};
+pub use middle::passes::{OptLevel, PassManager};
+pub use middle::ub_detector::{UBDetector, UBKind, UBReport};
 
 // Preprocessor re-exports (Sin CMake, Sin Linker)
-pub use preprocessor::{HeaderResolver, SymbolDedup, MacroExpander};
+pub use preprocessor::{HeaderResolver, MacroExpander, SymbolDedup};
 
 // Cache re-exports (fastos.bib system)
 pub use cache::ADeadCache;
@@ -71,12 +71,14 @@ pub use output::OutputFormat;
 
 // ── Toolchain Heritage re-exports ────────────────────────────────────────────
 // LLVM: attributes, intrinsics, calling conventions
-pub use toolchain::llvm_attrs::{LlvmAttribute, LlvmIntrinsic, LlvmCallingConv};
+pub use toolchain::llvm_attrs::{LlvmAttribute, LlvmCallingConv, LlvmIntrinsic};
 // GCC: __attribute__(()), __builtin_*
 pub use toolchain::gcc_builtins::{GccAttribute, GccBuiltin};
 // MSVC: __declspec(), calling conventions, extensions
-pub use toolchain::msvc_compat::{MsvcDeclspec, MsvcCallingConv, MsvcExtension, MsvcPragma};
+pub use toolchain::msvc_compat::{MsvcCallingConv, MsvcDeclspec, MsvcExtension, MsvcPragma};
 // Unified calling convention table
-pub use toolchain::calling_conventions::{CallingConvention, CallFrame, detect_convention, shadow_space};
+pub use toolchain::calling_conventions::{
+    detect_convention, shadow_space, CallFrame, CallingConvention,
+};
 // C++ name mangling
-pub use toolchain::cpp_name_mangler::{ManglingStyle, NameMangler, ManglerContext};
+pub use toolchain::cpp_name_mangler::{ManglerContext, ManglingStyle, NameMangler};

@@ -30,12 +30,12 @@ impl LoopAnalysis {
     pub fn new() -> Self {
         LoopAnalysis { loops: Vec::new() }
     }
-    
+
     /// Get the innermost loop containing a block
     pub fn get_loop_for(&self, block: BasicBlockId) -> Option<&Loop> {
         self.loops.iter().find(|l| l.blocks.contains(&block))
     }
-    
+
     /// Check if a block is in any loop
     pub fn is_in_loop(&self, block: BasicBlockId) -> bool {
         self.loops.iter().any(|l| l.blocks.contains(&block))

@@ -19,33 +19,39 @@ pub enum Type {
     I128,
     F32,
     F64,
-    
+
     // Pointer type
     Ptr(Box<Type>),
-    
+
     // Array type: [N x T]
-    Array { element: Box<Type>, size: usize },
-    
+    Array {
+        element: Box<Type>,
+        size: usize,
+    },
+
     // Vector type (SIMD): <N x T>
-    Vector { element: Box<Type>, size: usize },
-    
+    Vector {
+        element: Box<Type>,
+        size: usize,
+    },
+
     // Struct type: { T1, T2, ... }
-    Struct { 
+    Struct {
         name: Option<String>,
         fields: Vec<Type>,
         packed: bool,
     },
-    
-    // Function type: T (T1, T2, ...) 
+
+    // Function type: T (T1, T2, ...)
     Function {
         return_type: Box<Type>,
         params: Vec<Type>,
         variadic: bool,
     },
-    
+
     // Label type (for basic blocks)
     Label,
-    
+
     // Metadata type
     Metadata,
 }
@@ -54,41 +60,77 @@ impl Type {
     // ============================================================
     // Constructors
     // ============================================================
-    
-    pub fn void() -> Self { Type::Void }
-    pub fn bool() -> Self { Type::Bool }
-    pub fn i8() -> Self { Type::I8 }
-    pub fn i16() -> Self { Type::I16 }
-    pub fn i32() -> Self { Type::I32 }
-    pub fn i64() -> Self { Type::I64 }
-    pub fn i128() -> Self { Type::I128 }
-    pub fn f32() -> Self { Type::F32 }
-    pub fn f64() -> Self { Type::F64 }
-    
+
+    pub fn void() -> Self {
+        Type::Void
+    }
+    pub fn bool() -> Self {
+        Type::Bool
+    }
+    pub fn i8() -> Self {
+        Type::I8
+    }
+    pub fn i16() -> Self {
+        Type::I16
+    }
+    pub fn i32() -> Self {
+        Type::I32
+    }
+    pub fn i64() -> Self {
+        Type::I64
+    }
+    pub fn i128() -> Self {
+        Type::I128
+    }
+    pub fn f32() -> Self {
+        Type::F32
+    }
+    pub fn f64() -> Self {
+        Type::F64
+    }
+
     pub fn ptr(pointee: Type) -> Self {
         Type::Ptr(Box::new(pointee))
     }
-    
+
     pub fn array(element: Type, size: usize) -> Self {
-        Type::Array { element: Box::new(element), size }
+        Type::Array {
+            element: Box::new(element),
+            size,
+        }
     }
-    
+
     pub fn vector(element: Type, size: usize) -> Self {
-        Type::Vector { element: Box::new(element), size }
+        Type::Vector {
+            element: Box::new(element),
+            size,
+        }
     }
-    
+
     pub fn structure(fields: Vec<Type>) -> Self {
-        Type::Struct { name: None, fields, packed: false }
+        Type::Struct {
+            name: None,
+            fields,
+            packed: false,
+        }
     }
-    
+
     pub fn named_struct(name: &str, fields: Vec<Type>) -> Self {
-        Type::Struct { name: Some(name.to_string()), fields, packed: false }
+        Type::Struct {
+            name: Some(name.to_string()),
+            fields,
+            packed: false,
+        }
     }
-    
+
     pub fn packed_struct(fields: Vec<Type>) -> Self {
-        Type::Struct { name: None, fields, packed: true }
+        Type::Struct {
+            name: None,
+            fields,
+            packed: true,
+        }
     }
-    
+
     pub fn function(return_type: Type, params: Vec<Type>, variadic: bool) -> Self {
         Type::Function {
             return_type: Box::new(return_type),
@@ -96,65 +138,71 @@ impl Type {
             variadic,
         }
     }
-    
+
     // ============================================================
     // Type queries
     // ============================================================
-    
+
     /// Returns true if this is a void type
     pub fn is_void(&self) -> bool {
         matches!(self, Type::Void)
     }
-    
+
     /// Returns true if this is an integer type
     pub fn is_integer(&self) -> bool {
-        matches!(self, Type::Bool | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::I128)
+        matches!(
+            self,
+            Type::Bool | Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::I128
+        )
     }
-    
+
     /// Returns true if this is a floating point type
     pub fn is_float(&self) -> bool {
         matches!(self, Type::F32 | Type::F64)
     }
-    
+
     /// Returns true if this is a pointer type
     pub fn is_pointer(&self) -> bool {
         matches!(self, Type::Ptr(_))
     }
-    
+
     /// Returns true if this is an array type
     pub fn is_array(&self) -> bool {
         matches!(self, Type::Array { .. })
     }
-    
+
     /// Returns true if this is a vector type
     pub fn is_vector(&self) -> bool {
         matches!(self, Type::Vector { .. })
     }
-    
+
     /// Returns true if this is a struct type
     pub fn is_struct(&self) -> bool {
         matches!(self, Type::Struct { .. })
     }
-    
+
     /// Returns true if this is a function type
     pub fn is_function(&self) -> bool {
         matches!(self, Type::Function { .. })
     }
-    
+
     /// Returns true if this type can be used as a first-class value
     pub fn is_first_class(&self) -> bool {
-        !matches!(self, Type::Void | Type::Function { .. } | Type::Label | Type::Metadata)
+        !matches!(
+            self,
+            Type::Void | Type::Function { .. } | Type::Label | Type::Metadata
+        )
     }
-    
+
     /// Returns true if this type can be used in aggregate types
     pub fn is_valid_element(&self) -> bool {
         !matches!(self, Type::Void | Type::Label | Type::Metadata)
     }
-    
+
     // ============================================================
     // Size and alignment (for x86-64)
     // ============================================================
-    
+
     /// Returns the size in bits
     pub fn bit_size(&self) -> usize {
         match self {
@@ -189,12 +237,12 @@ impl Type {
             Type::Metadata => 0,
         }
     }
-    
+
     /// Returns the size in bytes
     pub fn byte_size(&self) -> usize {
         (self.bit_size() + 7) / 8
     }
-    
+
     /// Returns the alignment in bytes
     pub fn alignment(&self) -> usize {
         match self {
@@ -225,11 +273,11 @@ impl Type {
             Type::Metadata => 1,
         }
     }
-    
+
     // ============================================================
     // Type access
     // ============================================================
-    
+
     /// Get the pointee type for pointer types
     pub fn pointee(&self) -> Option<&Type> {
         match self {
@@ -237,7 +285,7 @@ impl Type {
             _ => None,
         }
     }
-    
+
     /// Get the element type for array/vector types
     pub fn element_type(&self) -> Option<&Type> {
         match self {
@@ -246,7 +294,7 @@ impl Type {
             _ => None,
         }
     }
-    
+
     /// Get the number of elements for array/vector types
     pub fn num_elements(&self) -> Option<usize> {
         match self {
@@ -255,7 +303,7 @@ impl Type {
             _ => None,
         }
     }
-    
+
     /// Get struct fields
     pub fn struct_fields(&self) -> Option<&[Type]> {
         match self {
@@ -263,7 +311,7 @@ impl Type {
             _ => None,
         }
     }
-    
+
     /// Get function return type
     pub fn return_type(&self) -> Option<&Type> {
         match self {
@@ -271,7 +319,7 @@ impl Type {
             _ => None,
         }
     }
-    
+
     /// Get function parameter types
     pub fn param_types(&self) -> Option<&[Type]> {
         match self {
@@ -297,25 +345,43 @@ impl fmt::Display for Type {
             Type::Array { element, size } => write!(f, "[{} x {}]", size, element),
             Type::Vector { element, size } => write!(f, "<{} x {}>", size, element),
             Type::Struct { name: Some(n), .. } => write!(f, "%{}", n),
-            Type::Struct { name: None, fields, packed } => {
-                if *packed { write!(f, "<")? }
+            Type::Struct {
+                name: None,
+                fields,
+                packed,
+            } => {
+                if *packed {
+                    write!(f, "<")?
+                }
                 write!(f, "{{ ")?;
                 for (i, field) in fields.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")? }
+                    if i > 0 {
+                        write!(f, ", ")?
+                    }
                     write!(f, "{}", field)?;
                 }
                 write!(f, " }}")?;
-                if *packed { write!(f, ">")? }
+                if *packed {
+                    write!(f, ">")?
+                }
                 Ok(())
             }
-            Type::Function { return_type, params, variadic } => {
+            Type::Function {
+                return_type,
+                params,
+                variadic,
+            } => {
                 write!(f, "{} (", return_type)?;
                 for (i, param) in params.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")? }
+                    if i > 0 {
+                        write!(f, ", ")?
+                    }
                     write!(f, "{}", param)?;
                 }
                 if *variadic {
-                    if !params.is_empty() { write!(f, ", ")? }
+                    if !params.is_empty() {
+                        write!(f, ", ")?
+                    }
                     write!(f, "...")?;
                 }
                 write!(f, ")")
@@ -329,7 +395,7 @@ impl fmt::Display for Type {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_primitive_sizes() {
         assert_eq!(Type::i8().byte_size(), 1);
@@ -339,19 +405,19 @@ mod tests {
         assert_eq!(Type::f32().byte_size(), 4);
         assert_eq!(Type::f64().byte_size(), 8);
     }
-    
+
     #[test]
     fn test_pointer_size() {
         assert_eq!(Type::ptr(Type::i32()).byte_size(), 8);
         assert_eq!(Type::ptr(Type::i8()).byte_size(), 8);
     }
-    
+
     #[test]
     fn test_array_size() {
         assert_eq!(Type::array(Type::i32(), 10).byte_size(), 40);
         assert_eq!(Type::array(Type::i64(), 5).byte_size(), 40);
     }
-    
+
     #[test]
     fn test_type_display() {
         assert_eq!(format!("{}", Type::i32()), "i32");

@@ -88,16 +88,46 @@ impl Parser {
                 Some(Token::Identifier(t)) => Some(t),
                 _ => None,
             },
-            Some(Token::IntType) => { self.advance(); Some("int".to_string()) }
-            Some(Token::CharType) => { self.advance(); Some("char".to_string()) }
-            Some(Token::VoidType) => { self.advance(); Some("void".to_string()) }
-            Some(Token::LongType) => { self.advance(); Some("long".to_string()) }
-            Some(Token::ShortType) => { self.advance(); Some("short".to_string()) }
-            Some(Token::DoubleType) => { self.advance(); Some("double".to_string()) }
-            Some(Token::FloatType) => { self.advance(); Some("float".to_string()) }
-            Some(Token::Bool) => { self.advance(); Some("bool".to_string()) }
-            Some(Token::Str) => { self.advance(); Some("str".to_string()) }
-            _ => { self.advance(); None }
+            Some(Token::IntType) => {
+                self.advance();
+                Some("int".to_string())
+            }
+            Some(Token::CharType) => {
+                self.advance();
+                Some("char".to_string())
+            }
+            Some(Token::VoidType) => {
+                self.advance();
+                Some("void".to_string())
+            }
+            Some(Token::LongType) => {
+                self.advance();
+                Some("long".to_string())
+            }
+            Some(Token::ShortType) => {
+                self.advance();
+                Some("short".to_string())
+            }
+            Some(Token::DoubleType) => {
+                self.advance();
+                Some("double".to_string())
+            }
+            Some(Token::FloatType) => {
+                self.advance();
+                Some("float".to_string())
+            }
+            Some(Token::Bool) => {
+                self.advance();
+                Some("bool".to_string())
+            }
+            Some(Token::Str) => {
+                self.advance();
+                Some("str".to_string())
+            }
+            _ => {
+                self.advance();
+                None
+            }
         }
     }
 
@@ -328,7 +358,9 @@ impl Parser {
 
                         params.push(Param {
                             name: param_name,
-                            param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
+                            param_type: type_name
+                                .map(|t| Type::from_c_name(&t))
+                                .unwrap_or(Type::Auto),
                             default_value: None,
                         });
 
@@ -349,7 +381,10 @@ impl Parser {
                 };
 
                 self.skip_newlines();
-                let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
+                let resolved_return_type = return_type
+                    .as_ref()
+                    .map(|t| Type::from_c_name(t))
+                    .unwrap_or(Type::Void);
                 methods.push(MethodSignature {
                     name: method_name,
                     params,
@@ -439,7 +474,9 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
+                    param_type: type_name
+                        .map(|t| Type::from_c_name(&t))
+                        .unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -478,7 +515,10 @@ impl Parser {
 
         self.expect(Token::RBrace)?;
 
-        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
+        let resolved_return_type = return_type
+            .as_ref()
+            .map(|t| Type::from_c_name(t))
+            .unwrap_or(Type::Void);
         Ok(Function {
             name,
             params,
@@ -581,7 +621,9 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    param_type: param_type.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
+                    param_type: param_type
+                        .map(|t| Type::from_c_name(&t))
+                        .unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -613,7 +655,10 @@ impl Parser {
 
         self.expect(Token::RBrace)?;
 
-        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
+        let resolved_return_type = return_type
+            .as_ref()
+            .map(|t| Type::from_c_name(t))
+            .unwrap_or(Type::Void);
         Ok(Function {
             name,
             params,
@@ -690,7 +735,9 @@ impl Parser {
                     while !matches!(self.peek(), Some(Token::RBracket) | None) {
                         self.advance();
                     }
-                    if matches!(self.peek(), Some(Token::RBracket)) { self.advance(); } // ]
+                    if matches!(self.peek(), Some(Token::RBracket)) {
+                        self.advance();
+                    } // ]
                 }
 
                 if matches!(self.peek(), Some(Token::Equals)) {
@@ -804,7 +851,9 @@ impl Parser {
             fields.push(Field {
                 name: field_name,
                 type_name: type_name.clone(),
-                field_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
+                field_type: type_name
+                    .map(|t| Type::from_c_name(&t))
+                    .unwrap_or(Type::Auto),
                 default_value: None,
             });
 
@@ -947,7 +996,9 @@ impl Parser {
 
                         params.push(Param {
                             name: param_name,
-                            param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
+                            param_type: type_name
+                                .map(|t| Type::from_c_name(&t))
+                                .unwrap_or(Type::Auto),
                             default_value: None,
                         });
 
@@ -985,7 +1036,10 @@ impl Parser {
                     None
                 };
 
-                let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
+                let resolved_return_type = return_type
+                    .as_ref()
+                    .map(|t| Type::from_c_name(t))
+                    .unwrap_or(Type::Void);
                 methods.push(TraitMethod {
                     name: method_name,
                     params,
@@ -1033,7 +1087,9 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
+                    param_type: type_name
+                        .map(|t| Type::from_c_name(&t))
+                        .unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -1091,7 +1147,10 @@ impl Parser {
             }
         }
 
-        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
+        let resolved_return_type = return_type
+            .as_ref()
+            .map(|t| Type::from_c_name(t))
+            .unwrap_or(Type::Void);
         Ok(Function {
             name,
             params,
@@ -1221,7 +1280,9 @@ impl Parser {
 
                 params.push(Param {
                     name: param_name,
-                    param_type: type_name.map(|t| Type::from_c_name(&t)).unwrap_or(Type::Auto),
+                    param_type: type_name
+                        .map(|t| Type::from_c_name(&t))
+                        .unwrap_or(Type::Auto),
                     default_value: None,
                 });
 
@@ -1271,7 +1332,10 @@ impl Parser {
             }
         }
 
-        let resolved_return_type = return_type.as_ref().map(|t| Type::from_c_name(t)).unwrap_or(Type::Void);
+        let resolved_return_type = return_type
+            .as_ref()
+            .map(|t| Type::from_c_name(t))
+            .unwrap_or(Type::Void);
         Ok(Method {
             name: method_name,
             params,
@@ -1321,9 +1385,13 @@ impl Parser {
                 self.expect(Token::RBrace)?;
                 self.expect(Token::While)?;
                 let has_paren = matches!(self.peek(), Some(Token::LParen));
-                if has_paren { self.advance(); }
+                if has_paren {
+                    self.advance();
+                }
                 let condition = self.parse_comparison()?;
-                if has_paren { self.expect(Token::RParen)?; }
+                if has_paren {
+                    self.expect(Token::RParen)?;
+                }
                 Ok(Stmt::DoWhile { body, condition })
             }
             Some(Token::Break) => {
@@ -1356,7 +1424,7 @@ impl Parser {
             | Some(Token::FloatType)
             | Some(Token::Bool) => {
                 self.advance(); // consume type
-                // Check for pointer
+                                // Check for pointer
                 if matches!(self.peek(), Some(Token::Star)) {
                     self.advance();
                 }
@@ -1371,7 +1439,9 @@ impl Parser {
                     while !matches!(self.peek(), Some(Token::RBracket) | None) {
                         self.advance();
                     }
-                    if matches!(self.peek(), Some(Token::RBracket)) { self.advance(); } // ]
+                    if matches!(self.peek(), Some(Token::RBracket)) {
+                        self.advance();
+                    } // ]
                 }
                 if matches!(self.peek(), Some(Token::Equals)) {
                     self.advance();
@@ -1430,7 +1500,11 @@ impl Parser {
                         if !matches!(self.peek(), Some(Token::RParen)) {
                             loop {
                                 args.push(self.parse_expression()?);
-                                if matches!(self.peek(), Some(Token::Comma)) { self.advance(); } else { break; }
+                                if matches!(self.peek(), Some(Token::Comma)) {
+                                    self.advance();
+                                } else {
+                                    break;
+                                }
                             }
                         }
                         self.expect(Token::RParen)?;
@@ -1457,11 +1531,18 @@ impl Parser {
                         self.advance();
                         let right = self.parse_expression()?;
                         let value = Expr::BinaryOp {
-                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            left: Box::new(Expr::FieldAccess {
+                                object: Box::new(Expr::This),
+                                field: member.clone(),
+                            }),
                             op: BinOp::Add,
                             right: Box::new(right),
                         };
-                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                        return Ok(Stmt::FieldAssign {
+                            object: Expr::This,
+                            field: member,
+                            value,
+                        });
                     }
 
                     // self.field -= value
@@ -1469,11 +1550,18 @@ impl Parser {
                         self.advance();
                         let right = self.parse_expression()?;
                         let value = Expr::BinaryOp {
-                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            left: Box::new(Expr::FieldAccess {
+                                object: Box::new(Expr::This),
+                                field: member.clone(),
+                            }),
                             op: BinOp::Sub,
                             right: Box::new(right),
                         };
-                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                        return Ok(Stmt::FieldAssign {
+                            object: Expr::This,
+                            field: member,
+                            value,
+                        });
                     }
 
                     // self.field *= value
@@ -1481,11 +1569,18 @@ impl Parser {
                         self.advance();
                         let right = self.parse_expression()?;
                         let value = Expr::BinaryOp {
-                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            left: Box::new(Expr::FieldAccess {
+                                object: Box::new(Expr::This),
+                                field: member.clone(),
+                            }),
                             op: BinOp::Mul,
                             right: Box::new(right),
                         };
-                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                        return Ok(Stmt::FieldAssign {
+                            object: Expr::This,
+                            field: member,
+                            value,
+                        });
                     }
 
                     // self.field /= value
@@ -1493,11 +1588,18 @@ impl Parser {
                         self.advance();
                         let right = self.parse_expression()?;
                         let value = Expr::BinaryOp {
-                            left: Box::new(Expr::FieldAccess { object: Box::new(Expr::This), field: member.clone() }),
+                            left: Box::new(Expr::FieldAccess {
+                                object: Box::new(Expr::This),
+                                field: member.clone(),
+                            }),
                             op: BinOp::Div,
                             right: Box::new(right),
                         };
-                        return Ok(Stmt::FieldAssign { object: Expr::This, field: member, value });
+                        return Ok(Stmt::FieldAssign {
+                            object: Expr::This,
+                            field: member,
+                            value,
+                        });
                     }
 
                     // self.field (read-only expression)
@@ -1561,7 +1663,11 @@ impl Parser {
                         if !matches!(self.peek(), Some(Token::RParen)) {
                             loop {
                                 args.push(self.parse_expression()?);
-                                if matches!(self.peek(), Some(Token::Comma)) { self.advance(); } else { break; }
+                                if matches!(self.peek(), Some(Token::Comma)) {
+                                    self.advance();
+                                } else {
+                                    break;
+                                }
                             }
                         }
                         self.expect(Token::RParen)?;
@@ -1686,7 +1792,9 @@ impl Parser {
                         };
                         self.expect(Token::Colon)?;
                         args.push(self.parse_expression()?);
-                        if matches!(self.peek(), Some(Token::Comma)) { self.advance(); }
+                        if matches!(self.peek(), Some(Token::Comma)) {
+                            self.advance();
+                        }
                         self.skip_newlines();
                     }
                     self.expect(Token::RBrace)?;
@@ -2201,14 +2309,19 @@ impl Parser {
         }
 
         // Handle bitwise ops at same level
-        while matches!(self.peek(),
-            Some(Token::Ampersand) | Some(Token::Pipe) | Some(Token::Caret) |
-            Some(Token::LeftShift) | Some(Token::RightShift)) {
+        while matches!(
+            self.peek(),
+            Some(Token::Ampersand)
+                | Some(Token::Pipe)
+                | Some(Token::Caret)
+                | Some(Token::LeftShift)
+                | Some(Token::RightShift)
+        ) {
             let bop = match self.advance() {
-                Some(Token::Ampersand)  => BitwiseOp::And,
-                Some(Token::Pipe)       => BitwiseOp::Or,
-                Some(Token::Caret)      => BitwiseOp::Xor,
-                Some(Token::LeftShift)  => BitwiseOp::LeftShift,
+                Some(Token::Ampersand) => BitwiseOp::And,
+                Some(Token::Pipe) => BitwiseOp::Or,
+                Some(Token::Caret) => BitwiseOp::Xor,
+                Some(Token::LeftShift) => BitwiseOp::LeftShift,
                 Some(Token::RightShift) => BitwiseOp::RightShift,
                 _ => unreachable!(),
             };
@@ -2243,7 +2356,11 @@ impl Parser {
                     if !matches!(self.peek(), Some(Token::RParen)) {
                         loop {
                             args.push(self.parse_expression()?);
-                            if matches!(self.peek(), Some(Token::Comma)) { self.advance(); } else { break; }
+                            if matches!(self.peek(), Some(Token::Comma)) {
+                                self.advance();
+                            } else {
+                                break;
+                            }
                         }
                     }
                     self.expect(Token::RParen)?;
@@ -2393,9 +2510,13 @@ impl Parser {
                 // sizeof(type) or sizeof(expr)
                 self.expect(Token::LParen)?;
                 let arg = match self.peek() {
-                    Some(Token::IntType) | Some(Token::CharType) | Some(Token::VoidType)
-                    | Some(Token::LongType) | Some(Token::ShortType)
-                    | Some(Token::DoubleType) | Some(Token::FloatType)
+                    Some(Token::IntType)
+                    | Some(Token::CharType)
+                    | Some(Token::VoidType)
+                    | Some(Token::LongType)
+                    | Some(Token::ShortType)
+                    | Some(Token::DoubleType)
+                    | Some(Token::FloatType)
                     | Some(Token::Bool) => {
                         let type_tok = self.advance().unwrap();
                         // Check for pointer: sizeof(int*)
@@ -2485,12 +2606,17 @@ impl Parser {
                         self.expect(Token::Colon)?;
                         let field_val = self.parse_expression()?;
                         fields.push((field_name, field_val));
-                        if matches!(self.peek(), Some(Token::Comma)) { self.advance(); }
+                        if matches!(self.peek(), Some(Token::Comma)) {
+                            self.advance();
+                        }
                         self.skip_newlines();
                     }
                     self.expect(Token::RBrace)?;
                     let args = fields.into_iter().map(|(_, v)| v).collect();
-                    Ok(Expr::Call { name: format!("__struct__{}", name), args })
+                    Ok(Expr::Call {
+                        name: format!("__struct__{}", name),
+                        args,
+                    })
                 } else {
                     Ok(Expr::Variable(name))
                 }

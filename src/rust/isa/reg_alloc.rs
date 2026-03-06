@@ -18,25 +18,20 @@ use super::Reg;
 /// Registers available for temporary allocation
 /// Excludes: RAX (accumulator), RSP (stack), RBP (frame)
 const TEMP_REGS: [Reg; 10] = [
-    Reg::RBX,  // Callee-saved
-    Reg::RCX,  // Caller-saved (arg 4 Windows, arg 1 Linux)
-    Reg::RDX,  // Caller-saved (arg 3 Windows, arg 2 Linux)
-    Reg::RSI,  // Caller-saved (arg 2 Linux)
-    Reg::RDI,  // Caller-saved (arg 1 Linux)
-    Reg::R8,   // Caller-saved
-    Reg::R9,   // Caller-saved
-    Reg::R10,  // Caller-saved (scratch)
-    Reg::R11,  // Caller-saved (scratch)
-    Reg::R12,  // Callee-saved
+    Reg::RBX, // Callee-saved
+    Reg::RCX, // Caller-saved (arg 4 Windows, arg 1 Linux)
+    Reg::RDX, // Caller-saved (arg 3 Windows, arg 2 Linux)
+    Reg::RSI, // Caller-saved (arg 2 Linux)
+    Reg::RDI, // Caller-saved (arg 1 Linux)
+    Reg::R8,  // Caller-saved
+    Reg::R9,  // Caller-saved
+    Reg::R10, // Caller-saved (scratch)
+    Reg::R11, // Caller-saved (scratch)
+    Reg::R12, // Callee-saved
 ];
 
 /// Callee-saved registers that must be preserved across calls
-const CALLEE_SAVED: [Reg; 4] = [
-    Reg::RBX,
-    Reg::R12,
-    Reg::R13,
-    Reg::R14,
-];
+const CALLEE_SAVED: [Reg; 4] = [Reg::RBX, Reg::R12, Reg::R13, Reg::R14];
 
 /// Basic register allocator for temporary values
 #[derive(Debug, Clone)]
@@ -197,7 +192,8 @@ impl StackFrame {
 
     /// Get offset for a local variable
     pub fn get_local(&self, name: &str) -> Option<i32> {
-        self.locals.iter()
+        self.locals
+            .iter()
             .find(|(n, _)| n == name)
             .map(|(_, offset)| *offset)
     }
@@ -228,18 +224,18 @@ mod tests {
     #[test]
     fn test_temp_allocator_basic() {
         let mut alloc = TempAllocator::new();
-        
+
         // Should be able to allocate multiple registers
         let r1 = alloc.alloc();
         let r2 = alloc.alloc();
         let r3 = alloc.alloc();
-        
+
         assert!(r1.is_some());
         assert!(r2.is_some());
         assert!(r3.is_some());
         assert_ne!(r1, r2);
         assert_ne!(r2, r3);
-        
+
         // Free one and reallocate
         alloc.free(r2.unwrap());
         let r4 = alloc.alloc();
@@ -249,12 +245,12 @@ mod tests {
     #[test]
     fn test_temp_allocator_exhaustion() {
         let mut alloc = TempAllocator::new();
-        
+
         // Allocate all registers
         for _ in 0..TEMP_REGS.len() {
             assert!(alloc.alloc().is_some());
         }
-        
+
         // Next allocation should fail (spill)
         assert!(alloc.alloc().is_none());
         assert_eq!(alloc.spill_count(), 1);
@@ -263,15 +259,15 @@ mod tests {
     #[test]
     fn test_stack_frame() {
         let mut frame = StackFrame::new();
-        
+
         let off1 = frame.alloc_local("x".to_string(), 8);
         let off2 = frame.alloc_local("y".to_string(), 4);
         let off3 = frame.alloc_local("z".to_string(), 1);
-        
+
         assert_eq!(off1, -8);
         assert!(off2 < off1);
         assert!(off3 < off2);
-        
+
         assert_eq!(frame.get_local("x"), Some(-8));
         assert!(frame.total_size() >= 13); // At least 8+4+1
         assert_eq!(frame.total_size() % 16, 0); // Aligned to 16

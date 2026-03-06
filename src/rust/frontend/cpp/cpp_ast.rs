@@ -16,7 +16,7 @@ pub enum CppType {
     Bool,
     Char,
     WChar,
-    Char8,   // C++20
+    Char8, // C++20
     Char16,
     Char32,
     Short,
@@ -26,7 +26,7 @@ pub enum CppType {
     Float,
     Double,
     LongDouble,
-    Auto,      // C++11 type inference
+    Auto,                   // C++11 type inference
     Decltype(Box<CppExpr>), // C++11 decltype(expr)
 
     // Qualifiers
@@ -39,8 +39,8 @@ pub enum CppType {
 
     // Compound
     Pointer(Box<CppType>),
-    Reference(Box<CppType>),      // T&
-    RValueRef(Box<CppType>),      // T&& (C++11 move semantics)
+    Reference(Box<CppType>), // T&
+    RValueRef(Box<CppType>), // T&& (C++11 move semantics)
     Array(Box<CppType>, Option<usize>),
     Function {
         return_type: Box<CppType>,
@@ -48,7 +48,7 @@ pub enum CppType {
     },
 
     // User-defined
-    Named(String),                         // MyClass, std::string
+    Named(String), // MyClass, std::string
     Struct(String),
     Class(String),
     Enum(String),
@@ -58,7 +58,7 @@ pub enum CppType {
     // Templates
     TemplateType {
         name: String,
-        args: Vec<CppType>,              // vector<int>, map<string, int>
+        args: Vec<CppType>, // vector<int>, map<string, int>
     },
 
     // Smart pointers (recognized by name, lowered in IR)
@@ -77,7 +77,7 @@ pub enum CppType {
     StdSpan(Box<CppType>),
 
     // Special
-    Nullptr,  // std::nullptr_t
+    Nullptr, // std::nullptr_t
     SizeT,
 }
 
@@ -97,8 +97,8 @@ pub enum CppExpr {
     // Identifiers
     Identifier(String),
     ScopedIdentifier {
-        scope: Vec<String>,   // std::cout → ["std"]
-        name: String,         // "cout"
+        scope: Vec<String>, // std::cout → ["std"]
+        name: String,       // "cout"
     },
     This,
 
@@ -217,31 +217,45 @@ pub enum CppExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CppBinOp {
-    Add, Sub, Mul, Div, Mod,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or,
-    BitAnd, BitOr, BitXor, Shl, Shr,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
     Spaceship, // <=> (C++20)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CppUnaryOp {
-    Neg,         // -x
-    Not,         // !x
-    BitNot,      // ~x
-    PreInc,      // ++x
-    PreDec,      // --x
-    PostInc,     // x++
-    PostDec,     // x--
+    Neg,     // -x
+    Not,     // !x
+    BitNot,  // ~x
+    PreInc,  // ++x
+    PreDec,  // --x
+    PostInc, // x++
+    PostDec, // x--
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CppCastKind {
-    CStyle,           // (int)x
-    StaticCast,       // static_cast<int>(x)
-    DynamicCast,      // dynamic_cast<Base*>(x)
-    ConstCast,        // const_cast<int*>(x)
-    ReinterpretCast,  // reinterpret_cast<void*>(x)
+    CStyle,          // (int)x
+    StaticCast,      // static_cast<int>(x)
+    DynamicCast,     // dynamic_cast<Base*>(x)
+    ConstCast,       // const_cast<int*>(x)
+    ReinterpretCast, // reinterpret_cast<void*>(x)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -252,18 +266,21 @@ pub enum CppSizeOfArg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CppCapture {
-    ByValue(String),      // x
-    ByRef(String),        // &x
-    ThisByValue,          // *this (C++17)
-    ThisByRef,            // this
-    DefaultByValue,       // =
-    DefaultByRef,         // &
+    ByValue(String), // x
+    ByRef(String),   // &x
+    ThisByValue,     // *this (C++17)
+    ThisByRef,       // this
+    DefaultByValue,  // =
+    DefaultByRef,    // &
 }
 
 // ========== Statements ==========
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CppStmt {
+    // Sequence point / Line tracker
+    LineMarker(usize),
+
     // Expression statement
     Expr(CppExpr),
 
@@ -279,7 +296,7 @@ pub enum CppStmt {
     // Control flow
     Return(Option<CppExpr>),
     If {
-        init: Option<Box<CppStmt>>,  // C++17 if with init
+        init: Option<Box<CppStmt>>, // C++17 if with init
         condition: CppExpr,
         then_body: Box<CppStmt>,
         else_body: Option<Box<CppStmt>>,
@@ -397,7 +414,7 @@ pub enum CppTopLevel {
     // Enums
     EnumDef {
         name: String,
-        is_class: bool,   // enum class (C++11)
+        is_class: bool, // enum class (C++11)
         underlying_type: Option<CppType>,
         values: Vec<(String, Option<CppExpr>)>,
     },
@@ -411,7 +428,7 @@ pub enum CppTopLevel {
     // Using declarations
     UsingDecl {
         name: String,
-        target: String,     // using cout = std::cout;
+        target: String, // using cout = std::cout;
     },
     UsingNamespace(String), // using namespace std;
 
@@ -470,7 +487,7 @@ pub enum CppClassMember {
         template_params: Vec<CppTemplateParam>,
         params: Vec<CppParam>,
         qualifiers: CppFuncQualifiers,
-        body: Option<Vec<CppStmt>>,  // None = declaration only
+        body: Option<Vec<CppStmt>>, // None = declaration only
     },
     Constructor {
         access: CppAccess,
@@ -501,9 +518,9 @@ pub struct CppFuncQualifiers {
     pub is_noexcept: bool,
     pub is_constexpr: bool,
     pub is_inline: bool,
-    pub is_pure_virtual: bool,   // = 0
-    pub is_default: bool,        // = default
-    pub is_delete: bool,         // = delete
+    pub is_pure_virtual: bool, // = 0
+    pub is_default: bool,      // = default
+    pub is_delete: bool,       // = delete
 }
 
 impl Default for CppFuncQualifiers {
@@ -541,7 +558,7 @@ pub enum CppTemplateParam {
         name: String,
     },
     VariadicType {
-        name: String,   // typename... Args
+        name: String, // typename... Args
     },
 }
 

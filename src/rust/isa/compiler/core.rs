@@ -2,8 +2,8 @@
 // ISA Compiler Core — Structs, Enums, Constructors
 // ============================================================
 
-use crate::isa::{ADeadIR, Reg, Label};
 use crate::isa::reg_alloc::TempAllocator;
+use crate::isa::{ADeadIR, Label, Reg};
 use std::collections::HashMap;
 
 /// Target de compilación
@@ -162,31 +162,56 @@ impl IsaCompiler {
 
     pub(crate) fn string_to_reg(name: &str) -> Option<Reg> {
         match name {
-            "rax" => Some(Reg::RAX), "rbx" => Some(Reg::RBX),
-            "rcx" => Some(Reg::RCX), "rdx" => Some(Reg::RDX),
-            "rsi" => Some(Reg::RSI), "rdi" => Some(Reg::RDI),
-            "rbp" => Some(Reg::RBP), "rsp" => Some(Reg::RSP),
-            "r8"  => Some(Reg::R8),  "r9"  => Some(Reg::R9),
-            "r10" => Some(Reg::R10), "r11" => Some(Reg::R11),
-            "r12" => Some(Reg::R12), "r13" => Some(Reg::R13),
-            "r14" => Some(Reg::R14), "r15" => Some(Reg::R15),
-            "eax" => Some(Reg::EAX), "ebx" => Some(Reg::EBX),
-            "ecx" => Some(Reg::ECX), "edx" => Some(Reg::EDX),
-            "esi" => Some(Reg::ESI), "edi" => Some(Reg::EDI),
-            "esp" => Some(Reg::ESP), "ebp" => Some(Reg::EBP),
-            "ax"  => Some(Reg::AX),  "bx"  => Some(Reg::BX),
-            "cx"  => Some(Reg::CX),  "dx"  => Some(Reg::DX),
-            "si"  => Some(Reg::SI),  "di"  => Some(Reg::DI),
-            "sp"  => Some(Reg::SP),  "bp"  => Some(Reg::BP),
-            "al"  => Some(Reg::AL),  "ah"  => Some(Reg::AH),
-            "bl"  => Some(Reg::BL),  "bh"  => Some(Reg::BH),
-            "cl"  => Some(Reg::CL),  "ch"  => Some(Reg::CH),
-            "dl"  => Some(Reg::DL),  "dh"  => Some(Reg::DH),
-            "cr0" => Some(Reg::CR0), "cr2" => Some(Reg::CR2),
-            "cr3" => Some(Reg::CR3), "cr4" => Some(Reg::CR4),
-            "cs"  => Some(Reg::CS),  "ds"  => Some(Reg::DS),
-            "es"  => Some(Reg::ES),  "fs"  => Some(Reg::FS),
-            "gs"  => Some(Reg::GS),  "ss"  => Some(Reg::SS),
+            "rax" => Some(Reg::RAX),
+            "rbx" => Some(Reg::RBX),
+            "rcx" => Some(Reg::RCX),
+            "rdx" => Some(Reg::RDX),
+            "rsi" => Some(Reg::RSI),
+            "rdi" => Some(Reg::RDI),
+            "rbp" => Some(Reg::RBP),
+            "rsp" => Some(Reg::RSP),
+            "r8" => Some(Reg::R8),
+            "r9" => Some(Reg::R9),
+            "r10" => Some(Reg::R10),
+            "r11" => Some(Reg::R11),
+            "r12" => Some(Reg::R12),
+            "r13" => Some(Reg::R13),
+            "r14" => Some(Reg::R14),
+            "r15" => Some(Reg::R15),
+            "eax" => Some(Reg::EAX),
+            "ebx" => Some(Reg::EBX),
+            "ecx" => Some(Reg::ECX),
+            "edx" => Some(Reg::EDX),
+            "esi" => Some(Reg::ESI),
+            "edi" => Some(Reg::EDI),
+            "esp" => Some(Reg::ESP),
+            "ebp" => Some(Reg::EBP),
+            "ax" => Some(Reg::AX),
+            "bx" => Some(Reg::BX),
+            "cx" => Some(Reg::CX),
+            "dx" => Some(Reg::DX),
+            "si" => Some(Reg::SI),
+            "di" => Some(Reg::DI),
+            "sp" => Some(Reg::SP),
+            "bp" => Some(Reg::BP),
+            "al" => Some(Reg::AL),
+            "ah" => Some(Reg::AH),
+            "bl" => Some(Reg::BL),
+            "bh" => Some(Reg::BH),
+            "cl" => Some(Reg::CL),
+            "ch" => Some(Reg::CH),
+            "dl" => Some(Reg::DL),
+            "dh" => Some(Reg::DH),
+            "cr0" => Some(Reg::CR0),
+            "cr2" => Some(Reg::CR2),
+            "cr3" => Some(Reg::CR3),
+            "cr4" => Some(Reg::CR4),
+            "cs" => Some(Reg::CS),
+            "ds" => Some(Reg::DS),
+            "es" => Some(Reg::ES),
+            "fs" => Some(Reg::FS),
+            "gs" => Some(Reg::GS),
+            "ss" => Some(Reg::SS),
             _ => None,
         }
     }
@@ -194,11 +219,17 @@ impl IsaCompiler {
     pub(crate) fn arg_register(&self, index: usize) -> Reg {
         match self.target {
             Target::Windows => match index {
-                0 => Reg::RCX, 1 => Reg::RDX, 2 => Reg::R8, 3 => Reg::R9,
+                0 => Reg::RCX,
+                1 => Reg::RDX,
+                2 => Reg::R8,
+                3 => Reg::R9,
                 _ => Reg::RCX,
             },
             Target::Linux | Target::Raw => match index {
-                0 => Reg::RDI, 1 => Reg::RSI, 2 => Reg::RDX, 3 => Reg::RCX,
+                0 => Reg::RDI,
+                1 => Reg::RSI,
+                2 => Reg::RDX,
+                3 => Reg::RCX,
                 _ => Reg::RDI,
             },
         }

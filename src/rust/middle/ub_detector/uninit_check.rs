@@ -5,8 +5,8 @@
 // UBKind::UninitializedVariable
 // ============================================================
 
-use crate::ast::{Program, Stmt, Expr};
-use super::report::{UBReport, UBSeverity, UBKind};
+use super::report::{UBKind, UBReport, UBSeverity};
+use crate::ast::{Expr, Program, Stmt};
 use std::collections::HashSet;
 
 pub fn analyze_uninitialized(program: &Program) -> Vec<UBReport> {
@@ -35,6 +35,7 @@ struct UninitAnalyzer {
     initialized: HashSet<String>,
     /// Variables declaradas sin valor inicial
     declared_uninit: HashSet<String>,
+    current_line: usize,
     reports: Vec<UBReport>,
 }
 
@@ -44,18 +45,29 @@ impl UninitAnalyzer {
             func_name: func_name.to_string(),
             initialized: HashSet::new(),
             declared_uninit: HashSet::new(),
+            current_line: 0,
             reports: Vec::new(),
         }
     }
 
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::LineMarker(l) => {
+                self.current_line = *l;
+            }
             // Variable declarada con valor → inicializada
-            Stmt::VarDecl { name, value: Some(_), .. } => {
+            Stmt::VarDecl {
+                name,
+                value: Some(val),
+                ..
+            } => {
+                self.check_expr_use(val);
                 self.initialized.insert(name.clone());
             }
             // Variable declarada SIN valor → no inicializada
-            Stmt::VarDecl { name, value: None, .. } => {
+            Stmt::VarDecl {
+                name, value: None, ..
+            } => {
                 self.declared_uninit.insert(name.clone());
             }
             // Asignacion → marca como inicializada
@@ -68,7 +80,12 @@ impl UninitAnalyzer {
             Stmt::Return(Some(expr)) => {
                 self.check_expr_use(expr);
             }
-            Stmt::If { condition, then_body, else_body, .. } => {
+            Stmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 self.check_expr_use(condition);
                 for s in then_body {
                     self.check_stmt(s);
@@ -102,8 +119,8 @@ impl UninitAnalyzer {
                             UBKind::UninitializedVariable,
                             format!("Variable '{}' used before initialization", name),
                         )
-                        .with_location(self.func_name.clone(), 0)
-                        .with_suggestion(format!("Initialize '{}' before use", name))
+                        .with_location(self.func_name.clone(), self.current_line)
+                        .with_suggestion(format!("Initialize '{}' before use", name)),
                     );
                 }
             }

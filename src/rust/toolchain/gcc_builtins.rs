@@ -82,7 +82,11 @@ pub enum GccAttribute {
 
     // ── printf/scanf format checking ────────────────────────
     /// printf-style format argument.  `__attribute__((format(printf, N, M)))`.
-    Format { style: String, fmt_arg: u32, first_var: u32 },
+    Format {
+        style: String,
+        fmt_arg: u32,
+        first_var: u32,
+    },
     /// Similar to `format` but for strftime.
     FormatArg(u32),
 
@@ -119,13 +123,13 @@ impl GccAttribute {
     pub fn parse(name: &str, arg: Option<&str>) -> Self {
         match name {
             "always_inline" | "__always_inline__" => Self::AlwaysInline,
-            "noinline"      | "__noinline__"      => Self::NoInline,
-            "pure"          | "__pure__"          => Self::Pure,
-            "const"         | "__const__"         => Self::Const,
-            "noreturn"      | "__noreturn__"      => Self::NoReturn,
-            "warn_unused_result"                  => Self::WarnUnusedResult,
-            "naked"                               => Self::Naked,
-            "constructor"   => {
+            "noinline" | "__noinline__" => Self::NoInline,
+            "pure" | "__pure__" => Self::Pure,
+            "const" | "__const__" => Self::Const,
+            "noreturn" | "__noreturn__" => Self::NoReturn,
+            "warn_unused_result" => Self::WarnUnusedResult,
+            "naked" => Self::Naked,
+            "constructor" => {
                 let prio = arg.and_then(|a| a.parse().ok());
                 Self::Constructor(prio)
             }
@@ -133,48 +137,45 @@ impl GccAttribute {
                 let prio = arg.and_then(|a| a.parse().ok());
                 Self::Destructor(prio)
             }
-            "cold"           => Self::Cold,
-            "hot"            => Self::Hot,
-            "malloc"         => Self::Malloc,
-            "packed"         => Self::Packed,
-            "aligned"        => {
+            "cold" => Self::Cold,
+            "hot" => Self::Hot,
+            "malloc" => Self::Malloc,
+            "packed" => Self::Packed,
+            "aligned" => {
                 let n = arg.and_then(|a| a.parse().ok()).unwrap_or(16);
                 Self::Aligned(n)
             }
-            "unused"         => Self::Unused,
-            "used"           => Self::Used,
+            "unused" => Self::Unused,
+            "used" => Self::Used,
             "transparent_union" => Self::TransparentUnion,
-            "may_alias"      => Self::MayAlias,
-            "visibility"     => Self::Visibility(
-                arg.unwrap_or("default").trim_matches('"').to_string()
-            ),
-            "weak"           => Self::Weak,
-            "alias"          => Self::Alias(
-                arg.unwrap_or("").trim_matches('"').to_string()
-            ),
-            "weak_alias"     => Self::WeakAlias(
-                arg.unwrap_or("").trim_matches('"').to_string()
-            ),
-            "weakref"        => Self::WeakRef,
-            "cdecl"          => Self::Cdecl,
-            "stdcall"        => Self::Stdcall,
-            "fastcall"       => Self::Fastcall,
-            "thiscall"       => Self::Thiscall,
-            "deprecated"     => Self::Deprecated(
-                arg.map(|s| s.trim_matches('"').to_string())
-            ),
-            "target"         => Self::Target(arg.unwrap_or("").to_string()),
-            "fallthrough"    => Self::Fallthrough,
-            "section"        => Self::Section(arg.unwrap_or("").trim_matches('"').to_string()),
-            "interrupt"      => Self::Interrupt,
-            "signal"         => Self::SignalHandler,
-            other            => Self::Unknown(other.to_string()),
+            "may_alias" => Self::MayAlias,
+            "visibility" => {
+                Self::Visibility(arg.unwrap_or("default").trim_matches('"').to_string())
+            }
+            "weak" => Self::Weak,
+            "alias" => Self::Alias(arg.unwrap_or("").trim_matches('"').to_string()),
+            "weak_alias" => Self::WeakAlias(arg.unwrap_or("").trim_matches('"').to_string()),
+            "weakref" => Self::WeakRef,
+            "cdecl" => Self::Cdecl,
+            "stdcall" => Self::Stdcall,
+            "fastcall" => Self::Fastcall,
+            "thiscall" => Self::Thiscall,
+            "deprecated" => Self::Deprecated(arg.map(|s| s.trim_matches('"').to_string())),
+            "target" => Self::Target(arg.unwrap_or("").to_string()),
+            "fallthrough" => Self::Fallthrough,
+            "section" => Self::Section(arg.unwrap_or("").trim_matches('"').to_string()),
+            "interrupt" => Self::Interrupt,
+            "signal" => Self::SignalHandler,
+            other => Self::Unknown(other.to_string()),
         }
     }
 
     /// Whether this attribute prevents the compiler from inlining the function.
     pub fn blocks_inlining(&self) -> bool {
-        matches!(self, Self::NoInline | Self::Naked | Self::Interrupt | Self::SignalHandler)
+        matches!(
+            self,
+            Self::NoInline | Self::Naked | Self::Interrupt | Self::SignalHandler
+        )
     }
 
     /// Whether this attribute forces inlining.
@@ -184,12 +185,19 @@ impl GccAttribute {
 
     /// Whether this attribute changes the function's calling convention.
     pub fn is_calling_convention(&self) -> bool {
-        matches!(self, Self::Cdecl | Self::Stdcall | Self::Fastcall | Self::Thiscall)
+        matches!(
+            self,
+            Self::Cdecl | Self::Stdcall | Self::Fastcall | Self::Thiscall
+        )
     }
 
     /// Return effective alignment in bytes (if applicable).
     pub fn alignment(&self) -> Option<u64> {
-        if let Self::Aligned(n) = self { Some(*n) } else { None }
+        if let Self::Aligned(n) = self {
+            Some(*n)
+        } else {
+            None
+        }
     }
 }
 
@@ -353,58 +361,58 @@ impl GccBuiltin {
     pub fn parse(name: &str) -> Self {
         let name = name.trim_start_matches("__builtin_");
         match name {
-            "expect"                  => Self::Expect,
+            "expect" => Self::Expect,
             "expect_with_probability" => Self::ExpectWithProbability,
-            "unpredictable"           => Self::Unpredictable,
-            "clz"                     => Self::Clz,
-            "clzl" | "clzll"         => Self::Clzl,
-            "ctz"                     => Self::Ctz,
-            "ctzl" | "ctzll"         => Self::Ctzl,
-            "popcount"                => Self::Popcount,
+            "unpredictable" => Self::Unpredictable,
+            "clz" => Self::Clz,
+            "clzl" | "clzll" => Self::Clzl,
+            "ctz" => Self::Ctz,
+            "ctzl" | "ctzll" => Self::Ctzl,
+            "popcount" => Self::Popcount,
             "popcountl" | "popcountll" => Self::Popcountl,
-            "parity"                  => Self::Parity,
-            "bswap16"                 => Self::Bswap16,
-            "bswap32"                 => Self::Bswap32,
-            "bswap64"                 => Self::Bswap64,
-            "ffs"                     => Self::Ffs,
-            "sqrt"                    => Self::Sqrt,
-            "sqrtf"                   => Self::Sqrtf,
-            "abs"                     => Self::Abs,
-            "fabs" | "fabsf"         => Self::Fabs,
-            "inf"                     => Self::Inf,
-            "inff"                    => Self::Inff,
-            "nan"                     => Self::Nan,
-            "huge_val"                => Self::HugeVal,
-            "fma"                     => Self::Fma,
-            "memcpy"                  => Self::Memcpy,
-            "memmove"                 => Self::Memmove,
-            "memset"                  => Self::Memset,
-            "memcmp"                  => Self::Memcmp,
-            "strlen"                  => Self::Strlen,
-            "strcmp"                  => Self::Strcmp,
-            "strcpy"                  => Self::Strcpy,
-            "alloca"                  => Self::Alloca,
-            "alloca_with_align"       => Self::AllocaWithAlign,
-            "return_address"          => Self::ReturnAddress,
-            "frame_address"           => Self::FrameAddress,
-            "stack_address"           => Self::StackAddress,
-            "types_compatible_p"      => Self::TypesCompatibleP,
-            "choose_expr"             => Self::ChooseExpr,
-            "classify_type"           => Self::ClassifyType,
-            "offsetof"                => Self::Offsetof,
-            "unreachable"             => Self::Unreachable,
-            "trap"                    => Self::Trap,
-            "abort"                   => Self::Abort,
-            "add_overflow"            => Self::AddOverflow,
-            "sub_overflow"            => Self::SubOverflow,
-            "mul_overflow"            => Self::MulOverflow,
-            "prefetch"                => Self::Prefetch,
-            "constant_p"              => Self::ConstantP,
-            "va_arg"                  => Self::VaArg,
-            "va_start"                => Self::VaStart,
-            "va_end"                  => Self::VaEnd,
-            "va_copy"                 => Self::VaCopy,
-            other                     => Self::Unknown(other.to_string()),
+            "parity" => Self::Parity,
+            "bswap16" => Self::Bswap16,
+            "bswap32" => Self::Bswap32,
+            "bswap64" => Self::Bswap64,
+            "ffs" => Self::Ffs,
+            "sqrt" => Self::Sqrt,
+            "sqrtf" => Self::Sqrtf,
+            "abs" => Self::Abs,
+            "fabs" | "fabsf" => Self::Fabs,
+            "inf" => Self::Inf,
+            "inff" => Self::Inff,
+            "nan" => Self::Nan,
+            "huge_val" => Self::HugeVal,
+            "fma" => Self::Fma,
+            "memcpy" => Self::Memcpy,
+            "memmove" => Self::Memmove,
+            "memset" => Self::Memset,
+            "memcmp" => Self::Memcmp,
+            "strlen" => Self::Strlen,
+            "strcmp" => Self::Strcmp,
+            "strcpy" => Self::Strcpy,
+            "alloca" => Self::Alloca,
+            "alloca_with_align" => Self::AllocaWithAlign,
+            "return_address" => Self::ReturnAddress,
+            "frame_address" => Self::FrameAddress,
+            "stack_address" => Self::StackAddress,
+            "types_compatible_p" => Self::TypesCompatibleP,
+            "choose_expr" => Self::ChooseExpr,
+            "classify_type" => Self::ClassifyType,
+            "offsetof" => Self::Offsetof,
+            "unreachable" => Self::Unreachable,
+            "trap" => Self::Trap,
+            "abort" => Self::Abort,
+            "add_overflow" => Self::AddOverflow,
+            "sub_overflow" => Self::SubOverflow,
+            "mul_overflow" => Self::MulOverflow,
+            "prefetch" => Self::Prefetch,
+            "constant_p" => Self::ConstantP,
+            "va_arg" => Self::VaArg,
+            "va_start" => Self::VaStart,
+            "va_end" => Self::VaEnd,
+            "va_copy" => Self::VaCopy,
+            other => Self::Unknown(other.to_string()),
         }
     }
 
@@ -412,10 +420,23 @@ impl GccBuiltin {
     pub fn is_inlinable(&self) -> bool {
         matches!(
             self,
-            Self::Expect | Self::Clz | Self::Clzl | Self::Ctz | Self::Ctzl |
-            Self::Popcount | Self::Popcountl | Self::Bswap16 | Self::Bswap32 |
-            Self::Bswap64 | Self::Sqrt | Self::Sqrtf | Self::Memcpy |
-            Self::Memset | Self::Unreachable | Self::Trap | Self::ConstantP
+            Self::Expect
+                | Self::Clz
+                | Self::Clzl
+                | Self::Ctz
+                | Self::Ctzl
+                | Self::Popcount
+                | Self::Popcountl
+                | Self::Bswap16
+                | Self::Bswap32
+                | Self::Bswap64
+                | Self::Sqrt
+                | Self::Sqrtf
+                | Self::Memcpy
+                | Self::Memset
+                | Self::Unreachable
+                | Self::Trap
+                | Self::ConstantP
         )
     }
 

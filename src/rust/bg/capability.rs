@@ -12,8 +12,8 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use crate::isa::{ADeadOp, CallTarget, Operand};
 use super::arch_map::*;
+use crate::isa::{ADeadOp, CallTarget, Operand};
 
 /// Capability Mapper — Analiza ABIB IR y construye un Architecture Map.
 pub struct CapabilityMapper;
@@ -154,7 +154,9 @@ impl CapabilityMapper {
                 ADeadOp::CallIAT { .. } => {
                     map.capabilities.indirect_control_flow = true;
                 }
-                ADeadOp::Call { target: CallTarget::RipRelative(_) } => {
+                ADeadOp::Call {
+                    target: CallTarget::RipRelative(_),
+                } => {
                     map.capabilities.indirect_control_flow = true;
                 }
                 _ => {}
@@ -183,9 +185,9 @@ impl CapabilityMapper {
             | ADeadOp::OutByte { .. } => InstructionClass::Privileged,
 
             // ---- Restricted (cruza frontera de privilegio) ----
-            ADeadOp::Syscall
-            | ADeadOp::Int { .. }
-            | ADeadOp::FarJmp { .. } => InstructionClass::Restricted,
+            ADeadOp::Syscall | ADeadOp::Int { .. } | ADeadOp::FarJmp { .. } => {
+                InstructionClass::Restricted
+            }
 
             // ---- Safe (todo lo demás) ----
             _ => InstructionClass::Safe,
@@ -211,9 +213,17 @@ mod tests {
     #[test]
     fn test_safe_program() {
         let ops = vec![
-            ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RBP), src: Operand::Reg(Reg::RSP) },
-            ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP),
+            },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBP),
+                src: Operand::Reg(Reg::RSP),
+            },
+            ADeadOp::Xor {
+                dst: Reg::EAX,
+                src: Reg::EAX,
+            },
             ADeadOp::Pop { dst: Reg::RBP },
             ADeadOp::Ret,
         ];
@@ -227,8 +237,16 @@ mod tests {
     fn test_kernel_program() {
         let ops = vec![
             ADeadOp::Cli,
-            ADeadOp::Lgdt { src: Operand::Mem { base: Reg::RAX, disp: 0 } },
-            ADeadOp::MovToCr { cr: 0, src: Reg::RAX },
+            ADeadOp::Lgdt {
+                src: Operand::Mem {
+                    base: Reg::RAX,
+                    disp: 0,
+                },
+            },
+            ADeadOp::MovToCr {
+                cr: 0,
+                src: Reg::RAX,
+            },
             ADeadOp::Sti,
             ADeadOp::Hlt,
         ];
@@ -240,7 +258,10 @@ mod tests {
     #[test]
     fn test_syscall_detection() {
         let ops = vec![
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(1) },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Imm64(1),
+            },
             ADeadOp::Syscall,
             ADeadOp::Int { vector: 0x80 },
         ];
@@ -253,8 +274,13 @@ mod tests {
     #[test]
     fn test_io_detection() {
         let ops = vec![
-            ADeadOp::InByte { port: Operand::Imm8(0x60) },
-            ADeadOp::OutByte { port: Operand::Imm8(0x20), src: Operand::Reg(Reg::AL) },
+            ADeadOp::InByte {
+                port: Operand::Imm8(0x60),
+            },
+            ADeadOp::OutByte {
+                port: Operand::Imm8(0x20),
+                src: Operand::Reg(Reg::AL),
+            },
         ];
         let map = CapabilityMapper::analyze(&ops);
         assert_eq!(map.io_map.accesses.len(), 2);
@@ -265,10 +291,17 @@ mod tests {
     #[test]
     fn test_control_flow_analysis() {
         let ops = vec![
-            ADeadOp::Call { target: CallTarget::Relative(Label(100)) },
-            ADeadOp::Call { target: CallTarget::RipRelative(200) },
+            ADeadOp::Call {
+                target: CallTarget::Relative(Label(100)),
+            },
+            ADeadOp::Call {
+                target: CallTarget::RipRelative(200),
+            },
             ADeadOp::Jmp { target: Label(50) },
-            ADeadOp::Jcc { cond: Condition::Equal, target: Label(30) },
+            ADeadOp::Jcc {
+                cond: Condition::Equal,
+                target: Label(30),
+            },
         ];
         let map = CapabilityMapper::analyze(&ops);
         assert_eq!(map.control_flow_map.direct_calls, 1);

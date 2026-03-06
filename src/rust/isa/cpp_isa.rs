@@ -24,8 +24,8 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use crate::frontend::ast::{Type, Program, Class};
-use super::isa_compiler::{IsaCompiler, Target, ClassLayout};
+use super::isa_compiler::{ClassLayout, IsaCompiler, Target};
+use crate::frontend::ast::{Class, Program, Type};
 
 // ============================================================
 // C++ Size Policy — sizeof with vtable awareness
@@ -104,13 +104,16 @@ impl CppIsaCompiler {
                 fields.push((field.name.clone(), offset));
                 offset += 8;
             }
-            self.inner.insert_class_layout(st.name.clone(), ClassLayout {
-                name: st.name.clone(),
-                fields,
-                field_types: vec![],
-                size: offset,
-                real_size: offset,
-            });
+            self.inner.insert_class_layout(
+                st.name.clone(),
+                ClassLayout {
+                    name: st.name.clone(),
+                    fields,
+                    field_types: vec![],
+                    size: offset,
+                    real_size: offset,
+                },
+            );
         }
 
         // Second pass: register classes with inheritance
@@ -142,7 +145,9 @@ impl CppIsaCompiler {
             // Look up base class layout (already registered or compute recursively)
             if let Some(base_layout) = self.inner.class_layouts().get(base_name) {
                 for (field_name, field_offset) in &base_layout.fields {
-                    if field_name == "__vtable" { continue; } // Don't duplicate vtable
+                    if field_name == "__vtable" {
+                        continue;
+                    } // Don't duplicate vtable
                     fields.push((field_name.clone(), offset + field_offset));
                 }
                 offset += base_layout.size;
@@ -151,7 +156,9 @@ impl CppIsaCompiler {
                 if let Some(base_class) = all_classes.iter().find(|c| c.name == *base_name) {
                     let base_layout = self.compute_class_layout(base_class, all_classes);
                     for (field_name, field_offset) in &base_layout.fields {
-                        if field_name == "__vtable" { continue; }
+                        if field_name == "__vtable" {
+                            continue;
+                        }
                         fields.push((field_name.clone(), offset + field_offset));
                     }
                     offset += base_layout.size;
@@ -166,7 +173,9 @@ impl CppIsaCompiler {
         }
 
         // Minimum size is 8 (empty class optimization not applied for simplicity)
-        if offset == 0 { offset = 8; }
+        if offset == 0 {
+            offset = 8;
+        }
 
         ClassLayout {
             name: class.name.clone(),

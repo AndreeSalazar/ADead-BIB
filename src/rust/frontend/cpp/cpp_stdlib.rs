@@ -55,12 +55,14 @@ pub fn get_cpp_header(name: &str) -> Option<&'static str> {
         "memory" | "functional" | "utility" | "tuple" => Some(HEADER_EMPTY),
         "optional" | "variant" | "any" => Some(HEADER_EMPTY),
         "type_traits" | "limits" | "concepts" => Some(HEADER_EMPTY),
-        "chrono" | "thread" | "mutex" | "atomic" | "future"
-            | "condition_variable" => Some(HEADER_EMPTY),
+        "chrono" | "thread" | "mutex" | "atomic" | "future" | "condition_variable" => {
+            Some(HEADER_EMPTY)
+        }
         "initializer_list" | "iterator" => Some(HEADER_EMPTY),
         "stdexcept" | "exception" => Some(HEADER_EMPTY),
-        "regex" | "random" | "filesystem" | "format"
-            | "coroutine" | "numbers" | "bit" => Some(HEADER_EMPTY),
+        "regex" | "random" | "filesystem" | "format" | "coroutine" | "numbers" | "bit" => {
+            Some(HEADER_EMPTY)
+        }
         "cassert" => Some(HEADER_EMPTY),
         "cstdio" | "stdio.h" => Some(HEADER_IO),
         "cstdlib" | "stdlib.h" => Some(HEADER_CSTDLIB),

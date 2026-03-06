@@ -5,7 +5,7 @@
 // Sin overhead de call/ret.
 // ============================================================
 
-use crate::frontend::ast::{Program, Function};
+use crate::frontend::ast::{Function, Program};
 
 /// Threshold: funciones con menos de este numero de statements se inlinean
 const INLINE_THRESHOLD: usize = 5;
@@ -16,7 +16,9 @@ pub struct InlineExpander {
 
 impl InlineExpander {
     pub fn new() -> Self {
-        Self { threshold: INLINE_THRESHOLD }
+        Self {
+            threshold: INLINE_THRESHOLD,
+        }
     }
 
     pub fn with_threshold(threshold: usize) -> Self {
@@ -25,7 +27,9 @@ impl InlineExpander {
 
     /// Identifica funciones candidatas a inline (pequenas, no recursivas)
     pub fn find_inline_candidates<'a>(&self, program: &'a Program) -> Vec<&'a Function> {
-        program.functions.iter()
+        program
+            .functions
+            .iter()
             .filter(|f| self.is_inlineable(f))
             .collect()
     }
@@ -61,7 +65,9 @@ impl InlineExpander {
 }
 
 impl Default for InlineExpander {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

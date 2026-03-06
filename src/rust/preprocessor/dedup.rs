@@ -50,12 +50,15 @@ impl SymbolDedup {
             self.dedup_count += 1;
             return false; // Ya existe, no duplicar
         }
-        self.symbols.insert(name.to_string(), SymbolEntry {
-            name: name.to_string(),
-            kind,
-            source_file: source.to_string(),
-            defined: true,
-        });
+        self.symbols.insert(
+            name.to_string(),
+            SymbolEntry {
+                name: name.to_string(),
+                kind,
+                source_file: source.to_string(),
+                defined: true,
+            },
+        );
         true
     }
 

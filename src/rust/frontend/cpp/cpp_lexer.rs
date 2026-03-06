@@ -21,46 +21,150 @@ pub enum CppToken {
     Identifier(String),
 
     // C keywords (shared with C)
-    Auto, Break, Case, Char, Const, Continue, Default, Do, Double,
-    Else, Enum, Extern, Float, For, Goto, If, Int, Long, Register,
-    Return, Short, Signed, Sizeof, Static, Struct, Switch, Typedef,
-    Union, Unsigned, Void, Volatile, While, Bool, Inline,
+    Auto,
+    Break,
+    Case,
+    Char,
+    Const,
+    Continue,
+    Default,
+    Do,
+    Double,
+    Else,
+    Enum,
+    Extern,
+    Float,
+    For,
+    Goto,
+    If,
+    Int,
+    Long,
+    Register,
+    Return,
+    Short,
+    Signed,
+    Sizeof,
+    Static,
+    Struct,
+    Switch,
+    Typedef,
+    Union,
+    Unsigned,
+    Void,
+    Volatile,
+    While,
+    Bool,
+    Inline,
 
     // C++ keywords
-    Class, Namespace, Using, New, Delete, This, Virtual, Override,
-    Final, Public, Private, Protected, Friend, Operator, Template,
-    Typename, Try, Catch, Throw, Noexcept, Nullptr, Constexpr,
-    Static_assert, Explicit, Mutable, Thread_local,
-    Alignas, Alignof, Decltype, Typeid,
-    Concept, Requires, Co_await, Co_yield, Co_return,
-    Consteval, Constinit, Char8_t, Char16_t, Char32_t, Wchar_t,
+    Class,
+    Namespace,
+    Using,
+    New,
+    Delete,
+    This,
+    Virtual,
+    Override,
+    Final,
+    Public,
+    Private,
+    Protected,
+    Friend,
+    Operator,
+    Template,
+    Typename,
+    Try,
+    Catch,
+    Throw,
+    Noexcept,
+    Nullptr,
+    Constexpr,
+    Static_assert,
+    Explicit,
+    Mutable,
+    Thread_local,
+    Alignas,
+    Alignof,
+    Decltype,
+    Typeid,
+    Concept,
+    Requires,
+    Co_await,
+    Co_yield,
+    Co_return,
+    Consteval,
+    Constinit,
+    Char8_t,
+    Char16_t,
+    Char32_t,
+    Wchar_t,
 
     // C++ cast keywords
-    StaticCast, DynamicCast, ConstCast, ReinterpretCast,
+    StaticCast,
+    DynamicCast,
+    ConstCast,
+    ReinterpretCast,
 
     // C++ special
-    True, False,
+    True,
+    False,
 
     // Operators
-    Plus, Minus, Star, Slash, Percent,
-    Assign, PlusAssign, MinusAssign, StarAssign, SlashAssign, PercentAssign,
-    AmpAssign, PipeAssign, CaretAssign, ShlAssign, ShrAssign,
-    Eq, Ne, Lt, Gt, Le, Ge, Spaceship,  // <=> C++20
-    Amp, Pipe, Caret, Tilde, Shl, Shr,
-    And, Or, Not,            // &&, ||, !
-    Increment, Decrement,    // ++, --
-    Arrow, Dot, DotStar, ArrowStar, // ->, ., .*, ->*
-    Scope,                   // ::
-    Ellipsis,                // ...
-    Question, Colon,         // ? :
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Assign,
+    PlusAssign,
+    MinusAssign,
+    StarAssign,
+    SlashAssign,
+    PercentAssign,
+    AmpAssign,
+    PipeAssign,
+    CaretAssign,
+    ShlAssign,
+    ShrAssign,
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Spaceship, // <=> C++20
+    Amp,
+    Pipe,
+    Caret,
+    Tilde,
+    Shl,
+    Shr,
+    And,
+    Or,
+    Not, // &&, ||, !
+    Increment,
+    Decrement, // ++, --
+    Arrow,
+    Dot,
+    DotStar,
+    ArrowStar, // ->, ., .*, ->*
+    Scope,     // ::
+    Ellipsis,  // ...
+    Question,
+    Colon, // ? :
 
     // Delimiters
-    LParen, RParen,
-    LBracket, RBracket,
-    LBrace, RBrace,
-    LAngle, RAngle,          // < > (also used for templates)
-    Semicolon, Comma,
-    Hash,                    // # (preprocessor)
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
+    LBrace,
+    RBrace,
+    LAngle,
+    RAngle, // < > (also used for templates)
+    Semicolon,
+    Comma,
+    Hash, // # (preprocessor)
 
     // Special
     Eof,
@@ -69,6 +173,8 @@ pub enum CppToken {
 pub struct CppLexer {
     chars: Vec<char>,
     pos: usize,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl CppLexer {
@@ -76,20 +182,26 @@ impl CppLexer {
         Self {
             chars: source.chars().collect(),
             pos: 0,
+            line: 1,
+            column: 1,
         }
     }
 
-    pub fn tokenize(&mut self) -> Vec<CppToken> {
+    pub fn tokenize(&mut self) -> (Vec<CppToken>, Vec<usize>) {
         let mut tokens = Vec::new();
+        let mut lines = Vec::new();
         loop {
+            let line = self.line;
             let tok = self.next_token();
             if tok == CppToken::Eof {
                 tokens.push(tok);
+                lines.push(line);
                 break;
             }
             tokens.push(tok);
+            lines.push(line);
         }
-        tokens
+        (tokens, lines)
     }
 
     fn peek(&self) -> char {
@@ -103,6 +215,12 @@ impl CppLexer {
     fn advance(&mut self) -> char {
         let ch = self.peek();
         self.pos += 1;
+        if ch == '\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
         ch
     }
 
@@ -189,15 +307,26 @@ impl CppLexer {
         let mut is_unsigned = false;
         loop {
             match self.peek() {
-                'u' | 'U' => { is_unsigned = true; self.advance(); }
-                'l' | 'L' => { self.advance(); }
-                'f' | 'F' => { is_float = true; self.advance(); }
+                'u' | 'U' => {
+                    is_unsigned = true;
+                    self.advance();
+                }
+                'l' | 'L' => {
+                    self.advance();
+                }
+                'f' | 'F' => {
+                    is_float = true;
+                    self.advance();
+                }
                 _ => break,
             }
         }
 
         let text: String = self.chars[start..self.pos].iter().collect();
-        let clean: String = text.chars().filter(|c| !matches!(c, 'u' | 'U' | 'l' | 'L' | 'f' | 'F')).collect();
+        let clean: String = text
+            .chars()
+            .filter(|c| !matches!(c, 'u' | 'U' | 'l' | 'L' | 'f' | 'F'))
+            .collect();
 
         if is_float {
             CppToken::FloatLiteral(clean.parse().unwrap_or(0.0))
@@ -222,13 +351,34 @@ impl CppLexer {
             if self.peek() == '\\' {
                 self.advance();
                 match self.peek() {
-                    'n' => { s.push('\n'); self.advance(); }
-                    't' => { s.push('\t'); self.advance(); }
-                    'r' => { s.push('\r'); self.advance(); }
-                    '\\' => { s.push('\\'); self.advance(); }
-                    '"' => { s.push('"'); self.advance(); }
-                    '\'' => { s.push('\''); self.advance(); }
-                    '0' => { s.push('\0'); self.advance(); }
+                    'n' => {
+                        s.push('\n');
+                        self.advance();
+                    }
+                    't' => {
+                        s.push('\t');
+                        self.advance();
+                    }
+                    'r' => {
+                        s.push('\r');
+                        self.advance();
+                    }
+                    '\\' => {
+                        s.push('\\');
+                        self.advance();
+                    }
+                    '"' => {
+                        s.push('"');
+                        self.advance();
+                    }
+                    '\'' => {
+                        s.push('\'');
+                        self.advance();
+                    }
+                    '0' => {
+                        s.push('\0');
+                        self.advance();
+                    }
                     'x' => {
                         self.advance();
                         let mut hex = String::new();
@@ -241,13 +391,18 @@ impl CppLexer {
                             s.push(n as char);
                         }
                     }
-                    other => { s.push(other); self.advance(); }
+                    other => {
+                        s.push(other);
+                        self.advance();
+                    }
                 }
             } else {
                 s.push(self.advance());
             }
         }
-        if self.peek() == '"' { self.advance(); }
+        if self.peek() == '"' {
+            self.advance();
+        }
         s
     }
 
@@ -267,7 +422,9 @@ impl CppLexer {
         } else {
             self.advance()
         };
-        if self.peek() == '\'' { self.advance(); }
+        if self.peek() == '\'' {
+            self.advance();
+        }
         ch
     }
 
@@ -433,80 +590,140 @@ impl CppLexer {
         self.advance();
         match ch {
             '+' => {
-                if self.peek() == '+' { self.advance(); return CppToken::Increment; }
-                if self.peek() == '=' { self.advance(); return CppToken::PlusAssign; }
+                if self.peek() == '+' {
+                    self.advance();
+                    return CppToken::Increment;
+                }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::PlusAssign;
+                }
                 CppToken::Plus
             }
             '-' => {
-                if self.peek() == '-' { self.advance(); return CppToken::Decrement; }
-                if self.peek() == '=' { self.advance(); return CppToken::MinusAssign; }
+                if self.peek() == '-' {
+                    self.advance();
+                    return CppToken::Decrement;
+                }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::MinusAssign;
+                }
                 if self.peek() == '>' {
                     self.advance();
-                    if self.peek() == '*' { self.advance(); return CppToken::ArrowStar; }
+                    if self.peek() == '*' {
+                        self.advance();
+                        return CppToken::ArrowStar;
+                    }
                     return CppToken::Arrow;
                 }
                 CppToken::Minus
             }
             '*' => {
-                if self.peek() == '=' { self.advance(); return CppToken::StarAssign; }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::StarAssign;
+                }
                 CppToken::Star
             }
             '/' => {
-                if self.peek() == '=' { self.advance(); return CppToken::SlashAssign; }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::SlashAssign;
+                }
                 CppToken::Slash
             }
             '%' => {
-                if self.peek() == '=' { self.advance(); return CppToken::PercentAssign; }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::PercentAssign;
+                }
                 CppToken::Percent
             }
             '=' => {
-                if self.peek() == '=' { self.advance(); return CppToken::Eq; }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::Eq;
+                }
                 CppToken::Assign
             }
             '!' => {
-                if self.peek() == '=' { self.advance(); return CppToken::Ne; }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::Ne;
+                }
                 CppToken::Not
             }
             '<' => {
                 if self.peek() == '=' {
                     self.advance();
-                    if self.peek() == '>' { self.advance(); return CppToken::Spaceship; }
+                    if self.peek() == '>' {
+                        self.advance();
+                        return CppToken::Spaceship;
+                    }
                     return CppToken::Le;
                 }
                 if self.peek() == '<' {
                     self.advance();
-                    if self.peek() == '=' { self.advance(); return CppToken::ShlAssign; }
+                    if self.peek() == '=' {
+                        self.advance();
+                        return CppToken::ShlAssign;
+                    }
                     return CppToken::Shl;
                 }
                 CppToken::Lt
             }
             '>' => {
-                if self.peek() == '=' { self.advance(); return CppToken::Ge; }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::Ge;
+                }
                 if self.peek() == '>' {
                     self.advance();
-                    if self.peek() == '=' { self.advance(); return CppToken::ShrAssign; }
+                    if self.peek() == '=' {
+                        self.advance();
+                        return CppToken::ShrAssign;
+                    }
                     return CppToken::Shr;
                 }
                 CppToken::Gt
             }
             '&' => {
-                if self.peek() == '&' { self.advance(); return CppToken::And; }
-                if self.peek() == '=' { self.advance(); return CppToken::AmpAssign; }
+                if self.peek() == '&' {
+                    self.advance();
+                    return CppToken::And;
+                }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::AmpAssign;
+                }
                 CppToken::Amp
             }
             '|' => {
-                if self.peek() == '|' { self.advance(); return CppToken::Or; }
-                if self.peek() == '=' { self.advance(); return CppToken::PipeAssign; }
+                if self.peek() == '|' {
+                    self.advance();
+                    return CppToken::Or;
+                }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::PipeAssign;
+                }
                 CppToken::Pipe
             }
             '^' => {
-                if self.peek() == '=' { self.advance(); return CppToken::CaretAssign; }
+                if self.peek() == '=' {
+                    self.advance();
+                    return CppToken::CaretAssign;
+                }
                 CppToken::Caret
             }
             '~' => CppToken::Tilde,
             '?' => CppToken::Question,
             ':' => {
-                if self.peek() == ':' { self.advance(); return CppToken::Scope; }
+                if self.peek() == ':' {
+                    self.advance();
+                    return CppToken::Scope;
+                }
                 CppToken::Colon
             }
             '.' => {
@@ -515,7 +732,10 @@ impl CppLexer {
                     self.advance();
                     return CppToken::Ellipsis;
                 }
-                if self.peek() == '*' { self.advance(); return CppToken::DotStar; }
+                if self.peek() == '*' {
+                    self.advance();
+                    return CppToken::DotStar;
+                }
                 CppToken::Dot
             }
             '(' => CppToken::LParen,
@@ -541,7 +761,7 @@ mod tests {
 
     #[test]
     fn test_basic_cpp() {
-        let tokens = CppLexer::new("int main() { return 0; }").tokenize();
+        let tokens = CppLexer::new("int main() { return 0; }").tokenize().0;
         assert_eq!(tokens[0], CppToken::Int);
         assert_eq!(tokens[1], CppToken::Identifier("main".to_string()));
         assert_eq!(tokens[2], CppToken::LParen);
@@ -555,7 +775,9 @@ mod tests {
 
     #[test]
     fn test_cpp_keywords() {
-        let tokens = CppLexer::new("class Foo : public Base { virtual void f(); };").tokenize();
+        let tokens = CppLexer::new("class Foo : public Base { virtual void f(); };")
+            .tokenize()
+            .0;
         assert_eq!(tokens[0], CppToken::Class);
         assert_eq!(tokens[1], CppToken::Identifier("Foo".to_string()));
         assert_eq!(tokens[2], CppToken::Colon);
@@ -567,7 +789,7 @@ mod tests {
 
     #[test]
     fn test_scope_operator() {
-        let tokens = CppLexer::new("std::cout << x;").tokenize();
+        let tokens = CppLexer::new("std::cout << x;").tokenize().0;
         assert_eq!(tokens[0], CppToken::Identifier("std".to_string()));
         assert_eq!(tokens[1], CppToken::Scope);
         assert_eq!(tokens[2], CppToken::Identifier("cout".to_string()));
@@ -576,7 +798,7 @@ mod tests {
 
     #[test]
     fn test_lambda() {
-        let tokens = CppLexer::new("[&](int x) { return x * 2; }").tokenize();
+        let tokens = CppLexer::new("[&](int x) { return x * 2; }").tokenize().0;
         assert_eq!(tokens[0], CppToken::LBracket);
         assert_eq!(tokens[1], CppToken::Amp);
         assert_eq!(tokens[2], CppToken::RBracket);
@@ -586,7 +808,7 @@ mod tests {
 
     #[test]
     fn test_template() {
-        let tokens = CppLexer::new("template<typename T>").tokenize();
+        let tokens = CppLexer::new("template<typename T>").tokenize().0;
         assert_eq!(tokens[0], CppToken::Template);
         assert_eq!(tokens[1], CppToken::Lt);
         assert_eq!(tokens[2], CppToken::Typename);
@@ -596,7 +818,7 @@ mod tests {
 
     #[test]
     fn test_nullptr_and_auto() {
-        let tokens = CppLexer::new("auto x = nullptr;").tokenize();
+        let tokens = CppLexer::new("auto x = nullptr;").tokenize().0;
         assert_eq!(tokens[0], CppToken::Auto);
         assert_eq!(tokens[1], CppToken::Identifier("x".to_string()));
         assert_eq!(tokens[2], CppToken::Assign);
@@ -605,7 +827,7 @@ mod tests {
 
     #[test]
     fn test_arrow_and_scope() {
-        let tokens = CppLexer::new("ptr->member; Foo::bar").tokenize();
+        let tokens = CppLexer::new("ptr->member; Foo::bar").tokenize().0;
         assert_eq!(tokens[0], CppToken::Identifier("ptr".to_string()));
         assert_eq!(tokens[1], CppToken::Arrow);
         assert_eq!(tokens[2], CppToken::Identifier("member".to_string()));
@@ -616,7 +838,9 @@ mod tests {
 
     #[test]
     fn test_preprocessor_skip() {
-        let tokens = CppLexer::new("#include <iostream>\nint main() {}").tokenize();
+        let tokens = CppLexer::new("#include <iostream>\nint main() {}")
+            .tokenize()
+            .0;
         assert_eq!(tokens[0], CppToken::Int);
     }
 }

@@ -7,22 +7,28 @@
 // Sin GCC. Sin LLVM. Sin Clang. Solo ADead-BIB. 💀🦈
 // ============================================================
 
-use super::cpp_lexer::CppToken;
 use super::cpp_ast::*;
+use super::cpp_lexer::CppToken;
 
 pub struct CppParser {
     tokens: Vec<CppToken>,
+    lines: Vec<usize>,
     pos: usize,
     type_names: std::collections::HashSet<String>,
 }
 
 impl CppParser {
-    pub fn new(tokens: Vec<CppToken>) -> Self {
+    pub fn new(tokens: Vec<CppToken>, lines: Vec<usize>) -> Self {
         Self {
             tokens,
+            lines,
             pos: 0,
             type_names: std::collections::HashSet::new(),
         }
+    }
+
+    pub fn current_line(&self) -> usize {
+        self.lines.get(self.pos).copied().unwrap_or(0)
     }
 
     // ========== Token helpers ==========
@@ -50,7 +56,12 @@ impl CppParser {
             self.advance();
             Ok(())
         } else {
-            Err(format!("Expected {:?}, got {:?} at pos {}", expected, self.current(), self.pos))
+            Err(format!(
+                "Expected {:?}, got {:?} at pos {}",
+                expected,
+                self.current(),
+                self.pos
+            ))
         }
     }
 
@@ -65,8 +76,14 @@ impl CppParser {
 
     fn expect_identifier(&mut self) -> Result<String, String> {
         match self.current().clone() {
-            CppToken::Identifier(name) => { self.advance(); Ok(name) }
-            other => Err(format!("Expected identifier, got {:?} at pos {}", other, self.pos)),
+            CppToken::Identifier(name) => {
+                self.advance();
+                Ok(name)
+            }
+            other => Err(format!(
+                "Expected identifier, got {:?} at pos {}",
+                other, self.pos
+            )),
         }
     }
 
@@ -74,15 +91,36 @@ impl CppParser {
 
     fn is_type_start(&self) -> bool {
         match self.current() {
-            CppToken::Void | CppToken::Char | CppToken::Short | CppToken::Int |
-            CppToken::Long | CppToken::Float | CppToken::Double | CppToken::Signed |
-            CppToken::Unsigned | CppToken::Bool | CppToken::Auto | CppToken::Wchar_t |
-            CppToken::Char8_t | CppToken::Char16_t | CppToken::Char32_t |
-            CppToken::Struct | CppToken::Class | CppToken::Enum | CppToken::Union |
-            CppToken::Const | CppToken::Volatile | CppToken::Static | CppToken::Extern |
-            CppToken::Inline | CppToken::Constexpr | CppToken::Mutable |
-            CppToken::Typename | CppToken::Decltype | CppToken::Register |
-            CppToken::Thread_local => true,
+            CppToken::Void
+            | CppToken::Char
+            | CppToken::Short
+            | CppToken::Int
+            | CppToken::Long
+            | CppToken::Float
+            | CppToken::Double
+            | CppToken::Signed
+            | CppToken::Unsigned
+            | CppToken::Bool
+            | CppToken::Auto
+            | CppToken::Wchar_t
+            | CppToken::Char8_t
+            | CppToken::Char16_t
+            | CppToken::Char32_t
+            | CppToken::Struct
+            | CppToken::Class
+            | CppToken::Enum
+            | CppToken::Union
+            | CppToken::Const
+            | CppToken::Volatile
+            | CppToken::Static
+            | CppToken::Extern
+            | CppToken::Inline
+            | CppToken::Constexpr
+            | CppToken::Mutable
+            | CppToken::Typename
+            | CppToken::Decltype
+            | CppToken::Register
+            | CppToken::Thread_local => true,
             CppToken::Identifier(name) => {
                 if self.type_names.contains(name) {
                     return true;
@@ -106,30 +144,70 @@ impl CppParser {
         let mut is_constexpr = false;
         loop {
             match self.current() {
-                CppToken::Static | CppToken::Extern | CppToken::Register |
-                CppToken::Inline | CppToken::Thread_local => { self.advance(); }
-                CppToken::Const => { is_const = true; self.advance(); }
-                CppToken::Volatile => { is_volatile = true; self.advance(); }
-                CppToken::Constexpr => { is_constexpr = true; self.advance(); }
-                CppToken::Mutable => { self.advance(); }
+                CppToken::Static
+                | CppToken::Extern
+                | CppToken::Register
+                | CppToken::Inline
+                | CppToken::Thread_local => {
+                    self.advance();
+                }
+                CppToken::Const => {
+                    is_const = true;
+                    self.advance();
+                }
+                CppToken::Volatile => {
+                    is_volatile = true;
+                    self.advance();
+                }
+                CppToken::Constexpr => {
+                    is_constexpr = true;
+                    self.advance();
+                }
+                CppToken::Mutable => {
+                    self.advance();
+                }
                 _ => break,
             }
         }
 
         let base = match self.current().clone() {
-            CppToken::Void => { self.advance(); CppType::Void }
-            CppToken::Bool => { self.advance(); CppType::Bool }
-            CppToken::Char => { self.advance(); CppType::Char }
-            CppToken::Wchar_t => { self.advance(); CppType::WChar }
-            CppToken::Char8_t => { self.advance(); CppType::Char8 }
-            CppToken::Char16_t => { self.advance(); CppType::Char16 }
-            CppToken::Char32_t => { self.advance(); CppType::Char32 }
+            CppToken::Void => {
+                self.advance();
+                CppType::Void
+            }
+            CppToken::Bool => {
+                self.advance();
+                CppType::Bool
+            }
+            CppToken::Char => {
+                self.advance();
+                CppType::Char
+            }
+            CppToken::Wchar_t => {
+                self.advance();
+                CppType::WChar
+            }
+            CppToken::Char8_t => {
+                self.advance();
+                CppType::Char8
+            }
+            CppToken::Char16_t => {
+                self.advance();
+                CppType::Char16
+            }
+            CppToken::Char32_t => {
+                self.advance();
+                CppType::Char32
+            }
             CppToken::Short => {
                 self.advance();
                 self.eat(&CppToken::Int);
                 CppType::Short
             }
-            CppToken::Int => { self.advance(); CppType::Int }
+            CppToken::Int => {
+                self.advance();
+                CppType::Int
+            }
             CppToken::Long => {
                 self.advance();
                 if self.eat(&CppToken::Long) {
@@ -142,8 +220,14 @@ impl CppParser {
                     CppType::Long
                 }
             }
-            CppToken::Float => { self.advance(); CppType::Float }
-            CppToken::Double => { self.advance(); CppType::Double }
+            CppToken::Float => {
+                self.advance();
+                CppType::Float
+            }
+            CppToken::Double => {
+                self.advance();
+                CppType::Double
+            }
             CppToken::Signed => {
                 self.advance();
                 if self.is_type_start() {
@@ -162,7 +246,10 @@ impl CppParser {
                     CppType::Unsigned(Box::new(CppType::Int))
                 }
             }
-            CppToken::Auto => { self.advance(); CppType::Auto }
+            CppToken::Auto => {
+                self.advance();
+                CppType::Auto
+            }
             CppToken::Decltype => {
                 self.advance();
                 self.expect(&CppToken::LParen)?;
@@ -174,7 +261,11 @@ impl CppParser {
                 let is_class = *self.current() == CppToken::Class;
                 self.advance();
                 let name = self.expect_identifier()?;
-                if is_class { CppType::Class(name) } else { CppType::Struct(name) }
+                if is_class {
+                    CppType::Class(name)
+                } else {
+                    CppType::Struct(name)
+                }
             }
             CppToken::Enum => {
                 self.advance();
@@ -201,20 +292,27 @@ impl CppParser {
                         // Recognize common STL types
                         match name.as_str() {
                             "string" | "std" => CppType::TemplateType { name, args },
-                            "vector" if args.len() == 1 =>
-                                CppType::StdVector(Box::new(args[0].clone())),
-                            "array" if args.len() >= 1 =>
-                                CppType::TemplateType { name, args },
-                            "map" if args.len() == 2 =>
-                                CppType::StdMap(Box::new(args[0].clone()), Box::new(args[1].clone())),
-                            "unordered_map" if args.len() == 2 =>
-                                CppType::StdUnorderedMap(Box::new(args[0].clone()), Box::new(args[1].clone())),
-                            "optional" if args.len() == 1 =>
-                                CppType::StdOptional(Box::new(args[0].clone())),
-                            "unique_ptr" if args.len() == 1 =>
-                                CppType::UniquePtr(Box::new(args[0].clone())),
-                            "shared_ptr" if args.len() == 1 =>
-                                CppType::SharedPtr(Box::new(args[0].clone())),
+                            "vector" if args.len() == 1 => {
+                                CppType::StdVector(Box::new(args[0].clone()))
+                            }
+                            "array" if args.len() >= 1 => CppType::TemplateType { name, args },
+                            "map" if args.len() == 2 => CppType::StdMap(
+                                Box::new(args[0].clone()),
+                                Box::new(args[1].clone()),
+                            ),
+                            "unordered_map" if args.len() == 2 => CppType::StdUnorderedMap(
+                                Box::new(args[0].clone()),
+                                Box::new(args[1].clone()),
+                            ),
+                            "optional" if args.len() == 1 => {
+                                CppType::StdOptional(Box::new(args[0].clone()))
+                            }
+                            "unique_ptr" if args.len() == 1 => {
+                                CppType::UniquePtr(Box::new(args[0].clone()))
+                            }
+                            "shared_ptr" if args.len() == 1 => {
+                                CppType::SharedPtr(Box::new(args[0].clone()))
+                            }
                             _ => CppType::TemplateType { name, args },
                         }
                     } else {
@@ -234,16 +332,22 @@ impl CppParser {
                                 if *self.current() == CppToken::Lt {
                                     if let Ok(args) = self.try_parse_template_args() {
                                         match inner_name.as_str() {
-                                            "vector" if args.len() == 1 =>
-                                                CppType::StdVector(Box::new(args[0].clone())),
-                                            "map" if args.len() == 2 =>
-                                                CppType::StdMap(Box::new(args[0].clone()), Box::new(args[1].clone())),
-                                            "unique_ptr" if args.len() == 1 =>
-                                                CppType::UniquePtr(Box::new(args[0].clone())),
-                                            "shared_ptr" if args.len() == 1 =>
-                                                CppType::SharedPtr(Box::new(args[0].clone())),
-                                            "optional" if args.len() == 1 =>
-                                                CppType::StdOptional(Box::new(args[0].clone())),
+                                            "vector" if args.len() == 1 => {
+                                                CppType::StdVector(Box::new(args[0].clone()))
+                                            }
+                                            "map" if args.len() == 2 => CppType::StdMap(
+                                                Box::new(args[0].clone()),
+                                                Box::new(args[1].clone()),
+                                            ),
+                                            "unique_ptr" if args.len() == 1 => {
+                                                CppType::UniquePtr(Box::new(args[0].clone()))
+                                            }
+                                            "shared_ptr" if args.len() == 1 => {
+                                                CppType::SharedPtr(Box::new(args[0].clone()))
+                                            }
+                                            "optional" if args.len() == 1 => {
+                                                CppType::StdOptional(Box::new(args[0].clone()))
+                                            }
                                             _ => CppType::TemplateType { name: full, args },
                                         }
                                     } else {
@@ -263,13 +367,25 @@ impl CppParser {
                     }
                 }
             }
-            _ => return Err(format!("Expected type, got {:?} at pos {}", self.current(), self.pos)),
+            _ => {
+                return Err(format!(
+                    "Expected type, got {:?} at pos {}",
+                    self.current(),
+                    self.pos
+                ))
+            }
         };
 
         let mut result = base;
-        if is_constexpr { result = CppType::Constexpr(Box::new(result)); }
-        if is_volatile { result = CppType::Volatile(Box::new(result)); }
-        if is_const { result = CppType::Const(Box::new(result)); }
+        if is_constexpr {
+            result = CppType::Constexpr(Box::new(result));
+        }
+        if is_volatile {
+            result = CppType::Volatile(Box::new(result));
+        }
+        if is_const {
+            result = CppType::Const(Box::new(result));
+        }
         Ok(result)
     }
 
@@ -320,12 +436,18 @@ impl CppParser {
         if *self.current() != CppToken::Gt {
             args.push(match self.parse_type() {
                 Ok(t) => t,
-                Err(_) => { self.pos = save_pos; return Err("Not a template".to_string()); }
+                Err(_) => {
+                    self.pos = save_pos;
+                    return Err("Not a template".to_string());
+                }
             });
             while self.eat(&CppToken::Comma) {
                 args.push(match self.parse_type() {
                     Ok(t) => t,
-                    Err(_) => { self.pos = save_pos; return Err("Not a template".to_string()); }
+                    Err(_) => {
+                        self.pos = save_pos;
+                        return Err("Not a template".to_string());
+                    }
                 });
             }
         }
@@ -386,7 +508,11 @@ impl CppParser {
                     while j < self.tokens.len() {
                         match &self.tokens[j] {
                             CppToken::LBrace | CppToken::LParen => depth += 1,
-                            CppToken::RBrace | CppToken::RParen => { if depth > 0 { depth -= 1; } }
+                            CppToken::RBrace | CppToken::RParen => {
+                                if depth > 0 {
+                                    depth -= 1;
+                                }
+                            }
                             CppToken::Semicolon if depth == 0 => break,
                             _ => {}
                         }
@@ -410,7 +536,9 @@ impl CppParser {
                 CppToken::Enum => {
                     // enum or enum class
                     let mut j = i + 1;
-                    if self.tokens.get(j) == Some(&CppToken::Class) { j += 1; }
+                    if self.tokens.get(j) == Some(&CppToken::Class) {
+                        j += 1;
+                    }
                     if let Some(CppToken::Identifier(name)) = self.tokens.get(j) {
                         self.type_names.insert(name.clone());
                     }
@@ -420,16 +548,41 @@ impl CppParser {
                     // skip namespace names — not types
                     i += 1;
                 }
-                _ => { i += 1; }
+                _ => {
+                    i += 1;
+                }
             }
         }
         // Common STL names
-        for name in &["string", "vector", "map", "unordered_map", "set", "list",
-                       "deque", "array", "pair", "tuple", "optional", "variant",
-                       "unique_ptr", "shared_ptr", "weak_ptr", "span", "size_t",
-                       "int8_t", "int16_t", "int32_t", "int64_t",
-                       "uint8_t", "uint16_t", "uint32_t", "uint64_t",
-                       "ptrdiff_t", "nullptr_t"] {
+        for name in &[
+            "string",
+            "vector",
+            "map",
+            "unordered_map",
+            "set",
+            "list",
+            "deque",
+            "array",
+            "pair",
+            "tuple",
+            "optional",
+            "variant",
+            "unique_ptr",
+            "shared_ptr",
+            "weak_ptr",
+            "span",
+            "size_t",
+            "int8_t",
+            "int16_t",
+            "int32_t",
+            "int64_t",
+            "uint8_t",
+            "uint16_t",
+            "uint32_t",
+            "uint64_t",
+            "ptrdiff_t",
+            "nullptr_t",
+        ] {
             self.type_names.insert(name.to_string());
         }
     }
@@ -455,7 +608,8 @@ impl CppParser {
         // Class / Struct definition
         if (*self.current() == CppToken::Class || *self.current() == CppToken::Struct)
             && matches!(self.peek(), CppToken::Identifier(_))
-            && (*self.peek_at(2) == CppToken::LBrace || *self.peek_at(2) == CppToken::Colon
+            && (*self.peek_at(2) == CppToken::LBrace
+                || *self.peek_at(2) == CppToken::Colon
                 || *self.peek_at(2) == CppToken::Final)
         {
             return self.parse_class_def(Vec::new());
@@ -483,7 +637,9 @@ impl CppParser {
                         decls.push(self.parse_top_level()?);
                     }
                     self.expect(&CppToken::RBrace)?;
-                    return Ok(CppTopLevel::ExternC { declarations: decls });
+                    return Ok(CppTopLevel::ExternC {
+                        declarations: decls,
+                    });
                 }
             }
         }
@@ -495,7 +651,7 @@ impl CppParser {
 
         // Function or global variable
         let ret_type = self.parse_type()?;
-        
+
         // Check for destructor: ~ClassName
         if *self.current() == CppToken::Tilde {
             self.advance();
@@ -551,7 +707,12 @@ impl CppParser {
         self.parse_function_or_var(ret_type, name, Vec::new())
     }
 
-    fn parse_function_or_var(&mut self, ret_type: CppType, name: String, tp: Vec<CppTemplateParam>) -> Result<CppTopLevel, String> {
+    fn parse_function_or_var(
+        &mut self,
+        ret_type: CppType,
+        name: String,
+        tp: Vec<CppTemplateParam>,
+    ) -> Result<CppTopLevel, String> {
         if *self.current() == CppToken::LParen {
             self.parse_function_rest(ret_type, name, tp)
         } else {
@@ -565,11 +726,19 @@ impl CppParser {
                 declarators.push(d);
             }
             self.expect(&CppToken::Semicolon)?;
-            Ok(CppTopLevel::GlobalVar { type_spec: ret_type, declarators })
+            Ok(CppTopLevel::GlobalVar {
+                type_spec: ret_type,
+                declarators,
+            })
         }
     }
 
-    fn parse_function_rest(&mut self, ret_type: CppType, name: String, tp: Vec<CppTemplateParam>) -> Result<CppTopLevel, String> {
+    fn parse_function_rest(
+        &mut self,
+        ret_type: CppType,
+        name: String,
+        tp: Vec<CppTemplateParam>,
+    ) -> Result<CppTopLevel, String> {
         self.expect(&CppToken::LParen)?;
         let params = self.parse_param_list()?;
         self.expect(&CppToken::RParen)?;
@@ -578,10 +747,22 @@ impl CppParser {
         // Parse trailing qualifiers
         loop {
             match self.current() {
-                CppToken::Const => { quals.is_const = true; self.advance(); }
-                CppToken::Noexcept => { quals.is_noexcept = true; self.advance(); }
-                CppToken::Override => { quals.is_override = true; self.advance(); }
-                CppToken::Final => { quals.is_final = true; self.advance(); }
+                CppToken::Const => {
+                    quals.is_const = true;
+                    self.advance();
+                }
+                CppToken::Noexcept => {
+                    quals.is_noexcept = true;
+                    self.advance();
+                }
+                CppToken::Override => {
+                    quals.is_override = true;
+                    self.advance();
+                }
+                CppToken::Final => {
+                    quals.is_final = true;
+                    self.advance();
+                }
                 _ => break,
             }
         }
@@ -589,9 +770,18 @@ impl CppParser {
         // = 0, = default, = delete
         if self.eat(&CppToken::Assign) {
             match self.current() {
-                CppToken::IntLiteral(0) => { quals.is_pure_virtual = true; self.advance(); }
-                CppToken::Default => { quals.is_default = true; self.advance(); }
-                CppToken::Delete => { quals.is_delete = true; self.advance(); }
+                CppToken::IntLiteral(0) => {
+                    quals.is_pure_virtual = true;
+                    self.advance();
+                }
+                CppToken::Default => {
+                    quals.is_default = true;
+                    self.advance();
+                }
+                CppToken::Delete => {
+                    quals.is_delete = true;
+                    self.advance();
+                }
                 _ => {}
             }
         }
@@ -605,12 +795,21 @@ impl CppParser {
         if *self.current() == CppToken::LBrace {
             let body = self.parse_block_stmts()?;
             Ok(CppTopLevel::FunctionDef {
-                return_type: ret_type, name, template_params: tp, params, qualifiers: quals, body,
+                return_type: ret_type,
+                name,
+                template_params: tp,
+                params,
+                qualifiers: quals,
+                body,
             })
         } else {
             self.expect(&CppToken::Semicolon)?;
             Ok(CppTopLevel::FunctionDecl {
-                return_type: ret_type, name, template_params: tp, params, qualifiers: quals,
+                return_type: ret_type,
+                name,
+                template_params: tp,
+                params,
+                qualifiers: quals,
             })
         }
     }
@@ -657,7 +856,9 @@ impl CppParser {
                 let mut items = Vec::new();
                 items.push(self.parse_assignment_expr()?);
                 while self.eat(&CppToken::Comma) {
-                    if *self.current() == CppToken::RBrace { break; } // trailing comma
+                    if *self.current() == CppToken::RBrace {
+                        break;
+                    } // trailing comma
                     items.push(self.parse_assignment_expr()?);
                 }
                 if items.len() == 1 {
@@ -674,7 +875,11 @@ impl CppParser {
             None
         };
 
-        Ok(CppDeclarator { name, derived_type: derived, initializer: init })
+        Ok(CppDeclarator {
+            name,
+            derived_type: derived,
+            initializer: init,
+        })
     }
 
     fn parse_param_list(&mut self) -> Result<Vec<CppParam>, String> {
@@ -715,7 +920,9 @@ impl CppParser {
         // Array param: type name[]
         if *self.current() == CppToken::LBracket {
             self.advance();
-            if let CppToken::IntLiteral(_) = self.current() { self.advance(); }
+            if let CppToken::IntLiteral(_) = self.current() {
+                self.advance();
+            }
             self.expect(&CppToken::RBracket)?;
         }
         let default_value = if self.eat(&CppToken::Assign) {
@@ -723,12 +930,20 @@ impl CppParser {
         } else {
             None
         };
-        Ok(CppParam { param_type, name, default_value, is_variadic: false })
+        Ok(CppParam {
+            param_type,
+            name,
+            default_value,
+            is_variadic: false,
+        })
     }
 
     // ========== Class parsing ==========
 
-    fn parse_class_def(&mut self, template_params: Vec<CppTemplateParam>) -> Result<CppTopLevel, String> {
+    fn parse_class_def(
+        &mut self,
+        template_params: Vec<CppTemplateParam>,
+    ) -> Result<CppTopLevel, String> {
         let is_struct = *self.current() == CppToken::Struct;
         self.advance(); // skip class/struct
         let name = self.expect_identifier()?;
@@ -741,24 +956,48 @@ impl CppParser {
         let mut bases = Vec::new();
         if self.eat(&CppToken::Colon) {
             loop {
-                let mut access = if is_struct { CppAccess::Public } else { CppAccess::Private };
+                let mut access = if is_struct {
+                    CppAccess::Public
+                } else {
+                    CppAccess::Private
+                };
                 let mut is_virtual = false;
-                if self.eat(&CppToken::Virtual) { is_virtual = true; }
+                if self.eat(&CppToken::Virtual) {
+                    is_virtual = true;
+                }
                 match self.current() {
-                    CppToken::Public => { access = CppAccess::Public; self.advance(); }
-                    CppToken::Protected => { access = CppAccess::Protected; self.advance(); }
-                    CppToken::Private => { access = CppAccess::Private; self.advance(); }
+                    CppToken::Public => {
+                        access = CppAccess::Public;
+                        self.advance();
+                    }
+                    CppToken::Protected => {
+                        access = CppAccess::Protected;
+                        self.advance();
+                    }
+                    CppToken::Private => {
+                        access = CppAccess::Private;
+                        self.advance();
+                    }
                     _ => {}
                 }
-                if self.eat(&CppToken::Virtual) { is_virtual = true; }
+                if self.eat(&CppToken::Virtual) {
+                    is_virtual = true;
+                }
                 let base_name = self.expect_identifier()?;
                 let template_args = if *self.current() == CppToken::Lt {
                     self.try_parse_template_args().unwrap_or_default()
                 } else {
                     Vec::new()
                 };
-                bases.push(CppBaseClass { access, name: base_name, is_virtual, template_args });
-                if !self.eat(&CppToken::Comma) { break; }
+                bases.push(CppBaseClass {
+                    access,
+                    name: base_name,
+                    is_virtual,
+                    template_args,
+                });
+                if !self.eat(&CppToken::Comma) {
+                    break;
+                }
             }
         }
 
@@ -768,12 +1007,22 @@ impl CppParser {
         self.expect(&CppToken::RBrace)?;
         self.expect(&CppToken::Semicolon)?;
 
-        Ok(CppTopLevel::ClassDef { name, template_params, bases, members, is_struct })
+        Ok(CppTopLevel::ClassDef {
+            name,
+            template_params,
+            bases,
+            members,
+            is_struct,
+        })
     }
 
     fn parse_class_members(&mut self, is_struct: bool) -> Result<Vec<CppClassMember>, String> {
         let mut members = Vec::new();
-        let mut current_access = if is_struct { CppAccess::Public } else { CppAccess::Private };
+        let mut current_access = if is_struct {
+            CppAccess::Public
+        } else {
+            CppAccess::Private
+        };
 
         while *self.current() != CppToken::RBrace && *self.current() != CppToken::Eof {
             // Access specifiers
@@ -842,11 +1091,15 @@ impl CppParser {
                 self.expect(&CppToken::RParen)?;
                 // qualifiers
                 let mut _noexcept = false;
-                if self.eat(&CppToken::Noexcept) { _noexcept = true; }
+                if self.eat(&CppToken::Noexcept) {
+                    _noexcept = true;
+                }
                 // = default / = delete
                 if self.eat(&CppToken::Assign) {
                     match self.current() {
-                        CppToken::Default | CppToken::IntLiteral(0) => { self.advance(); }
+                        CppToken::Default | CppToken::IntLiteral(0) => {
+                            self.advance();
+                        }
                         _ => {}
                     }
                 }
@@ -869,11 +1122,26 @@ impl CppParser {
             let mut is_explicit = false;
             loop {
                 match self.current() {
-                    CppToken::Virtual => { quals.is_virtual = true; self.advance(); }
-                    CppToken::Static => { quals.is_static = true; self.advance(); }
-                    CppToken::Inline => { quals.is_inline = true; self.advance(); }
-                    CppToken::Constexpr => { quals.is_constexpr = true; self.advance(); }
-                    CppToken::Explicit => { is_explicit = true; self.advance(); }
+                    CppToken::Virtual => {
+                        quals.is_virtual = true;
+                        self.advance();
+                    }
+                    CppToken::Static => {
+                        quals.is_static = true;
+                        self.advance();
+                    }
+                    CppToken::Inline => {
+                        quals.is_inline = true;
+                        self.advance();
+                    }
+                    CppToken::Constexpr => {
+                        quals.is_constexpr = true;
+                        self.advance();
+                    }
+                    CppToken::Explicit => {
+                        is_explicit = true;
+                        self.advance();
+                    }
                     _ => break,
                 }
             }
@@ -918,14 +1186,18 @@ impl CppParser {
                                 }
                             };
                             init_list.push((member, val));
-                            if !self.eat(&CppToken::Comma) { break; }
+                            if !self.eat(&CppToken::Comma) {
+                                break;
+                            }
                         }
                     }
 
                     // = default / = delete
                     if self.eat(&CppToken::Assign) {
                         match self.current() {
-                            CppToken::Default | CppToken::Delete => { self.advance(); }
+                            CppToken::Default | CppToken::Delete => {
+                                self.advance();
+                            }
                             _ => {}
                         }
                     }
@@ -962,9 +1234,18 @@ impl CppParser {
                 // trailing qualifiers
                 loop {
                     match self.current() {
-                        CppToken::Const => { quals.is_const = true; self.advance(); }
-                        CppToken::Noexcept => { quals.is_noexcept = true; self.advance(); }
-                        CppToken::Override => { quals.is_override = true; self.advance(); }
+                        CppToken::Const => {
+                            quals.is_const = true;
+                            self.advance();
+                        }
+                        CppToken::Noexcept => {
+                            quals.is_noexcept = true;
+                            self.advance();
+                        }
+                        CppToken::Override => {
+                            quals.is_override = true;
+                            self.advance();
+                        }
                         _ => break,
                     }
                 }
@@ -974,8 +1255,14 @@ impl CppParser {
                     // = 0, = default
                     if self.eat(&CppToken::Assign) {
                         match self.current() {
-                            CppToken::IntLiteral(0) => { quals.is_pure_virtual = true; self.advance(); }
-                            CppToken::Default => { quals.is_default = true; self.advance(); }
+                            CppToken::IntLiteral(0) => {
+                                quals.is_pure_virtual = true;
+                                self.advance();
+                            }
+                            CppToken::Default => {
+                                quals.is_default = true;
+                                self.advance();
+                            }
                             _ => {}
                         }
                     }
@@ -1003,18 +1290,39 @@ impl CppParser {
                 self.expect(&CppToken::RParen)?;
                 loop {
                     match self.current() {
-                        CppToken::Const => { quals.is_const = true; self.advance(); }
-                        CppToken::Noexcept => { quals.is_noexcept = true; self.advance(); }
-                        CppToken::Override => { quals.is_override = true; self.advance(); }
-                        CppToken::Final => { quals.is_final = true; self.advance(); }
+                        CppToken::Const => {
+                            quals.is_const = true;
+                            self.advance();
+                        }
+                        CppToken::Noexcept => {
+                            quals.is_noexcept = true;
+                            self.advance();
+                        }
+                        CppToken::Override => {
+                            quals.is_override = true;
+                            self.advance();
+                        }
+                        CppToken::Final => {
+                            quals.is_final = true;
+                            self.advance();
+                        }
                         _ => break,
                     }
                 }
                 if self.eat(&CppToken::Assign) {
                     match self.current() {
-                        CppToken::IntLiteral(0) => { quals.is_pure_virtual = true; self.advance(); }
-                        CppToken::Default => { quals.is_default = true; self.advance(); }
-                        CppToken::Delete => { quals.is_delete = true; self.advance(); }
+                        CppToken::IntLiteral(0) => {
+                            quals.is_pure_virtual = true;
+                            self.advance();
+                        }
+                        CppToken::Default => {
+                            quals.is_default = true;
+                            self.advance();
+                        }
+                        CppToken::Delete => {
+                            quals.is_delete = true;
+                            self.advance();
+                        }
                         _ => {}
                     }
                 }
@@ -1100,11 +1408,18 @@ impl CppParser {
                 None
             };
             values.push((ident, val));
-            if !self.eat(&CppToken::Comma) { break; }
+            if !self.eat(&CppToken::Comma) {
+                break;
+            }
         }
         self.expect(&CppToken::RBrace)?;
         self.expect(&CppToken::Semicolon)?;
-        Ok(CppTopLevel::EnumDef { name, is_class, underlying_type: underlying, values })
+        Ok(CppTopLevel::EnumDef {
+            name,
+            is_class,
+            underlying_type: underlying,
+            values,
+        })
     }
 
     fn parse_namespace(&mut self) -> Result<CppTopLevel, String> {
@@ -1116,7 +1431,10 @@ impl CppParser {
             decls.push(self.parse_top_level()?);
         }
         self.expect(&CppToken::RBrace)?;
-        Ok(CppTopLevel::Namespace { name, declarations: decls })
+        Ok(CppTopLevel::Namespace {
+            name,
+            declarations: decls,
+        })
     }
 
     fn parse_using_decl(&mut self) -> Result<CppTopLevel, String> {
@@ -1136,7 +1454,11 @@ impl CppParser {
         self.expect(&CppToken::Assign)?;
         let original = self.parse_type()?;
         self.expect(&CppToken::Semicolon)?;
-        Ok(CppTopLevel::TypeAlias { new_name: name, original, template_params: Vec::new() })
+        Ok(CppTopLevel::TypeAlias {
+            new_name: name,
+            original,
+            template_params: Vec::new(),
+        })
     }
 
     fn parse_typedef(&mut self) -> Result<CppTopLevel, String> {
@@ -1145,7 +1467,11 @@ impl CppParser {
         let new_name = self.expect_identifier()?;
         self.type_names.insert(new_name.clone());
         self.expect(&CppToken::Semicolon)?;
-        Ok(CppTopLevel::TypeAlias { new_name, original, template_params: Vec::new() })
+        Ok(CppTopLevel::TypeAlias {
+            new_name,
+            original,
+            template_params: Vec::new(),
+        })
     }
 
     fn parse_template_decl(&mut self) -> Result<CppTopLevel, String> {
@@ -1182,7 +1508,9 @@ impl CppParser {
 
     fn parse_template_params(&mut self) -> Result<Vec<CppTemplateParam>, String> {
         let mut params = Vec::new();
-        if *self.current() == CppToken::Gt { return Ok(params); }
+        if *self.current() == CppToken::Gt {
+            return Ok(params);
+        }
         loop {
             if *self.current() == CppToken::Typename || *self.current() == CppToken::Class {
                 self.advance();
@@ -1217,9 +1545,15 @@ impl CppParser {
                 } else {
                     None
                 };
-                params.push(CppTemplateParam::NonTypeParam { param_type: pt, name, default_value });
+                params.push(CppTemplateParam::NonTypeParam {
+                    param_type: pt,
+                    name,
+                    default_value,
+                });
             }
-            if !self.eat(&CppToken::Comma) { break; }
+            if !self.eat(&CppToken::Comma) {
+                break;
+            }
         }
         Ok(params)
     }
@@ -1272,8 +1606,16 @@ impl CppParser {
             CppToken::Increment => "++",
             CppToken::Decrement => "--",
             CppToken::Arrow => "->",
-            CppToken::LParen => { self.advance(); self.expect(&CppToken::RParen)?; return Ok("()".to_string()); }
-            CppToken::LBracket => { self.advance(); self.expect(&CppToken::RBracket)?; return Ok("[]".to_string()); }
+            CppToken::LParen => {
+                self.advance();
+                self.expect(&CppToken::RParen)?;
+                return Ok("()".to_string());
+            }
+            CppToken::LBracket => {
+                self.advance();
+                self.expect(&CppToken::RBracket)?;
+                return Ok("[]".to_string());
+            }
             CppToken::Spaceship => "<=>",
             _ => return Err(format!("Unknown operator {:?}", self.current())),
         };
@@ -1288,6 +1630,8 @@ impl CppParser {
         self.expect(&CppToken::LBrace)?;
         let mut stmts = Vec::new();
         while *self.current() != CppToken::RBrace && *self.current() != CppToken::Eof {
+            let line = self.current_line();
+            stmts.push(CppStmt::LineMarker(line));
             stmts.push(self.parse_statement()?);
         }
         self.expect(&CppToken::RBrace)?;
@@ -1316,8 +1660,16 @@ impl CppParser {
             CppToken::Do => self.parse_do_while(),
             CppToken::For => self.parse_for(),
             CppToken::Switch => self.parse_switch(),
-            CppToken::Break => { self.advance(); self.expect(&CppToken::Semicolon)?; Ok(CppStmt::Break) }
-            CppToken::Continue => { self.advance(); self.expect(&CppToken::Semicolon)?; Ok(CppStmt::Continue) }
+            CppToken::Break => {
+                self.advance();
+                self.expect(&CppToken::Semicolon)?;
+                Ok(CppStmt::Break)
+            }
+            CppToken::Continue => {
+                self.advance();
+                self.expect(&CppToken::Semicolon)?;
+                Ok(CppStmt::Continue)
+            }
             CppToken::Goto => {
                 self.advance();
                 let label = self.expect_identifier()?;
@@ -1347,7 +1699,10 @@ impl CppParser {
                     Ok(CppStmt::CoReturn(Some(expr)))
                 }
             }
-            CppToken::Semicolon => { self.advance(); Ok(CppStmt::Empty) }
+            CppToken::Semicolon => {
+                self.advance();
+                Ok(CppStmt::Empty)
+            }
             _ => {
                 // Variable declaration or expression statement
                 if self.is_type_start() && !self.is_cast_expr() {
@@ -1387,12 +1742,15 @@ impl CppParser {
             declarators.push(d);
         }
         self.expect(&CppToken::Semicolon)?;
-        Ok(CppStmt::VarDecl { type_spec, declarators })
+        Ok(CppStmt::VarDecl {
+            type_spec,
+            declarators,
+        })
     }
 
     fn parse_if(&mut self) -> Result<CppStmt, String> {
         self.advance(); // skip if
-        // C++17 constexpr if
+                        // C++17 constexpr if
         self.eat(&CppToken::Constexpr);
         self.expect(&CppToken::LParen)?;
         let condition = self.parse_expression()?;
@@ -1403,7 +1761,12 @@ impl CppParser {
         } else {
             None
         };
-        Ok(CppStmt::If { init: None, condition, then_body, else_body })
+        Ok(CppStmt::If {
+            init: None,
+            condition,
+            then_body,
+            else_body,
+        })
     }
 
     fn parse_while(&mut self) -> Result<CppStmt, String> {
@@ -1441,7 +1804,12 @@ impl CppParser {
                         let iterable = self.parse_expression()?;
                         self.expect(&CppToken::RParen)?;
                         let body = Box::new(self.parse_statement()?);
-                        return Ok(CppStmt::RangeFor { type_spec: ts, name, iterable, body });
+                        return Ok(CppStmt::RangeFor {
+                            type_spec: ts,
+                            name,
+                            iterable,
+                            body,
+                        });
                     }
                 }
             }
@@ -1475,7 +1843,12 @@ impl CppParser {
         };
         self.expect(&CppToken::RParen)?;
         let body = Box::new(self.parse_statement()?);
-        Ok(CppStmt::For { init, condition, increment, body })
+        Ok(CppStmt::For {
+            init,
+            condition,
+            increment,
+            body,
+        })
     }
 
     fn parse_switch(&mut self) -> Result<CppStmt, String> {
@@ -1491,23 +1864,36 @@ impl CppParser {
                 let value = self.parse_expression()?;
                 self.expect(&CppToken::Colon)?;
                 let mut body = Vec::new();
-                while !matches!(self.current(), CppToken::Case | CppToken::Default | CppToken::RBrace) {
+                while !matches!(
+                    self.current(),
+                    CppToken::Case | CppToken::Default | CppToken::RBrace
+                ) {
                     body.push(self.parse_statement()?);
                 }
                 cases.push(CppSwitchCase { value, body });
             } else if self.eat(&CppToken::Default) {
                 self.expect(&CppToken::Colon)?;
                 let mut body = Vec::new();
-                while !matches!(self.current(), CppToken::Case | CppToken::Default | CppToken::RBrace) {
+                while !matches!(
+                    self.current(),
+                    CppToken::Case | CppToken::Default | CppToken::RBrace
+                ) {
                     body.push(self.parse_statement()?);
                 }
                 default = Some(body);
             } else {
-                return Err(format!("Expected case or default, got {:?}", self.current()));
+                return Err(format!(
+                    "Expected case or default, got {:?}",
+                    self.current()
+                ));
             }
         }
         self.expect(&CppToken::RBrace)?;
-        Ok(CppStmt::Switch { expr, cases, default })
+        Ok(CppStmt::Switch {
+            expr,
+            cases,
+            default,
+        })
     }
 
     fn parse_try(&mut self) -> Result<CppStmt, String> {
@@ -1531,7 +1917,11 @@ impl CppParser {
             };
             self.expect(&CppToken::RParen)?;
             let catch_body = self.parse_block_stmts()?;
-            catches.push(CppCatch { param_type, param_name, body: catch_body });
+            catches.push(CppCatch {
+                param_type,
+                param_name,
+                body: catch_body,
+            });
         }
         Ok(CppStmt::Try { body, catches })
     }
@@ -1549,12 +1939,21 @@ impl CppParser {
             CppToken::Assign => {
                 self.advance();
                 let rhs = self.parse_assignment_expr()?;
-                Ok(CppExpr::Assign { target: Box::new(lhs), value: Box::new(rhs) })
+                Ok(CppExpr::Assign {
+                    target: Box::new(lhs),
+                    value: Box::new(rhs),
+                })
             }
-            CppToken::PlusAssign | CppToken::MinusAssign | CppToken::StarAssign |
-            CppToken::SlashAssign | CppToken::PercentAssign |
-            CppToken::AmpAssign | CppToken::PipeAssign | CppToken::CaretAssign |
-            CppToken::ShlAssign | CppToken::ShrAssign => {
+            CppToken::PlusAssign
+            | CppToken::MinusAssign
+            | CppToken::StarAssign
+            | CppToken::SlashAssign
+            | CppToken::PercentAssign
+            | CppToken::AmpAssign
+            | CppToken::PipeAssign
+            | CppToken::CaretAssign
+            | CppToken::ShlAssign
+            | CppToken::ShrAssign => {
                 let op = match self.advance() {
                     CppToken::PlusAssign => CppBinOp::Add,
                     CppToken::MinusAssign => CppBinOp::Sub,
@@ -1569,7 +1968,11 @@ impl CppParser {
                     _ => unreachable!(),
                 };
                 let rhs = self.parse_assignment_expr()?;
-                Ok(CppExpr::CompoundAssign { op, target: Box::new(lhs), value: Box::new(rhs) })
+                Ok(CppExpr::CompoundAssign {
+                    op,
+                    target: Box::new(lhs),
+                    value: Box::new(rhs),
+                })
             }
             _ => Ok(lhs),
         }
@@ -1595,7 +1998,11 @@ impl CppParser {
         let mut left = self.parse_logical_and()?;
         while self.eat(&CppToken::Or) {
             let right = self.parse_logical_and()?;
-            left = CppExpr::BinaryOp { op: CppBinOp::Or, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op: CppBinOp::Or,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1604,7 +2011,11 @@ impl CppParser {
         let mut left = self.parse_bitwise_or()?;
         while self.eat(&CppToken::And) {
             let right = self.parse_bitwise_or()?;
-            left = CppExpr::BinaryOp { op: CppBinOp::And, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op: CppBinOp::And,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1613,7 +2024,11 @@ impl CppParser {
         let mut left = self.parse_bitwise_xor()?;
         while self.eat(&CppToken::Pipe) {
             let right = self.parse_bitwise_xor()?;
-            left = CppExpr::BinaryOp { op: CppBinOp::BitOr, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op: CppBinOp::BitOr,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1622,7 +2037,11 @@ impl CppParser {
         let mut left = self.parse_bitwise_and()?;
         while self.eat(&CppToken::Caret) {
             let right = self.parse_bitwise_and()?;
-            left = CppExpr::BinaryOp { op: CppBinOp::BitXor, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op: CppBinOp::BitXor,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1632,7 +2051,11 @@ impl CppParser {
         while *self.current() == CppToken::Amp {
             self.advance();
             let right = self.parse_equality()?;
-            left = CppExpr::BinaryOp { op: CppBinOp::BitAnd, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op: CppBinOp::BitAnd,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1647,7 +2070,11 @@ impl CppParser {
             };
             self.advance();
             let right = self.parse_relational()?;
-            left = CppExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1665,7 +2092,11 @@ impl CppParser {
             };
             self.advance();
             let right = self.parse_shift()?;
-            left = CppExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1680,7 +2111,11 @@ impl CppParser {
             };
             self.advance();
             let right = self.parse_additive()?;
-            left = CppExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1695,7 +2130,11 @@ impl CppParser {
             };
             self.advance();
             let right = self.parse_multiplicative()?;
-            left = CppExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1711,7 +2150,11 @@ impl CppParser {
             };
             self.advance();
             let right = self.parse_unary()?;
-            left = CppExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CppExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1721,27 +2164,47 @@ impl CppParser {
             CppToken::Minus => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CppExpr::UnaryOp { op: CppUnaryOp::Neg, expr: Box::new(expr), is_prefix: true })
+                Ok(CppExpr::UnaryOp {
+                    op: CppUnaryOp::Neg,
+                    expr: Box::new(expr),
+                    is_prefix: true,
+                })
             }
             CppToken::Not => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CppExpr::UnaryOp { op: CppUnaryOp::Not, expr: Box::new(expr), is_prefix: true })
+                Ok(CppExpr::UnaryOp {
+                    op: CppUnaryOp::Not,
+                    expr: Box::new(expr),
+                    is_prefix: true,
+                })
             }
             CppToken::Tilde => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CppExpr::UnaryOp { op: CppUnaryOp::BitNot, expr: Box::new(expr), is_prefix: true })
+                Ok(CppExpr::UnaryOp {
+                    op: CppUnaryOp::BitNot,
+                    expr: Box::new(expr),
+                    is_prefix: true,
+                })
             }
             CppToken::Increment => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CppExpr::UnaryOp { op: CppUnaryOp::PreInc, expr: Box::new(expr), is_prefix: true })
+                Ok(CppExpr::UnaryOp {
+                    op: CppUnaryOp::PreInc,
+                    expr: Box::new(expr),
+                    is_prefix: true,
+                })
             }
             CppToken::Decrement => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CppExpr::UnaryOp { op: CppUnaryOp::PreDec, expr: Box::new(expr), is_prefix: true })
+                Ok(CppExpr::UnaryOp {
+                    op: CppUnaryOp::PreDec,
+                    expr: Box::new(expr),
+                    is_prefix: true,
+                })
             }
             CppToken::Star => {
                 self.advance();
@@ -1781,14 +2244,29 @@ impl CppParser {
                         }
                     }
                     self.expect(&CppToken::RParen)?;
-                    Ok(CppExpr::New { type_name: t, args, is_array, array_size: None })
+                    Ok(CppExpr::New {
+                        type_name: t,
+                        args,
+                        is_array,
+                        array_size: None,
+                    })
                 } else if *self.current() == CppToken::LBracket {
                     self.advance();
                     let size = self.parse_expression()?;
                     self.expect(&CppToken::RBracket)?;
-                    Ok(CppExpr::New { type_name: t, args: Vec::new(), is_array: true, array_size: Some(Box::new(size)) })
+                    Ok(CppExpr::New {
+                        type_name: t,
+                        args: Vec::new(),
+                        is_array: true,
+                        array_size: Some(Box::new(size)),
+                    })
                 } else {
-                    Ok(CppExpr::New { type_name: t, args: Vec::new(), is_array, array_size: None })
+                    Ok(CppExpr::New {
+                        type_name: t,
+                        args: Vec::new(),
+                        is_array,
+                        array_size: None,
+                    })
                 }
             }
             CppToken::Delete => {
@@ -1801,7 +2279,10 @@ impl CppParser {
                     false
                 };
                 let expr = self.parse_unary()?;
-                Ok(CppExpr::Delete { expr: Box::new(expr), is_array })
+                Ok(CppExpr::Delete {
+                    expr: Box::new(expr),
+                    is_array,
+                })
             }
             CppToken::Throw => {
                 self.advance();
@@ -1818,8 +2299,10 @@ impl CppParser {
                 Ok(CppExpr::CoAwait(Box::new(expr)))
             }
             // C++ style casts
-            CppToken::StaticCast | CppToken::DynamicCast |
-            CppToken::ConstCast | CppToken::ReinterpretCast => {
+            CppToken::StaticCast
+            | CppToken::DynamicCast
+            | CppToken::ConstCast
+            | CppToken::ReinterpretCast => {
                 let kind = match self.advance() {
                     CppToken::StaticCast => CppCastKind::StaticCast,
                     CppToken::DynamicCast => CppCastKind::DynamicCast,
@@ -1833,7 +2316,11 @@ impl CppParser {
                 self.expect(&CppToken::LParen)?;
                 let expr = self.parse_expression()?;
                 self.expect(&CppToken::RParen)?;
-                Ok(CppExpr::Cast { cast_type: kind, target_type, expr: Box::new(expr) })
+                Ok(CppExpr::Cast {
+                    cast_type: kind,
+                    target_type,
+                    expr: Box::new(expr),
+                })
             }
             // C-style cast or parenthesized expr
             CppToken::LParen => {
@@ -1876,7 +2363,10 @@ impl CppParser {
                     self.advance();
                     let index = self.parse_expression()?;
                     self.expect(&CppToken::RBracket)?;
-                    expr = CppExpr::Index { object: Box::new(expr), index: Box::new(index) };
+                    expr = CppExpr::Index {
+                        object: Box::new(expr),
+                        index: Box::new(index),
+                    };
                 }
                 CppToken::LParen => {
                     self.advance();
@@ -1888,25 +2378,42 @@ impl CppParser {
                         }
                     }
                     self.expect(&CppToken::RParen)?;
-                    expr = CppExpr::Call { callee: Box::new(expr), args };
+                    expr = CppExpr::Call {
+                        callee: Box::new(expr),
+                        args,
+                    };
                 }
                 CppToken::Dot => {
                     self.advance();
                     let member = self.expect_identifier()?;
-                    expr = CppExpr::MemberAccess { object: Box::new(expr), member };
+                    expr = CppExpr::MemberAccess {
+                        object: Box::new(expr),
+                        member,
+                    };
                 }
                 CppToken::Arrow => {
                     self.advance();
                     let member = self.expect_identifier()?;
-                    expr = CppExpr::ArrowAccess { pointer: Box::new(expr), member };
+                    expr = CppExpr::ArrowAccess {
+                        pointer: Box::new(expr),
+                        member,
+                    };
                 }
                 CppToken::Increment => {
                     self.advance();
-                    expr = CppExpr::UnaryOp { op: CppUnaryOp::PostInc, expr: Box::new(expr), is_prefix: false };
+                    expr = CppExpr::UnaryOp {
+                        op: CppUnaryOp::PostInc,
+                        expr: Box::new(expr),
+                        is_prefix: false,
+                    };
                 }
                 CppToken::Decrement => {
                     self.advance();
-                    expr = CppExpr::UnaryOp { op: CppUnaryOp::PostDec, expr: Box::new(expr), is_prefix: false };
+                    expr = CppExpr::UnaryOp {
+                        op: CppUnaryOp::PostDec,
+                        expr: Box::new(expr),
+                        is_prefix: false,
+                    };
                 }
                 CppToken::Scope => {
                     self.advance();
@@ -1918,7 +2425,10 @@ impl CppParser {
                             name: member,
                         };
                     } else {
-                        expr = CppExpr::MemberAccess { object: Box::new(expr), member };
+                        expr = CppExpr::MemberAccess {
+                            object: Box::new(expr),
+                            member,
+                        };
                     }
                 }
                 _ => break,
@@ -1929,9 +2439,18 @@ impl CppParser {
 
     fn parse_primary(&mut self) -> Result<CppExpr, String> {
         match self.current().clone() {
-            CppToken::IntLiteral(n) => { self.advance(); Ok(CppExpr::IntLiteral(n)) }
-            CppToken::UIntLiteral(n) => { self.advance(); Ok(CppExpr::UIntLiteral(n)) }
-            CppToken::FloatLiteral(f) => { self.advance(); Ok(CppExpr::FloatLiteral(f)) }
+            CppToken::IntLiteral(n) => {
+                self.advance();
+                Ok(CppExpr::IntLiteral(n))
+            }
+            CppToken::UIntLiteral(n) => {
+                self.advance();
+                Ok(CppExpr::UIntLiteral(n))
+            }
+            CppToken::FloatLiteral(f) => {
+                self.advance();
+                Ok(CppExpr::FloatLiteral(f))
+            }
             CppToken::StringLiteral(s) => {
                 let mut result = s;
                 self.advance();
@@ -1942,11 +2461,26 @@ impl CppParser {
                 }
                 Ok(CppExpr::StringLiteral(result))
             }
-            CppToken::CharLiteral(c) => { self.advance(); Ok(CppExpr::CharLiteral(c)) }
-            CppToken::True => { self.advance(); Ok(CppExpr::BoolLiteral(true)) }
-            CppToken::False => { self.advance(); Ok(CppExpr::BoolLiteral(false)) }
-            CppToken::Nullptr => { self.advance(); Ok(CppExpr::NullptrLiteral) }
-            CppToken::This => { self.advance(); Ok(CppExpr::This) }
+            CppToken::CharLiteral(c) => {
+                self.advance();
+                Ok(CppExpr::CharLiteral(c))
+            }
+            CppToken::True => {
+                self.advance();
+                Ok(CppExpr::BoolLiteral(true))
+            }
+            CppToken::False => {
+                self.advance();
+                Ok(CppExpr::BoolLiteral(false))
+            }
+            CppToken::Nullptr => {
+                self.advance();
+                Ok(CppExpr::NullptrLiteral)
+            }
+            CppToken::This => {
+                self.advance();
+                Ok(CppExpr::This)
+            }
             CppToken::Identifier(name) => {
                 self.advance();
                 Ok(CppExpr::Identifier(name))
@@ -1958,7 +2492,9 @@ impl CppParser {
                 if *self.current() != CppToken::RBrace {
                     items.push(self.parse_assignment_expr()?);
                     while self.eat(&CppToken::Comma) {
-                        if *self.current() == CppToken::RBrace { break; }
+                        if *self.current() == CppToken::RBrace {
+                            break;
+                        }
                         items.push(self.parse_assignment_expr()?);
                     }
                 }
@@ -1969,7 +2505,10 @@ impl CppParser {
                 // Lambda: [captures](params) { body }
                 self.parse_lambda()
             }
-            other => Err(format!("Unexpected token in expression: {:?} at pos {}", other, self.pos)),
+            other => Err(format!(
+                "Unexpected token in expression: {:?} at pos {}",
+                other, self.pos
+            )),
         }
     }
 
@@ -2003,7 +2542,9 @@ impl CppParser {
                     }
                     _ => break,
                 }
-                if !self.eat(&CppToken::Comma) { break; }
+                if !self.eat(&CppToken::Comma) {
+                    break;
+                }
             }
         }
         self.expect(&CppToken::RBracket)?;
@@ -2032,18 +2573,23 @@ impl CppParser {
 
         let body = self.parse_block_stmts()?;
 
-        Ok(CppExpr::Lambda { captures, params, return_type, body })
+        Ok(CppExpr::Lambda {
+            captures,
+            params,
+            return_type,
+            body,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::cpp_lexer::CppLexer;
+    use super::*;
 
     fn parse(src: &str) -> CppTranslationUnit {
-        let tokens = CppLexer::new(src).tokenize();
-        CppParser::new(tokens).parse_translation_unit().unwrap()
+        let (tokens, lines) = CppLexer::new(src).tokenize();
+        CppParser::new(tokens, lines).parse_translation_unit().unwrap()
     }
 
     #[test]
@@ -2058,13 +2604,15 @@ mod tests {
 
     #[test]
     fn test_class_def() {
-        let unit = parse(r#"
+        let unit = parse(
+            r#"
             class Animal {
             public:
                 virtual void speak() = 0;
                 int age;
             };
-        "#);
+        "#,
+        );
         assert_eq!(unit.declarations.len(), 1);
         match &unit.declarations[0] {
             CppTopLevel::ClassDef { name, members, .. } => {
@@ -2077,13 +2625,19 @@ mod tests {
 
     #[test]
     fn test_template_function() {
-        let unit = parse(r#"
+        let unit = parse(
+            r#"
             template<typename T>
             T add(T a, T b) { return a + b; }
-        "#);
+        "#,
+        );
         assert_eq!(unit.declarations.len(), 1);
         match &unit.declarations[0] {
-            CppTopLevel::FunctionDef { name, template_params, .. } => {
+            CppTopLevel::FunctionDef {
+                name,
+                template_params,
+                ..
+            } => {
                 assert_eq!(name, "add");
                 assert_eq!(template_params.len(), 1);
             }
@@ -2093,11 +2647,13 @@ mod tests {
 
     #[test]
     fn test_namespace() {
-        let unit = parse(r#"
+        let unit = parse(
+            r#"
             namespace math {
                 int add(int a, int b) { return a + b; }
             }
-        "#);
+        "#,
+        );
         assert_eq!(unit.declarations.len(), 1);
         match &unit.declarations[0] {
             CppTopLevel::Namespace { name, declarations } => {
@@ -2110,11 +2666,18 @@ mod tests {
 
     #[test]
     fn test_enum_class() {
-        let unit = parse(r#"
+        let unit = parse(
+            r#"
             enum class Color : int { Red = 0, Green, Blue };
-        "#);
+        "#,
+        );
         match &unit.declarations[0] {
-            CppTopLevel::EnumDef { name, is_class, values, .. } => {
+            CppTopLevel::EnumDef {
+                name,
+                is_class,
+                values,
+                ..
+            } => {
                 assert_eq!(name, "Color");
                 assert!(*is_class);
                 assert_eq!(values.len(), 3);

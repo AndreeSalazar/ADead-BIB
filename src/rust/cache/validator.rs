@@ -7,8 +7,8 @@
 //     NO: CACHE MISS -> recompila -> genera cache
 // ============================================================
 
-use super::{ADeadCache, CACHE_MAGIC, CACHE_VERSION};
 use super::hasher;
+use super::{ADeadCache, CACHE_MAGIC, CACHE_VERSION};
 
 /// Resultado de validacion del cache
 #[derive(Debug, PartialEq)]

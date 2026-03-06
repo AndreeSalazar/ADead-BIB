@@ -2,10 +2,10 @@
 // ISA Compiler — Function compilation, prologue/epilogue
 // ============================================================
 
-use crate::frontend::ast::*;
-use crate::isa::{ADeadOp, Reg, Operand};
-use crate::isa::reg_alloc::TempAllocator;
 use super::core::{IsaCompiler, Target};
+use crate::frontend::ast::*;
+use crate::isa::reg_alloc::TempAllocator;
+use crate::isa::{ADeadOp, Operand, Reg};
 
 impl IsaCompiler {
     pub(crate) fn compile_function(&mut self, func: &Function) {
@@ -39,11 +39,17 @@ impl IsaCompiler {
 
                 if i <= 3 {
                     let src_reg = match i {
-                        0 => Reg::RCX, 1 => Reg::RDX, 2 => Reg::R8, 3 => Reg::R9,
+                        0 => Reg::RCX,
+                        1 => Reg::RDX,
+                        2 => Reg::R8,
+                        3 => Reg::R9,
                         _ => unreachable!(),
                     };
                     self.ir.emit(ADeadOp::Mov {
-                        dst: Operand::Mem { base: Reg::RBP, disp: param_offset },
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp: param_offset,
+                        },
                         src: Operand::Reg(src_reg),
                     });
                 }
@@ -87,15 +93,25 @@ impl IsaCompiler {
     }
 
     pub(crate) fn emit_prologue(&mut self) {
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBP) });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RBP),
+        });
         self.ir.emit(ADeadOp::Mov {
             dst: Operand::Reg(Reg::RBP),
             src: Operand::Reg(Reg::RSP),
         });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBX) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R12) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RSI) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RDI) });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RBX),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R12),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RSI),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RDI),
+        });
         self.prologue_sub_index = Some(self.ir.len());
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP),
@@ -107,7 +123,11 @@ impl IsaCompiler {
     pub(crate) fn patch_prologue(&mut self) {
         if let Some(idx) = self.prologue_sub_index.take() {
             let locals_size = (-self.stack_offset) as i32;
-            let shadow_space = if self.target == Target::Windows { 32 } else { 0 };
+            let shadow_space = if self.target == Target::Windows {
+                32
+            } else {
+                0
+            };
             let raw_size = locals_size + shadow_space;
             let aligned_size = ((raw_size + 15) / 16) * 16;
             let final_size = if aligned_size < 32 { 32 } else { aligned_size };
@@ -124,7 +144,10 @@ impl IsaCompiler {
     pub(crate) fn emit_epilogue(&mut self) {
         self.ir.emit(ADeadOp::Lea {
             dst: Reg::RSP,
-            src: Operand::Mem { base: Reg::RBP, disp: -32 },
+            src: Operand::Mem {
+                base: Reg::RBP,
+                disp: -32,
+            },
         });
         self.ir.emit(ADeadOp::Pop { dst: Reg::RDI });
         self.ir.emit(ADeadOp::Pop { dst: Reg::RSI });
@@ -135,21 +158,51 @@ impl IsaCompiler {
     }
 
     pub(crate) fn emit_interrupt_prologue(&mut self) {
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBX) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RCX) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RDX) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RSI) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RDI) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBP) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R8) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R9) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R10) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R11) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R12) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R13) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R14) });
-        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::R15) });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RAX),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RBX),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RCX),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RDX),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RSI),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RDI),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RBP),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R8),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R9),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R10),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R11),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R12),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R13),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R14),
+        });
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::R15),
+        });
     }
 
     pub(crate) fn emit_interrupt_epilogue(&mut self) {

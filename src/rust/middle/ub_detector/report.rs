@@ -56,6 +56,7 @@ pub struct UBReport {
     pub kind: UBKind,
     pub message: String,
     pub function: Option<String>,
+    pub file_path: Option<String>,
     pub line: Option<usize>,
     pub suggestion: Option<String>,
 }
@@ -67,6 +68,7 @@ impl UBReport {
             kind,
             message,
             function: None,
+            file_path: None,
             line: None,
             suggestion: None,
         }
@@ -83,11 +85,30 @@ impl UBReport {
         self
     }
 
+    pub fn with_file(mut self, file_path: String) -> Self {
+        self.file_path = Some(file_path);
+        self
+    }
+
     pub fn print(&self) {
         let severity_str = match self.severity {
-            UBSeverity::Error => "\x1b[31mERROR\x1b[0m",   // Rojo
-            UBSeverity::Warning => "\x1b[33mWARN\x1b[0m",  // Amarillo
-            UBSeverity::Info => "\x1b[36mINFO\x1b[0m",     // Cyan
+            UBSeverity::Error => "\x1b[31mERROR\x1b[0m",  // Rojo
+            UBSeverity::Warning => "\x1b[33mWARN\x1b[0m", // Amarillo
+            UBSeverity::Info => "\x1b[36mINFO\x1b[0m",    // Cyan
+        };
+
+        let file_loc = if let Some(path) = &self.file_path {
+            if let Some(line) = self.line {
+                if line > 0 {
+                    format!("{}:{}: ", path, line)
+                } else {
+                    format!("{}: ", path)
+                }
+            } else {
+                format!("{}: ", path)
+            }
+        } else {
+            String::new()
         };
 
         let location = if let (Some(func), Some(line)) = (&self.function, self.line) {
@@ -98,7 +119,10 @@ impl UBReport {
             String::new()
         };
 
-        println!("[{}] {}: {}{}", severity_str, self.kind, self.message, location);
+        println!(
+            "{}[{}] {}: {}{}",
+            file_loc, severity_str, self.kind, self.message, location
+        );
 
         if let Some(suggestion) = &self.suggestion {
             println!("  → Suggestion: {}", suggestion);

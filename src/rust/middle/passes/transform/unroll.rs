@@ -20,7 +20,13 @@ impl LoopUnrollPass {
 }
 
 impl Pass for LoopUnrollPass {
-    fn name(&self) -> &'static str { "unroll" }
-    fn kind(&self) -> PassKind { PassKind::Function }
-    fn run_on_function(&self, _func: &mut Function) -> bool { false }
+    fn name(&self) -> &'static str {
+        "unroll"
+    }
+    fn kind(&self) -> PassKind {
+        PassKind::Function
+    }
+    fn run_on_function(&self, _func: &mut Function) -> bool {
+        false
+    }
 }

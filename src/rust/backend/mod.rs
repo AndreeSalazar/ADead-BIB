@@ -14,15 +14,15 @@ pub mod cpu;
 pub mod gpu;
 
 // Core format re-exports
-pub use cpu::pe;
 pub use cpu::elf;
-pub use cpu::pe_tiny;
 pub use cpu::flat_binary;
+pub use cpu::pe;
+pub use cpu::pe_tiny;
 
 // Legacy re-exports (use isa::codegen instead for new code)
 pub use cpu::codegen;
 pub use cpu::codegen_v2;
+pub use cpu::microvm;
+pub use cpu::pe_minimal;
 pub use cpu::syscalls;
 pub use cpu::win32_resolver;
-pub use cpu::pe_minimal;
-pub use cpu::microvm;

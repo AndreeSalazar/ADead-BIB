@@ -20,7 +20,7 @@
 // Email: eddi.salazar.dev@gmail.com
 // ============================================================
 
-use super::{ADeadOp, ADeadIR, Reg, Operand};
+use super::{ADeadIR, ADeadOp, Operand, Reg};
 use std::collections::HashSet;
 
 /// Nivel de optimización
@@ -127,7 +127,8 @@ impl IsaOptimizer {
 
     fn eliminate_nops(&mut self, ops: Vec<ADeadOp>) -> Vec<ADeadOp> {
         let original_len = ops.len();
-        let result: Vec<ADeadOp> = ops.into_iter()
+        let result: Vec<ADeadOp> = ops
+            .into_iter()
             .filter(|op| !matches!(op, ADeadOp::Nop))
             .collect();
         self.stats.nops_eliminated = original_len - result.len();
@@ -144,16 +145,30 @@ impl IsaOptimizer {
 
         while i < ops.len() {
             // Pattern: mov rax, 0 → xor eax, eax (más corto)
-            if let ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(0) } = &ops[i] {
-                result.push(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
+            if let ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Imm64(0),
+            } = &ops[i]
+            {
+                result.push(ADeadOp::Xor {
+                    dst: Reg::EAX,
+                    src: Reg::EAX,
+                });
                 self.stats.peephole_applied += 1;
                 i += 1;
                 continue;
             }
 
             // Pattern: mov rcx, 0 → xor ecx, ecx
-            if let ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Imm64(0) } = &ops[i] {
-                result.push(ADeadOp::Xor { dst: Reg::ECX, src: Reg::ECX });
+            if let ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RCX),
+                src: Operand::Imm64(0),
+            } = &ops[i]
+            {
+                result.push(ADeadOp::Xor {
+                    dst: Reg::ECX,
+                    src: Reg::ECX,
+                });
                 self.stats.peephole_applied += 1;
                 i += 1;
                 continue;
@@ -163,31 +178,51 @@ impl IsaOptimizer {
             // Pattern: mov rsp, rbp; pop rbp → (mantener, es epilogue estándar)
 
             // Pattern: add rax, 0 → eliminar (no-op)
-            if let ADeadOp::Add { dst: Operand::Reg(_), src: Operand::Imm32(0) } = &ops[i] {
+            if let ADeadOp::Add {
+                dst: Operand::Reg(_),
+                src: Operand::Imm32(0),
+            } = &ops[i]
+            {
                 self.stats.peephole_applied += 1;
                 i += 1;
                 continue;
             }
-            if let ADeadOp::Add { dst: Operand::Reg(_), src: Operand::Imm8(0) } = &ops[i] {
+            if let ADeadOp::Add {
+                dst: Operand::Reg(_),
+                src: Operand::Imm8(0),
+            } = &ops[i]
+            {
                 self.stats.peephole_applied += 1;
                 i += 1;
                 continue;
             }
 
             // Pattern: sub rax, 0 → eliminar (no-op)
-            if let ADeadOp::Sub { dst: Operand::Reg(_), src: Operand::Imm32(0) } = &ops[i] {
+            if let ADeadOp::Sub {
+                dst: Operand::Reg(_),
+                src: Operand::Imm32(0),
+            } = &ops[i]
+            {
                 self.stats.peephole_applied += 1;
                 i += 1;
                 continue;
             }
-            if let ADeadOp::Sub { dst: Operand::Reg(_), src: Operand::Imm8(0) } = &ops[i] {
+            if let ADeadOp::Sub {
+                dst: Operand::Reg(_),
+                src: Operand::Imm8(0),
+            } = &ops[i]
+            {
                 self.stats.peephole_applied += 1;
                 i += 1;
                 continue;
             }
 
             // Pattern: mov reg, reg (mismo registro) → eliminar
-            if let ADeadOp::Mov { dst: Operand::Reg(d), src: Operand::Reg(s) } = &ops[i] {
+            if let ADeadOp::Mov {
+                dst: Operand::Reg(d),
+                src: Operand::Reg(s),
+            } = &ops[i]
+            {
                 if d == s {
                     self.stats.peephole_applied += 1;
                     i += 1;
@@ -198,9 +233,12 @@ impl IsaOptimizer {
             // Pattern: push rax; pop rax → eliminar ambos
             if i + 1 < ops.len() {
                 if let (
-                    ADeadOp::Push { src: Operand::Reg(r1) },
-                    ADeadOp::Pop { dst: r2 }
-                ) = (&ops[i], &ops[i + 1]) {
+                    ADeadOp::Push {
+                        src: Operand::Reg(r1),
+                    },
+                    ADeadOp::Pop { dst: r2 },
+                ) = (&ops[i], &ops[i + 1])
+                {
                     if r1 == r2 {
                         self.stats.peephole_applied += 1;
                         i += 2;
@@ -211,10 +249,7 @@ impl IsaOptimizer {
 
             // Pattern: jmp .L0; .L0: → eliminar jmp (salto al siguiente)
             if i + 1 < ops.len() {
-                if let (
-                    ADeadOp::Jmp { target: t1 },
-                    ADeadOp::Label(t2)
-                ) = (&ops[i], &ops[i + 1]) {
+                if let (ADeadOp::Jmp { target: t1 }, ADeadOp::Label(t2)) = (&ops[i], &ops[i + 1]) {
                     if t1 == t2 {
                         self.stats.peephole_applied += 1;
                         i += 1; // Skip jmp, keep label
@@ -226,7 +261,11 @@ impl IsaOptimizer {
             // Pattern: test rax, rax; sete al; movzx rax, al → (mantener, es NOT lógico)
 
             // Pattern: imm32 que cabe en imm8 → usar imm8
-            if let ADeadOp::Sub { dst: Operand::Reg(Reg::RSP), src: Operand::Imm32(v) } = &ops[i] {
+            if let ADeadOp::Sub {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm32(v),
+            } = &ops[i]
+            {
                 if *v >= -128 && *v <= 127 {
                     result.push(ADeadOp::Sub {
                         dst: Operand::Reg(Reg::RSP),
@@ -237,7 +276,11 @@ impl IsaOptimizer {
                     continue;
                 }
             }
-            if let ADeadOp::Add { dst: Operand::Reg(Reg::RSP), src: Operand::Imm32(v) } = &ops[i] {
+            if let ADeadOp::Add {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm32(v),
+            } = &ops[i]
+            {
                 if *v >= -128 && *v <= 127 {
                     result.push(ADeadOp::Add {
                         dst: Operand::Reg(Reg::RSP),
@@ -253,9 +296,16 @@ impl IsaOptimizer {
             // Pattern: mov rax, imm; mov reg, rax; → mov reg, imm (fuse load+move)
             if i + 1 < ops.len() {
                 if let (
-                    ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(v) },
-                    ADeadOp::Mov { dst: Operand::Reg(dst_reg), src: Operand::Reg(Reg::RAX) }
-                ) = (&ops[i], &ops[i + 1]) {
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Imm64(v),
+                    },
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(dst_reg),
+                        src: Operand::Reg(Reg::RAX),
+                    },
+                ) = (&ops[i], &ops[i + 1])
+                {
                     // Fuse: mov rax, imm64; mov reg, rax → mov reg, imm64
                     result.push(ADeadOp::Mov {
                         dst: Operand::Reg(*dst_reg),
@@ -271,9 +321,16 @@ impl IsaOptimizer {
             // Pattern: mov temp, rax; mov rax, temp → eliminate (register round-trip)
             if i + 1 < ops.len() {
                 if let (
-                    ADeadOp::Mov { dst: Operand::Reg(r1), src: Operand::Reg(Reg::RAX) },
-                    ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Reg(r2) }
-                ) = (&ops[i], &ops[i + 1]) {
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(r1),
+                        src: Operand::Reg(Reg::RAX),
+                    },
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(r2),
+                    },
+                ) = (&ops[i], &ops[i + 1])
+                {
                     if r1 == r2 && *r1 != Reg::RAX {
                         // This is a no-op round-trip, skip both
                         self.stats.peephole_applied += 1;
@@ -286,9 +343,12 @@ impl IsaOptimizer {
             // FASM-inspired: push rax; pop rbx → mov rbx, rax (saves stack ops)
             if i + 1 < ops.len() {
                 if let (
-                    ADeadOp::Push { src: Operand::Reg(r1) },
-                    ADeadOp::Pop { dst: r2 }
-                ) = (&ops[i], &ops[i + 1]) {
+                    ADeadOp::Push {
+                        src: Operand::Reg(r1),
+                    },
+                    ADeadOp::Pop { dst: r2 },
+                ) = (&ops[i], &ops[i + 1])
+                {
                     if r1 != r2 {
                         result.push(ADeadOp::Mov {
                             dst: Operand::Reg(*r2),
@@ -307,12 +367,22 @@ impl IsaOptimizer {
             // (Can only apply when preceded by mov rbx, imm)
             if i + 1 < ops.len() {
                 if let (
-                    ADeadOp::Mov { dst: Operand::Reg(Reg::RBX), src: Operand::Imm64(v) },
-                    ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX }
-                ) = (&ops[i], &ops[i + 1]) {
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Imm64(v),
+                    },
+                    ADeadOp::Mul {
+                        dst: Reg::RAX,
+                        src: Reg::RBX,
+                    },
+                ) = (&ops[i], &ops[i + 1])
+                {
                     if v.is_power_of_two() && *v > 1 {
                         let shift = v.trailing_zeros() as u8;
-                        result.push(ADeadOp::Shl { dst: Reg::RAX, amount: shift });
+                        result.push(ADeadOp::Shl {
+                            dst: Reg::RAX,
+                            amount: shift,
+                        });
                         self.stats.peephole_applied += 1;
                         self.stats.instructions_fused += 1;
                         i += 2;
@@ -322,8 +392,15 @@ impl IsaOptimizer {
             }
 
             // FASM-inspired: mov rax, imm32(0) → xor eax, eax
-            if let ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm32(0) } = &ops[i] {
-                result.push(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
+            if let ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Imm32(0),
+            } = &ops[i]
+            {
+                result.push(ADeadOp::Xor {
+                    dst: Reg::EAX,
+                    src: Reg::EAX,
+                });
                 self.stats.peephole_applied += 1;
                 i += 1;
                 continue;
@@ -346,8 +423,12 @@ impl IsaOptimizer {
         let mut used_labels: HashSet<u32> = HashSet::new();
         for op in &ops {
             match op {
-                ADeadOp::Jmp { target } => { used_labels.insert(target.0); }
-                ADeadOp::Jcc { target, .. } => { used_labels.insert(target.0); }
+                ADeadOp::Jmp { target } => {
+                    used_labels.insert(target.0);
+                }
+                ADeadOp::Jcc { target, .. } => {
+                    used_labels.insert(target.0);
+                }
                 ADeadOp::Call { target } => {
                     if let super::CallTarget::Relative(label) = target {
                         used_labels.insert(label.0);
@@ -430,12 +511,21 @@ impl IsaOptimizer {
         for op in ops {
             match &op {
                 // Usar encodings más cortos para inmediatos pequeños
-                ADeadOp::Mov { dst: Operand::Reg(r), src: Operand::Imm64(v) } => {
+                ADeadOp::Mov {
+                    dst: Operand::Reg(r),
+                    src: Operand::Imm64(v),
+                } => {
                     if *v == 0 {
                         // mov rax, 0 → xor eax, eax (2 bytes vs 10 bytes)
                         match r {
-                            Reg::RAX => result.push(ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX }),
-                            Reg::RCX => result.push(ADeadOp::Xor { dst: Reg::ECX, src: Reg::ECX }),
+                            Reg::RAX => result.push(ADeadOp::Xor {
+                                dst: Reg::EAX,
+                                src: Reg::EAX,
+                            }),
+                            Reg::RCX => result.push(ADeadOp::Xor {
+                                dst: Reg::ECX,
+                                src: Reg::ECX,
+                            }),
                             _ => result.push(op),
                         }
                     } else if *v <= 0x7FFFFFFF {
@@ -450,17 +540,37 @@ impl IsaOptimizer {
                 }
 
                 // Usar inc/dec en lugar de add/sub 1
-                ADeadOp::Add { dst: Operand::Reg(r), src: Operand::Imm32(1) } => {
-                    result.push(ADeadOp::Inc { dst: Operand::Reg(*r) });
+                ADeadOp::Add {
+                    dst: Operand::Reg(r),
+                    src: Operand::Imm32(1),
+                } => {
+                    result.push(ADeadOp::Inc {
+                        dst: Operand::Reg(*r),
+                    });
                 }
-                ADeadOp::Add { dst: Operand::Reg(r), src: Operand::Imm8(1) } => {
-                    result.push(ADeadOp::Inc { dst: Operand::Reg(*r) });
+                ADeadOp::Add {
+                    dst: Operand::Reg(r),
+                    src: Operand::Imm8(1),
+                } => {
+                    result.push(ADeadOp::Inc {
+                        dst: Operand::Reg(*r),
+                    });
                 }
-                ADeadOp::Sub { dst: Operand::Reg(r), src: Operand::Imm32(1) } => {
-                    result.push(ADeadOp::Dec { dst: Operand::Reg(*r) });
+                ADeadOp::Sub {
+                    dst: Operand::Reg(r),
+                    src: Operand::Imm32(1),
+                } => {
+                    result.push(ADeadOp::Dec {
+                        dst: Operand::Reg(*r),
+                    });
                 }
-                ADeadOp::Sub { dst: Operand::Reg(r), src: Operand::Imm8(1) } => {
-                    result.push(ADeadOp::Dec { dst: Operand::Reg(*r) });
+                ADeadOp::Sub {
+                    dst: Operand::Reg(r),
+                    src: Operand::Imm8(1),
+                } => {
+                    result.push(ADeadOp::Dec {
+                        dst: Operand::Reg(*r),
+                    });
                 }
 
                 _ => result.push(op),
@@ -532,7 +642,9 @@ mod tests {
         let mut opt = IsaOptimizer::new(IsaOptLevel::Basic);
         let ops = vec![
             ADeadOp::Nop,
-            ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP),
+            },
             ADeadOp::Nop,
             ADeadOp::Nop,
             ADeadOp::Ret,
@@ -545,21 +657,27 @@ mod tests {
     #[test]
     fn test_mov_zero_to_xor() {
         let mut opt = IsaOptimizer::new(IsaOptLevel::Basic);
-        let ops = vec![
-            ADeadOp::Mov {
-                dst: Operand::Reg(Reg::RAX),
-                src: Operand::Imm64(0),
-            },
-        ];
+        let ops = vec![ADeadOp::Mov {
+            dst: Operand::Reg(Reg::RAX),
+            src: Operand::Imm64(0),
+        }];
         let result = opt.optimize_ops(&ops);
-        assert_eq!(result[0], ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
+        assert_eq!(
+            result[0],
+            ADeadOp::Xor {
+                dst: Reg::EAX,
+                src: Reg::EAX
+            }
+        );
     }
 
     #[test]
     fn test_push_pop_same_reg() {
         let mut opt = IsaOptimizer::new(IsaOptLevel::Basic);
         let ops = vec![
-            ADeadOp::Push { src: Operand::Reg(Reg::RAX) },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RAX),
+            },
             ADeadOp::Pop { dst: Reg::RAX },
         ];
         let result = opt.optimize_ops(&ops);
@@ -569,12 +687,10 @@ mod tests {
     #[test]
     fn test_add_zero_elimination() {
         let mut opt = IsaOptimizer::new(IsaOptLevel::Basic);
-        let ops = vec![
-            ADeadOp::Add {
-                dst: Operand::Reg(Reg::RAX),
-                src: Operand::Imm32(0),
-            },
-        ];
+        let ops = vec![ADeadOp::Add {
+            dst: Operand::Reg(Reg::RAX),
+            src: Operand::Imm32(0),
+        }];
         let result = opt.optimize_ops(&ops);
         assert_eq!(result.len(), 0);
     }
@@ -584,14 +700,17 @@ mod tests {
         let mut opt = IsaOptimizer::new(IsaOptLevel::Aggressive);
         let mut ir = ADeadIR::new();
         let label = ir.new_label();
-        
+
         let ops = vec![
             ADeadOp::Ret,
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(42) },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Imm64(42),
+            },
             ADeadOp::Label(label),
             ADeadOp::Ret,
         ];
-        
+
         let result = opt.optimize_ops(&ops);
         // Ret, luego código muerto eliminado, luego label (no usado) eliminado, luego ret
         assert!(result.len() < ops.len());
@@ -600,12 +719,10 @@ mod tests {
     #[test]
     fn test_size_optimization_inc() {
         let mut opt = IsaOptimizer::new(IsaOptLevel::Size);
-        let ops = vec![
-            ADeadOp::Add {
-                dst: Operand::Reg(Reg::RAX),
-                src: Operand::Imm32(1),
-            },
-        ];
+        let ops = vec![ADeadOp::Add {
+            dst: Operand::Reg(Reg::RAX),
+            src: Operand::Imm32(1),
+        }];
         let result = opt.optimize_ops(&ops);
         assert!(matches!(result[0], ADeadOp::Inc { .. }));
     }
@@ -616,11 +733,22 @@ mod tests {
 
         // Crear código con ineficiencias
         let ops = vec![
-            ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RBP), src: Operand::Reg(Reg::RSP) },
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(0) },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP),
+            },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBP),
+                src: Operand::Reg(Reg::RSP),
+            },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Imm64(0),
+            },
             ADeadOp::Nop,
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RSP), src: Operand::Reg(Reg::RBP) },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Reg(Reg::RBP),
+            },
             ADeadOp::Pop { dst: Reg::RBP },
             ADeadOp::Ret,
         ];

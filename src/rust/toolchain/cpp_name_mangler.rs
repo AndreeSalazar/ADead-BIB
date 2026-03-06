@@ -31,7 +31,7 @@ impl ManglingStyle {
     pub fn for_target(os: &str) -> Self {
         match os.to_lowercase().as_str() {
             "windows" | "win32" | "win64" => Self::Msvc,
-            _                             => Self::Itanium,
+            _ => Self::Itanium,
         }
     }
 
@@ -50,37 +50,32 @@ impl ManglingStyle {
 /// Map a C/C++ base type name to its Itanium ABI one-letter encoding.
 fn itanium_builtin_type(ty: &str) -> Option<&'static str> {
     match ty.trim() {
-        "void"               => Some("v"),
-        "bool"               => Some("b"),
-        "char"               => Some("c"),
-        "signed char"        => Some("a"),
-        "unsigned char"      => Some("h"),
-        "short"              | "short int"
-        | "signed short"     => Some("s"),
-        "unsigned short"     => Some("t"),
-        "int"                | "signed int"
-        | "signed"           => Some("i"),
-        "unsigned int"       | "unsigned"   => Some("j"),
-        "long"               | "signed long"
-        | "long int"         => Some("l"),
-        "unsigned long"      | "unsigned long int" => Some("m"),
-        "long long"          | "long long int"
-        | "__int64"          => Some("x"),
-        "unsigned long long" | "unsigned long long int"
-        | "unsigned __int64" => Some("y"),
-        "__int128"           => Some("n"),
-        "unsigned __int128"  => Some("o"),
-        "float"              => Some("f"),
-        "double"             => Some("d"),
-        "long double"        => Some("e"),
-        "float128"           | "__float128" => Some("g"),
-        "wchar_t"            => Some("w"),
-        "char8_t"            => Some("Du"),
-        "char16_t"           => Some("Ds"),
-        "char32_t"           => Some("Di"),
-        "nullptr_t"          => Some("Dn"),
-        "..."                => Some("z"),  // variadic
-        _                    => None,
+        "void" => Some("v"),
+        "bool" => Some("b"),
+        "char" => Some("c"),
+        "signed char" => Some("a"),
+        "unsigned char" => Some("h"),
+        "short" | "short int" | "signed short" => Some("s"),
+        "unsigned short" => Some("t"),
+        "int" | "signed int" | "signed" => Some("i"),
+        "unsigned int" | "unsigned" => Some("j"),
+        "long" | "signed long" | "long int" => Some("l"),
+        "unsigned long" | "unsigned long int" => Some("m"),
+        "long long" | "long long int" | "__int64" => Some("x"),
+        "unsigned long long" | "unsigned long long int" | "unsigned __int64" => Some("y"),
+        "__int128" => Some("n"),
+        "unsigned __int128" => Some("o"),
+        "float" => Some("f"),
+        "double" => Some("d"),
+        "long double" => Some("e"),
+        "float128" | "__float128" => Some("g"),
+        "wchar_t" => Some("w"),
+        "char8_t" => Some("Du"),
+        "char16_t" => Some("Ds"),
+        "char32_t" => Some("Di"),
+        "nullptr_t" => Some("Dn"),
+        "..." => Some("z"), // variadic
+        _ => None,
     }
 }
 
@@ -120,9 +115,10 @@ fn mangle_type_itanium(ty: &str) -> String {
     }
 
     // user-defined type: length-prefixed name   e.g. "MyType" → "6MyType"
-    let name = ty.trim_start_matches("struct ")
-                 .trim_start_matches("class ")
-                 .trim_start_matches("enum ");
+    let name = ty
+        .trim_start_matches("struct ")
+        .trim_start_matches("class ")
+        .trim_start_matches("enum ");
     format!("{}{}", name.len(), name)
 }
 
@@ -131,35 +127,36 @@ fn mangle_type_itanium(ty: &str) -> String {
 /// Map a C/C++ base type to its MSVC mangled type code.
 fn msvc_type_code(ty: &str) -> String {
     match ty.trim() {
-        "void"               => "X".to_string(),
-        "bool"               => "_N".to_string(),
-        "char"               => "D".to_string(),
-        "signed char"        => "C".to_string(),
-        "unsigned char"      => "E".to_string(),
-        "short"              => "F".to_string(),
-        "unsigned short"     => "G".to_string(),
-        "int"                => "H".to_string(),
-        "unsigned int"       => "I".to_string(),
-        "long"               => "J".to_string(),
-        "unsigned long"      => "K".to_string(),
-        "long long"  | "__int64"          => "_J".to_string(),
+        "void" => "X".to_string(),
+        "bool" => "_N".to_string(),
+        "char" => "D".to_string(),
+        "signed char" => "C".to_string(),
+        "unsigned char" => "E".to_string(),
+        "short" => "F".to_string(),
+        "unsigned short" => "G".to_string(),
+        "int" => "H".to_string(),
+        "unsigned int" => "I".to_string(),
+        "long" => "J".to_string(),
+        "unsigned long" => "K".to_string(),
+        "long long" | "__int64" => "_J".to_string(),
         "unsigned long long" | "unsigned __int64" => "_K".to_string(),
-        "__int128"           => "_L".to_string(),
-        "float"              => "M".to_string(),
-        "double"             => "N".to_string(),
-        "long double"        => "O".to_string(),
-        "wchar_t"            => "_W".to_string(),
-        "char8_t"            => "_Q".to_string(),
-        "char16_t"           => "_S".to_string(),
-        "char32_t"           => "_U".to_string(),
+        "__int128" => "_L".to_string(),
+        "float" => "M".to_string(),
+        "double" => "N".to_string(),
+        "long double" => "O".to_string(),
+        "wchar_t" => "_W".to_string(),
+        "char8_t" => "_Q".to_string(),
+        "char16_t" => "_S".to_string(),
+        "char32_t" => "_U".to_string(),
         ty if ty.ends_with('*') => {
             let inner = ty.trim_end_matches('*').trim_end_matches(' ');
             format!("PAX{}", msvc_type_code(inner)) // simplified
         }
         other => {
-            let name = other.trim_start_matches("struct ")
-                           .trim_start_matches("class ")
-                           .trim_start_matches("enum ");
+            let name = other
+                .trim_start_matches("struct ")
+                .trim_start_matches("class ")
+                .trim_start_matches("enum ");
             format!("V{}@@", name)
         }
     }
@@ -199,7 +196,9 @@ pub struct NameMangler {
 impl NameMangler {
     /// Create a mangler using the auto-detected platform ABI.
     pub fn new() -> Self {
-        Self { style: Some(ManglingStyle::auto_detect()) }
+        Self {
+            style: Some(ManglingStyle::auto_detect()),
+        }
     }
 
     /// Create a mangler for a specific ABI.
@@ -218,7 +217,7 @@ impl NameMangler {
     pub fn mangle_cpp(&self, name: &str, ctx: &ManglerContext) -> String {
         match self.style.unwrap_or(ManglingStyle::auto_detect()) {
             ManglingStyle::Itanium => self.mangle_itanium(name, ctx),
-            ManglingStyle::Msvc    => self.mangle_msvc(name, ctx),
+            ManglingStyle::Msvc => self.mangle_msvc(name, ctx),
         }
     }
 
@@ -228,14 +227,16 @@ impl NameMangler {
         let mut out = String::from("_Z");
 
         // Nested name?
-        let has_ns    = !ctx.namespaces.is_empty();
+        let has_ns = !ctx.namespaces.is_empty();
         let has_class = ctx.class_name.is_some();
-        let nested    = has_ns || has_class;
+        let nested = has_ns || has_class;
 
         if nested {
             out.push('N');
             // const member qualifier
-            if ctx.is_const { out.push('K'); }
+            if ctx.is_const {
+                out.push('K');
+            }
             for ns in &ctx.namespaces {
                 out.push_str(&format!("{}{}", ns.len(), ns));
             }
@@ -297,10 +298,18 @@ impl NameMangler {
         if ctx.class_name.is_some() {
             if ctx.is_static {
                 // static member: SA (public static)
-                if ctx.is_const { out.push_str("SA"); } else { out.push_str("SA"); }
+                if ctx.is_const {
+                    out.push_str("SA");
+                } else {
+                    out.push_str("SA");
+                }
             } else {
                 // non-static members: Q=public, R=protected, S=private
-                if ctx.is_const { out.push_str("QB"); } else { out.push_str("QA"); }
+                if ctx.is_const {
+                    out.push_str("QB");
+                } else {
+                    out.push_str("QA");
+                }
             }
         } else {
             // free function

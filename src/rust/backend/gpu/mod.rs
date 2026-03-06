@@ -35,34 +35,34 @@
 pub mod hex;
 
 // === Backends por target ===
-pub mod spirv;           // SPIR-V (Vulkan/OpenCL) - Todas las GPUs
-pub mod cuda;            // CUDA/PTX - Solo NVIDIA
-pub mod vulkan;          // Runtime Vulkan
-pub mod hip;             // HIP (AMD ROCm + HIP-CPU fallback)
+pub mod cuda; // CUDA/PTX - Solo NVIDIA
+pub mod hip;
+pub mod spirv; // SPIR-V (Vulkan/OpenCL) - Todas las GPUs
+pub mod vulkan; // Runtime Vulkan // HIP (AMD ROCm + HIP-CPU fallback)
 
 // === API Unificada ===
-pub mod compute;         // API unificada: compute::parallel_for, compute::matmul, etc.
+pub mod compute; // API unificada: compute::parallel_for, compute::matmul, etc.
 
 // === Legacy (mantener compatibilidad) ===
-pub mod vulkan_runtime;  // TODO: migrar a vulkan/
+pub mod vulkan_runtime; // TODO: migrar a vulkan/
 
 // === Infraestructura ===
 pub mod gpu_detect;
-pub mod scheduler;
 pub mod memory;
 pub mod metrics;
+pub mod scheduler;
 pub mod unified_pipeline;
 
 // Re-exports principales
 pub use gpu_detect::*;
-pub use scheduler::{GpuScheduler, Dispatch, CommandBuffer};
-pub use memory::{GpuAllocator, BufferUsage, MemoryType};
-pub use spirv::bytecode::{BytecodeToSpirV, ADeadGpuOp};
-pub use metrics::{GpuProfiler, GpuMetrics, PerformanceEstimator};
+pub use memory::{BufferUsage, GpuAllocator, MemoryType};
+pub use metrics::{GpuMetrics, GpuProfiler, PerformanceEstimator};
+pub use scheduler::{CommandBuffer, Dispatch, GpuScheduler};
+pub use spirv::bytecode::{ADeadGpuOp, BytecodeToSpirV};
 
 // Re-exports HIP + Compute API
-pub use hip::{HipCpuRuntime, HipCpuConfig, Dim3, ThreadIdx, SendPtr};
-pub use hip::{HipBackend, detect_hip_backend, get_device_info, HipDeviceInfo};
-pub use hip::{HipCodeGen, HipKernel, print_hip_info};
-pub use hip::cuda_to_hip::{CudaToHipTranslator, translate_cuda_file};
-pub use compute::{ComputeRuntime, ComputeBackend, ComputeConfig, BenchmarkResults};
+pub use compute::{BenchmarkResults, ComputeBackend, ComputeConfig, ComputeRuntime};
+pub use hip::cuda_to_hip::{translate_cuda_file, CudaToHipTranslator};
+pub use hip::{detect_hip_backend, get_device_info, HipBackend, HipDeviceInfo};
+pub use hip::{print_hip_info, HipCodeGen, HipKernel};
+pub use hip::{Dim3, HipCpuConfig, HipCpuRuntime, SendPtr, ThreadIdx};

@@ -48,7 +48,12 @@ impl MacroExpander {
     }
 
     /// Expande if constexpr C++17 — evalua en compilacion, solo incluye branch correcto
-    pub fn expand_if_constexpr(&self, condition_is_true: bool, then_body: &str, else_body: Option<&str>) -> String {
+    pub fn expand_if_constexpr(
+        &self,
+        condition_is_true: bool,
+        then_body: &str,
+        else_body: Option<&str>,
+    ) -> String {
         if condition_is_true {
             then_body.to_string()
         } else {

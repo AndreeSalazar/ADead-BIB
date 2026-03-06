@@ -10,8 +10,8 @@
 // 3. Preparación para soporte AMD futuro
 // ============================================================
 
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 
 /// Estado del runtime HIP
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,12 +71,12 @@ pub fn detect_hip_backend() -> HipBackend {
     if detect_cuda_available() {
         return HipBackend::Cuda;
     }
-    
+
     // 2. Verificar ROCm (AMD)
     if detect_rocm_available() {
         return HipBackend::Rocm;
     }
-    
+
     // 3. Fallback a HIP-CPU
     HipBackend::Cpu
 }
@@ -92,8 +92,8 @@ fn detect_cuda_available() -> bool {
     }
     #[cfg(not(windows))]
     {
-        Path::new("/usr/lib/libcuda.so").exists() ||
-        Path::new("/usr/lib/x86_64-linux-gnu/libcuda.so").exists()
+        Path::new("/usr/lib/libcuda.so").exists()
+            || Path::new("/usr/lib/x86_64-linux-gnu/libcuda.so").exists()
     }
 }
 
@@ -106,15 +106,14 @@ fn detect_rocm_available() -> bool {
     }
     #[cfg(not(windows))]
     {
-        Path::new("/opt/rocm").exists() ||
-        Path::new("/usr/lib/libamdhip64.so").exists()
+        Path::new("/opt/rocm").exists() || Path::new("/usr/lib/libamdhip64.so").exists()
     }
 }
 
 /// Obtiene información del dispositivo
 pub fn get_device_info() -> HipDeviceInfo {
     let backend = detect_hip_backend();
-    
+
     match backend {
         HipBackend::Cuda => get_cuda_device_info(),
         HipBackend::Rocm => get_rocm_device_info(),
@@ -126,24 +125,25 @@ pub fn get_device_info() -> HipDeviceInfo {
 fn get_cuda_device_info() -> HipDeviceInfo {
     // Usar nvidia-smi para obtener info
     let output = Command::new("nvidia-smi")
-        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
         .output();
-    
+
     match output {
         Ok(result) if result.status.success() => {
             let stdout = String::from_utf8_lossy(&result.stdout);
             let line = stdout.lines().next().unwrap_or("");
             let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-            
+
             let device_name = parts.first().unwrap_or(&"Unknown NVIDIA GPU").to_string();
-            let memory_mb: u32 = parts.get(1)
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            
+            let memory_mb: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+
             // Detectar compute capability basado en nombre
             let (cc_major, cc_minor) = detect_compute_capability(&device_name);
             let sm_count = detect_sm_count(&device_name);
-            
+
             HipDeviceInfo {
                 backend: HipBackend::Cuda,
                 device_name,
@@ -159,7 +159,7 @@ fn get_cuda_device_info() -> HipDeviceInfo {
             backend: HipBackend::Cuda,
             device_name: "NVIDIA GPU (unknown)".to_string(),
             ..Default::default()
-        }
+        },
     }
 }
 
@@ -168,20 +168,21 @@ fn get_rocm_device_info() -> HipDeviceInfo {
     let output = Command::new("rocm-smi")
         .args(["--showproductname"])
         .output();
-    
+
     match output {
         Ok(result) if result.status.success() => {
             let stdout = String::from_utf8_lossy(&result.stdout);
-            let device_name = stdout.lines()
+            let device_name = stdout
+                .lines()
                 .find(|l| l.contains("GPU"))
                 .unwrap_or("AMD GPU")
                 .to_string();
-            
+
             HipDeviceInfo {
                 backend: HipBackend::Rocm,
                 device_name,
                 compute_capability: (9, 0), // gfx9xx
-                total_memory_mb: 0, // TODO: parse from rocm-smi
+                total_memory_mb: 0,         // TODO: parse from rocm-smi
                 multiprocessor_count: 0,
                 warp_size: 64, // AMD wavefront
                 max_threads_per_block: 1024,
@@ -192,7 +193,7 @@ fn get_rocm_device_info() -> HipDeviceInfo {
             backend: HipBackend::Rocm,
             device_name: "AMD GPU (unknown)".to_string(),
             ..Default::default()
-        }
+        },
     }
 }
 
@@ -200,7 +201,7 @@ fn get_cpu_device_info() -> HipDeviceInfo {
     let num_cpus = std::thread::available_parallelism()
         .map(|p| p.get() as u32)
         .unwrap_or(4);
-    
+
     HipDeviceInfo {
         backend: HipBackend::Cpu,
         device_name: format!("CPU ({} threads)", num_cpus),
@@ -215,19 +216,29 @@ fn get_cpu_device_info() -> HipDeviceInfo {
 
 fn detect_compute_capability(name: &str) -> (u32, u32) {
     let name_lower = name.to_lowercase();
-    
-    if name_lower.contains("4090") || name_lower.contains("4080") || 
-       name_lower.contains("4070") || name_lower.contains("4060") {
+
+    if name_lower.contains("4090")
+        || name_lower.contains("4080")
+        || name_lower.contains("4070")
+        || name_lower.contains("4060")
+    {
         (8, 9) // Ada Lovelace
-    } else if name_lower.contains("3090") || name_lower.contains("3080") ||
-              name_lower.contains("3070") || name_lower.contains("3060") ||
-              name_lower.contains("3050") {
+    } else if name_lower.contains("3090")
+        || name_lower.contains("3080")
+        || name_lower.contains("3070")
+        || name_lower.contains("3060")
+        || name_lower.contains("3050")
+    {
         (8, 6) // Ampere
-    } else if name_lower.contains("2080") || name_lower.contains("2070") ||
-              name_lower.contains("2060") {
+    } else if name_lower.contains("2080")
+        || name_lower.contains("2070")
+        || name_lower.contains("2060")
+    {
         (7, 5) // Turing
-    } else if name_lower.contains("1080") || name_lower.contains("1070") ||
-              name_lower.contains("1060") {
+    } else if name_lower.contains("1080")
+        || name_lower.contains("1070")
+        || name_lower.contains("1060")
+    {
         (6, 1) // Pascal
     } else {
         (5, 0) // Default
@@ -236,17 +247,27 @@ fn detect_compute_capability(name: &str) -> (u32, u32) {
 
 fn detect_sm_count(name: &str) -> u32 {
     let name_lower = name.to_lowercase();
-    
+
     // RTX 30 Series
-    if name_lower.contains("3090") { 82 }
-    else if name_lower.contains("3080") { 68 }
-    else if name_lower.contains("3070") { 46 }
-    else if name_lower.contains("3060") { 28 }
+    if name_lower.contains("3090") {
+        82
+    } else if name_lower.contains("3080") {
+        68
+    } else if name_lower.contains("3070") {
+        46
+    } else if name_lower.contains("3060") {
+        28
+    }
     // RTX 40 Series
-    else if name_lower.contains("4090") { 128 }
-    else if name_lower.contains("4080") { 76 }
-    else if name_lower.contains("4070") { 46 }
-    else { 0 }
+    else if name_lower.contains("4090") {
+        128
+    } else if name_lower.contains("4080") {
+        76
+    } else if name_lower.contains("4070") {
+        46
+    } else {
+        0
+    }
 }
 
 /// Generador de código HIP portable
@@ -270,24 +291,24 @@ impl HipCodeGen {
             kernels: Vec::new(),
         }
     }
-    
+
     pub fn auto_detect() -> Self {
         Self::new(detect_hip_backend())
     }
-    
+
     /// Añade un kernel
     pub fn add_kernel(&mut self, kernel: HipKernel) {
         self.kernels.push(kernel);
     }
-    
+
     /// Genera código HIP/CUDA
     pub fn generate(&self) -> String {
         let mut code = String::new();
-        
+
         // Header
         code.push_str("// Generated by ADead-BIB HIP Backend\n");
         code.push_str(&format!("// Target: {}\n\n", self.target.name()));
-        
+
         // Includes
         match self.target {
             HipBackend::Cuda => {
@@ -300,7 +321,7 @@ impl HipCodeGen {
             }
             _ => {}
         }
-        
+
         // Macros de compatibilidad
         if self.target == HipBackend::Cuda {
             code.push_str("// CUDA compatibility macros\n");
@@ -310,39 +331,43 @@ impl HipCodeGen {
             code.push_str("#define hipMemcpyHostToDevice cudaMemcpyHostToDevice\n");
             code.push_str("#define hipMemcpyDeviceToHost cudaMemcpyDeviceToHost\n");
             code.push_str("#define hipDeviceSynchronize cudaDeviceSynchronize\n");
-            code.push_str("#define hipLaunchKernelGGL(kernel, grid, block, shMem, stream, ...) \\\n");
+            code.push_str(
+                "#define hipLaunchKernelGGL(kernel, grid, block, shMem, stream, ...) \\\n",
+            );
             code.push_str("    kernel<<<grid, block, shMem, stream>>>(__VA_ARGS__)\n\n");
         }
-        
+
         // Kernels
         for kernel in &self.kernels {
             code.push_str(&self.generate_kernel(kernel));
             code.push_str("\n");
         }
-        
+
         code
     }
-    
+
     fn generate_kernel(&self, kernel: &HipKernel) -> String {
         let mut code = String::new();
-        
+
         // Signature
         code.push_str("__global__ void ");
         code.push_str(&kernel.name);
         code.push_str("(");
-        
-        let params: Vec<String> = kernel.params.iter()
+
+        let params: Vec<String> = kernel
+            .params
+            .iter()
             .map(|(name, ty)| format!("{} {}", ty, name))
             .collect();
         code.push_str(&params.join(", "));
-        
+
         code.push_str(") {\n");
         code.push_str(&kernel.body);
         code.push_str("}\n");
-        
+
         code
     }
-    
+
     /// Genera un kernel de vector add portable
     pub fn add_vector_add(&mut self) {
         self.add_kernel(HipKernel {
@@ -357,11 +382,12 @@ impl HipCodeGen {
     if (i < n) {
         C[i] = A[i] + B[i];
     }
-"#.to_string(),
+"#
+            .to_string(),
             block_size: (256, 1, 1),
         });
     }
-    
+
     /// Genera un kernel de SAXPY portable
     pub fn add_saxpy(&mut self) {
         self.add_kernel(HipKernel {
@@ -376,11 +402,12 @@ impl HipCodeGen {
     if (i < n) {
         y[i] = alpha * x[i] + y[i];
     }
-"#.to_string(),
+"#
+            .to_string(),
             block_size: (256, 1, 1),
         });
     }
-    
+
     /// Genera un kernel de MatMul portable
     pub fn add_matmul(&mut self) {
         self.add_kernel(HipKernel {
@@ -401,11 +428,12 @@ impl HipCodeGen {
         }
         C[row * N + col] = sum;
     }
-"#.to_string(),
+"#
+            .to_string(),
             block_size: (16, 16, 1),
         });
     }
-    
+
     /// Genera un kernel de MatMul con shared memory (optimizado)
     pub fn add_matmul_shared(&mut self) {
         self.add_kernel(HipKernel {
@@ -450,11 +478,12 @@ impl HipCodeGen {
     if (row < N && col < N) {
         C[row * N + col] = sum;
     }
-"#.to_string(),
+"#
+            .to_string(),
             block_size: (16, 16, 1),
         });
     }
-    
+
     /// Genera un kernel de reducción (suma)
     pub fn add_reduce_sum(&mut self) {
         self.add_kernel(HipKernel {
@@ -488,7 +517,8 @@ impl HipCodeGen {
     if (tid == 0) {
         output[blockIdx.x] = sdata[0];
     }
-"#.to_string(),
+"#
+            .to_string(),
             block_size: (256, 1, 1),
         });
     }
@@ -497,60 +527,77 @@ impl HipCodeGen {
 /// Imprime información del sistema HIP
 pub fn print_hip_info() {
     let info = get_device_info();
-    
+
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║                    ADead-BIB HIP Runtime                      ║");
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║ Backend:     {:<48} ║", info.backend.name());
-    println!("║ Device:      {:<48} ║", 
-             if info.device_name.len() > 48 { &info.device_name[..48] } else { &info.device_name });
-    println!("║ Compute:     {}.{}                                             ║", 
-             info.compute_capability.0, info.compute_capability.1);
-    println!("║ Memory:      {} MB                                         ║", info.total_memory_mb);
-    println!("║ SMs/CUs:     {}                                              ║", info.multiprocessor_count);
-    println!("║ Warp/Wave:   {}                                              ║", info.warp_size);
+    println!(
+        "║ Device:      {:<48} ║",
+        if info.device_name.len() > 48 {
+            &info.device_name[..48]
+        } else {
+            &info.device_name
+        }
+    );
+    println!(
+        "║ Compute:     {}.{}                                             ║",
+        info.compute_capability.0, info.compute_capability.1
+    );
+    println!(
+        "║ Memory:      {} MB                                         ║",
+        info.total_memory_mb
+    );
+    println!(
+        "║ SMs/CUs:     {}                                              ║",
+        info.multiprocessor_count
+    );
+    println!(
+        "║ Warp/Wave:   {}                                              ║",
+        info.warp_size
+    );
     println!("╚══════════════════════════════════════════════════════════════╝");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_detect_backend() {
         let backend = detect_hip_backend();
         // Debería detectar algo (al menos CPU)
         assert!(backend != HipBackend::None || backend == HipBackend::Cpu);
     }
-    
+
     #[test]
     fn test_codegen_cuda() {
         let mut codegen = HipCodeGen::new(HipBackend::Cuda);
         codegen.add_vector_add();
         codegen.add_saxpy();
-        
+
         let code = codegen.generate();
         assert!(code.contains("__global__"));
         assert!(code.contains("vectorAdd"));
         assert!(code.contains("saxpy"));
         assert!(code.contains("cudaMalloc")); // Macro de compatibilidad
     }
-    
+
     #[test]
     fn test_codegen_rocm() {
         let mut codegen = HipCodeGen::new(HipBackend::Rocm);
         codegen.add_matmul();
-        
+
         let code = codegen.generate();
         assert!(code.contains("hip/hip_runtime.h"));
         assert!(code.contains("matrixMul"));
     }
-    
+
     #[test]
     fn test_matmul_shared() {
         let mut codegen = HipCodeGen::new(HipBackend::Cuda);
         codegen.add_matmul_shared();
-        
+
         let code = codegen.generate();
         assert!(code.contains("__shared__"));
         assert!(code.contains("__syncthreads"));

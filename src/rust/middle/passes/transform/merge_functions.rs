@@ -12,7 +12,13 @@ use crate::middle::passes::pass_manager::{Pass, PassKind};
 pub struct MergeFunctionsPass;
 
 impl Pass for MergeFunctionsPass {
-    fn name(&self) -> &'static str { "mergefunc" }
-    fn kind(&self) -> PassKind { PassKind::Module }
-    fn run_on_module(&self, _module: &mut Module) -> bool { false }
+    fn name(&self) -> &'static str {
+        "mergefunc"
+    }
+    fn kind(&self) -> PassKind {
+        PassKind::Module
+    }
+    fn run_on_module(&self, _module: &mut Module) -> bool {
+        false
+    }
 }

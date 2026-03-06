@@ -6,9 +6,9 @@
 // Cache hit = nanosegundos. Cache miss = compile + generate cache.
 // ============================================================
 
-pub mod serializer;
 pub mod deserializer;
 pub mod hasher;
+pub mod serializer;
 pub mod validator;
 
 use std::collections::HashMap;
@@ -74,7 +74,9 @@ pub struct TypeTable {
 
 impl TypeTable {
     pub fn new() -> Self {
-        Self { entries: HashMap::new() }
+        Self {
+            entries: HashMap::new(),
+        }
     }
 
     pub fn insert(&mut self, name: String, ty: CachedType) {
@@ -87,7 +89,9 @@ impl TypeTable {
 }
 
 impl Default for TypeTable {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Tipo cacheado
@@ -116,7 +120,9 @@ pub struct SymbolTable {
 
 impl SymbolTable {
     pub fn new() -> Self {
-        Self { entries: HashMap::new() }
+        Self {
+            entries: HashMap::new(),
+        }
     }
 
     pub fn insert(&mut self, name: String, sym: CachedSymbol) {
@@ -129,7 +135,9 @@ impl SymbolTable {
 }
 
 impl Default for SymbolTable {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Simbolo cacheado
@@ -164,7 +172,9 @@ pub struct ImplTable {
 
 impl ImplTable {
     pub fn new() -> Self {
-        Self { entries: HashMap::new() }
+        Self {
+            entries: HashMap::new(),
+        }
     }
 
     pub fn insert(&mut self, name: String, entry: ImplEntry) {
@@ -173,7 +183,9 @@ impl ImplTable {
 }
 
 impl Default for ImplTable {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -198,12 +210,15 @@ mod tests {
     #[test]
     fn test_type_table() {
         let mut table = TypeTable::new();
-        table.insert("int".to_string(), CachedType {
-            name: "int".to_string(),
-            size: 4,
-            alignment: 4,
-            kind: CachedTypeKind::Primitive,
-        });
+        table.insert(
+            "int".to_string(),
+            CachedType {
+                name: "int".to_string(),
+                size: 4,
+                alignment: 4,
+                kind: CachedTypeKind::Primitive,
+            },
+        );
         assert!(table.get("int").is_some());
         assert!(table.get("float").is_none());
     }

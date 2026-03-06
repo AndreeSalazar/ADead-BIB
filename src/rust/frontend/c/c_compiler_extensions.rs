@@ -24,32 +24,63 @@
 
 /// Test whether an identifier is a GCC keyword extension.
 pub fn is_gcc_keyword(kw: &str) -> bool {
-    matches!(kw,
-        "__asm__" | "__asm" | "asm" |
-        "__volatile__" | "__volatile" |
-        "__inline__" | "__inline" |
-        "__restrict" | "__restrict__" |
-        "__const__" |
-        "__signed__" | "__signed" |
-        "__typeof__" | "__typeof" | "typeof" |
-        "__alignof__" | "__alignof" |
-        "__extension__" |
-        "__attribute__" | "__attribute" |
-        "__builtin_va_list" | "__gnuc_va_list"
+    matches!(
+        kw,
+        "__asm__"
+            | "__asm"
+            | "asm"
+            | "__volatile__"
+            | "__volatile"
+            | "__inline__"
+            | "__inline"
+            | "__restrict"
+            | "__restrict__"
+            | "__const__"
+            | "__signed__"
+            | "__signed"
+            | "__typeof__"
+            | "__typeof"
+            | "typeof"
+            | "__alignof__"
+            | "__alignof"
+            | "__extension__"
+            | "__attribute__"
+            | "__attribute"
+            | "__builtin_va_list"
+            | "__gnuc_va_list"
     )
 }
 
 /// Test whether an identifier is an MSVC keyword extension.
 pub fn is_msvc_keyword(kw: &str) -> bool {
-    matches!(kw,
-        "__cdecl" | "__stdcall" | "__fastcall" | "__thiscall" |
-        "__vectorcall" | "__clrcall" | "__forceinline" |
-        "__declspec" |
-        "__int8" | "__int16" | "__int32" | "__int64" | "__int128" |
-        "__w64" | "__ptr32" | "__ptr64" | "__unaligned" |
-        "__assume" | "__debugbreak" | "__noop" |
-        "__cpuid" | "__cpuidex" | "__rdtsc" | "__rdtscp" |
-        "__pragma" | "_Pragma"
+    matches!(
+        kw,
+        "__cdecl"
+            | "__stdcall"
+            | "__fastcall"
+            | "__thiscall"
+            | "__vectorcall"
+            | "__clrcall"
+            | "__forceinline"
+            | "__declspec"
+            | "__int8"
+            | "__int16"
+            | "__int32"
+            | "__int64"
+            | "__int128"
+            | "__w64"
+            | "__ptr32"
+            | "__ptr64"
+            | "__unaligned"
+            | "__assume"
+            | "__debugbreak"
+            | "__noop"
+            | "__cpuid"
+            | "__cpuidex"
+            | "__rdtsc"
+            | "__rdtscp"
+            | "__pragma"
+            | "_Pragma"
     )
 }
 
@@ -58,20 +89,20 @@ pub fn is_msvc_keyword(kw: &str) -> bool {
 /// Returns `Some(canonical)` if the keyword should be replaced, else `None`.
 pub fn normalize_keyword(kw: &str) -> Option<&'static str> {
     match kw {
-        "__inline__"     | "__inline"    | "__forceinline" => Some("inline"),
-        "__volatile__"   | "__volatile"                    => Some("volatile"),
-        "__const__"      | "__const"                       => Some("const"),
-        "__signed__"     | "__signed"                      => Some("signed"),
-        "__restrict__"   | "__restrict"                    => Some("restrict"),
-        "__typeof__"     | "__typeof"    | "typeof"        => Some("__typeof__"),
-        "__alignof__"    | "__alignof"   | "_Alignof"      => Some("_Alignof"),
-        "__extension__"                                    => Some(""),  // skip
-        "__int8"                                           => Some("signed char"),
-        "__int16"                                          => Some("short"),
-        "__int32"                                          => Some("int"),
-        "__int64"                                          => Some("long long"),
-        "wchar_t"                                          => Some("unsigned short"),
-        _                                                  => None,
+        "__inline__" | "__inline" | "__forceinline" => Some("inline"),
+        "__volatile__" | "__volatile" => Some("volatile"),
+        "__const__" | "__const" => Some("const"),
+        "__signed__" | "__signed" => Some("signed"),
+        "__restrict__" | "__restrict" => Some("restrict"),
+        "__typeof__" | "__typeof" | "typeof" => Some("__typeof__"),
+        "__alignof__" | "__alignof" | "_Alignof" => Some("_Alignof"),
+        "__extension__" => Some(""), // skip
+        "__int8" => Some("signed char"),
+        "__int16" => Some("short"),
+        "__int32" => Some("int"),
+        "__int64" => Some("long long"),
+        "wchar_t" => Some("unsigned short"),
+        _ => None,
     }
 }
 

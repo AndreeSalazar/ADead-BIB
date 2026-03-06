@@ -2,7 +2,9 @@
 // Detects when GPU is being used incorrectly
 // Shows WHY and HOW MUCH performance is being lost
 
-use super::gpu_dispatcher::{OperationCost, DataLocation, GPU_THRESHOLD_ELEMENTS, MIN_FLOPS_PER_BYTE};
+use super::gpu_dispatcher::{
+    DataLocation, OperationCost, GPU_THRESHOLD_ELEMENTS, MIN_FLOPS_PER_BYTE,
+};
 
 /// Severity of GPU misuse
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,20 +32,14 @@ pub enum MisuseType {
         min_recommended: f64,
     },
     /// Unnecessary data transfer
-    UnnecessaryTransfer {
-        bytes: usize,
-        reason: String,
-    },
+    UnnecessaryTransfer { bytes: usize, reason: String },
     /// Data not persisting in VRAM
     NoPersistence {
         potential_reuse_count: usize,
         wasted_transfers: usize,
     },
     /// Mixed small/large operations
-    MixedWorkload {
-        small_ops: usize,
-        large_ops: usize,
-    },
+    MixedWorkload { small_ops: usize, large_ops: usize },
 }
 
 /// GPU Misuse Report
@@ -90,7 +86,8 @@ impl MisuseScore {
         // Low arithmetic intensity (0-25 points)
         let fpb = cost.flops_per_byte();
         if fpb < MIN_FLOPS_PER_BYTE {
-            score.low_intensity = ((MIN_FLOPS_PER_BYTE - fpb) / MIN_FLOPS_PER_BYTE * 25.0).min(25.0) as u32;
+            score.low_intensity =
+                ((MIN_FLOPS_PER_BYTE - fpb) / MIN_FLOPS_PER_BYTE * 25.0).min(25.0) as u32;
         }
 
         // One-shot execution (0-15 points)
@@ -109,8 +106,11 @@ impl MisuseScore {
             score.small_elements = (ratio * 10.0).min(10.0) as u32;
         }
 
-        score.total = score.pcie_overhead + score.low_intensity + score.one_shot 
-                    + score.no_persistence + score.small_elements;
+        score.total = score.pcie_overhead
+            + score.low_intensity
+            + score.one_shot
+            + score.no_persistence
+            + score.small_elements;
         score.total = score.total.min(100);
 
         score
@@ -132,16 +132,34 @@ impl MisuseScore {
         };
 
         println!("╔══════════════════════════════════════════════════════════════╗");
-        println!("║  GPU MISUSE SCORE: {:3} / 100 ({:8})                      ║", self.total, severity_str);
+        println!(
+            "║  GPU MISUSE SCORE: {:3} / 100 ({:8})                      ║",
+            self.total, severity_str
+        );
         println!("╠══════════════════════════════════════════════════════════════╣");
         println!("║  Kernel: {:<52} ║", kernel_name);
         println!("║                                                              ║");
         println!("║  Breakdown:                                                  ║");
-        println!("║  ├── PCIe overhead dominance:     +{:2} points                ║", self.pcie_overhead);
-        println!("║  ├── Low arithmetic intensity:    +{:2} points                ║", self.low_intensity);
-        println!("║  ├── One-shot execution:          +{:2} points                ║", self.one_shot);
-        println!("║  ├── No data persistence:         +{:2} points                ║", self.no_persistence);
-        println!("║  └── Small element count:         +{:2} points                ║", self.small_elements);
+        println!(
+            "║  ├── PCIe overhead dominance:     +{:2} points                ║",
+            self.pcie_overhead
+        );
+        println!(
+            "║  ├── Low arithmetic intensity:    +{:2} points                ║",
+            self.low_intensity
+        );
+        println!(
+            "║  ├── One-shot execution:          +{:2} points                ║",
+            self.one_shot
+        );
+        println!(
+            "║  ├── No data persistence:         +{:2} points                ║",
+            self.no_persistence
+        );
+        println!(
+            "║  └── Small element count:         +{:2} points                ║",
+            self.small_elements
+        );
         println!("║                                                              ║");
         if self.total > 50 {
             println!("║  Recommendation: Execute on CPU                              ║");
@@ -177,13 +195,17 @@ impl GpuMisuseDetector {
         // Check for small kernel misuse
         if cost.elements < GPU_THRESHOLD_ELEMENTS && cost.data_location == DataLocation::Host {
             let pcie_overhead = self.estimate_pcie_overhead_percent(cost);
-            
+
             if pcie_overhead > 50.0 {
                 let report = MisuseReport {
                     kernel_name: cost.name.clone(),
-                    severity: if pcie_overhead > 80.0 { MisuseSeverity::Critical } 
-                              else if pcie_overhead > 60.0 { MisuseSeverity::Error }
-                              else { MisuseSeverity::Warning },
+                    severity: if pcie_overhead > 80.0 {
+                        MisuseSeverity::Critical
+                    } else if pcie_overhead > 60.0 {
+                        MisuseSeverity::Error
+                    } else {
+                        MisuseSeverity::Warning
+                    },
                     misuse_type: MisuseType::KernelTooSmall {
                         elements: cost.elements,
                         min_recommended: GPU_THRESHOLD_ELEMENTS,
@@ -195,18 +217,21 @@ impl GpuMisuseDetector {
                     ),
                     estimated_speedup: pcie_overhead / 10.0, // Rough estimate
                 };
-                
+
                 self.reports.push(report.clone());
                 self.total_wasted_time_us += cost.estimate_h2d_us() * 2.0;
                 self.total_wasted_transfers += 2;
-                
+
                 return Some(report);
             }
         }
 
         // Check for low computational intensity
         let fpb = cost.flops_per_byte();
-        if fpb < MIN_FLOPS_PER_BYTE && cost.data_location == DataLocation::Host && !cost.will_persist {
+        if fpb < MIN_FLOPS_PER_BYTE
+            && cost.data_location == DataLocation::Host
+            && !cost.will_persist
+        {
             let report = MisuseReport {
                 kernel_name: cost.name.clone(),
                 severity: MisuseSeverity::Warning,
@@ -220,7 +245,7 @@ impl GpuMisuseDetector {
                 ),
                 estimated_speedup: MIN_FLOPS_PER_BYTE / fpb,
             };
-            
+
             self.reports.push(report.clone());
             return Some(report);
         }
@@ -237,7 +262,7 @@ impl GpuMisuseDetector {
                 recommendation: "Use data directly from VRAM, skip H2D transfer".to_string(),
                 estimated_speedup: 2.0,
             };
-            
+
             self.reports.push(report.clone());
             self.total_wasted_transfers += 1;
             return Some(report);
@@ -251,12 +276,12 @@ impl GpuMisuseDetector {
         let h2d = cost.estimate_h2d_us();
         let kernel = cost.estimate_kernel_us();
         let d2h = h2d; // Assume symmetric
-        
+
         let total = h2d + kernel + d2h;
         if total <= 0.0 {
             return 0.0;
         }
-        
+
         ((h2d + d2h) / total) * 100.0
     }
 
@@ -268,9 +293,15 @@ impl GpuMisuseDetector {
         }
 
         println!();
-        println!("╔══════════════════════════════════════════════════════════════════════════════╗");
-        println!("║  ⚠️  GPU MISUSE DETECTOR - ADead-BIB HEX                                      ║");
-        println!("╚══════════════════════════════════════════════════════════════════════════════╝");
+        println!(
+            "╔══════════════════════════════════════════════════════════════════════════════╗"
+        );
+        println!(
+            "║  ⚠️  GPU MISUSE DETECTOR - ADead-BIB HEX                                      ║"
+        );
+        println!(
+            "╚══════════════════════════════════════════════════════════════════════════════╝"
+        );
         println!();
 
         for (i, report) in self.reports.iter().enumerate() {
@@ -280,16 +311,28 @@ impl GpuMisuseDetector {
                 MisuseSeverity::Critical => "🚨",
             };
 
-            println!("{}  Issue #{}: {}", severity_icon, i + 1, report.kernel_name);
-            
+            println!(
+                "{}  Issue #{}: {}",
+                severity_icon,
+                i + 1,
+                report.kernel_name
+            );
+
             match &report.misuse_type {
-                MisuseType::KernelTooSmall { elements, min_recommended, pcie_overhead_percent } => {
+                MisuseType::KernelTooSmall {
+                    elements,
+                    min_recommended,
+                    pcie_overhead_percent,
+                } => {
                     println!("   Type: Kernel Too Small");
                     println!("   Elements: {}", elements);
                     println!("   Minimum recommended: {}", min_recommended);
                     println!("   PCIe overhead: {:.1}%", pcie_overhead_percent);
                 }
-                MisuseType::LowIntensity { flops_per_byte, min_recommended } => {
+                MisuseType::LowIntensity {
+                    flops_per_byte,
+                    min_recommended,
+                } => {
                     println!("   Type: Low Computational Intensity");
                     println!("   FLOPs/Byte: {:.2}", flops_per_byte);
                     println!("   Minimum recommended: {:.2}", min_recommended);
@@ -299,29 +342,45 @@ impl GpuMisuseDetector {
                     println!("   Bytes: {}", bytes);
                     println!("   Reason: {}", reason);
                 }
-                MisuseType::NoPersistence { potential_reuse_count, wasted_transfers } => {
+                MisuseType::NoPersistence {
+                    potential_reuse_count,
+                    wasted_transfers,
+                } => {
                     println!("   Type: No Data Persistence");
                     println!("   Potential reuse: {} times", potential_reuse_count);
                     println!("   Wasted transfers: {}", wasted_transfers);
                 }
-                MisuseType::MixedWorkload { small_ops, large_ops } => {
+                MisuseType::MixedWorkload {
+                    small_ops,
+                    large_ops,
+                } => {
                     println!("   Type: Mixed Workload");
                     println!("   Small operations: {}", small_ops);
                     println!("   Large operations: {}", large_ops);
                 }
             }
-            
+
             println!("   Recommendation: {}", report.recommendation);
-            println!("   Estimated speedup if fixed: {:.1}x", report.estimated_speedup);
+            println!(
+                "   Estimated speedup if fixed: {:.1}x",
+                report.estimated_speedup
+            );
             println!();
         }
 
-        println!("════════════════════════════════════════════════════════════════════════════════");
+        println!(
+            "════════════════════════════════════════════════════════════════════════════════"
+        );
         println!("  SUMMARY:");
         println!("  - Total issues: {}", self.reports.len());
         println!("  - Wasted transfers: {}", self.total_wasted_transfers);
-        println!("  - Estimated wasted time: {:.1} µs", self.total_wasted_time_us);
-        println!("════════════════════════════════════════════════════════════════════════════════");
+        println!(
+            "  - Estimated wasted time: {:.1} µs",
+            self.total_wasted_time_us
+        );
+        println!(
+            "════════════════════════════════════════════════════════════════════════════════"
+        );
         println!();
         println!("  💡 ADead-BIB HEX: \"CUDA gives power. ADead-BIB gives judgment.\"");
         println!("     The hardware doesn't fail. Decisions do.");

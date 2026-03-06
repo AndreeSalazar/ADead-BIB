@@ -20,13 +20,13 @@ impl DominatorTree {
             frontier: HashMap::new(),
         }
     }
-    
+
     /// Check if A dominates B
     pub fn dominates(&self, a: BasicBlockId, b: BasicBlockId) -> bool {
         if a == b {
             return true;
         }
-        
+
         let mut current = b;
         while let Some(&dom) = self.idom.get(&current) {
             if dom == a {
@@ -37,7 +37,7 @@ impl DominatorTree {
             }
             current = dom;
         }
-        
+
         false
     }
 }

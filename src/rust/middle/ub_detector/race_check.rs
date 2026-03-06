@@ -6,8 +6,8 @@
 // UBKind::DataRace, UBKind::StackOverflow
 // ============================================================
 
-use crate::ast::{Program, Stmt, Expr};
-use super::report::{UBReport, UBSeverity, UBKind};
+use super::report::{UBKind, UBReport, UBSeverity};
+use crate::ast::{Expr, Program, Stmt};
 
 pub fn analyze_concurrency(program: &Program) -> Vec<UBReport> {
     let mut reports = Vec::new();
@@ -47,7 +47,11 @@ impl RecursionChecker {
                 // Un return sin llamada recursiva es un caso base
                 self.has_base_case = true;
             }
-            Stmt::If { then_body, else_body, .. } => {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
                 if then_body.iter().any(|s| Self::has_return(s)) {
                     self.has_base_case = true;
                 }
@@ -74,7 +78,9 @@ impl RecursionChecker {
             Stmt::Assign { value, .. } => {
                 self.check_expr(value);
             }
-            Stmt::VarDecl { value: Some(val), .. } => {
+            Stmt::VarDecl {
+                value: Some(val), ..
+            } => {
                 self.check_expr(val);
             }
             _ => {}
@@ -115,7 +121,7 @@ impl RecursionChecker {
                     ),
                 )
                 .with_location(self.func_name.clone(), 0)
-                .with_suggestion("Add a base case to prevent infinite recursion".to_string())
+                .with_suggestion("Add a base case to prevent infinite recursion".to_string()),
             );
         }
     }

@@ -4,9 +4,13 @@
 use std::fs::File;
 use std::io::Write;
 
-pub fn generate_pe_minimal(opcodes: &[u8], _data: &[u8], output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_pe_minimal(
+    opcodes: &[u8],
+    _data: &[u8],
+    output_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut file = File::create(output_path)?;
-    
+
     // DOS Header (64 bytes) - debe empezar con "MZ"
     let mut dos = vec![0u8; 64];
     dos[0] = 0x4D; // 'M'
@@ -14,10 +18,10 @@ pub fn generate_pe_minimal(opcodes: &[u8], _data: &[u8], output_path: &str) -> R
     dos[0x3C] = 0x40; // Offset a PE header (64)
     dos[0x3D] = 0x00;
     file.write_all(&dos)?;
-    
+
     // PE Signature
     file.write_all(b"PE\0\0")?;
-    
+
     // COFF Header (20 bytes)
     let mut coff = vec![0u8; 20];
     // Machine: 0x8664 (x64)
@@ -33,7 +37,7 @@ pub fn generate_pe_minimal(opcodes: &[u8], _data: &[u8], output_path: &str) -> R
     coff[18] = 0x22;
     coff[19] = 0x00;
     file.write_all(&coff)?;
-    
+
     // Optional Header PE32+ (240 bytes)
     let mut opt = vec![0u8; 240];
     // Magic: 0x20B (PE32+)
@@ -68,7 +72,7 @@ pub fn generate_pe_minimal(opcodes: &[u8], _data: &[u8], output_path: &str) -> R
     // NumberOfRvaAndSizes: 16
     opt[108..112].copy_from_slice(&16u32.to_le_bytes());
     file.write_all(&opt)?;
-    
+
     // Section Header .text (40 bytes)
     let mut sec = vec![0u8; 40];
     sec[0..8].copy_from_slice(b".text\0\0\0");
@@ -76,23 +80,22 @@ pub fn generate_pe_minimal(opcodes: &[u8], _data: &[u8], output_path: &str) -> R
     sec[12..16].copy_from_slice(&0x400u32.to_le_bytes()); // VirtualAddress (después de headers)
     sec[16..20].copy_from_slice(&code_size.to_le_bytes()); // SizeOfRawData
     sec[20..24].copy_from_slice(&0x1000u32.to_le_bytes()); // PointerToRawData
-    // Characteristics: 0x60000020 (CODE | EXECUTE | READ)
+                                                           // Characteristics: 0x60000020 (CODE | EXECUTE | READ)
     sec[36..40].copy_from_slice(&0x60000020u32.to_le_bytes());
     file.write_all(&sec)?;
-    
+
     // Padding hasta 0x400
     let current = 64 + 4 + 20 + 240 + 40;
     file.write_all(&vec![0u8; 0x400 - current])?;
-    
+
     // Padding hasta 0x1000 (inicio de .text)
     file.write_all(&vec![0u8; 0x1000 - 0x400])?;
-    
+
     // .text section data
     file.write_all(opcodes)?;
     // Padding
     let padding = code_size - opcodes.len() as u32;
     file.write_all(&vec![0u8; padding as usize])?;
-    
+
     Ok(())
 }
-

@@ -158,8 +158,7 @@ impl GpuDispatcher {
         }
 
         // 2. ¿Datos ya en GPU?
-        if cost.data_location == DataLocation::Device 
-           || cost.data_location == DataLocation::Both {
+        if cost.data_location == DataLocation::Device || cost.data_location == DataLocation::Both {
             return (ExecutionTarget::GPU, DecisionReason::DataAlreadyOnDevice);
         }
 
@@ -179,13 +178,18 @@ impl GpuDispatcher {
         if fpb < MIN_FLOPS_PER_BYTE && !cost.will_persist {
             return (
                 ExecutionTarget::CPU,
-                DecisionReason::LowComputeIntensity { flops_per_byte: fpb },
+                DecisionReason::LowComputeIntensity {
+                    flops_per_byte: fpb,
+                },
             );
         }
 
         // 5. ¿Los datos persistirán?
         if cost.will_persist {
-            return (ExecutionTarget::GPUWithTransfer, DecisionReason::WillPersist);
+            return (
+                ExecutionTarget::GPUWithTransfer,
+                DecisionReason::WillPersist,
+            );
         }
 
         // 6. Comparar tiempos estimados
@@ -195,18 +199,27 @@ impl GpuDispatcher {
         if gpu_time < cpu_time {
             (
                 ExecutionTarget::GPURoundTrip,
-                DecisionReason::HighComputeIntensity { flops_per_byte: fpb },
+                DecisionReason::HighComputeIntensity {
+                    flops_per_byte: fpb,
+                },
             )
         } else {
             (
                 ExecutionTarget::CPU,
-                DecisionReason::LowComputeIntensity { flops_per_byte: fpb },
+                DecisionReason::LowComputeIntensity {
+                    flops_per_byte: fpb,
+                },
             )
         }
     }
 
     /// Registra una decisión para análisis
-    pub fn log_decision(&mut self, cost: OperationCost, target: ExecutionTarget, reason: DecisionReason) {
+    pub fn log_decision(
+        &mut self,
+        cost: OperationCost,
+        target: ExecutionTarget,
+        reason: DecisionReason,
+    ) {
         self.decision_history.push((cost, target, reason));
     }
 
@@ -225,7 +238,10 @@ impl GpuDispatcher {
                 ExecutionTarget::CPU => cpu_count += 1,
                 _ => gpu_count += 1,
             }
-            println!("  {} ({} elements) → {:?}", cost.name, cost.elements, target);
+            println!(
+                "  {} ({} elements) → {:?}",
+                cost.name, cost.elements, target
+            );
             println!("    Reason: {:?}", reason);
         }
 
@@ -275,8 +291,8 @@ pub mod operations {
     pub fn matmul(n: usize, location: DataLocation, persist: bool) -> OperationCost {
         OperationCost {
             name: "MatMul".to_string(),
-            elements: n * n, // Elementos en matriz resultado
-            bytes_per_element: 12, // 3 matrices * 4 bytes / elemento
+            elements: n * n,          // Elementos en matriz resultado
+            bytes_per_element: 12,    // 3 matrices * 4 bytes / elemento
             flops_per_element: 2 * n, // 2N FLOPs por elemento
             will_persist: persist,
             data_location: location,
@@ -323,7 +339,10 @@ mod tests {
         // MatMul 512x512 tiene alta intensidad computacional
         let cost = operations::matmul(512, DataLocation::Host, true);
         let (target, _) = dispatcher.decide(&cost);
-        assert!(matches!(target, ExecutionTarget::GPUWithTransfer | ExecutionTarget::GPURoundTrip));
+        assert!(matches!(
+            target,
+            ExecutionTarget::GPUWithTransfer | ExecutionTarget::GPURoundTrip
+        ));
     }
 
     #[test]

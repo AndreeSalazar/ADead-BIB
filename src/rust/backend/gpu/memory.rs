@@ -69,22 +69,22 @@ impl BufferDescriptor {
             mapped: false,
         }
     }
-    
+
     pub fn with_memory_type(mut self, mem_type: MemoryType) -> Self {
         self.memory_type = mem_type;
         self
     }
-    
+
     pub fn with_name(mut self, name: &str) -> Self {
         self.name = name.to_string();
         self
     }
-    
+
     pub fn with_alignment(mut self, alignment: u64) -> Self {
         self.alignment = alignment;
         self
     }
-    
+
     /// Tamaño alineado
     pub fn aligned_size(&self) -> u64 {
         (self.size + self.alignment - 1) & !(self.alignment - 1)
@@ -140,21 +140,21 @@ impl GpuAllocator {
             metrics: MemoryMetrics::default(),
         }
     }
-    
+
     /// Crea un buffer con tamaño y uso específicos
     pub fn create_buffer(&mut self, size: u64, usage: BufferUsage) -> Result<u32, &'static str> {
         let id = self.next_id;
         self.next_id += 1;
-        
+
         let mut desc = BufferDescriptor::new(id, size, usage);
-        
+
         // Determinar tipo de memoria según uso
         desc.memory_type = match usage {
             BufferUsage::Staging => MemoryType::HostVisible,
             BufferUsage::Uniform => MemoryType::HostCoherent,
             _ => MemoryType::DeviceLocal,
         };
-        
+
         // Asignar offset
         let aligned_size = desc.aligned_size();
         match desc.memory_type {
@@ -175,27 +175,32 @@ impl GpuAllocator {
                 self.metrics.host_allocated += aligned_size;
             }
         }
-        
+
         self.buffers.insert(id, desc);
         self.metrics.buffer_count += 1;
-        
+
         Ok(id)
     }
-    
+
     /// Crea un buffer con nombre
-    pub fn create_named_buffer(&mut self, name: &str, size: u64, usage: BufferUsage) -> Result<u32, &'static str> {
+    pub fn create_named_buffer(
+        &mut self,
+        name: &str,
+        size: u64,
+        usage: BufferUsage,
+    ) -> Result<u32, &'static str> {
         let id = self.create_buffer(size, usage)?;
         if let Some(buf) = self.buffers.get_mut(&id) {
             buf.name = name.to_string();
         }
         Ok(id)
     }
-    
+
     /// Obtiene descriptor de buffer
     pub fn get_buffer(&self, id: u32) -> Option<&BufferDescriptor> {
         self.buffers.get(&id)
     }
-    
+
     /// Libera un buffer
     pub fn free_buffer(&mut self, id: u32) -> bool {
         if let Some(desc) = self.buffers.remove(&id) {
@@ -213,35 +218,43 @@ impl GpuAllocator {
             false
         }
     }
-    
+
     /// Registra una transferencia CPU→GPU
     pub fn record_upload(&mut self, bytes: u64) {
         self.metrics.uploads += 1;
         self.metrics.bytes_uploaded += bytes;
     }
-    
+
     /// Registra una transferencia GPU→CPU
     pub fn record_download(&mut self, bytes: u64) {
         self.metrics.downloads += 1;
         self.metrics.bytes_downloaded += bytes;
     }
-    
+
     /// Imprime métricas
     pub fn print_metrics(&self) {
         println!("📊 GPU Memory Metrics:");
-        println!("   Device allocated:  {:.2} MB / {:.2} MB", 
+        println!(
+            "   Device allocated:  {:.2} MB / {:.2} MB",
             self.metrics.device_allocated as f64 / 1_048_576.0,
-            self.device_heap_size as f64 / 1_048_576.0);
-        println!("   Host allocated:    {:.2} MB / {:.2} MB",
+            self.device_heap_size as f64 / 1_048_576.0
+        );
+        println!(
+            "   Host allocated:    {:.2} MB / {:.2} MB",
             self.metrics.host_allocated as f64 / 1_048_576.0,
-            self.host_heap_size as f64 / 1_048_576.0);
+            self.host_heap_size as f64 / 1_048_576.0
+        );
         println!("   Buffer count:      {}", self.metrics.buffer_count);
-        println!("   Uploads:           {} ({:.2} MB)",
+        println!(
+            "   Uploads:           {} ({:.2} MB)",
             self.metrics.uploads,
-            self.metrics.bytes_uploaded as f64 / 1_048_576.0);
-        println!("   Downloads:         {} ({:.2} MB)",
+            self.metrics.bytes_uploaded as f64 / 1_048_576.0
+        );
+        println!(
+            "   Downloads:         {} ({:.2} MB)",
             self.metrics.downloads,
-            self.metrics.bytes_downloaded as f64 / 1_048_576.0);
+            self.metrics.bytes_downloaded as f64 / 1_048_576.0
+        );
     }
 }
 
@@ -276,19 +289,19 @@ impl RingBuffer {
             frame_size,
         }
     }
-    
+
     /// Obtiene offset para escribir el siguiente frame
     pub fn next_write_offset(&mut self) -> u64 {
         let offset = self.write_offset;
         self.write_offset = (self.write_offset + self.frame_size) % self.size;
         offset
     }
-    
+
     /// Avanza el offset de lectura
     pub fn advance_read(&mut self) {
         self.read_offset = (self.read_offset + self.frame_size) % self.size;
     }
-    
+
     /// Espacio disponible para escritura
     pub fn available_space(&self) -> u64 {
         if self.write_offset >= self.read_offset {
@@ -314,7 +327,7 @@ impl StagingBuffer {
             offset: 0,
         }
     }
-    
+
     /// Reserva espacio en el staging buffer
     pub fn allocate(&mut self, size: u64, alignment: u64) -> Option<u64> {
         let aligned_offset = (self.offset + alignment - 1) & !(alignment - 1);
@@ -324,7 +337,7 @@ impl StagingBuffer {
         self.offset = aligned_offset + size;
         Some(aligned_offset)
     }
-    
+
     /// Resetea el staging buffer
     pub fn reset(&mut self) {
         self.offset = 0;
@@ -351,7 +364,7 @@ impl TransferCommand {
             size,
         }
     }
-    
+
     pub fn with_offsets(mut self, src_offset: u64, dst_offset: u64) -> Self {
         self.src_offset = src_offset;
         self.dst_offset = dst_offset;
@@ -397,49 +410,51 @@ impl ZeroCopyBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_allocator_create_buffer() {
         let mut alloc = GpuAllocator::new(1024 * 1024, 256 * 1024);
-        
-        let id = alloc.create_buffer(1024, BufferUsage::StorageReadWrite).unwrap();
+
+        let id = alloc
+            .create_buffer(1024, BufferUsage::StorageReadWrite)
+            .unwrap();
         assert_eq!(id, 0);
-        
+
         let buf = alloc.get_buffer(id).unwrap();
         assert_eq!(buf.size, 1024);
         assert_eq!(buf.memory_type, MemoryType::DeviceLocal);
     }
-    
+
     #[test]
     fn test_allocator_staging() {
         let mut alloc = GpuAllocator::new(1024 * 1024, 256 * 1024);
-        
+
         let id = alloc.create_buffer(4096, BufferUsage::Staging).unwrap();
         let buf = alloc.get_buffer(id).unwrap();
-        
+
         assert_eq!(buf.memory_type, MemoryType::HostVisible);
     }
-    
+
     #[test]
     fn test_ring_buffer() {
         let mut ring = RingBuffer::new(0, 1024, 3);
-        
+
         let off1 = ring.next_write_offset();
         let off2 = ring.next_write_offset();
         let off3 = ring.next_write_offset();
-        
+
         assert_eq!(off1, 0);
         assert!(off2 > off1);
         assert!(off3 > off2);
     }
-    
+
     #[test]
     fn test_staging_buffer() {
         let mut staging = StagingBuffer::new(0, 4096);
-        
+
         let off1 = staging.allocate(256, 64).unwrap();
         let off2 = staging.allocate(512, 256).unwrap();
-        
+
         assert_eq!(off1, 0);
         assert_eq!(off2 % 256, 0); // Alineado
     }

@@ -8,8 +8,8 @@
 // No GCC. No libstdc++. No libc++. ADead-BIB owns the headers. 💀🦈
 // ============================================================
 
-use std::collections::HashSet;
 use super::cpp_stdlib;
+use std::collections::HashSet;
 
 pub struct CppPreprocessor {
     included: HashSet<String>,
@@ -72,7 +72,7 @@ impl CppPreprocessor {
                     }
                 }
             } else if trimmed.starts_with('#') {
-                // Skip: #ifdef, #ifndef, #endif, #else, #elif, #if, #pragma, 
+                // Skip: #ifdef, #ifndef, #endif, #else, #elif, #if, #pragma,
                 // #error, #warning, #undef, #line, #pragma once
                 output.push('\n');
             } else {
@@ -112,15 +112,27 @@ mod tests {
     #[test]
     fn test_extract_angle_include() {
         let pp = CppPreprocessor::new();
-        assert_eq!(pp.extract_include("#include <iostream>"), Some("iostream".to_string()));
-        assert_eq!(pp.extract_include("#include <vector>"), Some("vector".to_string()));
-        assert_eq!(pp.extract_include("#include <string>"), Some("string".to_string()));
+        assert_eq!(
+            pp.extract_include("#include <iostream>"),
+            Some("iostream".to_string())
+        );
+        assert_eq!(
+            pp.extract_include("#include <vector>"),
+            Some("vector".to_string())
+        );
+        assert_eq!(
+            pp.extract_include("#include <string>"),
+            Some("string".to_string())
+        );
     }
 
     #[test]
     fn test_extract_quote_include() {
         let pp = CppPreprocessor::new();
-        assert_eq!(pp.extract_include("#include \"myheader.h\""), Some("myheader.h".to_string()));
+        assert_eq!(
+            pp.extract_include("#include \"myheader.h\""),
+            Some("myheader.h".to_string())
+        );
     }
 
     #[test]
@@ -174,7 +186,8 @@ mod tests {
     #[test]
     fn test_multiple_headers() {
         let mut pp = CppPreprocessor::new();
-        let source = "#include <iostream>\n#include <vector>\n#include <string>\nint main() { return 0; }\n";
+        let source =
+            "#include <iostream>\n#include <vector>\n#include <string>\nint main() { return 0; }\n";
         let result = pp.process(source);
         assert!(result.contains("printf"), "iostream should inject printf");
         assert!(result.contains("size_t"), "prologue should inject size_t");

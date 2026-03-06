@@ -9,13 +9,13 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-mod core;
-mod compile;
-mod functions;
-mod statements;
-mod expressions;
-mod helpers;
-mod control_flow;
 mod arrays;
+mod compile;
+mod control_flow;
+mod core;
+mod expressions;
+mod functions;
+mod helpers;
+mod statements;
 
 pub use core::*;

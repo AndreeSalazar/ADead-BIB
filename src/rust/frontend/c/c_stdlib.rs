@@ -192,19 +192,19 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "winnt.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINNT),
         "windef.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINDEF),
         "intrin.h" | "_intrin.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_INTRIN),
-        "immintrin.h" | "emmintrin.h" | "xmmintrin.h"
-        | "smmintrin.h" | "tmmintrin.h" | "nmmintrin.h"
-        | "avxintrin.h" | "avx2intrin.h" | "avx512fintrin.h"
-        => Some(crate::frontend::c::c_compiler_extensions::HEADER_SIMD_INTRIN),
+        "immintrin.h" | "emmintrin.h" | "xmmintrin.h" | "smmintrin.h" | "tmmintrin.h"
+        | "nmmintrin.h" | "avxintrin.h" | "avx2intrin.h" | "avx512fintrin.h" => {
+            Some(crate::frontend::c::c_compiler_extensions::HEADER_SIMD_INTRIN)
+        }
 
         // ==========================================
         // C99/C11 extra headers
         // ==========================================
-        "complex.h"  => Some(crate::frontend::c::c_compiler_extensions::HEADER_COMPLEX),
-        "wchar.h"    => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCHAR),
-        "wctype.h"   => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCTYPE),
-        "uchar.h"    => Some(crate::frontend::c::c_compiler_extensions::HEADER_UCHAR),
-        "tgmath.h"   => Some(crate::frontend::c::c_compiler_extensions::HEADER_TGMATH),
+        "complex.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_COMPLEX),
+        "wchar.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCHAR),
+        "wctype.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCTYPE),
+        "uchar.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_UCHAR),
+        "tgmath.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_TGMATH),
 
         _ => None,
     }
@@ -2675,30 +2675,90 @@ mod tests {
     fn test_total_header_count() {
         // Verify we have 55+ headers covering ALL FastOS categories
         let headers = vec![
-            "stdio.h", "stdlib.h", "string.h", "math.h", "stdint.h",
-            "stdbool.h", "stddef.h", "stdarg.h", "ctype.h", "limits.h",
-            "float.h", "errno.h", "assert.h", "signal.h", "setjmp.h",
-            "time.h", "locale.h", "unistd.h", "fcntl.h", "sys/types.h",
-            "sys/stat.h", "sys/mman.h", "sys/ioctl.h", "sys/wait.h",
-            "sys/time.h", "sys/select.h", "dirent.h", "dlfcn.h",
-            "pthread.h", "semaphore.h", "sys/socket.h", "netinet/in.h",
-            "arpa/inet.h", "netdb.h", "poll.h", "sys/epoll.h",
-            "zlib.h", "lz4.h", "zstd.h", "bzlib.h", "lzma.h",
-            "png.h", "jpeglib.h", "tiff.h", "gif_lib.h",
-            "vorbis/codec.h", "opus/opus.h", "FLAC/all.h", "ogg/ogg.h",
-            "pulse/simple.h", "vulkan/vulkan.h", "EGL/egl.h",
-            "wayland-client.h", "ft2build.h", "hb.h",
-            "fontconfig/fontconfig.h", "fribidi.h",
-            "sqlite3.h", "leveldb/c.h", "curl/curl.h", "openssl/ssl.h",
-            "libssh2.h", "ares.h", "libinput.h", "xkbcommon/xkbcommon.h",
-            "libudev.h", "libusb.h", "libevdev/libevdev.h", "pci/pci.h",
-            "libavcodec/avcodec.h", "libavformat/avformat.h",
-            "libavutil/avutil.h", "libswscale/swscale.h",
-            "expat.h", "jsmn.h", "libconfig.h",
+            "stdio.h",
+            "stdlib.h",
+            "string.h",
+            "math.h",
+            "stdint.h",
+            "stdbool.h",
+            "stddef.h",
+            "stdarg.h",
+            "ctype.h",
+            "limits.h",
+            "float.h",
+            "errno.h",
+            "assert.h",
+            "signal.h",
+            "setjmp.h",
+            "time.h",
+            "locale.h",
+            "unistd.h",
+            "fcntl.h",
+            "sys/types.h",
+            "sys/stat.h",
+            "sys/mman.h",
+            "sys/ioctl.h",
+            "sys/wait.h",
+            "sys/time.h",
+            "sys/select.h",
+            "dirent.h",
+            "dlfcn.h",
+            "pthread.h",
+            "semaphore.h",
+            "sys/socket.h",
+            "netinet/in.h",
+            "arpa/inet.h",
+            "netdb.h",
+            "poll.h",
+            "sys/epoll.h",
+            "zlib.h",
+            "lz4.h",
+            "zstd.h",
+            "bzlib.h",
+            "lzma.h",
+            "png.h",
+            "jpeglib.h",
+            "tiff.h",
+            "gif_lib.h",
+            "vorbis/codec.h",
+            "opus/opus.h",
+            "FLAC/all.h",
+            "ogg/ogg.h",
+            "pulse/simple.h",
+            "vulkan/vulkan.h",
+            "EGL/egl.h",
+            "wayland-client.h",
+            "ft2build.h",
+            "hb.h",
+            "fontconfig/fontconfig.h",
+            "fribidi.h",
+            "sqlite3.h",
+            "leveldb/c.h",
+            "curl/curl.h",
+            "openssl/ssl.h",
+            "libssh2.h",
+            "ares.h",
+            "libinput.h",
+            "xkbcommon/xkbcommon.h",
+            "libudev.h",
+            "libusb.h",
+            "libevdev/libevdev.h",
+            "pci/pci.h",
+            "libavcodec/avcodec.h",
+            "libavformat/avformat.h",
+            "libavutil/avutil.h",
+            "libswscale/swscale.h",
+            "expat.h",
+            "jsmn.h",
+            "libconfig.h",
         ];
         for h in &headers {
             assert!(get_header(h).is_some(), "Missing header: {}", h);
         }
-        assert!(headers.len() >= 55, "Expected 55+ headers, got {}", headers.len());
+        assert!(
+            headers.len() >= 55,
+            "Expected 55+ headers, got {}",
+            headers.len()
+        );
     }
 }

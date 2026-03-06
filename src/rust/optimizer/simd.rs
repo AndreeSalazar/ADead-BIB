@@ -8,14 +8,19 @@ pub struct SIMDGenerator {
 impl SIMDGenerator {
     pub fn new() -> Self {
         let features = CPUFeatures::detect();
-        let width = if features.has_avx512f { 512 }
-                   else if features.has_avx2 { 256 }
-                   else if features.has_sse2 { 128 }
-                   else { 64 };
-                   
+        let width = if features.has_avx512f {
+            512
+        } else if features.has_avx2 {
+            256
+        } else if features.has_sse2 {
+            128
+        } else {
+            64
+        };
+
         Self { features, width }
     }
-    
+
     /// Genera código para suma de vectores
     pub fn emit_vec_add(&self, code: &mut Vec<u8>) {
         match self.width {
@@ -34,7 +39,7 @@ impl SIMDGenerator {
             _ => {} // Fallback scalar
         }
     }
-    
+
     /// Genera código para max vectorizado (ReLU)
     pub fn emit_vec_max_zero(&self, code: &mut Vec<u8>) {
         match self.width {

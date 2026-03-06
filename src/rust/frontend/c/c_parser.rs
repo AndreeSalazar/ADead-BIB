@@ -6,22 +6,32 @@
 //           pointers, arrays, expressions with full precedence
 // ============================================================
 
-use super::c_lexer::CToken;
 use super::c_ast::*;
+use super::c_lexer::CToken;
 
 pub struct CParser {
     tokens: Vec<CToken>,
+    lines: Vec<usize>,
     pos: usize,
     /// Known typedef names so we can recognize them as type starters
     typedef_names: std::collections::HashSet<String>,
 }
 
 impl CParser {
-    pub fn new(tokens: Vec<CToken>) -> Self {
-        Self { tokens, pos: 0, typedef_names: std::collections::HashSet::new() }
+    pub fn new(tokens: Vec<CToken>, lines: Vec<usize>) -> Self {
+        Self {
+            tokens,
+            lines,
+            pos: 0,
+            typedef_names: std::collections::HashSet::new(),
+        }
     }
 
     // ========== Token helpers ==========
+
+    fn current_line(&self) -> usize {
+        self.lines.get(self.pos).copied().unwrap_or(0)
+    }
 
     fn current(&self) -> &CToken {
         self.tokens.get(self.pos).unwrap_or(&CToken::Eof)
@@ -47,7 +57,12 @@ impl CParser {
             self.advance();
             Ok(())
         } else {
-            Err(format!("Expected {:?}, got {:?} at token position {}", expected, self.current(), self.pos))
+            Err(format!(
+                "Expected {:?}, got {:?} at token position {}",
+                expected,
+                self.current(),
+                self.pos
+            ))
         }
     }
 
@@ -62,7 +77,10 @@ impl CParser {
 
     fn expect_identifier(&mut self) -> Result<String, String> {
         match self.current().clone() {
-            CToken::Identifier(name) => { self.advance(); Ok(name) }
+            CToken::Identifier(name) => {
+                self.advance();
+                Ok(name)
+            }
             other => Err(format!("Expected identifier, got {:?}", other)),
         }
     }
@@ -71,21 +89,46 @@ impl CParser {
 
     fn is_type_start(&self) -> bool {
         match self.current() {
-            CToken::Void | CToken::Char | CToken::Short | CToken::Int |
-            CToken::Long | CToken::Float | CToken::Double | CToken::Signed |
-            CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Const |
-            CToken::Volatile | CToken::Static | CToken::Extern | CToken::Register |
-            CToken::Inline | CToken::Typedef | CToken::Bool | CToken::Union => true,
+            CToken::Void
+            | CToken::Char
+            | CToken::Short
+            | CToken::Int
+            | CToken::Long
+            | CToken::Float
+            | CToken::Double
+            | CToken::Signed
+            | CToken::Unsigned
+            | CToken::Struct
+            | CToken::Enum
+            | CToken::Const
+            | CToken::Volatile
+            | CToken::Static
+            | CToken::Extern
+            | CToken::Register
+            | CToken::Inline
+            | CToken::Typedef
+            | CToken::Bool
+            | CToken::Union => true,
             CToken::Identifier(name) => self.typedef_names.contains(name),
             _ => false,
         }
     }
 
     fn is_type_specifier(&self) -> bool {
-        matches!(self.current(),
-            CToken::Void | CToken::Char | CToken::Short | CToken::Int |
-            CToken::Long | CToken::Float | CToken::Double | CToken::Signed |
-            CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Bool
+        matches!(
+            self.current(),
+            CToken::Void
+                | CToken::Char
+                | CToken::Short
+                | CToken::Int
+                | CToken::Long
+                | CToken::Float
+                | CToken::Double
+                | CToken::Signed
+                | CToken::Unsigned
+                | CToken::Struct
+                | CToken::Enum
+                | CToken::Bool
         )
     }
 
@@ -93,26 +136,51 @@ impl CParser {
         // Skip storage class and qualifiers
         loop {
             match self.current() {
-                CToken::Static | CToken::Extern | CToken::Register |
-                CToken::Inline | CToken::Volatile => { self.advance(); }
-                CToken::Const => { self.advance(); }
+                CToken::Static
+                | CToken::Extern
+                | CToken::Register
+                | CToken::Inline
+                | CToken::Volatile => {
+                    self.advance();
+                }
+                CToken::Const => {
+                    self.advance();
+                }
                 _ => break,
             }
         }
 
         let ty = match self.current().clone() {
-            CToken::Void => { self.advance(); CType::Void }
-            CToken::Char => { self.advance(); CType::Char }
-            CToken::Bool => { self.advance(); CType::Bool }
-            CToken::Float => { self.advance(); CType::Float }
-            CToken::Double => { self.advance(); CType::Double }
+            CToken::Void => {
+                self.advance();
+                CType::Void
+            }
+            CToken::Char => {
+                self.advance();
+                CType::Char
+            }
+            CToken::Bool => {
+                self.advance();
+                CType::Bool
+            }
+            CToken::Float => {
+                self.advance();
+                CType::Float
+            }
+            CToken::Double => {
+                self.advance();
+                CType::Double
+            }
             CToken::Short => {
                 self.advance();
                 // short int
                 self.eat(&CToken::Int);
                 CType::Short
             }
-            CToken::Int => { self.advance(); CType::Int }
+            CToken::Int => {
+                self.advance();
+                CType::Int
+            }
             CToken::Long => {
                 self.advance();
                 if self.eat(&CToken::Long) {
@@ -228,7 +296,9 @@ impl CParser {
                     match &self.tokens[j] {
                         CToken::LBrace | CToken::LParen => depth += 1,
                         CToken::RBrace | CToken::RParen => {
-                            if depth > 0 { depth -= 1; }
+                            if depth > 0 {
+                                depth -= 1;
+                            }
                         }
                         CToken::Semicolon if depth == 0 => break,
                         _ => {}
@@ -396,15 +466,15 @@ impl CParser {
             //      void *(*start_routine)(void *)
             if self.is_function_pointer_param() {
                 let ret_type = self.parse_type()?;
-                self.expect(&CToken::LParen)?;  // (
-                self.eat(&CToken::Star);          // *
+                self.expect(&CToken::LParen)?; // (
+                self.eat(&CToken::Star); // *
                 let name = if let CToken::Identifier(_) = self.current() {
                     Some(self.expect_identifier()?)
                 } else {
                     None
                 };
-                self.expect(&CToken::RParen)?;  // )
-                // Skip the parameter list of the function pointer
+                self.expect(&CToken::RParen)?; // )
+                                               // Skip the parameter list of the function pointer
                 self.expect(&CToken::LParen)?;
                 self.skip_balanced_parens();
                 params.push(CParam {
@@ -438,7 +508,10 @@ impl CParser {
                 param_type
             };
 
-            params.push(CParam { param_type: final_type, name });
+            params.push(CParam {
+                param_type: final_type,
+                name,
+            });
 
             if !self.eat(&CToken::Comma) {
                 break;
@@ -463,11 +536,23 @@ impl CParser {
         // Skip type specifiers and qualifiers
         while i < self.tokens.len() {
             match &self.tokens[i] {
-                CToken::Const | CToken::Volatile | CToken::Void | CToken::Char |
-                CToken::Short | CToken::Int | CToken::Long | CToken::Float |
-                CToken::Double | CToken::Signed | CToken::Unsigned |
-                CToken::Struct | CToken::Enum | CToken::Bool |
-                CToken::Star => { i += 1; }
+                CToken::Const
+                | CToken::Volatile
+                | CToken::Void
+                | CToken::Char
+                | CToken::Short
+                | CToken::Int
+                | CToken::Long
+                | CToken::Float
+                | CToken::Double
+                | CToken::Signed
+                | CToken::Unsigned
+                | CToken::Struct
+                | CToken::Enum
+                | CToken::Bool
+                | CToken::Star => {
+                    i += 1;
+                }
                 CToken::Identifier(_) => {
                     // Could be typedef name or struct name after struct keyword
                     i += 1;
@@ -490,12 +575,17 @@ impl CParser {
         let mut depth = 1;
         while depth > 0 && *self.current() != CToken::Eof {
             match self.current() {
-                CToken::LParen => { depth += 1; self.advance(); }
+                CToken::LParen => {
+                    depth += 1;
+                    self.advance();
+                }
                 CToken::RParen => {
                     depth -= 1;
                     self.advance();
                 }
-                _ => { self.advance(); }
+                _ => {
+                    self.advance();
+                }
             }
         }
     }
@@ -609,7 +699,10 @@ impl CParser {
                     new_name,
                 });
             }
-            return Ok(CTopLevel::StructDef { name: new_name, fields });
+            return Ok(CTopLevel::StructDef {
+                name: new_name,
+                fields,
+            });
         }
 
         // typedef struct Name { ... } Alias;  (named struct with alias)
@@ -634,10 +727,16 @@ impl CParser {
                                 new_name: alias,
                             });
                         }
-                        return Ok(CTopLevel::StructDef { name: alias, fields });
+                        return Ok(CTopLevel::StructDef {
+                            name: alias,
+                            fields,
+                        });
                     } else {
                         self.expect(&CToken::Semicolon)?;
-                        return Ok(CTopLevel::StructDef { name: struct_name, fields });
+                        return Ok(CTopLevel::StructDef {
+                            name: struct_name,
+                            fields,
+                        });
                     }
                 }
             }
@@ -664,10 +763,16 @@ impl CParser {
                                 new_name: alias,
                             });
                         }
-                        return Ok(CTopLevel::StructDef { name: alias, fields });
+                        return Ok(CTopLevel::StructDef {
+                            name: alias,
+                            fields,
+                        });
                     } else {
                         self.expect(&CToken::Semicolon)?;
-                        return Ok(CTopLevel::StructDef { name: _union_name, fields });
+                        return Ok(CTopLevel::StructDef {
+                            name: _union_name,
+                            fields,
+                        });
                     }
                 }
             }
@@ -699,7 +804,10 @@ impl CParser {
                 self.expect(&CToken::RBrace)?;
                 let alias = self.expect_identifier()?;
                 self.expect(&CToken::Semicolon)?;
-                return Ok(CTopLevel::EnumDef { name: alias, values });
+                return Ok(CTopLevel::EnumDef {
+                    name: alias,
+                    values,
+                });
             }
             // typedef enum Name { ... } Alias;
             if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
@@ -729,10 +837,16 @@ impl CParser {
                     if let CToken::Identifier(_) = self.current() {
                         let alias = self.expect_identifier()?;
                         self.expect(&CToken::Semicolon)?;
-                        return Ok(CTopLevel::EnumDef { name: alias, values });
+                        return Ok(CTopLevel::EnumDef {
+                            name: alias,
+                            values,
+                        });
                     } else {
                         self.expect(&CToken::Semicolon)?;
-                        return Ok(CTopLevel::EnumDef { name: _enum_name, values });
+                        return Ok(CTopLevel::EnumDef {
+                            name: _enum_name,
+                            values,
+                        });
                     }
                 }
             }
@@ -777,22 +891,52 @@ impl CParser {
         self.typedef_names.insert(new_name.clone());
         self.expect(&CToken::Semicolon)?;
 
-        Ok(CTopLevel::TypedefDecl { original: final_type, new_name })
+        Ok(CTopLevel::TypedefDecl {
+            original: final_type,
+            new_name,
+        })
     }
 
     /// Like expect_identifier, but also accepts C keywords used as names
     /// (e.g. `typedef int bool;` where bool is a keyword)
     fn expect_identifier_or_keyword(&mut self) -> Result<String, String> {
         match self.current().clone() {
-            CToken::Identifier(name) => { self.advance(); Ok(name) }
-            CToken::Bool => { self.advance(); Ok("bool".to_string()) }
-            CToken::Char => { self.advance(); Ok("char".to_string()) }
-            CToken::Int => { self.advance(); Ok("int".to_string()) }
-            CToken::Long => { self.advance(); Ok("long".to_string()) }
-            CToken::Short => { self.advance(); Ok("short".to_string()) }
-            CToken::Float => { self.advance(); Ok("float".to_string()) }
-            CToken::Double => { self.advance(); Ok("double".to_string()) }
-            CToken::Void => { self.advance(); Ok("void".to_string()) }
+            CToken::Identifier(name) => {
+                self.advance();
+                Ok(name)
+            }
+            CToken::Bool => {
+                self.advance();
+                Ok("bool".to_string())
+            }
+            CToken::Char => {
+                self.advance();
+                Ok("char".to_string())
+            }
+            CToken::Int => {
+                self.advance();
+                Ok("int".to_string())
+            }
+            CToken::Long => {
+                self.advance();
+                Ok("long".to_string())
+            }
+            CToken::Short => {
+                self.advance();
+                Ok("short".to_string())
+            }
+            CToken::Float => {
+                self.advance();
+                Ok("float".to_string())
+            }
+            CToken::Double => {
+                self.advance();
+                Ok("double".to_string())
+            }
+            CToken::Void => {
+                self.advance();
+                Ok("void".to_string())
+            }
             other => Err(format!("Expected identifier, got {:?}", other)),
         }
     }
@@ -803,6 +947,8 @@ impl CParser {
         self.expect(&CToken::LBrace)?;
         let mut stmts = Vec::new();
         while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+            let line = self.current_line();
+            stmts.push(CStmt::LineMarker(line));
             stmts.push(self.parse_statement()?);
         }
         self.expect(&CToken::RBrace)?;
@@ -831,15 +977,26 @@ impl CParser {
             CToken::Do => self.parse_do_while(),
             CToken::For => self.parse_for(),
             CToken::Switch => self.parse_switch(),
-            CToken::Break => { self.advance(); self.expect(&CToken::Semicolon)?; Ok(CStmt::Break) }
-            CToken::Continue => { self.advance(); self.expect(&CToken::Semicolon)?; Ok(CStmt::Continue) }
+            CToken::Break => {
+                self.advance();
+                self.expect(&CToken::Semicolon)?;
+                Ok(CStmt::Break)
+            }
+            CToken::Continue => {
+                self.advance();
+                self.expect(&CToken::Semicolon)?;
+                Ok(CStmt::Continue)
+            }
             CToken::Goto => {
                 self.advance();
                 let label = self.expect_identifier()?;
                 self.expect(&CToken::Semicolon)?;
                 Ok(CStmt::Goto(label))
             }
-            CToken::Semicolon => { self.advance(); Ok(CStmt::Empty) }
+            CToken::Semicolon => {
+                self.advance();
+                Ok(CStmt::Empty)
+            }
             _ => {
                 // Check if it's a variable declaration
                 if self.is_type_start() && !self.looks_like_expr_cast() {
@@ -893,7 +1050,11 @@ impl CParser {
         }
         self.expect(&CToken::Semicolon)?;
 
-        Ok(CStmt::VarDecl { type_spec, declarators, is_static })
+        Ok(CStmt::VarDecl {
+            type_spec,
+            declarators,
+            is_static,
+        })
     }
 
     fn parse_if(&mut self) -> Result<CStmt, String> {
@@ -907,7 +1068,11 @@ impl CParser {
         } else {
             None
         };
-        Ok(CStmt::If { condition, then_body, else_body })
+        Ok(CStmt::If {
+            condition,
+            then_body,
+            else_body,
+        })
     }
 
     fn parse_while(&mut self) -> Result<CStmt, String> {
@@ -964,7 +1129,12 @@ impl CParser {
         self.expect(&CToken::RParen)?;
 
         let body = Box::new(self.parse_statement()?);
-        Ok(CStmt::For { init, condition, update, body })
+        Ok(CStmt::For {
+            init,
+            condition,
+            update,
+            body,
+        })
     }
 
     fn parse_switch(&mut self) -> Result<CStmt, String> {
@@ -984,11 +1154,17 @@ impl CParser {
                 self.expect(&CToken::Colon)?;
                 None
             } else {
-                return Err(format!("Expected case or default, got {:?}", self.current()));
+                return Err(format!(
+                    "Expected case or default, got {:?}",
+                    self.current()
+                ));
             };
 
             let mut body = Vec::new();
-            while !matches!(self.current(), CToken::Case | CToken::Default | CToken::RBrace | CToken::Eof) {
+            while !matches!(
+                self.current(),
+                CToken::Case | CToken::Default | CToken::RBrace | CToken::Eof
+            ) {
                 body.push(self.parse_statement()?);
             }
             cases.push(CSwitchCase { value, body });
@@ -1058,7 +1234,11 @@ impl CParser {
         let mut left = self.parse_log_and()?;
         while self.eat(&CToken::OrOr) {
             let right = self.parse_log_and()?;
-            left = CExpr::BinaryOp { op: CBinOp::LogOr, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op: CBinOp::LogOr,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1067,7 +1247,11 @@ impl CParser {
         let mut left = self.parse_bit_or()?;
         while self.eat(&CToken::AndAnd) {
             let right = self.parse_bit_or()?;
-            left = CExpr::BinaryOp { op: CBinOp::LogAnd, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op: CBinOp::LogAnd,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1077,7 +1261,11 @@ impl CParser {
         while *self.current() == CToken::Pipe {
             self.advance();
             let right = self.parse_bit_xor()?;
-            left = CExpr::BinaryOp { op: CBinOp::BitOr, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op: CBinOp::BitOr,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1087,7 +1275,11 @@ impl CParser {
         while *self.current() == CToken::Caret {
             self.advance();
             let right = self.parse_bit_and()?;
-            left = CExpr::BinaryOp { op: CBinOp::BitXor, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op: CBinOp::BitXor,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1097,7 +1289,11 @@ impl CParser {
         while *self.current() == CToken::Ampersand {
             self.advance();
             let right = self.parse_equality()?;
-            left = CExpr::BinaryOp { op: CBinOp::BitAnd, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op: CBinOp::BitAnd,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1112,7 +1308,11 @@ impl CParser {
             };
             self.advance();
             let right = self.parse_relational()?;
-            left = CExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1129,7 +1329,11 @@ impl CParser {
             };
             self.advance();
             let right = self.parse_shift()?;
-            left = CExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1144,7 +1348,11 @@ impl CParser {
             };
             self.advance();
             let right = self.parse_additive()?;
-            left = CExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1159,7 +1367,11 @@ impl CParser {
             };
             self.advance();
             let right = self.parse_multiplicative()?;
-            left = CExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1175,7 +1387,11 @@ impl CParser {
             };
             self.advance();
             let right = self.parse_unary()?;
-            left = CExpr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = CExpr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1185,27 +1401,47 @@ impl CParser {
             CToken::PlusPlus => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CExpr::UnaryOp { op: CUnaryOp::PreInc, expr: Box::new(expr), prefix: true })
+                Ok(CExpr::UnaryOp {
+                    op: CUnaryOp::PreInc,
+                    expr: Box::new(expr),
+                    prefix: true,
+                })
             }
             CToken::MinusMinus => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CExpr::UnaryOp { op: CUnaryOp::PreDec, expr: Box::new(expr), prefix: true })
+                Ok(CExpr::UnaryOp {
+                    op: CUnaryOp::PreDec,
+                    expr: Box::new(expr),
+                    prefix: true,
+                })
             }
             CToken::Minus => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CExpr::UnaryOp { op: CUnaryOp::Neg, expr: Box::new(expr), prefix: true })
+                Ok(CExpr::UnaryOp {
+                    op: CUnaryOp::Neg,
+                    expr: Box::new(expr),
+                    prefix: true,
+                })
             }
             CToken::Bang => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CExpr::UnaryOp { op: CUnaryOp::LogNot, expr: Box::new(expr), prefix: true })
+                Ok(CExpr::UnaryOp {
+                    op: CUnaryOp::LogNot,
+                    expr: Box::new(expr),
+                    prefix: true,
+                })
             }
             CToken::Tilde => {
                 self.advance();
                 let expr = self.parse_unary()?;
-                Ok(CExpr::UnaryOp { op: CUnaryOp::BitNot, expr: Box::new(expr), prefix: true })
+                Ok(CExpr::UnaryOp {
+                    op: CUnaryOp::BitNot,
+                    expr: Box::new(expr),
+                    prefix: true,
+                })
             }
             CToken::Ampersand => {
                 self.advance();
@@ -1234,7 +1470,10 @@ impl CParser {
                 let ty = self.parse_type()?;
                 self.expect(&CToken::RParen)?;
                 let expr = self.parse_unary()?;
-                Ok(CExpr::Cast { target_type: ty, expr: Box::new(expr) })
+                Ok(CExpr::Cast {
+                    target_type: ty,
+                    expr: Box::new(expr),
+                })
             }
             _ => self.parse_postfix(),
         }
@@ -1242,10 +1481,20 @@ impl CParser {
 
     fn is_type_at_next(&self) -> bool {
         match self.peek() {
-            CToken::Void | CToken::Char | CToken::Short | CToken::Int |
-            CToken::Long | CToken::Float | CToken::Double | CToken::Signed |
-            CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Const |
-            CToken::Volatile | CToken::Bool => true,
+            CToken::Void
+            | CToken::Char
+            | CToken::Short
+            | CToken::Int
+            | CToken::Long
+            | CToken::Float
+            | CToken::Double
+            | CToken::Signed
+            | CToken::Unsigned
+            | CToken::Struct
+            | CToken::Enum
+            | CToken::Const
+            | CToken::Volatile
+            | CToken::Bool => true,
             CToken::Identifier(name) => self.typedef_names.contains(name),
             _ => false,
         }
@@ -1253,12 +1502,24 @@ impl CParser {
 
     fn is_cast(&self) -> bool {
         // (type)expr — check if this looks like a cast
-        if *self.current() != CToken::LParen { return false; }
+        if *self.current() != CToken::LParen {
+            return false;
+        }
         match self.peek() {
-            CToken::Void | CToken::Char | CToken::Short | CToken::Int |
-            CToken::Long | CToken::Float | CToken::Double | CToken::Signed |
-            CToken::Unsigned | CToken::Struct | CToken::Enum | CToken::Bool |
-            CToken::Const | CToken::Volatile => true,
+            CToken::Void
+            | CToken::Char
+            | CToken::Short
+            | CToken::Int
+            | CToken::Long
+            | CToken::Float
+            | CToken::Double
+            | CToken::Signed
+            | CToken::Unsigned
+            | CToken::Struct
+            | CToken::Enum
+            | CToken::Bool
+            | CToken::Const
+            | CToken::Volatile => true,
             CToken::Identifier(name) => {
                 // Only treat as cast if name is a known typedef AND
                 // the token after closing ) looks like a unary expr, not binary op
@@ -1276,7 +1537,10 @@ impl CParser {
                     self.advance();
                     let index = self.parse_expression()?;
                     self.expect(&CToken::RBracket)?;
-                    expr = CExpr::Index { array: Box::new(expr), index: Box::new(index) };
+                    expr = CExpr::Index {
+                        array: Box::new(expr),
+                        index: Box::new(index),
+                    };
                 }
                 CToken::LParen => {
                     self.advance();
@@ -1288,25 +1552,42 @@ impl CParser {
                         }
                     }
                     self.expect(&CToken::RParen)?;
-                    expr = CExpr::Call { func: Box::new(expr), args };
+                    expr = CExpr::Call {
+                        func: Box::new(expr),
+                        args,
+                    };
                 }
                 CToken::Dot => {
                     self.advance();
                     let field = self.expect_identifier()?;
-                    expr = CExpr::Member { object: Box::new(expr), field };
+                    expr = CExpr::Member {
+                        object: Box::new(expr),
+                        field,
+                    };
                 }
                 CToken::Arrow => {
                     self.advance();
                     let field = self.expect_identifier()?;
-                    expr = CExpr::ArrowMember { pointer: Box::new(expr), field };
+                    expr = CExpr::ArrowMember {
+                        pointer: Box::new(expr),
+                        field,
+                    };
                 }
                 CToken::PlusPlus => {
                     self.advance();
-                    expr = CExpr::UnaryOp { op: CUnaryOp::PostInc, expr: Box::new(expr), prefix: false };
+                    expr = CExpr::UnaryOp {
+                        op: CUnaryOp::PostInc,
+                        expr: Box::new(expr),
+                        prefix: false,
+                    };
                 }
                 CToken::MinusMinus => {
                     self.advance();
-                    expr = CExpr::UnaryOp { op: CUnaryOp::PostDec, expr: Box::new(expr), prefix: false };
+                    expr = CExpr::UnaryOp {
+                        op: CUnaryOp::PostDec,
+                        expr: Box::new(expr),
+                        prefix: false,
+                    };
                 }
                 _ => break,
             }
@@ -1316,23 +1597,36 @@ impl CParser {
 
     fn parse_primary(&mut self) -> Result<CExpr, String> {
         match self.current().clone() {
-            CToken::IntLiteral(n) => { self.advance(); Ok(CExpr::IntLiteral(n)) }
-            CToken::FloatLiteral(f) => { self.advance(); Ok(CExpr::FloatLiteral(f)) }
+            CToken::IntLiteral(n) => {
+                self.advance();
+                Ok(CExpr::IntLiteral(n))
+            }
+            CToken::FloatLiteral(f) => {
+                self.advance();
+                Ok(CExpr::FloatLiteral(f))
+            }
             CToken::StringLiteral(s) => {
                 let mut result = s;
                 self.advance(); // consume first string token
-                // Concatenate adjacent string literals: "a" "b" → "ab"
+                                // Concatenate adjacent string literals: "a" "b" → "ab"
                 while let CToken::StringLiteral(s2) = self.current().clone() {
                     result.push_str(&s2);
                     self.advance();
                 }
                 Ok(CExpr::StringLiteral(result))
             }
-            CToken::CharLiteral(c) => { self.advance(); Ok(CExpr::CharLiteral(c)) }
-            CToken::Identifier(ref name) if name == "NULL" || name == "nullptr" => {
-                self.advance(); Ok(CExpr::Null)
+            CToken::CharLiteral(c) => {
+                self.advance();
+                Ok(CExpr::CharLiteral(c))
             }
-            CToken::Identifier(name) => { self.advance(); Ok(CExpr::Identifier(name)) }
+            CToken::Identifier(ref name) if name == "NULL" || name == "nullptr" => {
+                self.advance();
+                Ok(CExpr::Null)
+            }
+            CToken::Identifier(name) => {
+                self.advance();
+                Ok(CExpr::Identifier(name))
+            }
             CToken::LParen => {
                 self.advance();
                 let expr = self.parse_expression()?;
@@ -1346,12 +1640,14 @@ impl CParser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::c_lexer::CLexer;
+    use super::*;
 
     fn parse_c(code: &str) -> CTranslationUnit {
-        let tokens = CLexer::new(code).tokenize();
-        CParser::new(tokens).parse_translation_unit().unwrap()
+        let (tokens, lines) = CLexer::new(code).tokenize();
+        CParser::new(tokens, lines)
+            .parse_translation_unit()
+            .unwrap()
     }
 
     #[test]

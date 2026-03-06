@@ -4,10 +4,10 @@
 // ============================================================
 
 pub mod ast;
-pub mod types;
-pub mod type_checker;
 pub mod c;
 pub mod cpp;
+pub mod type_checker;
+pub mod types;
 
 // Legacy modules kept for compatibility but not actively used
 #[allow(dead_code)]

@@ -58,7 +58,10 @@ pub enum MsvcDeclspec {
 
     // ── Properties ─────────────────────────────────────────
     /// `__declspec(property(get=G, put=P))` — C++/CLI property.
-    Property { get: Option<String>, put: Option<String> },
+    Property {
+        get: Option<String>,
+        put: Option<String>,
+    },
 
     // ── SAL annotations (static analysis) ──────────────────
     /// Pointer annotated `_In_`.
@@ -87,28 +90,26 @@ impl MsvcDeclspec {
     /// `arg`  is the raw argument string if the specifier takes one.
     pub fn parse(name: &str, arg: Option<&str>) -> Self {
         match name.to_lowercase().as_str() {
-            "noinline"    => Self::NoInline,
+            "noinline" => Self::NoInline,
             "forceinline" => Self::ForceInline,
-            "noreturn"    => Self::NoReturn,
-            "naked"       => Self::Naked,
-            "nothrow"     => Self::NoThrow,
-            "align"       => {
+            "noreturn" => Self::NoReturn,
+            "naked" => Self::Naked,
+            "nothrow" => Self::NoThrow,
+            "align" => {
                 let n = arg.and_then(|a| a.parse().ok()).unwrap_or(16);
                 Self::Align(n)
             }
-            "restrict"    => Self::Restrict,
-            "allocator"   => Self::Allocator,
-            "thread"      => Self::Thread,
-            "dllimport"   => Self::DllImport,
-            "dllexport"   => Self::DllExport,
-            "uuid"        => Self::Uuid(arg.unwrap_or("").trim_matches('"').to_string()),
-            "novtable"    => Self::NoVtable,
-            "selectany"   => Self::Selectany,
+            "restrict" => Self::Restrict,
+            "allocator" => Self::Allocator,
+            "thread" => Self::Thread,
+            "dllimport" => Self::DllImport,
+            "dllexport" => Self::DllExport,
+            "uuid" => Self::Uuid(arg.unwrap_or("").trim_matches('"').to_string()),
+            "novtable" => Self::NoVtable,
+            "selectany" => Self::Selectany,
             "empty_bases" => Self::EmptyBases,
-            "deprecated"  => Self::Deprecated(
-                arg.map(|s| s.trim_matches('"').to_string())
-            ),
-            other         => Self::Unknown(other.to_string()),
+            "deprecated" => Self::Deprecated(arg.map(|s| s.trim_matches('"').to_string())),
+            other => Self::Unknown(other.to_string()),
         }
     }
 
@@ -146,13 +147,13 @@ impl MsvcCallingConv {
     /// Parse from keyword string (case-insensitive, with or without underscores).
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().trim_start_matches('_') {
-            "cdecl"       => Some(Self::Cdecl),
-            "stdcall"     => Some(Self::Stdcall),
-            "fastcall"    => Some(Self::Fastcall),
-            "vectorcall"  => Some(Self::Vectorcall),
-            "thiscall"    => Some(Self::Thiscall),
-            "clrcall"     => Some(Self::Clrcall),
-            _             => None,
+            "cdecl" => Some(Self::Cdecl),
+            "stdcall" => Some(Self::Stdcall),
+            "fastcall" => Some(Self::Fastcall),
+            "vectorcall" => Some(Self::Vectorcall),
+            "thiscall" => Some(Self::Thiscall),
+            "clrcall" => Some(Self::Clrcall),
+            _ => None,
         }
     }
 
@@ -161,25 +162,28 @@ impl MsvcCallingConv {
     /// `param_bytes` is the total byte size of all parameters.
     pub fn decoration_suffix(self, param_bytes: u32) -> String {
         match self {
-            Self::Stdcall  => format!("@{}", param_bytes),
+            Self::Stdcall => format!("@{}", param_bytes),
             Self::Fastcall => format!("@{}", param_bytes),
-            _              => String::new(),
+            _ => String::new(),
         }
     }
 
     /// Returns the MSVC name-decoration prefix character.
     pub fn decoration_prefix(self) -> &'static str {
         match self {
-            Self::Stdcall  => "_",
+            Self::Stdcall => "_",
             Self::Fastcall => "@",
-            Self::Cdecl    => "_",
-            _              => "",
+            Self::Cdecl => "_",
+            _ => "",
         }
     }
 
     /// Whether the *callee* is responsible for cleaning the stack.
     pub fn callee_cleanup(self) -> bool {
-        matches!(self, Self::Stdcall | Self::Fastcall | Self::Thiscall | Self::Vectorcall)
+        matches!(
+            self,
+            Self::Stdcall | Self::Fastcall | Self::Thiscall | Self::Vectorcall
+        )
     }
 }
 
@@ -234,12 +238,13 @@ impl MsvcPragma {
             return Self::Once;
         }
         if text.starts_with("pack") {
-            let inner = text.trim_start_matches("pack")
-                            .trim()
-                            .trim_matches(|c| c == '(' || c == ')');
+            let inner = text
+                .trim_start_matches("pack")
+                .trim()
+                .trim_matches(|c| c == '(' || c == ')');
             return match inner {
                 "push" => Self::PackPush(None),
-                "pop"  => Self::PackPop,
+                "pop" => Self::PackPop,
                 s if s.starts_with("push,") => {
                     let n = s.trim_start_matches("push,").trim().parse().ok();
                     Self::PackPush(n)
@@ -251,19 +256,22 @@ impl MsvcPragma {
             };
         }
         if text.starts_with("comment") {
-            let inner = text.trim_start_matches("comment")
-                            .trim()
-                            .trim_matches(|c| c == '(' || c == ')');
+            let inner = text
+                .trim_start_matches("comment")
+                .trim()
+                .trim_matches(|c| c == '(' || c == ')');
             let parts: Vec<&str> = inner.splitn(2, ',').collect();
             let kind = parts.first().map(|s| s.trim()).unwrap_or("");
-            let arg  = parts.get(1).map(|s| s.trim().trim_matches('"').to_string())
-                            .unwrap_or_default();
+            let arg = parts
+                .get(1)
+                .map(|s| s.trim().trim_matches('"').to_string())
+                .unwrap_or_default();
             return match kind {
-                "lib"      => Self::CommentLib(arg),
-                "linker"   => Self::CommentLinker(arg),
+                "lib" => Self::CommentLib(arg),
+                "linker" => Self::CommentLinker(arg),
                 "compiler" => Self::CommentCompiler,
-                "user"     => Self::CommentUser(arg),
-                _          => Self::Unknown(text.to_string()),
+                "user" => Self::CommentUser(arg),
+                _ => Self::Unknown(text.to_string()),
             };
         }
         if text.starts_with("warning") {
@@ -329,37 +337,37 @@ impl MsvcExtension {
     /// Attempt to parse an MSVC extension keyword.
     pub fn parse(kw: &str) -> Option<Self> {
         match kw {
-            "__int8"  | "_int8"   => Some(Self::Int8),
-            "__int16" | "_int16"  => Some(Self::Int16),
-            "__int32" | "_int32"  => Some(Self::Int32),
-            "__int64" | "_int64"  => Some(Self::Int64),
-            "__int128"            => Some(Self::Int128),
-            "__ptr32"             => Some(Self::Ptr32),
-            "__ptr64"             => Some(Self::Ptr64),
-            "__w64"               => Some(Self::W64),
-            "__assume"            => Some(Self::Assume),
-            "__debugbreak"        => Some(Self::Debugbreak),
-            "__noop"              => Some(Self::Noop),
-            "__cpuid"             => Some(Self::Cpuid),
-            "__rdtsc"             => Some(Self::Rdtsc),
-            "__rdtscp"            => Some(Self::Rdtscp),
-            "wchar_t"             => Some(Self::WcharT),
-            "__volatile"          => Some(Self::Volatile),
-            "__restrict"          => Some(Self::Restrict),
-            "__unaligned"         => Some(Self::Unaligned),
-            _                     => None,
+            "__int8" | "_int8" => Some(Self::Int8),
+            "__int16" | "_int16" => Some(Self::Int16),
+            "__int32" | "_int32" => Some(Self::Int32),
+            "__int64" | "_int64" => Some(Self::Int64),
+            "__int128" => Some(Self::Int128),
+            "__ptr32" => Some(Self::Ptr32),
+            "__ptr64" => Some(Self::Ptr64),
+            "__w64" => Some(Self::W64),
+            "__assume" => Some(Self::Assume),
+            "__debugbreak" => Some(Self::Debugbreak),
+            "__noop" => Some(Self::Noop),
+            "__cpuid" => Some(Self::Cpuid),
+            "__rdtsc" => Some(Self::Rdtsc),
+            "__rdtscp" => Some(Self::Rdtscp),
+            "wchar_t" => Some(Self::WcharT),
+            "__volatile" => Some(Self::Volatile),
+            "__restrict" => Some(Self::Restrict),
+            "__unaligned" => Some(Self::Unaligned),
+            _ => None,
         }
     }
 
     /// Return the equivalent Rust/C type name for integer extensions.
     pub fn c_type_name(&self) -> Option<&'static str> {
         match self {
-            Self::Int8   => Some("int8_t"),
-            Self::Int16  => Some("int16_t"),
-            Self::Int32  => Some("int32_t"),
-            Self::Int64  => Some("int64_t"),
+            Self::Int8 => Some("int8_t"),
+            Self::Int16 => Some("int16_t"),
+            Self::Int32 => Some("int32_t"),
+            Self::Int64 => Some("int64_t"),
             Self::WcharT => Some("unsigned short"),
-            _            => None,
+            _ => None,
         }
     }
 }
@@ -372,7 +380,7 @@ impl MsvcExtension {
 /// `param_bytes` — total size (in bytes) of all parameters
 /// `conv`        — the calling convention
 pub fn msvc_decorate_c_name(name: &str, param_bytes: u32, conv: MsvcCallingConv) -> String {
-    let prefix  = conv.decoration_prefix();
-    let suffix  = conv.decoration_suffix(param_bytes);
+    let prefix = conv.decoration_prefix();
+    let suffix = conv.decoration_suffix(param_bytes);
     format!("{}{}{}", prefix, name, suffix)
 }

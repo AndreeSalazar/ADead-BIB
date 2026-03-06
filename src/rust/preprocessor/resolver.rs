@@ -68,7 +68,8 @@ impl HeaderResolver {
                 match std::fs::read_to_string(&full_path) {
                     Ok(content) => {
                         self.included.insert(header_name.to_string(), true);
-                        self.resolved_cache.insert(header_name.to_string(), content.clone());
+                        self.resolved_cache
+                            .insert(header_name.to_string(), content.clone());
                         return Ok(content);
                     }
                     Err(_) => continue,
@@ -91,12 +92,14 @@ impl HeaderResolver {
         content.push_str("// fastos_memory.h — fastos_alloc(), fastos_free(), fastos_realloc()\n");
         content.push_str("// fastos_io.h — fastos_print(), fastos_read(), fastos_file_open()\n");
         content.push_str("// fastos_math.h — Vec2, Vec3, Vec4, Mat4x4, fastos_sqrt()\n");
-        content.push_str("// fastos_string.h — fastos_strlen(), fastos_strcmp(), fastos_strcpy()\n");
+        content
+            .push_str("// fastos_string.h — fastos_strlen(), fastos_strcmp(), fastos_strcpy()\n");
         content.push_str("// fastos_thread.h — fastos_thread_create(), fastos_mutex()\n");
         content.push_str("// fastos_window.h — fastos_create_window(), fastos_draw()\n");
         content.push_str("// fastos_network.h — fastos_connect(), fastos_send(), fastos_recv()\n");
         content.push_str("// fastos_time.h — fastos_now(), fastos_sleep(), fastos_delta()\n");
-        content.push_str("// fastos_debug.h — fastos_assert(), fastos_log(), fastos_breakpoint()\n\n");
+        content
+            .push_str("// fastos_debug.h — fastos_assert(), fastos_log(), fastos_breakpoint()\n\n");
         content.push_str("#endif // HEADER_MAIN_H\n");
         content
     }

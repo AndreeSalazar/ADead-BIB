@@ -8,11 +8,40 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum CToken {
     // C Keywords
-    Auto, Break, Case, Char, Const, Continue, Default, Do,
-    Double, Else, Enum, Extern, Float, For, Goto, If,
-    Inline, Int, Long, Register, Restrict, Return, Short,
-    Signed, Sizeof, Static, Struct, Switch, Typedef, Union,
-    Unsigned, Void, Volatile, While,
+    Auto,
+    Break,
+    Case,
+    Char,
+    Const,
+    Continue,
+    Default,
+    Do,
+    Double,
+    Else,
+    Enum,
+    Extern,
+    Float,
+    For,
+    Goto,
+    If,
+    Inline,
+    Int,
+    Long,
+    Register,
+    Restrict,
+    Return,
+    Short,
+    Signed,
+    Sizeof,
+    Static,
+    Struct,
+    Switch,
+    Typedef,
+    Union,
+    Unsigned,
+    Void,
+    Volatile,
+    While,
     Bool, // _Bool / bool
 
     // Identifiers and literals
@@ -23,9 +52,17 @@ pub enum CToken {
     CharLiteral(char),
 
     // Operators
-    Plus, Minus, Star, Slash, Percent,
-    Ampersand, Pipe, Caret, Tilde,
-    Bang, Question,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Ampersand,
+    Pipe,
+    Caret,
+    Tilde,
+    Bang,
+    Question,
     Assign,        // =
     PlusAssign,    // +=
     MinusAssign,   // -=
@@ -39,19 +76,30 @@ pub enum CToken {
     RShiftAssign,  // >>=
     EqEq,          // ==
     NotEq,         // !=
-    Less, Greater, LessEq, GreaterEq,
-    AndAnd,        // &&
-    OrOr,          // ||
-    LShift,        // <<
-    RShift,        // >>
-    PlusPlus,      // ++
-    MinusMinus,    // --
-    Arrow,         // ->
-    Dot,           // .
+    Less,
+    Greater,
+    LessEq,
+    GreaterEq,
+    AndAnd,     // &&
+    OrOr,       // ||
+    LShift,     // <<
+    RShift,     // >>
+    PlusPlus,   // ++
+    MinusMinus, // --
+    Arrow,      // ->
+    Dot,        // .
 
     // Punctuation
-    LParen, RParen, LBrace, RBrace, LBracket, RBracket,
-    Semicolon, Comma, Colon, Ellipsis,
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    Semicolon,
+    Comma,
+    Colon,
+    Ellipsis,
 
     // EOF
     Eof,
@@ -250,16 +298,46 @@ impl CLexer {
     fn read_escape(&mut self) -> char {
         self.advance(); // skip backslash
         match self.current_char {
-            Some('n') => { self.advance(); '\n' }
-            Some('t') => { self.advance(); '\t' }
-            Some('r') => { self.advance(); '\r' }
-            Some('0') => { self.advance(); '\0' }
-            Some('\\') => { self.advance(); '\\' }
-            Some('\'') => { self.advance(); '\'' }
-            Some('"') => { self.advance(); '"' }
-            Some('a') => { self.advance(); '\x07' }
-            Some('b') => { self.advance(); '\x08' }
-            Some('f') => { self.advance(); '\x0C' }
+            Some('n') => {
+                self.advance();
+                '\n'
+            }
+            Some('t') => {
+                self.advance();
+                '\t'
+            }
+            Some('r') => {
+                self.advance();
+                '\r'
+            }
+            Some('0') => {
+                self.advance();
+                '\0'
+            }
+            Some('\\') => {
+                self.advance();
+                '\\'
+            }
+            Some('\'') => {
+                self.advance();
+                '\''
+            }
+            Some('"') => {
+                self.advance();
+                '"'
+            }
+            Some('a') => {
+                self.advance();
+                '\x07'
+            }
+            Some('b') => {
+                self.advance();
+                '\x08'
+            }
+            Some('f') => {
+                self.advance();
+                '\x0C'
+            }
             Some('x') => {
                 // Hex escape: \xFF
                 self.advance();
@@ -275,7 +353,10 @@ impl CLexer {
                 let val = u8::from_str_radix(&hex, 16).unwrap_or(0);
                 val as char
             }
-            Some(ch) => { self.advance(); ch }
+            Some(ch) => {
+                self.advance();
+                ch
+            }
             None => '\0',
         }
     }
@@ -391,58 +472,106 @@ impl CLexer {
             Some('+') => {
                 self.advance();
                 match self.current_char {
-                    Some('+') => { self.advance(); CToken::PlusPlus }
-                    Some('=') => { self.advance(); CToken::PlusAssign }
+                    Some('+') => {
+                        self.advance();
+                        CToken::PlusPlus
+                    }
+                    Some('=') => {
+                        self.advance();
+                        CToken::PlusAssign
+                    }
                     _ => CToken::Plus,
                 }
             }
             Some('-') => {
                 self.advance();
                 match self.current_char {
-                    Some('-') => { self.advance(); CToken::MinusMinus }
-                    Some('=') => { self.advance(); CToken::MinusAssign }
-                    Some('>') => { self.advance(); CToken::Arrow }
+                    Some('-') => {
+                        self.advance();
+                        CToken::MinusMinus
+                    }
+                    Some('=') => {
+                        self.advance();
+                        CToken::MinusAssign
+                    }
+                    Some('>') => {
+                        self.advance();
+                        CToken::Arrow
+                    }
                     _ => CToken::Minus,
                 }
             }
             Some('*') => {
                 self.advance();
-                if self.current_char == Some('=') { self.advance(); CToken::StarAssign }
-                else { CToken::Star }
+                if self.current_char == Some('=') {
+                    self.advance();
+                    CToken::StarAssign
+                } else {
+                    CToken::Star
+                }
             }
             Some('/') => {
                 self.advance();
                 match self.current_char {
-                    Some('/') => { self.advance(); self.skip_line_comment(); self.next_token() }
-                    Some('*') => { self.skip_block_comment(); self.next_token() }
-                    Some('=') => { self.advance(); CToken::SlashAssign }
+                    Some('/') => {
+                        self.advance();
+                        self.skip_line_comment();
+                        self.next_token()
+                    }
+                    Some('*') => {
+                        self.skip_block_comment();
+                        self.next_token()
+                    }
+                    Some('=') => {
+                        self.advance();
+                        CToken::SlashAssign
+                    }
                     _ => CToken::Slash,
                 }
             }
             Some('%') => {
                 self.advance();
-                if self.current_char == Some('=') { self.advance(); CToken::PercentAssign }
-                else { CToken::Percent }
+                if self.current_char == Some('=') {
+                    self.advance();
+                    CToken::PercentAssign
+                } else {
+                    CToken::Percent
+                }
             }
             Some('=') => {
                 self.advance();
-                if self.current_char == Some('=') { self.advance(); CToken::EqEq }
-                else { CToken::Assign }
+                if self.current_char == Some('=') {
+                    self.advance();
+                    CToken::EqEq
+                } else {
+                    CToken::Assign
+                }
             }
             Some('!') => {
                 self.advance();
-                if self.current_char == Some('=') { self.advance(); CToken::NotEq }
-                else { CToken::Bang }
+                if self.current_char == Some('=') {
+                    self.advance();
+                    CToken::NotEq
+                } else {
+                    CToken::Bang
+                }
             }
             Some('<') => {
                 self.advance();
                 match self.current_char {
                     Some('<') => {
                         self.advance();
-                        if self.current_char == Some('=') { self.advance(); CToken::LShiftAssign }
-                        else { CToken::LShift }
+                        if self.current_char == Some('=') {
+                            self.advance();
+                            CToken::LShiftAssign
+                        } else {
+                            CToken::LShift
+                        }
                     }
-                    Some('=') => { self.advance(); CToken::LessEq }
+                    Some('=') => {
+                        self.advance();
+                        CToken::LessEq
+                    }
                     _ => CToken::Less,
                 }
             }
@@ -451,36 +580,65 @@ impl CLexer {
                 match self.current_char {
                     Some('>') => {
                         self.advance();
-                        if self.current_char == Some('=') { self.advance(); CToken::RShiftAssign }
-                        else { CToken::RShift }
+                        if self.current_char == Some('=') {
+                            self.advance();
+                            CToken::RShiftAssign
+                        } else {
+                            CToken::RShift
+                        }
                     }
-                    Some('=') => { self.advance(); CToken::GreaterEq }
+                    Some('=') => {
+                        self.advance();
+                        CToken::GreaterEq
+                    }
                     _ => CToken::Greater,
                 }
             }
             Some('&') => {
                 self.advance();
                 match self.current_char {
-                    Some('&') => { self.advance(); CToken::AndAnd }
-                    Some('=') => { self.advance(); CToken::AmpAssign }
+                    Some('&') => {
+                        self.advance();
+                        CToken::AndAnd
+                    }
+                    Some('=') => {
+                        self.advance();
+                        CToken::AmpAssign
+                    }
                     _ => CToken::Ampersand,
                 }
             }
             Some('|') => {
                 self.advance();
                 match self.current_char {
-                    Some('|') => { self.advance(); CToken::OrOr }
-                    Some('=') => { self.advance(); CToken::PipeAssign }
+                    Some('|') => {
+                        self.advance();
+                        CToken::OrOr
+                    }
+                    Some('=') => {
+                        self.advance();
+                        CToken::PipeAssign
+                    }
                     _ => CToken::Pipe,
                 }
             }
             Some('^') => {
                 self.advance();
-                if self.current_char == Some('=') { self.advance(); CToken::CaretAssign }
-                else { CToken::Caret }
+                if self.current_char == Some('=') {
+                    self.advance();
+                    CToken::CaretAssign
+                } else {
+                    CToken::Caret
+                }
             }
-            Some('~') => { self.advance(); CToken::Tilde }
-            Some('?') => { self.advance(); CToken::Question }
+            Some('~') => {
+                self.advance();
+                CToken::Tilde
+            }
+            Some('?') => {
+                self.advance();
+                CToken::Question
+            }
             Some('.') => {
                 self.advance();
                 if self.current_char == Some('.') {
@@ -497,33 +655,68 @@ impl CLexer {
             }
 
             // Punctuation
-            Some('(') => { self.advance(); CToken::LParen }
-            Some(')') => { self.advance(); CToken::RParen }
-            Some('{') => { self.advance(); CToken::LBrace }
-            Some('}') => { self.advance(); CToken::RBrace }
-            Some('[') => { self.advance(); CToken::LBracket }
-            Some(']') => { self.advance(); CToken::RBracket }
-            Some(';') => { self.advance(); CToken::Semicolon }
-            Some(',') => { self.advance(); CToken::Comma }
-            Some(':') => { self.advance(); CToken::Colon }
+            Some('(') => {
+                self.advance();
+                CToken::LParen
+            }
+            Some(')') => {
+                self.advance();
+                CToken::RParen
+            }
+            Some('{') => {
+                self.advance();
+                CToken::LBrace
+            }
+            Some('}') => {
+                self.advance();
+                CToken::RBrace
+            }
+            Some('[') => {
+                self.advance();
+                CToken::LBracket
+            }
+            Some(']') => {
+                self.advance();
+                CToken::RBracket
+            }
+            Some(';') => {
+                self.advance();
+                CToken::Semicolon
+            }
+            Some(',') => {
+                self.advance();
+                CToken::Comma
+            }
+            Some(':') => {
+                self.advance();
+                CToken::Colon
+            }
 
             Some(ch) => {
-                eprintln!("C Lexer: unexpected character '{}' at line {}:{}", ch, self.line, self.column);
+                eprintln!(
+                    "C Lexer: unexpected character '{}' at line {}:{}",
+                    ch, self.line, self.column
+                );
                 self.advance();
                 self.next_token()
             }
         }
     }
 
-    pub fn tokenize(&mut self) -> Vec<CToken> {
+    pub fn tokenize(&mut self) -> (Vec<CToken>, Vec<usize>) {
         let mut tokens = Vec::new();
+        let mut lines = Vec::new();
         loop {
+            let line = self.line;
             let tok = self.next_token();
             let is_eof = tok == CToken::Eof;
             tokens.push(tok);
-            if is_eof { break; }
+            lines.push(line);
+            if is_eof {
+                break;
+            }
         }
-        tokens
+        (tokens, lines)
     }
 }
 
@@ -555,7 +748,10 @@ mod tests {
     #[test]
     fn test_string_escape() {
         let mut lexer = CLexer::new(r#""hello\nworld""#);
-        assert_eq!(lexer.next_token(), CToken::StringLiteral("hello\nworld".to_string()));
+        assert_eq!(
+            lexer.next_token(),
+            CToken::StringLiteral("hello\nworld".to_string())
+        );
     }
 
     #[test]

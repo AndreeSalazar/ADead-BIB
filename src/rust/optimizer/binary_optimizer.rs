@@ -55,22 +55,22 @@ impl BinaryOptimizer {
     /// Optimiza código x86-64
     pub fn optimize(&mut self, code: &[u8]) -> Vec<u8> {
         self.stats.original_size = code.len();
-        
+
         let mut optimized = code.to_vec();
-        
+
         match self.level {
-            OptLevel::None => {},
+            OptLevel::None => {}
             OptLevel::Basic => {
                 optimized = self.remove_nops(&optimized);
                 optimized = self.optimize_mov_patterns(&optimized);
-            },
+            }
             OptLevel::Aggressive => {
                 optimized = self.remove_nops(&optimized);
                 optimized = self.optimize_mov_patterns(&optimized);
                 optimized = self.fuse_instructions(&optimized);
                 optimized = self.optimize_jumps(&optimized);
                 optimized = self.compress_constants(&optimized);
-            },
+            }
             OptLevel::Ultra => {
                 optimized = self.remove_nops(&optimized);
                 optimized = self.optimize_mov_patterns(&optimized);
@@ -79,12 +79,15 @@ impl BinaryOptimizer {
                 optimized = self.compress_constants(&optimized);
                 optimized = self.remove_redundant_stack_ops(&optimized);
                 optimized = self.use_shorter_encodings(&optimized);
-            },
+            }
         }
-        
+
         self.stats.optimized_size = optimized.len();
-        self.stats.bytes_saved = self.stats.original_size.saturating_sub(self.stats.optimized_size);
-        
+        self.stats.bytes_saved = self
+            .stats
+            .original_size
+            .saturating_sub(self.stats.optimized_size);
+
         optimized
     }
 
@@ -93,7 +96,7 @@ impl BinaryOptimizer {
         let mut result = Vec::with_capacity(code.len());
         let mut i = 0;
         let mut nops_removed = 0;
-        
+
         while i < code.len() {
             // NOP simple (0x90)
             if code[i] == 0x90 {
@@ -102,30 +105,32 @@ impl BinaryOptimizer {
                 i += 1;
                 continue;
             }
-            
+
             // NOP largo (66 90)
             if i + 1 < code.len() && code[i] == 0x66 && code[i + 1] == 0x90 {
                 nops_removed += 1;
                 i += 2;
                 continue;
             }
-            
+
             // NOP de 3 bytes (0F 1F 00)
             if i + 2 < code.len() && code[i] == 0x0F && code[i + 1] == 0x1F && code[i + 2] == 0x00 {
                 nops_removed += 1;
                 i += 3;
                 continue;
             }
-            
+
             result.push(code[i]);
             i += 1;
         }
-        
+
         if nops_removed > 0 {
             self.stats.instructions_removed += nops_removed;
-            self.stats.patterns_applied.push(format!("NOP removal: {} removed", nops_removed));
+            self.stats
+                .patterns_applied
+                .push(format!("NOP removal: {} removed", nops_removed));
         }
-        
+
         result
     }
 
@@ -134,60 +139,62 @@ impl BinaryOptimizer {
         let mut result = Vec::with_capacity(code.len());
         let mut i = 0;
         let mut patterns_applied = 0;
-        
+
         while i < code.len() {
             // Patrón: mov rax, 0 -> xor eax, eax (7 bytes -> 2 bytes)
             // 48 C7 C0 00 00 00 00 -> 31 C0
-            if i + 6 < code.len() 
-                && code[i] == 0x48 
-                && code[i + 1] == 0xC7 
+            if i + 6 < code.len()
+                && code[i] == 0x48
+                && code[i + 1] == 0xC7
                 && code[i + 2] == 0xC0
-                && code[i + 3..i + 7] == [0x00, 0x00, 0x00, 0x00] 
+                && code[i + 3..i + 7] == [0x00, 0x00, 0x00, 0x00]
             {
                 result.extend_from_slice(&[0x31, 0xC0]); // xor eax, eax
                 i += 7;
                 patterns_applied += 1;
                 continue;
             }
-            
+
             // Patrón: mov rcx, 0 -> xor ecx, ecx
             // 48 C7 C1 00 00 00 00 -> 31 C9
-            if i + 6 < code.len() 
-                && code[i] == 0x48 
-                && code[i + 1] == 0xC7 
+            if i + 6 < code.len()
+                && code[i] == 0x48
+                && code[i + 1] == 0xC7
                 && code[i + 2] == 0xC1
-                && code[i + 3..i + 7] == [0x00, 0x00, 0x00, 0x00] 
+                && code[i + 3..i + 7] == [0x00, 0x00, 0x00, 0x00]
             {
                 result.extend_from_slice(&[0x31, 0xC9]); // xor ecx, ecx
                 i += 7;
                 patterns_applied += 1;
                 continue;
             }
-            
+
             // Patrón: mov rdx, 0 -> xor edx, edx
-            if i + 6 < code.len() 
-                && code[i] == 0x48 
-                && code[i + 1] == 0xC7 
+            if i + 6 < code.len()
+                && code[i] == 0x48
+                && code[i + 1] == 0xC7
                 && code[i + 2] == 0xC2
-                && code[i + 3..i + 7] == [0x00, 0x00, 0x00, 0x00] 
+                && code[i + 3..i + 7] == [0x00, 0x00, 0x00, 0x00]
             {
                 result.extend_from_slice(&[0x31, 0xD2]); // xor edx, edx
                 i += 7;
                 patterns_applied += 1;
                 continue;
             }
-            
+
             // Patrón: mov reg, imm32 pequeño -> usar encoding corto
             // Si el valor cabe en 8 bits, usar push imm8 + pop reg
-            
+
             result.push(code[i]);
             i += 1;
         }
-        
+
         if patterns_applied > 0 {
-            self.stats.patterns_applied.push(format!("MOV optimization: {} patterns", patterns_applied));
+            self.stats
+                .patterns_applied
+                .push(format!("MOV optimization: {} patterns", patterns_applied));
         }
-        
+
         result
     }
 
@@ -196,14 +203,14 @@ impl BinaryOptimizer {
         let mut result = Vec::with_capacity(code.len());
         let mut i = 0;
         let mut fusions = 0;
-        
+
         while i < code.len() {
             // Patrón: push rbp; mov rbp, rsp -> enter 0, 0 (más corto en algunos casos)
             // 55 48 89 E5 -> C8 00 00 00 (mismo tamaño, pero más claro)
             // En realidad, push+mov es más rápido, así que lo dejamos
-            
+
             // Patrón: xor eax, eax; ret -> xor eax, eax; ret (ya óptimo)
-            
+
             // Patrón: mov rsp, rbp; pop rbp -> leave (3 bytes -> 1 byte)
             // 48 89 EC 5D -> C9
             if i + 3 < code.len()
@@ -217,18 +224,20 @@ impl BinaryOptimizer {
                 fusions += 1;
                 continue;
             }
-            
+
             // Patrón: add rsp, 8; pop reg -> pop reg; pop reg (si hay 2 pops)
             // Esto es más complejo, lo dejamos para después
-            
+
             result.push(code[i]);
             i += 1;
         }
-        
+
         if fusions > 0 {
-            self.stats.patterns_applied.push(format!("Instruction fusion: {} fusions", fusions));
+            self.stats
+                .patterns_applied
+                .push(format!("Instruction fusion: {} fusions", fusions));
         }
-        
+
         result
     }
 
@@ -237,12 +246,13 @@ impl BinaryOptimizer {
         let mut result = Vec::with_capacity(code.len());
         let mut i = 0;
         let mut optimizations = 0;
-        
+
         while i < code.len() {
             // Patrón: jmp rel32 con offset pequeño -> jmp rel8
             // E9 XX XX XX XX -> EB XX (si offset cabe en 8 bits)
             if i + 4 < code.len() && code[i] == 0xE9 {
-                let offset = i32::from_le_bytes([code[i + 1], code[i + 2], code[i + 3], code[i + 4]]);
+                let offset =
+                    i32::from_le_bytes([code[i + 1], code[i + 2], code[i + 3], code[i + 4]]);
                 if offset >= -128 && offset <= 127 {
                     result.push(0xEB); // jmp rel8
                     result.push((offset as i8) as u8);
@@ -251,11 +261,12 @@ impl BinaryOptimizer {
                     continue;
                 }
             }
-            
+
             // Patrón: je/jne rel32 con offset pequeño -> je/jne rel8
             // 0F 84 XX XX XX XX -> 74 XX
             if i + 5 < code.len() && code[i] == 0x0F && code[i + 1] == 0x84 {
-                let offset = i32::from_le_bytes([code[i + 2], code[i + 3], code[i + 4], code[i + 5]]);
+                let offset =
+                    i32::from_le_bytes([code[i + 2], code[i + 3], code[i + 4], code[i + 5]]);
                 if offset >= -128 && offset <= 127 {
                     result.push(0x74); // je rel8
                     result.push((offset as i8) as u8);
@@ -264,15 +275,18 @@ impl BinaryOptimizer {
                     continue;
                 }
             }
-            
+
             result.push(code[i]);
             i += 1;
         }
-        
+
         if optimizations > 0 {
-            self.stats.patterns_applied.push(format!("Jump optimization: {} jumps shortened", optimizations));
+            self.stats.patterns_applied.push(format!(
+                "Jump optimization: {} jumps shortened",
+                optimizations
+            ));
         }
-        
+
         result
     }
 
@@ -281,12 +295,12 @@ impl BinaryOptimizer {
         let mut result = Vec::with_capacity(code.len());
         let mut i = 0;
         let mut compressions = 0;
-        
+
         while i < code.len() {
             // Patrón: mov rax, imm64 pequeño -> mov eax, imm32
             // 48 B8 XX XX XX XX 00 00 00 00 -> B8 XX XX XX XX
-            if i + 9 < code.len() 
-                && code[i] == 0x48 
+            if i + 9 < code.len()
+                && code[i] == 0x48
                 && code[i + 1] == 0xB8
                 && code[i + 6..i + 10] == [0x00, 0x00, 0x00, 0x00]
             {
@@ -296,15 +310,12 @@ impl BinaryOptimizer {
                 compressions += 1;
                 continue;
             }
-            
+
             // Patrón: sub rsp, imm32 pequeño -> sub rsp, imm8
             // 48 81 EC XX XX XX XX -> 48 83 EC XX (si cabe en 8 bits)
-            if i + 6 < code.len()
-                && code[i] == 0x48
-                && code[i + 1] == 0x81
-                && code[i + 2] == 0xEC
-            {
-                let value = u32::from_le_bytes([code[i + 3], code[i + 4], code[i + 5], code[i + 6]]);
+            if i + 6 < code.len() && code[i] == 0x48 && code[i + 1] == 0x81 && code[i + 2] == 0xEC {
+                let value =
+                    u32::from_le_bytes([code[i + 3], code[i + 4], code[i + 5], code[i + 6]]);
                 if value <= 127 {
                     result.extend_from_slice(&[0x48, 0x83, 0xEC, value as u8]);
                     i += 7;
@@ -312,15 +323,17 @@ impl BinaryOptimizer {
                     continue;
                 }
             }
-            
+
             result.push(code[i]);
             i += 1;
         }
-        
+
         if compressions > 0 {
-            self.stats.patterns_applied.push(format!("Constant compression: {} compressed", compressions));
+            self.stats
+                .patterns_applied
+                .push(format!("Constant compression: {} compressed", compressions));
         }
-        
+
         result
     }
 
@@ -329,7 +342,7 @@ impl BinaryOptimizer {
         let mut result = Vec::with_capacity(code.len());
         let mut i = 0;
         let mut removals = 0;
-        
+
         while i < code.len() {
             // Patrón: push reg; pop reg (mismo registro) -> nada
             // 5X 5X (donde X es el mismo)
@@ -342,15 +355,17 @@ impl BinaryOptimizer {
                     continue;
                 }
             }
-            
+
             result.push(code[i]);
             i += 1;
         }
-        
+
         if removals > 0 {
-            self.stats.patterns_applied.push(format!("Redundant stack ops: {} removed", removals));
+            self.stats
+                .patterns_applied
+                .push(format!("Redundant stack ops: {} removed", removals));
         }
-        
+
         result
     }
 
@@ -359,33 +374,31 @@ impl BinaryOptimizer {
         let mut result = Vec::with_capacity(code.len());
         let mut i = 0;
         let mut shortenings = 0;
-        
+
         while i < code.len() {
             // Patrón: test rax, rax -> test eax, eax (si solo nos importa ZF)
             // 48 85 C0 -> 85 C0 (ahorra 1 byte, mismo resultado para ZF)
-            if i + 2 < code.len()
-                && code[i] == 0x48
-                && code[i + 1] == 0x85
-                && code[i + 2] == 0xC0
-            {
+            if i + 2 < code.len() && code[i] == 0x48 && code[i + 1] == 0x85 && code[i + 2] == 0xC0 {
                 result.extend_from_slice(&[0x85, 0xC0]); // test eax, eax
                 i += 3;
                 shortenings += 1;
                 continue;
             }
-            
+
             // Patrón: inc rax -> inc eax (si el valor cabe en 32 bits)
             // 48 FF C0 -> FF C0 (ahorra 1 byte)
             // Nota: Esto cambia el comportamiento si rax > 0xFFFFFFFF
-            
+
             result.push(code[i]);
             i += 1;
         }
-        
+
         if shortenings > 0 {
-            self.stats.patterns_applied.push(format!("Shorter encodings: {} applied", shortenings));
+            self.stats
+                .patterns_applied
+                .push(format!("Shorter encodings: {} applied", shortenings));
         }
-        
+
         result
     }
 
@@ -402,7 +415,8 @@ impl BinaryOptimizer {
         println!();
         println!("   Tamaño original:   {} bytes", self.stats.original_size);
         println!("   Tamaño optimizado: {} bytes", self.stats.optimized_size);
-        println!("   Bytes ahorrados:   {} bytes ({:.1}%)", 
+        println!(
+            "   Bytes ahorrados:   {} bytes ({:.1}%)",
             self.stats.bytes_saved,
             if self.stats.original_size > 0 {
                 (self.stats.bytes_saved as f64 / self.stats.original_size as f64) * 100.0
@@ -458,13 +472,13 @@ impl PESizeOptimizer {
         // - Optional Header: 240 bytes (PE32+)
         // - Section Header: 40 bytes
         // Total headers: 368 bytes
-        // 
+        //
         // Con FileAlignment de 0x200 (512), headers ocupan 512 bytes
         // Código alineado a 512 bytes
-        
+
         let header_size = 0x200; // 512 bytes
         let aligned_code = ((code_size + 0x1FF) & !0x1FF).max(0x200);
-        
+
         header_size + aligned_code
     }
 

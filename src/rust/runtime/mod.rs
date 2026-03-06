@@ -12,9 +12,15 @@ pub mod gpu_dispatcher;
 pub mod gpu_misuse_detector;
 
 pub use cpu_detect::{CPUFeatures, ComputeBackend};
-pub use dispatcher::{AutoDispatcher, SystemInfo, PerformanceEstimator};
-pub use gpu_dispatcher::{GpuDispatcher, ExecutionTarget, DataLocation, OperationCost, DecisionReason};
-pub use gpu_misuse_detector::{GpuMisuseDetector, MisuseReport, MisuseSeverity, MisuseType, MisuseScore};
+pub use dispatcher::{AutoDispatcher, PerformanceEstimator, SystemInfo};
+pub use gpu_dispatcher::{
+    DataLocation, DecisionReason, ExecutionTarget, GpuDispatcher, OperationCost,
+};
+pub use gpu_misuse_detector::{
+    GpuMisuseDetector, MisuseReport, MisuseScore, MisuseSeverity, MisuseType,
+};
 
 // Re-export GPU detect desde backend
-pub use crate::backend::gpu::gpu_detect::{GPUFeatures, GPUVendor, detect_vulkan_simple, detect_cuda_simple};
+pub use crate::backend::gpu::gpu_detect::{
+    detect_cuda_simple, detect_vulkan_simple, GPUFeatures, GPUVendor,
+};

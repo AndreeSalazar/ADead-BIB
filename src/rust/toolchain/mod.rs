@@ -35,7 +35,7 @@ pub use gcc_builtins::{GccAttribute, GccBuiltin};
 pub use msvc_compat::{MsvcCallingConv, MsvcDeclspec, MsvcExtension, MsvcPragma};
 
 // Unified calling conventions
-pub use calling_conventions::{CallingConvention, CallFrame, detect_convention, shadow_space};
+pub use calling_conventions::{detect_convention, shadow_space, CallFrame, CallingConvention};
 
 // C++ name mangler
 pub use cpp_name_mangler::{ManglingStyle, NameMangler};

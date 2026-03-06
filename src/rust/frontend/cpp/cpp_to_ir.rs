@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // ADead-BIB C++ Frontend â€” C++ AST â†’ ADead-BIB IR
 // ============================================================
 // Converts C++ AST to ADead-BIB IR (Program/Function/Stmt/Expr)
@@ -15,9 +15,9 @@
 
 use super::cpp_ast::*;
 use crate::frontend::ast::{
-    Expr, Stmt, Program, Function, Param, Struct as IrStruct,
-    StructField, BinOp, CmpOp, UnaryOp as IrUnaryOp, BitwiseOp as IrBitwiseOp,
-    SizeOfArg, FunctionAttributes, ProgramAttributes, SwitchCase, CompoundOp,
+    BinOp, BitwiseOp as IrBitwiseOp, CmpOp, CompoundOp, Expr, Function, FunctionAttributes, Param,
+    Program, ProgramAttributes, SizeOfArg, Stmt, Struct as IrStruct, StructField, SwitchCase,
+    UnaryOp as IrUnaryOp,
 };
 use crate::frontend::types::Type;
 
@@ -88,7 +88,7 @@ impl CppToIR {
         }
         None
     }
-    
+
     /// Check if an identifier is a field of the current class
     fn is_class_field(&self, name: &str) -> bool {
         if let Some(ref class_name) = self.current_class {
@@ -110,14 +110,21 @@ impl CppToIR {
                 left: Box::new(Self::subst_param(*left, param, arg)),
                 right: Box::new(Self::subst_param(*right, param, arg)),
             },
-            CppExpr::UnaryOp { op, expr: inner, is_prefix } => CppExpr::UnaryOp {
+            CppExpr::UnaryOp {
+                op,
+                expr: inner,
+                is_prefix,
+            } => CppExpr::UnaryOp {
                 op,
                 expr: Box::new(Self::subst_param(*inner, param, arg)),
                 is_prefix,
             },
             CppExpr::Call { callee, args } => CppExpr::Call {
                 callee: Box::new(Self::subst_param(*callee, param, arg)),
-                args: args.into_iter().map(|a| Self::subst_param(a, param, arg)).collect(),
+                args: args
+                    .into_iter()
+                    .map(|a| Self::subst_param(a, param, arg))
+                    .collect(),
             },
             CppExpr::MemberAccess { object, member } => CppExpr::MemberAccess {
                 object: Box::new(Self::subst_param(*object, param, arg)),
@@ -140,7 +147,11 @@ impl CppToIR {
                 op,
                 value: Box::new(Self::subst_param(*value, param, arg)),
             },
-            CppExpr::Cast { cast_type, target_type, expr: inner } => CppExpr::Cast {
+            CppExpr::Cast {
+                cast_type,
+                target_type,
+                expr: inner,
+            } => CppExpr::Cast {
                 cast_type,
                 target_type,
                 expr: Box::new(Self::subst_param(*inner, param, arg)),
@@ -150,11 +161,22 @@ impl CppToIR {
     }
 
     /// Substitute 'this->field' with obj_name.field in a CppExpr (for method inlining)
-    fn subst_this_in_expr(expr: CppExpr, obj_name: &str, class_fields: &[(String, Vec<String>)], class_name: &str) -> CppExpr {
+    fn subst_this_in_expr(
+        expr: CppExpr,
+        obj_name: &str,
+        class_fields: &[(String, Vec<String>)],
+        class_name: &str,
+    ) -> CppExpr {
         match expr {
             // this->field  OR  this.field → obj_name.field (as flat Identifier)
-            CppExpr::ArrowAccess { ref pointer, ref member } |
-            CppExpr::MemberAccess { object: ref pointer, member: ref member } => {
+            CppExpr::ArrowAccess {
+                ref pointer,
+                ref member,
+            }
+            | CppExpr::MemberAccess {
+                object: ref pointer,
+                member: ref member,
+            } => {
                 if let CppExpr::Identifier(ref n) = pointer.as_ref() {
                     if n == "this" {
                         return CppExpr::Identifier(format!("{}.{}", obj_name, member));
@@ -162,12 +184,28 @@ impl CppToIR {
                 }
                 // Recurse into pointer and member normally
                 match expr {
-                    CppExpr::ArrowAccess { pointer: p, member: m } => CppExpr::ArrowAccess {
-                        pointer: Box::new(Self::subst_this_in_expr(*p, obj_name, class_fields, class_name)),
+                    CppExpr::ArrowAccess {
+                        pointer: p,
+                        member: m,
+                    } => CppExpr::ArrowAccess {
+                        pointer: Box::new(Self::subst_this_in_expr(
+                            *p,
+                            obj_name,
+                            class_fields,
+                            class_name,
+                        )),
                         member: m,
                     },
-                    CppExpr::MemberAccess { object: p, member: m } => CppExpr::MemberAccess {
-                        object: Box::new(Self::subst_this_in_expr(*p, obj_name, class_fields, class_name)),
+                    CppExpr::MemberAccess {
+                        object: p,
+                        member: m,
+                    } => CppExpr::MemberAccess {
+                        object: Box::new(Self::subst_this_in_expr(
+                            *p,
+                            obj_name,
+                            class_fields,
+                            class_name,
+                        )),
                         member: m,
                     },
                     other => other,
@@ -175,7 +213,8 @@ impl CppToIR {
             }
             // Bare field identifier (inside method, is_class_field style) → obj_name.field
             CppExpr::Identifier(ref name) => {
-                let is_field = class_fields.iter()
+                let is_field = class_fields
+                    .iter()
                     .find(|(cn, _)| cn == class_name)
                     .map(|(_, fields)| fields.contains(&name.to_string()))
                     .unwrap_or(false);
@@ -187,73 +226,196 @@ impl CppToIR {
             }
             CppExpr::BinaryOp { op, left, right } => CppExpr::BinaryOp {
                 op,
-                left: Box::new(Self::subst_this_in_expr(*left, obj_name, class_fields, class_name)),
-                right: Box::new(Self::subst_this_in_expr(*right, obj_name, class_fields, class_name)),
+                left: Box::new(Self::subst_this_in_expr(
+                    *left,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
+                right: Box::new(Self::subst_this_in_expr(
+                    *right,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
-            CppExpr::UnaryOp { op, expr: inner, is_prefix } => CppExpr::UnaryOp {
-                op, is_prefix,
-                expr: Box::new(Self::subst_this_in_expr(*inner, obj_name, class_fields, class_name)),
+            CppExpr::UnaryOp {
+                op,
+                expr: inner,
+                is_prefix,
+            } => CppExpr::UnaryOp {
+                op,
+                is_prefix,
+                expr: Box::new(Self::subst_this_in_expr(
+                    *inner,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
             CppExpr::Call { callee, args } => CppExpr::Call {
                 callee,
-                args: args.into_iter()
+                args: args
+                    .into_iter()
                     .map(|a| Self::subst_this_in_expr(a, obj_name, class_fields, class_name))
                     .collect(),
             },
             CppExpr::Assign { target, value } => CppExpr::Assign {
-                target: Box::new(Self::subst_this_in_expr(*target, obj_name, class_fields, class_name)),
-                value: Box::new(Self::subst_this_in_expr(*value, obj_name, class_fields, class_name)),
+                target: Box::new(Self::subst_this_in_expr(
+                    *target,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
+                value: Box::new(Self::subst_this_in_expr(
+                    *value,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
             CppExpr::CompoundAssign { target, op, value } => CppExpr::CompoundAssign {
-                target: Box::new(Self::subst_this_in_expr(*target, obj_name, class_fields, class_name)),
+                target: Box::new(Self::subst_this_in_expr(
+                    *target,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
                 op,
-                value: Box::new(Self::subst_this_in_expr(*value, obj_name, class_fields, class_name)),
+                value: Box::new(Self::subst_this_in_expr(
+                    *value,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
-            CppExpr::Ternary { condition, then_expr, else_expr } => CppExpr::Ternary {
-                condition: Box::new(Self::subst_this_in_expr(*condition, obj_name, class_fields, class_name)),
-                then_expr: Box::new(Self::subst_this_in_expr(*then_expr, obj_name, class_fields, class_name)),
-                else_expr: Box::new(Self::subst_this_in_expr(*else_expr, obj_name, class_fields, class_name)),
+            CppExpr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => CppExpr::Ternary {
+                condition: Box::new(Self::subst_this_in_expr(
+                    *condition,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
+                then_expr: Box::new(Self::subst_this_in_expr(
+                    *then_expr,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
+                else_expr: Box::new(Self::subst_this_in_expr(
+                    *else_expr,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
             CppExpr::Index { object, index } => CppExpr::Index {
-                object: Box::new(Self::subst_this_in_expr(*object, obj_name, class_fields, class_name)),
-                index: Box::new(Self::subst_this_in_expr(*index, obj_name, class_fields, class_name)),
+                object: Box::new(Self::subst_this_in_expr(
+                    *object,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
+                index: Box::new(Self::subst_this_in_expr(
+                    *index,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
-            CppExpr::Cast { cast_type, target_type, expr: inner } => CppExpr::Cast {
+            CppExpr::Cast {
                 cast_type,
                 target_type,
-                expr: Box::new(Self::subst_this_in_expr(*inner, obj_name, class_fields, class_name)),
+                expr: inner,
+            } => CppExpr::Cast {
+                cast_type,
+                target_type,
+                expr: Box::new(Self::subst_this_in_expr(
+                    *inner,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
             other => other,
         }
     }
 
-    fn subst_this_in_stmt(stmt: CppStmt, obj_name: &str, class_fields: &[(String, Vec<String>)], class_name: &str) -> CppStmt {
+    fn subst_this_in_stmt(
+        stmt: CppStmt,
+        obj_name: &str,
+        class_fields: &[(String, Vec<String>)],
+        class_name: &str,
+    ) -> CppStmt {
         let sub = |e: CppExpr| Self::subst_this_in_expr(e, obj_name, class_fields, class_name);
         match stmt {
             CppStmt::Expr(e) => CppStmt::Expr(sub(e)),
             CppStmt::Return(Some(e)) => CppStmt::Return(Some(sub(e))),
             CppStmt::Return(None) => CppStmt::Return(None),
-            CppStmt::VarDecl { type_spec, declarators } => {
-                let ds = declarators.into_iter().map(|mut d| {
-                    d.initializer = d.initializer.map(sub);
-                    d
-                }).collect();
-                CppStmt::VarDecl { type_spec, declarators: ds }
+            CppStmt::VarDecl {
+                type_spec,
+                declarators,
+            } => {
+                let ds = declarators
+                    .into_iter()
+                    .map(|mut d| {
+                        d.initializer = d.initializer.map(sub);
+                        d
+                    })
+                    .collect();
+                CppStmt::VarDecl {
+                    type_spec,
+                    declarators: ds,
+                }
             }
-            CppStmt::If { init, condition, then_body, else_body } => CppStmt::If {
-                init: init.map(|i| Box::new(Self::subst_this_in_stmt(*i, obj_name, class_fields, class_name))),
+            CppStmt::If {
+                init,
+                condition,
+                then_body,
+                else_body,
+            } => CppStmt::If {
+                init: init.map(|i| {
+                    Box::new(Self::subst_this_in_stmt(
+                        *i,
+                        obj_name,
+                        class_fields,
+                        class_name,
+                    ))
+                }),
                 condition: sub(condition),
-                then_body: Box::new(Self::subst_this_in_stmt(*then_body, obj_name, class_fields, class_name)),
-                else_body: else_body.map(|eb| Box::new(Self::subst_this_in_stmt(*eb, obj_name, class_fields, class_name))),
+                then_body: Box::new(Self::subst_this_in_stmt(
+                    *then_body,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
+                else_body: else_body.map(|eb| {
+                    Box::new(Self::subst_this_in_stmt(
+                        *eb,
+                        obj_name,
+                        class_fields,
+                        class_name,
+                    ))
+                }),
             },
             CppStmt::While { condition, body } => CppStmt::While {
                 condition: sub(condition),
-                body: Box::new(Self::subst_this_in_stmt(*body, obj_name, class_fields, class_name)),
+                body: Box::new(Self::subst_this_in_stmt(
+                    *body,
+                    obj_name,
+                    class_fields,
+                    class_name,
+                )),
             },
             CppStmt::Block(stmts) => CppStmt::Block(
-                stmts.into_iter()
+                stmts
+                    .into_iter()
                     .map(|s| Self::subst_this_in_stmt(s, obj_name, class_fields, class_name))
-                    .collect()
+                    .collect(),
             ),
             other => other,
         }
@@ -266,14 +428,28 @@ impl CppToIR {
             CppStmt::Expr(e) => CppStmt::Expr(sub(e)),
             CppStmt::Return(Some(e)) => CppStmt::Return(Some(sub(e))),
             CppStmt::Return(None) => CppStmt::Return(None),
-            CppStmt::VarDecl { type_spec, declarators } => {
-                let ds = declarators.into_iter().map(|mut d| {
-                    d.initializer = d.initializer.map(|e| sub(e));
-                    d
-                }).collect();
-                CppStmt::VarDecl { type_spec, declarators: ds }
+            CppStmt::VarDecl {
+                type_spec,
+                declarators,
+            } => {
+                let ds = declarators
+                    .into_iter()
+                    .map(|mut d| {
+                        d.initializer = d.initializer.map(|e| sub(e));
+                        d
+                    })
+                    .collect();
+                CppStmt::VarDecl {
+                    type_spec,
+                    declarators: ds,
+                }
             }
-            CppStmt::If { init, condition, then_body, else_body } => CppStmt::If {
+            CppStmt::If {
+                init,
+                condition,
+                then_body,
+                else_body,
+            } => CppStmt::If {
                 init: init.map(|i| Box::new(Self::subst_param_in_stmt(*i, param, arg))),
                 condition: sub(condition),
                 then_body: Box::new(Self::subst_param_in_stmt(*then_body, param, arg)),
@@ -284,9 +460,10 @@ impl CppToIR {
                 body: Box::new(Self::subst_param_in_stmt(*body, param, arg)),
             },
             CppStmt::Block(stmts) => CppStmt::Block(
-                stmts.into_iter()
+                stmts
+                    .into_iter()
                     .map(|s| Self::subst_param_in_stmt(s, param, arg))
-                    .collect()
+                    .collect(),
             ),
             other => other,
         }
@@ -299,10 +476,17 @@ impl CppToIR {
         // First pass: collect type aliases, class info, field names, and ctor inits
         for decl in &unit.declarations {
             match decl {
-                CppTopLevel::TypeAlias { new_name, original, .. } => {
+                CppTopLevel::TypeAlias {
+                    new_name, original, ..
+                } => {
                     self.type_aliases.push((new_name.clone(), original.clone()));
                 }
-                CppTopLevel::ClassDef { name, members, bases, .. } => {
+                CppTopLevel::ClassDef {
+                    name,
+                    members,
+                    bases,
+                    ..
+                } => {
                     let mut field_names = Vec::new();
 
                     // Collect base class fields first (for inheritance flat layout)
@@ -320,7 +504,13 @@ impl CppToIR {
 
                     for member in members {
                         match member {
-                            CppClassMember::Method { name: method_name, params, return_type, body, .. } => {
+                            CppClassMember::Method {
+                                name: method_name,
+                                params,
+                                return_type,
+                                body,
+                                ..
+                            } => {
                                 self.class_methods.push((
                                     name.clone(),
                                     method_name.clone(),
@@ -329,9 +519,8 @@ impl CppToIR {
                                 ));
                                 // Also store body for inline expansion
                                 if let Some(method_body) = body {
-                                    let param_names: Vec<String> = params.iter()
-                                        .filter_map(|p| p.name.clone())
-                                        .collect();
+                                    let param_names: Vec<String> =
+                                        params.iter().filter_map(|p| p.name.clone()).collect();
                                     self.class_method_bodies.push((
                                         name.clone(),
                                         method_name.clone(),
@@ -340,10 +529,18 @@ impl CppToIR {
                                     ));
                                 }
                             }
-                            CppClassMember::Field { name: field_name, type_spec, .. } => {
+                            CppClassMember::Field {
+                                name: field_name,
+                                type_spec,
+                                ..
+                            } => {
                                 field_names.push(field_name.clone());
                                 // Track field type for accurate inline ctor expansion
-                                self.class_field_type_map.push((name.clone(), field_name.clone(), type_spec.clone()));
+                                self.class_field_type_map.push((
+                                    name.clone(),
+                                    field_name.clone(),
+                                    type_spec.clone(),
+                                ));
                                 // Track if this class has array-typed fields
                                 if matches!(type_spec, CppType::Array(_, _)) {
                                     if !self.classes_with_array_fields.contains(name) {
@@ -351,13 +548,22 @@ impl CppToIR {
                                     }
                                 }
                             }
-                            CppClassMember::Constructor { params, initializer_list, body, .. } => {
+                            CppClassMember::Constructor {
+                                params,
+                                initializer_list,
+                                body,
+                                ..
+                            } => {
                                 // Collect ALL ctors (both default and parameterized) for inlining
-                                let param_names: Vec<String> = params.iter()
-                                    .filter_map(|p| p.name.clone())
-                                    .collect();
+                                let param_names: Vec<String> =
+                                    params.iter().filter_map(|p| p.name.clone()).collect();
                                 let body_stmts = body.clone().unwrap_or_default();
-                                self.class_ctor_inits.push((name.clone(), param_names, initializer_list.clone(), body_stmts));
+                                self.class_ctor_inits.push((
+                                    name.clone(),
+                                    param_names,
+                                    initializer_list.clone(),
+                                    body_stmts,
+                                ));
                             }
                             _ => {}
                         }
@@ -366,7 +572,9 @@ impl CppToIR {
                     // e.g., Circle → Shape's ['id'] + Circle's ['radius'] = ['id', 'radius']
                     let mut all_field_names = Vec::new();
                     for base in bases.iter() {
-                        let base_fields: Vec<String> = self.class_fields.iter()
+                        let base_fields: Vec<String> = self
+                            .class_fields
+                            .iter()
                             .find(|(cn, _)| cn == &base.name)
                             .map(|(_, f)| f.clone())
                             .unwrap_or_default();
@@ -381,7 +589,8 @@ impl CppToIR {
                             all_field_names.push(f.clone());
                         }
                     }
-                    self.class_fields.push((name.clone(), all_field_names.clone()));
+                    self.class_fields
+                        .push((name.clone(), all_field_names.clone()));
                     self.class_field_order.push((name.clone(), all_field_names));
 
                     // Propagate inherited method bodies from base classes to this derived class
@@ -389,23 +598,34 @@ impl CppToIR {
                     // NOTE: this needs to be a second loop after all classes are processed;
                     // we'll do the propagation right here only for already-processed bases.
                     for base in bases.iter() {
-                        let inherited: Vec<(String, String, Vec<String>, Vec<CppStmt>)> = self.class_method_bodies.iter()
+                        let inherited: Vec<(String, String, Vec<String>, Vec<CppStmt>)> = self
+                            .class_method_bodies
+                            .iter()
                             .filter(|(cn, _, _, _)| cn == &base.name)
-                            .map(|(_, mn, params, body)| (name.clone(), mn.clone(), params.clone(), body.clone()))
+                            .map(|(_, mn, params, body)| {
+                                (name.clone(), mn.clone(), params.clone(), body.clone())
+                            })
                             .collect();
                         for entry in inherited {
                             // Only add if derived class doesn't already define this method
-                            if !self.class_method_bodies.iter().any(|(cn, mn, _, _)| cn == &entry.0 && mn == &entry.1) {
+                            if !self
+                                .class_method_bodies
+                                .iter()
+                                .any(|(cn, mn, _, _)| cn == &entry.0 && mn == &entry.1)
+                            {
                                 self.class_method_bodies.push(entry);
                             }
                         }
                     }
                 }
                 CppTopLevel::FunctionDef { name, params, .. } => {
-                    let ref_flags: Vec<bool> = params.iter()
+                    let ref_flags: Vec<bool> = params
+                        .iter()
                         .map(|p| match &p.param_type {
                             CppType::Reference(_) => true,
-                            CppType::Const(inner) => matches!(inner.as_ref(), CppType::Reference(_)),
+                            CppType::Const(inner) => {
+                                matches!(inner.as_ref(), CppType::Reference(_))
+                            }
                             _ => false,
                         })
                         .collect();
@@ -420,11 +640,22 @@ impl CppToIR {
         // Second pass: convert declarations
         for decl in &unit.declarations {
             match decl {
-                CppTopLevel::FunctionDef { return_type, name, params, body, .. } => {
+                CppTopLevel::FunctionDef {
+                    return_type,
+                    name,
+                    params,
+                    body,
+                    ..
+                } => {
                     let func = self.convert_function(return_type, name, params, body)?;
                     program.functions.push(func);
                 }
-                CppTopLevel::ClassDef { name, members, bases, .. } => {
+                CppTopLevel::ClassDef {
+                    name,
+                    members,
+                    bases,
+                    ..
+                } => {
                     // Convert class to struct + methods as functions
                     let ir_struct = self.convert_class_to_struct(name, members, bases)?;
                     program.structs.push(ir_struct);
@@ -433,31 +664,49 @@ impl CppToIR {
                     for member in members {
                         match member {
                             CppClassMember::Method {
-                                name: method_name, return_type, params, body: Some(body), ..
+                                name: method_name,
+                                return_type,
+                                params,
+                                body: Some(body),
+                                ..
                             } => {
                                 let func_name = format!("{}::{}", name, method_name);
-                                let func = self.convert_method(return_type, &func_name, name, params, body)?;
+                                let func = self.convert_method(
+                                    return_type,
+                                    &func_name,
+                                    name,
+                                    params,
+                                    body,
+                                )?;
                                 program.functions.push(func);
                             }
                             CppClassMember::Constructor {
-                                params, body: Some(body), initializer_list, ..
+                                params,
+                                body: Some(body),
+                                initializer_list,
+                                ..
                             } => {
                                 let _func_name = format!("{}::{}", name, name);
-                                let func = self.convert_constructor(name, params, initializer_list, body)?;
+                                let func =
+                                    self.convert_constructor(name, params, initializer_list, body)?;
                                 program.functions.push(func);
                             }
-                            CppClassMember::Destructor { body: Some(body), .. } => {
+                            CppClassMember::Destructor {
+                                body: Some(body), ..
+                            } => {
                                 let func_name = format!("{}::~{}", name, name);
-                                let func = self.convert_function(
-                                    &CppType::Void, &func_name, &[], body
-                                )?;
+                                let func =
+                                    self.convert_function(&CppType::Void, &func_name, &[], body)?;
                                 program.functions.push(func);
                             }
                             _ => {}
                         }
                     }
                 }
-                CppTopLevel::Namespace { name: ns_name, declarations } => {
+                CppTopLevel::Namespace {
+                    name: ns_name,
+                    declarations,
+                } => {
                     // Collect all function names in this namespace for unqualified call resolution
                     self.namespace_functions.clear();
                     for inner_decl in declarations.iter() {
@@ -470,17 +719,40 @@ impl CppToIR {
                     // Flatten namespace â€” prefix function names with ns::
                     for inner_decl in declarations {
                         match inner_decl {
-                            CppTopLevel::FunctionDef { return_type, name: fname, params, body, .. } => {
+                            CppTopLevel::FunctionDef {
+                                return_type,
+                                name: fname,
+                                params,
+                                body,
+                                ..
+                            } => {
                                 let qualified = format!("{}::{}", ns_name, fname);
-                                let func = self.convert_function(return_type, &qualified, params, body)?;
+                                let func =
+                                    self.convert_function(return_type, &qualified, params, body)?;
                                 program.functions.push(func);
                             }
-                            CppTopLevel::Namespace { name: inner_ns, declarations: inner_decls } => {
+                            CppTopLevel::Namespace {
+                                name: inner_ns,
+                                declarations: inner_decls,
+                            } => {
                                 // Nested namespace: ns::inner::func
                                 for inner2 in inner_decls {
-                                    if let CppTopLevel::FunctionDef { return_type, name: fname, params, body, .. } = inner2 {
-                                        let qualified = format!("{}::{}::{}", ns_name, inner_ns, fname);
-                                        let func = self.convert_function(return_type, &qualified, params, body)?;
+                                    if let CppTopLevel::FunctionDef {
+                                        return_type,
+                                        name: fname,
+                                        params,
+                                        body,
+                                        ..
+                                    } = inner2
+                                    {
+                                        let qualified =
+                                            format!("{}::{}::{}", ns_name, inner_ns, fname);
+                                        let func = self.convert_function(
+                                            return_type,
+                                            &qualified,
+                                            params,
+                                            body,
+                                        )?;
                                         program.functions.push(func);
                                     }
                                 }
@@ -492,7 +764,9 @@ impl CppToIR {
                     self.current_namespace = None;
                     self.namespace_functions.clear();
                 }
-                CppTopLevel::EnumDef { name: _, values, .. } => {
+                CppTopLevel::EnumDef {
+                    name: _, values, ..
+                } => {
                     // Enum constants become global assignments
                     for (i, (ident, val)) in values.iter().enumerate() {
                         let value = if let Some(expr) = val {
@@ -507,7 +781,10 @@ impl CppToIR {
                         });
                     }
                 }
-                CppTopLevel::GlobalVar { type_spec, declarators } => {
+                CppTopLevel::GlobalVar {
+                    type_spec,
+                    declarators,
+                } => {
                     for d in declarators {
                         let var_type = self.convert_type(type_spec);
                         let init = if let Some(ref e) = d.initializer {
@@ -526,7 +803,14 @@ impl CppToIR {
                 CppTopLevel::UsingNamespace(_) => {}
                 CppTopLevel::ExternC { declarations } => {
                     for inner in declarations {
-                        if let CppTopLevel::FunctionDef { return_type, name, params, body, .. } = inner {
+                        if let CppTopLevel::FunctionDef {
+                            return_type,
+                            name,
+                            params,
+                            body,
+                            ..
+                        } = inner
+                        {
                             let func = self.convert_function(return_type, name, params, body)?;
                             program.functions.push(func);
                         }
@@ -562,19 +846,24 @@ impl CppToIR {
                 _ => Type::U32,
             },
             CppType::Signed(inner) => self.convert_type(inner),
-            CppType::Const(inner) | CppType::Volatile(inner) | CppType::Mutable(inner) |
-            CppType::Constexpr(inner) => self.convert_type(inner),
+            CppType::Const(inner)
+            | CppType::Volatile(inner)
+            | CppType::Mutable(inner)
+            | CppType::Constexpr(inner) => self.convert_type(inner),
             CppType::Pointer(inner) => Type::Pointer(Box::new(self.convert_type(inner))),
-            CppType::Reference(inner) | CppType::RValueRef(inner) =>
-                Type::Reference(Box::new(self.convert_type(inner))),
+            CppType::Reference(inner) | CppType::RValueRef(inner) => {
+                Type::Reference(Box::new(self.convert_type(inner)))
+            }
             CppType::Array(inner, size) => Type::Array(Box::new(self.convert_type(inner)), *size),
-            CppType::Named(name) | CppType::Class(name) | CppType::Struct(name) =>
-                Type::Named(name.clone()),
+            CppType::Named(name) | CppType::Class(name) | CppType::Struct(name) => {
+                Type::Named(name.clone())
+            }
             CppType::Enum(_) => Type::I32,
             CppType::StdString => Type::Str,
             CppType::StdVector(inner) => Type::Array(Box::new(self.convert_type(inner)), None),
-            CppType::UniquePtr(inner) | CppType::SharedPtr(inner) | CppType::WeakPtr(inner) =>
-                Type::Pointer(Box::new(self.convert_type(inner))),
+            CppType::UniquePtr(inner) | CppType::SharedPtr(inner) | CppType::WeakPtr(inner) => {
+                Type::Pointer(Box::new(self.convert_type(inner)))
+            }
             CppType::StdOptional(inner) => self.convert_type(inner),
             CppType::SizeT => Type::U64,
             CppType::Nullptr => Type::Pointer(Box::new(Type::Void)),
@@ -591,10 +880,20 @@ impl CppToIR {
 
     // ========== Class â†’ Struct ==========
 
-    fn convert_class_to_struct(&self, name: &str, members: &[CppClassMember], _bases: &[CppBaseClass]) -> Result<IrStruct, String> {
+    fn convert_class_to_struct(
+        &self,
+        name: &str,
+        members: &[CppClassMember],
+        _bases: &[CppBaseClass],
+    ) -> Result<IrStruct, String> {
         let mut fields = Vec::new();
         for member in members {
-            if let CppClassMember::Field { type_spec, name: field_name, .. } = member {
+            if let CppClassMember::Field {
+                type_spec,
+                name: field_name,
+                ..
+            } = member
+            {
                 fields.push(StructField {
                     name: field_name.clone(),
                     field_type: self.convert_type(type_spec),
@@ -610,14 +909,21 @@ impl CppToIR {
 
     // ========== Function conversion ==========
 
-    fn convert_function(&mut self, ret_type: &CppType, name: &str, params: &[CppParam], body: &[CppStmt]) -> Result<Function, String> {
-        let ir_params: Vec<Param> = params.iter().map(|p| {
-            Param {
+    fn convert_function(
+        &mut self,
+        ret_type: &CppType,
+        name: &str,
+        params: &[CppParam],
+        body: &[CppStmt],
+    ) -> Result<Function, String> {
+        let ir_params: Vec<Param> = params
+            .iter()
+            .map(|p| Param {
                 name: p.name.clone().unwrap_or_else(|| "unnamed".to_string()),
                 param_type: self.convert_type(&p.param_type),
                 default_value: None,
-            }
-        }).collect();
+            })
+            .collect();
 
         let mut ir_body = Vec::new();
         for stmt in body {
@@ -634,10 +940,17 @@ impl CppToIR {
         })
     }
 
-    fn convert_method(&mut self, ret_type: &CppType, func_name: &str, class_name: &str, params: &[CppParam], body: &[CppStmt]) -> Result<Function, String> {
+    fn convert_method(
+        &mut self,
+        ret_type: &CppType,
+        func_name: &str,
+        class_name: &str,
+        params: &[CppParam],
+        body: &[CppStmt],
+    ) -> Result<Function, String> {
         // Set current class for this-> resolution
         self.current_class = Some(class_name.to_string());
-        
+
         // Add implicit 'this' pointer as first param
         let mut all_params = vec![CppParam {
             param_type: CppType::Pointer(Box::new(CppType::Named(class_name.to_string()))),
@@ -647,17 +960,23 @@ impl CppToIR {
         }];
         all_params.extend_from_slice(params);
         let result = self.convert_function(ret_type, func_name, &all_params, body);
-        
+
         self.current_class = None;
         result
     }
 
-    fn convert_constructor(&mut self, class_name: &str, params: &[CppParam], init_list: &[(String, CppExpr)], body: &[CppStmt]) -> Result<Function, String> {
+    fn convert_constructor(
+        &mut self,
+        class_name: &str,
+        params: &[CppParam],
+        init_list: &[(String, CppExpr)],
+        body: &[CppStmt],
+    ) -> Result<Function, String> {
         // Set current class for this-> resolution
         self.current_class = Some(class_name.to_string());
-        
+
         let func_name = format!("{}::{}", class_name, class_name);
-        
+
         // Add implicit 'this' pointer as first param (like methods)
         let mut all_params = vec![CppParam {
             param_type: CppType::Pointer(Box::new(CppType::Named(class_name.to_string()))),
@@ -666,7 +985,7 @@ impl CppToIR {
             is_variadic: false,
         }];
         all_params.extend_from_slice(params);
-        
+
         // Convert initializer list to field assignments at start of body
         let mut full_body = Vec::new();
         for (field, expr) in init_list {
@@ -679,7 +998,7 @@ impl CppToIR {
             }));
         }
         full_body.extend_from_slice(body);
-        
+
         let result = self.convert_function(&CppType::Void, &func_name, &all_params, &full_body);
         self.current_class = None;
         result
@@ -689,6 +1008,7 @@ impl CppToIR {
 
     fn convert_stmt(&mut self, stmt: &CppStmt) -> Result<Vec<Stmt>, String> {
         match stmt {
+            CppStmt::LineMarker(l) => Ok(vec![Stmt::LineMarker(*l)]),
             CppStmt::Expr(expr) => {
                 // ── Inline method expansion ────────────────────────────────────
                 // Peek at expr as a reference to see if it's a method call on a
@@ -699,8 +1019,12 @@ impl CppToIR {
                         if let CppExpr::MemberAccess { object, member } = callee.as_ref() {
                             if let CppExpr::Identifier(obj_name) = object.as_ref() {
                                 if let Some(class_name) = self.class_for_var(obj_name) {
-                                    let method_data = self.class_method_bodies.iter()
-                                        .find(|(cn, mn, _, _)| cn == &class_name && mn == member.as_str())
+                                    let method_data = self
+                                        .class_method_bodies
+                                        .iter()
+                                        .find(|(cn, mn, _, _)| {
+                                            cn == &class_name && mn == member.as_str()
+                                        })
                                         .map(|(_, _, params, body)| (params.clone(), body.clone()));
 
                                     if let Some((method_params, method_body)) = method_data {
@@ -710,9 +1034,16 @@ impl CppToIR {
                                         fn has_return(stmts: &[CppStmt]) -> bool {
                                             stmts.iter().any(|s| match s {
                                                 CppStmt::Return(Some(_)) => true,
-                                                CppStmt::If { then_body, else_body, .. } => {
-                                                    has_return(&[*then_body.clone()]) ||
-                                                    else_body.as_ref().map(|eb| has_return(&[*eb.clone()])).unwrap_or(false)
+                                                CppStmt::If {
+                                                    then_body,
+                                                    else_body,
+                                                    ..
+                                                } => {
+                                                    has_return(&[*then_body.clone()])
+                                                        || else_body
+                                                            .as_ref()
+                                                            .map(|eb| has_return(&[*eb.clone()]))
+                                                            .unwrap_or(false)
                                                 }
                                                 CppStmt::Block(inner) => has_return(inner),
                                                 _ => false,
@@ -722,37 +1053,64 @@ impl CppToIR {
                                             // Fall through to normal function call path
                                             None
                                         } else {
-                                        let class_fields_clone = self.class_fields.clone();
-                                        let obj_name_clone = obj_name.clone();
-                                        let args_clone: Vec<CppExpr> = args.clone();
+                                            let class_fields_clone = self.class_fields.clone();
+                                            let obj_name_clone = obj_name.clone();
+                                            let args_clone: Vec<CppExpr> = args.clone();
 
-                                        let substituted: Vec<CppStmt> = method_body.into_iter()
-                                            .map(|s| {
-                                                let mut s2 = s;
-                                                for (i, param_name) in method_params.iter().enumerate() {
-                                                    if let Some(arg_expr) = args_clone.get(i) {
-                                                        s2 = Self::subst_param_in_stmt(s2, param_name, arg_expr);
+                                            let substituted: Vec<CppStmt> = method_body
+                                                .into_iter()
+                                                .map(|s| {
+                                                    let mut s2 = s;
+                                                    for (i, param_name) in
+                                                        method_params.iter().enumerate()
+                                                    {
+                                                        if let Some(arg_expr) = args_clone.get(i) {
+                                                            s2 = Self::subst_param_in_stmt(
+                                                                s2, param_name, arg_expr,
+                                                            );
+                                                        }
+                                                    }
+                                                    Self::subst_this_in_stmt(
+                                                        s2,
+                                                        &obj_name_clone,
+                                                        &class_fields_clone,
+                                                        &class_name,
+                                                    )
+                                                })
+                                                .collect();
+
+                                            let mut result = Vec::new();
+                                            let mut ok = true;
+                                            for s in &substituted {
+                                                match self.convert_stmt(s) {
+                                                    Ok(ir) => result.extend(ir),
+                                                    Err(_) => {
+                                                        ok = false;
+                                                        break;
                                                     }
                                                 }
-                                                Self::subst_this_in_stmt(s2, &obj_name_clone, &class_fields_clone, &class_name)
-                                            })
-                                            .collect();
-
-                                        let mut result = Vec::new();
-                                        let mut ok = true;
-                                        for s in &substituted {
-                                            match self.convert_stmt(s) {
-                                                Ok(ir) => result.extend(ir),
-                                                Err(_) => { ok = false; break; }
                                             }
-                                        }
-                                        if ok { Some(result) } else { None }
+                                            if ok {
+                                                Some(result)
+                                            } else {
+                                                None
+                                            }
                                         } // close else (no return)
-                                    } else { None }
-                                } else { None }
-                            } else { None }
-                        } else { None }
-                    } else { None }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 };
                 if let Some(stmts) = inline_stmts {
                     return Ok(stmts);
@@ -765,14 +1123,19 @@ impl CppToIR {
                     CppExpr::Assign { target, value } => {
                         if let CppExpr::Identifier(name) = target.as_ref() {
                             let v = self.convert_expr(value)?;
-                            return Ok(vec![Stmt::Assign { name: name.clone(), value: v }]);
+                            return Ok(vec![Stmt::Assign {
+                                name: name.clone(),
+                                value: v,
+                            }]);
                         }
                         // Field assignment: obj.field = value
                         if let CppExpr::MemberAccess { object, member } = target.as_ref() {
                             let obj = self.convert_expr(object)?;
                             let v = self.convert_expr(value)?;
                             return Ok(vec![Stmt::FieldAssign {
-                                object: obj, field: member.clone(), value: v,
+                                object: obj,
+                                field: member.clone(),
+                                value: v,
                             }]);
                         }
                         // Array index assignment: arr[i] = value
@@ -781,7 +1144,9 @@ impl CppToIR {
                             let idx = self.convert_expr(index)?;
                             let v = self.convert_expr(value)?;
                             return Ok(vec![Stmt::IndexAssign {
-                                object: obj, index: idx, value: v,
+                                object: obj,
+                                index: idx,
+                                value: v,
                             }]);
                         }
                         let v = self.convert_expr(value)?;
@@ -804,13 +1169,19 @@ impl CppToIR {
                                 _ => CompoundOp::AddAssign,
                             };
                             return Ok(vec![Stmt::CompoundAssign {
-                                name: name.clone(), op: comp_op, value: v,
+                                name: name.clone(),
+                                op: comp_op,
+                                value: v,
                             }]);
                         }
                         let v = self.convert_expr(value)?;
                         return Ok(vec![Stmt::Expr(v)]);
                     }
-                    CppExpr::UnaryOp { op, expr: inner, is_prefix } => {
+                    CppExpr::UnaryOp {
+                        op,
+                        expr: inner,
+                        is_prefix,
+                    } => {
                         use super::cpp_ast::CppUnaryOp;
                         match op {
                             CppUnaryOp::PreInc | CppUnaryOp::PostInc => {
@@ -843,7 +1214,10 @@ impl CppToIR {
                 }
                 Ok(vec![Stmt::Expr(ir_expr)])
             }
-            CppStmt::VarDecl { type_spec, declarators } => {
+            CppStmt::VarDecl {
+                type_spec,
+                declarators,
+            } => {
                 let mut stmts = Vec::new();
                 for d in declarators {
                     let mut var_type = self.convert_type(type_spec);
@@ -866,28 +1240,54 @@ impl CppToIR {
                     }
                     // For class types, emit a zero placeholder VarDecl so the ISA
                     // can allocate the stack slot. Flat sub-fields carry the real values.
-                    let is_known_class = if let CppType::Named(cn) | CppType::Class(cn) | CppType::Struct(cn) = type_spec {
+                    let is_known_class = if let CppType::Named(cn)
+                    | CppType::Class(cn)
+                    | CppType::Struct(cn) = type_spec
+                    {
                         self.class_fields.iter().any(|(n, _)| n == cn)
-                    } else { false };
+                    } else {
+                        false
+                    };
                     if is_known_class {
                         // Emit parent as zero (a placeholder); real data is in c.field vars
-                        stmts.push(Stmt::VarDecl { var_type, name: d.name.clone(), value: Some(Expr::Number(0)) });
+                        stmts.push(Stmt::VarDecl {
+                            var_type,
+                            name: d.name.clone(),
+                            value: Some(Expr::Number(0)),
+                        });
                     } else {
-                        let init = if let Some(ref e) = d.initializer { Some(self.convert_expr(e)?) } else { None };
+                        let init = if let Some(ref e) = d.initializer {
+                            Some(self.convert_expr(e)?)
+                        } else {
+                            None
+                        };
                         // For local reference vars (int &ref = x), wrap init in AddressOf
                         let init = if matches!(&var_type, Type::Reference(_)) {
                             init.map(|v| {
-                                if matches!(&v, Expr::AddressOf(_)) { v }
-                                else { Expr::AddressOf(Box::new(v)) }
+                                if matches!(&v, Expr::AddressOf(_)) {
+                                    v
+                                } else {
+                                    Expr::AddressOf(Box::new(v))
+                                }
                             })
-                        } else { init };
-                        stmts.push(Stmt::VarDecl { var_type, name: d.name.clone(), value: init });
+                        } else {
+                            init
+                        };
+                        stmts.push(Stmt::VarDecl {
+                            var_type,
+                            name: d.name.clone(),
+                            value: init,
+                        });
                     }
 
                     // If this is a class/struct type, track it and inline constructor
-                    if let CppType::Named(class_name) | CppType::Class(class_name) | CppType::Struct(class_name) = type_spec {
+                    if let CppType::Named(class_name)
+                    | CppType::Class(class_name)
+                    | CppType::Struct(class_name) = type_spec
+                    {
                         // Register variable â†’ class mapping for MethodCall resolution
-                        self.variable_types.push((d.name.clone(), class_name.clone()));
+                        self.variable_types
+                            .push((d.name.clone(), class_name.clone()));
 
                         let ctor_args: Vec<CppExpr> = if let Some(ref e) = d.initializer {
                             match e {
@@ -900,22 +1300,34 @@ impl CppToIR {
                         };
 
                         // Find the best matching ctor (by arity)
-                        let ctor_data = self.class_ctor_inits.iter()
-                            .find(|(cn, params, _, _)| cn == class_name && params.len() == ctor_args.len())
-                            .or_else(|| self.class_ctor_inits.iter()
-                                .find(|(cn, _, _, _)| cn == class_name))
-                            .map(|(_, params, inits, body)| (params.clone(), inits.clone(), body.clone()));
+                        let ctor_data = self
+                            .class_ctor_inits
+                            .iter()
+                            .find(|(cn, params, _, _)| {
+                                cn == class_name && params.len() == ctor_args.len()
+                            })
+                            .or_else(|| {
+                                self.class_ctor_inits
+                                    .iter()
+                                    .find(|(cn, _, _, _)| cn == class_name)
+                            })
+                            .map(|(_, params, inits, body)| {
+                                (params.clone(), inits.clone(), body.clone())
+                            });
 
                         if let Some((ctor_params, ctor_field_inits, ctor_body_stmts)) = ctor_data {
                             // Inline ctor: emit flat field VarDecls, substituting params with args
                             // Counter c2(5) → c2.value=0, c2.max_value=5
-                            let field_names: Vec<String> = self.class_fields.iter()
+                            let field_names: Vec<String> = self
+                                .class_fields
+                                .iter()
                                 .find(|(cn, _)| cn == class_name)
                                 .map(|(_, f)| f.clone())
                                 .unwrap_or_default();
 
                             // Build a param → arg substitution table (as CppExpr)
-                            let substitutions: Vec<(String, CppExpr)> = ctor_params.iter()
+                            let substitutions: Vec<(String, CppExpr)> = ctor_params
+                                .iter()
                                 .zip(ctor_args.iter())
                                 .map(|(p, a)| (p.clone(), a.clone()))
                                 .collect();
@@ -923,13 +1335,16 @@ impl CppToIR {
                             for fname in &field_names {
                                 let flat_name = format!("{}.{}", d.name, fname);
                                 // Determine the correct IR type for this field
-                                let field_ir_type = self.class_field_type_map.iter()
+                                let field_ir_type = self
+                                    .class_field_type_map
+                                    .iter()
                                     .find(|(cn, fn2, _)| cn == class_name && fn2 == fname)
                                     .map(|(_, _, cpp_ty)| self.convert_type(cpp_ty))
                                     .unwrap_or(Type::I64);
                                 // Find the init expr for this field in the ctor init list
                                 // First check direct field inits (this field's own init)
-                                let raw_expr = ctor_field_inits.iter()
+                                let raw_expr = ctor_field_inits
+                                    .iter()
                                     .find(|(fn2, _)| fn2 == fname)
                                     .map(|(_, e)| e.clone());
 
@@ -947,8 +1362,8 @@ impl CppToIR {
                                     let mut base_val = None;
                                     for (init_name, init_expr) in &ctor_field_inits {
                                         // If init_name is a class name (base init call), expand it
-                                        let is_class_name = self.class_fields.iter()
-                                            .any(|(cn, _)| cn == init_name);
+                                        let is_class_name =
+                                            self.class_fields.iter().any(|(cn, _)| cn == init_name);
                                         if is_class_name {
                                             // Find the base class's ctor that matches the args
                                             let base_ctor_args = match init_expr {
@@ -957,16 +1372,32 @@ impl CppToIR {
                                                 other => vec![other.clone()],
                                             };
                                             // Find base ctor with exact arity match first
-                                            let base_ctor = self.class_ctor_inits.iter()
-                                                .find(|(cn, params, _, _)| cn == init_name && params.len() == base_ctor_args.len())
-                                                .or_else(|| if base_ctor_args.is_empty() {
-                                                    // fallback to default ctor only when no args
-                                                    self.class_ctor_inits.iter().find(|(cn, params, _, _)| cn == init_name && params.is_empty())
-                                                } else { None })
-                                                .map(|(_, params, inits, _)| (params.clone(), inits.clone()));
+                                            let base_ctor = self
+                                                .class_ctor_inits
+                                                .iter()
+                                                .find(|(cn, params, _, _)| {
+                                                    cn == init_name
+                                                        && params.len() == base_ctor_args.len()
+                                                })
+                                                .or_else(|| {
+                                                    if base_ctor_args.is_empty() {
+                                                        // fallback to default ctor only when no args
+                                                        self.class_ctor_inits.iter().find(
+                                                            |(cn, params, _, _)| {
+                                                                cn == init_name && params.is_empty()
+                                                            },
+                                                        )
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                                .map(|(_, params, inits, _)| {
+                                                    (params.clone(), inits.clone())
+                                                });
                                             if let Some((base_params, base_inits)) = base_ctor {
                                                 // Build substitution of base ctor params with args
-                                                let base_subs: Vec<(String, CppExpr)> = base_params.iter()
+                                                let base_subs: Vec<(String, CppExpr)> = base_params
+                                                    .iter()
                                                     .zip(base_ctor_args.iter())
                                                     .map(|(p, a)| {
                                                         // Also substitute our own params in args
@@ -978,12 +1409,17 @@ impl CppToIR {
                                                     })
                                                     .collect();
                                                 // Check if 'fname' is in base inits
-                                                if let Some((_, field_expr)) = base_inits.iter().find(|(fn2, _)| fn2 == fname) {
+                                                if let Some((_, field_expr)) =
+                                                    base_inits.iter().find(|(fn2, _)| fn2 == fname)
+                                                {
                                                     let mut expr = field_expr.clone();
                                                     for (pn, pe) in &base_subs {
                                                         expr = Self::subst_param(expr, pn, pe);
                                                     }
-                                                    base_val = Some(self.convert_expr(&expr).unwrap_or(Expr::Number(0)));
+                                                    base_val = Some(
+                                                        self.convert_expr(&expr)
+                                                            .unwrap_or(Expr::Number(0)),
+                                                    );
                                                     break;
                                                 }
                                             }
@@ -991,7 +1427,6 @@ impl CppToIR {
                                     }
                                     base_val.unwrap_or(Expr::Number(0))
                                 };
-
 
                                 stmts.push(Stmt::VarDecl {
                                     var_type: field_ir_type,
@@ -1014,7 +1449,12 @@ impl CppToIR {
                                         }
                                     }
                                     // Substitute this->field with obj.field
-                                    s = Self::subst_this_in_stmt(s, &obj_name, &class_fields_clone, &class_name_owned);
+                                    s = Self::subst_this_in_stmt(
+                                        s,
+                                        &obj_name,
+                                        &class_fields_clone,
+                                        &class_name_owned,
+                                    );
                                     match self.convert_stmt(&s) {
                                         Ok(ir_stmts) => stmts.extend(ir_stmts),
                                         Err(_) => {} // Skip statements that can't be converted
@@ -1024,10 +1464,12 @@ impl CppToIR {
                         } else if !ctor_args.is_empty() {
                             // No ctor info found → fallback to function call
                             let ctor_name = format!("{}::{}", class_name, class_name);
-                            let ir_ctor_args: Vec<Expr> = ctor_args.iter()
+                            let ir_ctor_args: Vec<Expr> = ctor_args
+                                .iter()
                                 .map(|a| self.convert_expr(a))
                                 .collect::<Result<Vec<_>, _>>()?;
-                            let mut call_args = vec![Expr::AddressOf(Box::new(Expr::Variable(d.name.clone())))];
+                            let mut call_args =
+                                vec![Expr::AddressOf(Box::new(Expr::Variable(d.name.clone())))];
                             call_args.extend(ir_ctor_args);
                             stmts.push(Stmt::Expr(Expr::Call {
                                 name: ctor_name,
@@ -1039,12 +1481,8 @@ impl CppToIR {
                 Ok(stmts)
             }
 
-            CppStmt::Return(Some(expr)) => {
-                Ok(vec![Stmt::Return(Some(self.convert_expr(expr)?))])
-            }
-            CppStmt::Return(None) => {
-                Ok(vec![Stmt::Return(None)])
-            }
+            CppStmt::Return(Some(expr)) => Ok(vec![Stmt::Return(Some(self.convert_expr(expr)?))]),
+            CppStmt::Return(None) => Ok(vec![Stmt::Return(None)]),
             CppStmt::Block(stmts) => {
                 let mut ir_stmts = Vec::new();
                 for s in stmts {
@@ -1052,7 +1490,12 @@ impl CppToIR {
                 }
                 Ok(ir_stmts)
             }
-            CppStmt::If { condition, then_body, else_body, .. } => {
+            CppStmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 let cond = self.convert_expr(condition)?;
                 let then_stmts = self.convert_stmt(then_body)?;
                 let else_stmts = if let Some(eb) = else_body {
@@ -1069,20 +1512,32 @@ impl CppToIR {
             CppStmt::While { condition, body } => {
                 let cond = self.convert_expr(condition)?;
                 let body_stmts = self.convert_stmt(body)?;
-                Ok(vec![Stmt::While { condition: cond, body: body_stmts }])
+                Ok(vec![Stmt::While {
+                    condition: cond,
+                    body: body_stmts,
+                }])
             }
             CppStmt::DoWhile { body, condition } => {
                 let body_stmts = self.convert_stmt(body)?;
                 let cond = self.convert_expr(condition)?;
-                Ok(vec![Stmt::DoWhile { body: body_stmts, condition: cond }])
+                Ok(vec![Stmt::DoWhile {
+                    body: body_stmts,
+                    condition: cond,
+                }])
             }
-            CppStmt::For { init, condition, increment, body } => {
+            CppStmt::For {
+                init,
+                condition,
+                increment,
+                body,
+            } => {
                 // Convert C++ for to while
                 let mut stmts = Vec::new();
                 if let Some(init_stmt) = init {
                     stmts.extend(self.convert_stmt(init_stmt)?);
                 }
-                let cond = condition.as_ref()
+                let cond = condition
+                    .as_ref()
                     .map(|c| self.convert_expr(c))
                     .transpose()?
                     .unwrap_or(Expr::Bool(true));
@@ -1092,19 +1547,35 @@ impl CppToIR {
                     // (e.g., i++ â†’ Stmt::Increment, i += 1 â†’ Stmt::CompoundAssign)
                     let inc_ref: &CppExpr = &inc;
                     let inc_stmt = match inc_ref {
-                        CppExpr::UnaryOp { op, expr: inner, is_prefix } => {
+                        CppExpr::UnaryOp {
+                            op,
+                            expr: inner,
+                            is_prefix,
+                        } => {
                             use super::cpp_ast::CppUnaryOp;
                             let is_pre = *is_prefix;
                             match op {
                                 CppUnaryOp::PreInc | CppUnaryOp::PostInc => {
                                     if let CppExpr::Identifier(name) = inner.as_ref() {
-                                        Some(Stmt::Increment { name: name.clone(), is_pre, is_increment: true })
-                                    } else { None }
+                                        Some(Stmt::Increment {
+                                            name: name.clone(),
+                                            is_pre,
+                                            is_increment: true,
+                                        })
+                                    } else {
+                                        None
+                                    }
                                 }
                                 CppUnaryOp::PreDec | CppUnaryOp::PostDec => {
                                     if let CppExpr::Identifier(name) = inner.as_ref() {
-                                        Some(Stmt::Increment { name: name.clone(), is_pre, is_increment: false })
-                                    } else { None }
+                                        Some(Stmt::Increment {
+                                            name: name.clone(),
+                                            is_pre,
+                                            is_increment: false,
+                                        })
+                                    } else {
+                                        None
+                                    }
                                 }
                                 _ => None,
                             }
@@ -1120,14 +1591,25 @@ impl CppToIR {
                                     CppBinOp::Mod => CompoundOp::ModAssign,
                                     _ => CompoundOp::AddAssign,
                                 };
-                                Some(Stmt::CompoundAssign { name: name.clone(), op: comp_op, value: v })
-                            } else { None }
+                                Some(Stmt::CompoundAssign {
+                                    name: name.clone(),
+                                    op: comp_op,
+                                    value: v,
+                                })
+                            } else {
+                                None
+                            }
                         }
                         CppExpr::Assign { target, value } => {
                             if let CppExpr::Identifier(name) = target.as_ref() {
                                 let v = self.convert_expr(value)?;
-                                Some(Stmt::Assign { name: name.clone(), value: v })
-                            } else { None }
+                                Some(Stmt::Assign {
+                                    name: name.clone(),
+                                    value: v,
+                                })
+                            } else {
+                                None
+                            }
                         }
                         _ => None,
                     };
@@ -1135,10 +1617,18 @@ impl CppToIR {
                         Stmt::Expr(self.convert_expr(inc_ref).unwrap_or(Expr::Number(0)))
                     }));
                 }
-                stmts.push(Stmt::While { condition: cond, body: body_stmts });
+                stmts.push(Stmt::While {
+                    condition: cond,
+                    body: body_stmts,
+                });
                 Ok(stmts)
             }
-            CppStmt::RangeFor { name, iterable, body, .. } => {
+            CppStmt::RangeFor {
+                name,
+                iterable,
+                body,
+                ..
+            } => {
                 let iter_expr = self.convert_expr(iterable)?;
                 let body_stmts = self.convert_stmt(body)?;
                 Ok(vec![Stmt::ForEach {
@@ -1147,17 +1637,32 @@ impl CppToIR {
                     body: body_stmts,
                 }])
             }
-            CppStmt::Switch { expr, cases, default } => {
+            CppStmt::Switch {
+                expr,
+                cases,
+                default,
+            } => {
                 let switch_expr = self.convert_expr(expr)?;
-                let ir_cases: Vec<SwitchCase> = cases.iter().map(|c| {
-                    let val = self.convert_expr(&c.value).unwrap_or(Expr::Number(0));
-                    let body: Vec<Stmt> = c.body.iter()
-                        .flat_map(|s| self.convert_stmt(s).unwrap_or_default())
-                        .collect();
-                    SwitchCase { value: val, body, has_break: true }
-                }).collect();
+                let ir_cases: Vec<SwitchCase> = cases
+                    .iter()
+                    .map(|c| {
+                        let val = self.convert_expr(&c.value).unwrap_or(Expr::Number(0));
+                        let body: Vec<Stmt> = c
+                            .body
+                            .iter()
+                            .flat_map(|s| self.convert_stmt(s).unwrap_or_default())
+                            .collect();
+                        SwitchCase {
+                            value: val,
+                            body,
+                            has_break: true,
+                        }
+                    })
+                    .collect();
                 let default_body = default.as_ref().map(|d| {
-                    d.iter().flat_map(|s| self.convert_stmt(s).unwrap_or_default()).collect()
+                    d.iter()
+                        .flat_map(|s| self.convert_stmt(s).unwrap_or_default())
+                        .collect()
                 });
                 Ok(vec![Stmt::Switch {
                     expr: switch_expr,
@@ -1179,11 +1684,9 @@ impl CppToIR {
                 Ok(stmts)
             }
             CppStmt::Throw(_) => Ok(vec![]), // Eliminated
-            CppStmt::CoReturn(expr) => {
-                Ok(vec![Stmt::Return(
-                    expr.as_ref().map(|e| self.convert_expr(e)).transpose()?
-                )])
-            }
+            CppStmt::CoReturn(expr) => Ok(vec![Stmt::Return(
+                expr.as_ref().map(|e| self.convert_expr(e)).transpose()?,
+            )]),
         }
     }
 
@@ -1239,27 +1742,103 @@ impl CppToIR {
                 }
 
                 match op {
-                    CppBinOp::Add => Ok(Expr::BinaryOp { op: BinOp::Add, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Sub => Ok(Expr::BinaryOp { op: BinOp::Sub, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Mul => Ok(Expr::BinaryOp { op: BinOp::Mul, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Div => Ok(Expr::BinaryOp { op: BinOp::Div, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Mod => Ok(Expr::BinaryOp { op: BinOp::Mod, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Eq => Ok(Expr::Comparison { op: CmpOp::Eq, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Ne => Ok(Expr::Comparison { op: CmpOp::Ne, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Lt => Ok(Expr::Comparison { op: CmpOp::Lt, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Le => Ok(Expr::Comparison { op: CmpOp::Le, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Gt => Ok(Expr::Comparison { op: CmpOp::Gt, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Ge => Ok(Expr::Comparison { op: CmpOp::Ge, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::And => Ok(Expr::BinaryOp { op: BinOp::And, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Or => Ok(Expr::BinaryOp { op: BinOp::Or, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::BitAnd => Ok(Expr::BitwiseOp { op: IrBitwiseOp::And, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::BitOr => Ok(Expr::BitwiseOp { op: IrBitwiseOp::Or, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::BitXor => Ok(Expr::BitwiseOp { op: IrBitwiseOp::Xor, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Shl => Ok(Expr::BitwiseOp { op: IrBitwiseOp::LeftShift, left: Box::new(l), right: Box::new(r) }),
-                    CppBinOp::Shr => Ok(Expr::BitwiseOp { op: IrBitwiseOp::RightShift, left: Box::new(l), right: Box::new(r) }),
+                    CppBinOp::Add => Ok(Expr::BinaryOp {
+                        op: BinOp::Add,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Sub => Ok(Expr::BinaryOp {
+                        op: BinOp::Sub,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Mul => Ok(Expr::BinaryOp {
+                        op: BinOp::Mul,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Div => Ok(Expr::BinaryOp {
+                        op: BinOp::Div,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Mod => Ok(Expr::BinaryOp {
+                        op: BinOp::Mod,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Eq => Ok(Expr::Comparison {
+                        op: CmpOp::Eq,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Ne => Ok(Expr::Comparison {
+                        op: CmpOp::Ne,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Lt => Ok(Expr::Comparison {
+                        op: CmpOp::Lt,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Le => Ok(Expr::Comparison {
+                        op: CmpOp::Le,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Gt => Ok(Expr::Comparison {
+                        op: CmpOp::Gt,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Ge => Ok(Expr::Comparison {
+                        op: CmpOp::Ge,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::And => Ok(Expr::BinaryOp {
+                        op: BinOp::And,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Or => Ok(Expr::BinaryOp {
+                        op: BinOp::Or,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::BitAnd => Ok(Expr::BitwiseOp {
+                        op: IrBitwiseOp::And,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::BitOr => Ok(Expr::BitwiseOp {
+                        op: IrBitwiseOp::Or,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::BitXor => Ok(Expr::BitwiseOp {
+                        op: IrBitwiseOp::Xor,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Shl => Ok(Expr::BitwiseOp {
+                        op: IrBitwiseOp::LeftShift,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
+                    CppBinOp::Shr => Ok(Expr::BitwiseOp {
+                        op: IrBitwiseOp::RightShift,
+                        left: Box::new(l),
+                        right: Box::new(r),
+                    }),
                     CppBinOp::Spaceship => {
                         // <=> returns -1, 0, 1 â€” approximate with subtraction
-                        Ok(Expr::BinaryOp { op: BinOp::Sub, left: Box::new(l), right: Box::new(r) })
+                        Ok(Expr::BinaryOp {
+                            op: BinOp::Sub,
+                            left: Box::new(l),
+                            right: Box::new(r),
+                        })
                     }
                 }
             }
@@ -1267,8 +1846,14 @@ impl CppToIR {
             CppExpr::UnaryOp { op, expr, .. } => {
                 let e = self.convert_expr(expr)?;
                 match op {
-                    CppUnaryOp::Neg => Ok(Expr::UnaryOp { op: IrUnaryOp::Neg, expr: Box::new(e) }),
-                    CppUnaryOp::Not => Ok(Expr::UnaryOp { op: IrUnaryOp::Not, expr: Box::new(e) }),
+                    CppUnaryOp::Neg => Ok(Expr::UnaryOp {
+                        op: IrUnaryOp::Neg,
+                        expr: Box::new(e),
+                    }),
+                    CppUnaryOp::Not => Ok(Expr::UnaryOp {
+                        op: IrUnaryOp::Not,
+                        expr: Box::new(e),
+                    }),
                     CppUnaryOp::BitNot => Ok(Expr::BitwiseNot(Box::new(e))),
                     CppUnaryOp::PreInc => Ok(Expr::PreIncrement(Box::new(e))),
                     CppUnaryOp::PreDec => Ok(Expr::PreDecrement(Box::new(e))),
@@ -1290,10 +1875,11 @@ impl CppToIR {
             }
 
             CppExpr::Call { callee, args } => {
-                let ir_args: Vec<Expr> = args.iter()
+                let ir_args: Vec<Expr> = args
+                    .iter()
                     .map(|a| self.convert_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
-                
+
                 // Check if this is a method call: obj.method() or obj->method()
                 match callee.as_ref() {
                     CppExpr::MemberAccess { object, member } => {
@@ -1301,8 +1887,12 @@ impl CppToIR {
                         // If method body is `return expr;`, inline as substituted expr
                         if let CppExpr::Identifier(obj_name) = object.as_ref() {
                             if let Some(class_name) = self.class_for_var(obj_name) {
-                                let method_data = self.class_method_bodies.iter()
-                                    .find(|(cn, mn, _, _)| cn == &class_name && mn == member.as_str())
+                                let method_data = self
+                                    .class_method_bodies
+                                    .iter()
+                                    .find(|(cn, mn, _, _)| {
+                                        cn == &class_name && mn == member.as_str()
+                                    })
                                     .map(|(_, _, params, body)| (params.clone(), body.clone()));
 
                                 if let Some((method_params, method_body)) = method_data {
@@ -1312,18 +1902,27 @@ impl CppToIR {
                                             CppStmt::Return(Some(e)) => Some(e.clone()),
                                             _ => None,
                                         }
-                                    } else { None };
+                                    } else {
+                                        None
+                                    };
 
                                     if let Some(mut ret_expr) = return_expr {
                                         // Substitute method params with args
                                         for (i, param_name) in method_params.iter().enumerate() {
                                             if let Some(arg_expr) = args.get(i) {
-                                                ret_expr = Self::subst_param(ret_expr, param_name, arg_expr);
+                                                ret_expr = Self::subst_param(
+                                                    ret_expr, param_name, arg_expr,
+                                                );
                                             }
                                         }
                                         // Substitute this->field with obj.field
                                         let class_fields_clone = self.class_fields.clone();
-                                        ret_expr = Self::subst_this_in_expr(ret_expr, obj_name, &class_fields_clone, &class_name);
+                                        ret_expr = Self::subst_this_in_expr(
+                                            ret_expr,
+                                            obj_name,
+                                            &class_fields_clone,
+                                            &class_name,
+                                        );
                                         // Convert the substituted expression
                                         return self.convert_expr(&ret_expr);
                                     }
@@ -1334,14 +1933,19 @@ impl CppToIR {
                         // obj.method(args) → ClassName::method(&obj, args...)
                         let class_opt = if let CppExpr::Identifier(obj_name) = object.as_ref() {
                             self.class_for_var(obj_name)
-                        } else { None };
+                        } else {
+                            None
+                        };
 
                         if let Some(class_name) = class_opt {
                             let obj_ir = self.convert_expr(object)?;
                             let mut call_args = vec![Expr::AddressOf(Box::new(obj_ir))];
                             call_args.extend(ir_args);
                             let func_name = format!("{}::{}", class_name, member);
-                            return Ok(Expr::Call { name: func_name, args: call_args });
+                            return Ok(Expr::Call {
+                                name: func_name,
+                                args: call_args,
+                            });
                         }
 
                         // Fallback: generate MethodCall (ISA will try to handle it)
@@ -1356,14 +1960,19 @@ impl CppToIR {
                         // ptr->method(args) â€” resolve through pointer
                         let class_opt = if let CppExpr::Identifier(obj_name) = pointer.as_ref() {
                             self.class_for_var(obj_name)
-                        } else { None };
+                        } else {
+                            None
+                        };
 
                         if let Some(class_name) = class_opt {
                             let obj_ir = self.convert_expr(pointer)?;
                             let mut call_args = vec![Expr::AddressOf(Box::new(obj_ir))];
                             call_args.extend(ir_args);
                             let func_name = format!("{}::{}", class_name, member);
-                            return Ok(Expr::Call { name: func_name, args: call_args });
+                            return Ok(Expr::Call {
+                                name: func_name,
+                                args: call_args,
+                            });
                         }
 
                         let ptr = self.convert_expr(pointer)?;
@@ -1375,7 +1984,7 @@ impl CppToIR {
                     }
                     _ => {}
                 }
-                
+
                 let name = match callee.as_ref() {
                     CppExpr::Identifier(n) => {
                         // If inside a namespace and this is an unqualified call to a sibling
@@ -1390,8 +1999,9 @@ impl CppToIR {
                             n.clone()
                         }
                     }
-                    CppExpr::ScopedIdentifier { scope, name } =>
-                        format!("{}::{}", scope.join("::"), name),
+                    CppExpr::ScopedIdentifier { scope, name } => {
+                        format!("{}::{}", scope.join("::"), name)
+                    }
                     _ => "unknown".to_string(),
                 };
 
@@ -1404,9 +2014,15 @@ impl CppToIR {
                                 args: ir_args,
                             });
                         }
-                        Ok(Expr::Call { name, args: ir_args })
+                        Ok(Expr::Call {
+                            name,
+                            args: ir_args,
+                        })
                     }
-                    "std::cout" => Ok(Expr::Call { name: "print".to_string(), args: ir_args }),
+                    "std::cout" => Ok(Expr::Call {
+                        name: "print".to_string(),
+                        args: ir_args,
+                    }),
                     "malloc" | "std::malloc" => {
                         if let Some(size) = ir_args.first() {
                             Ok(Expr::Malloc(Box::new(size.clone())))
@@ -1417,7 +2033,9 @@ impl CppToIR {
                     _ => {
                         // Wrap arguments in AddressOf for reference parameters
                         let mut final_args = ir_args;
-                        if let Some((_, ref_flags)) = self.func_ref_params.iter().find(|(n, _)| n == &name) {
+                        if let Some((_, ref_flags)) =
+                            self.func_ref_params.iter().find(|(n, _)| n == &name)
+                        {
                             for (i, is_ref) in ref_flags.iter().enumerate() {
                                 if *is_ref && i < final_args.len() {
                                     // Don't double-wrap if already AddressOf
@@ -1428,61 +2046,74 @@ impl CppToIR {
                                 }
                             }
                         }
-                        Ok(Expr::Call { name, args: final_args })
-                    },
+                        Ok(Expr::Call {
+                            name,
+                            args: final_args,
+                        })
+                    }
                 }
             }
 
             CppExpr::MemberAccess { object, member } => {
                 let obj = self.convert_expr(object)?;
-                Ok(Expr::FieldAccess { object: Box::new(obj), field: member.clone() })
+                Ok(Expr::FieldAccess {
+                    object: Box::new(obj),
+                    field: member.clone(),
+                })
             }
 
             CppExpr::ArrowAccess { pointer, member } => {
                 let ptr = self.convert_expr(pointer)?;
-                Ok(Expr::ArrowAccess { pointer: Box::new(ptr), field: member.clone() })
+                Ok(Expr::ArrowAccess {
+                    pointer: Box::new(ptr),
+                    field: member.clone(),
+                })
             }
 
             CppExpr::Index { object, index } => {
                 let obj = self.convert_expr(object)?;
                 let idx = self.convert_expr(index)?;
-                Ok(Expr::Index { object: Box::new(obj), index: Box::new(idx) })
-            }
-
-            CppExpr::Deref(inner) => {
-                Ok(Expr::Deref(Box::new(self.convert_expr(inner)?)))
-            }
-
-            CppExpr::AddressOf(inner) => {
-                Ok(Expr::AddressOf(Box::new(self.convert_expr(inner)?)))
-            }
-
-            CppExpr::Cast { target_type, expr, .. } => {
-                let t = self.convert_type(target_type);
-                let e = self.convert_expr(expr)?;
-                Ok(Expr::Cast { target_type: t, expr: Box::new(e) })
-            }
-
-            CppExpr::SizeOf(arg) => {
-                match arg {
-                    CppSizeOfArg::Type(t) => {
-                        let ir_type = self.convert_type(t);
-                        Ok(Expr::SizeOf(Box::new(SizeOfArg::Type(ir_type))))
-                    }
-                    CppSizeOfArg::Expr(e) => {
-                        let ir_expr = self.convert_expr(e)?;
-                        Ok(Expr::SizeOf(Box::new(SizeOfArg::Expr(ir_expr))))
-                    }
-                }
-            }
-
-            CppExpr::Ternary { condition, then_expr, else_expr } => {
-                Ok(Expr::Ternary {
-                    condition: Box::new(self.convert_expr(condition)?),
-                    then_expr: Box::new(self.convert_expr(then_expr)?),
-                    else_expr: Box::new(self.convert_expr(else_expr)?),
+                Ok(Expr::Index {
+                    object: Box::new(obj),
+                    index: Box::new(idx),
                 })
             }
+
+            CppExpr::Deref(inner) => Ok(Expr::Deref(Box::new(self.convert_expr(inner)?))),
+
+            CppExpr::AddressOf(inner) => Ok(Expr::AddressOf(Box::new(self.convert_expr(inner)?))),
+
+            CppExpr::Cast {
+                target_type, expr, ..
+            } => {
+                let t = self.convert_type(target_type);
+                let e = self.convert_expr(expr)?;
+                Ok(Expr::Cast {
+                    target_type: t,
+                    expr: Box::new(e),
+                })
+            }
+
+            CppExpr::SizeOf(arg) => match arg {
+                CppSizeOfArg::Type(t) => {
+                    let ir_type = self.convert_type(t);
+                    Ok(Expr::SizeOf(Box::new(SizeOfArg::Type(ir_type))))
+                }
+                CppSizeOfArg::Expr(e) => {
+                    let ir_expr = self.convert_expr(e)?;
+                    Ok(Expr::SizeOf(Box::new(SizeOfArg::Expr(ir_expr))))
+                }
+            },
+
+            CppExpr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => Ok(Expr::Ternary {
+                condition: Box::new(self.convert_expr(condition)?),
+                then_expr: Box::new(self.convert_expr(then_expr)?),
+                else_expr: Box::new(self.convert_expr(else_expr)?),
+            }),
 
             CppExpr::New { type_name, .. } => {
                 let t = self.convert_type(type_name);
@@ -1492,7 +2123,10 @@ impl CppToIR {
 
             CppExpr::Delete { expr, .. } => {
                 let e = self.convert_expr(expr)?;
-                Ok(Expr::Call { name: "free".to_string(), args: vec![e] })
+                Ok(Expr::Call {
+                    name: "free".to_string(),
+                    args: vec![e],
+                })
             }
 
             CppExpr::Lambda { .. } => {
@@ -1501,7 +2135,8 @@ impl CppToIR {
             }
 
             CppExpr::InitList(items) => {
-                let ir_items: Vec<Expr> = items.iter()
+                let ir_items: Vec<Expr> = items
+                    .iter()
                     .map(|e| self.convert_expr(e))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Expr::Array(ir_items))
@@ -1530,10 +2165,10 @@ pub fn compile_cpp_to_program(source: &str) -> Result<Program, String> {
     let preprocessed = preprocessor.process(source);
 
     // Phase 1: Lex â€” tokenize preprocessed source
-    let tokens = CppLexer::new(&preprocessed).tokenize();
+    let (tokens, lines) = CppLexer::new(&preprocessed).tokenize();
 
     // Phase 2: Parse â€” tokens â†’ C++ AST
-    let unit = CppParser::new(tokens).parse_translation_unit()?;
+    let unit = CppParser::new(tokens, lines).parse_translation_unit()?;
 
     // Phase 3: Lower â€” C++ AST â†’ ADead-BIB IR
     let mut converter = CppToIR::new();
@@ -1546,19 +2181,23 @@ mod tests {
 
     #[test]
     fn test_hello_world_cpp() {
-        let program = compile_cpp_to_program(r#"
+        let program = compile_cpp_to_program(
+            r#"
             int main() {
                 printf("Hello from C++!\n");
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(program.functions.len(), 1);
         assert_eq!(program.functions[0].name, "main");
     }
 
     #[test]
     fn test_class_compilation() {
-        let program = compile_cpp_to_program(r#"
+        let program = compile_cpp_to_program(
+            r#"
             class Point {
             public:
                 int x;
@@ -1569,7 +2208,9 @@ mod tests {
             int main() {
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(program.structs.len() >= 1);
         assert_eq!(program.structs[0].name, "Point");
         assert!(program.functions.len() >= 1); // main + getX
@@ -1577,7 +2218,8 @@ mod tests {
 
     #[test]
     fn test_template_function() {
-        let program = compile_cpp_to_program(r#"
+        let program = compile_cpp_to_program(
+            r#"
             template<typename T>
             T add(T a, T b) {
                 return a + b;
@@ -1587,13 +2229,16 @@ mod tests {
                 int result = add(3, 4);
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(program.functions.len() >= 2);
     }
 
     #[test]
     fn test_namespace() {
-        let program = compile_cpp_to_program(r#"
+        let program = compile_cpp_to_program(
+            r#"
             namespace math {
                 int square(int x) {
                     return x * x;
@@ -1603,13 +2248,16 @@ mod tests {
             int main() {
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(program.functions.len() >= 2);
     }
 
     #[test]
     fn test_enum_class() {
-        let program = compile_cpp_to_program(r#"
+        let program = compile_cpp_to_program(
+            r#"
             enum class Color : int {
                 Red = 0,
                 Green = 1,
@@ -1619,20 +2267,25 @@ mod tests {
             int main() {
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(program.statements.len(), 3); // 3 enum constants
     }
 
     #[test]
     fn test_modern_cpp() {
-        let program = compile_cpp_to_program(r#"
+        let program = compile_cpp_to_program(
+            r#"
             int main() {
                 auto x = 42;
                 const int y = 100;
                 int arr[] = {1, 2, 3};
                 return x + y;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(program.functions.len(), 1);
     }
 
@@ -1649,30 +2302,50 @@ mod tests {
     fn test_example_cpp_oop() {
         let source = std::fs::read_to_string("examples/cpp/cpp_oop.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
-        assert!(result.is_ok(), "cpp_oop.cpp failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "cpp_oop.cpp failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_cpp_templates() {
         let source = std::fs::read_to_string("examples/cpp/cpp_templates.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
-        assert!(result.is_ok(), "cpp_templates.cpp failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "cpp_templates.cpp failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_cpp_modern() {
         let source = std::fs::read_to_string("examples/cpp/cpp_modern.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
-        assert!(result.is_ok(), "cpp_modern.cpp failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "cpp_modern.cpp failed: {}",
+            result.unwrap_err()
+        );
     }
 
     #[test]
     fn test_example_cpp_stdlib_long() {
         let source = std::fs::read_to_string("examples/cpp/cpp_stdlib_long.cpp").unwrap();
         let result = compile_cpp_to_program(&source);
-        assert!(result.is_ok(), "cpp_stdlib_long.cpp failed: {}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "cpp_stdlib_long.cpp failed: {}",
+            result.unwrap_err()
+        );
         let prog = result.unwrap();
-        assert!(prog.functions.len() > 10, "cpp_stdlib_long.cpp should have many functions, got {}", prog.functions.len());
+        assert!(
+            prog.functions.len() > 10,
+            "cpp_stdlib_long.cpp should have many functions, got {}",
+            prog.functions.len()
+        );
     }
 
     // ================================================================
@@ -1697,14 +2370,21 @@ mod tests {
     fn test_example_inheritance() {
         let source = std::fs::read_to_string("examples/cpp/test_inheritance.cpp").unwrap();
         let prog = compile_cpp_to_program(&source).expect("test_inheritance.cpp failed");
-        assert!(prog.structs.len() >= 3, "should have Shape + Circle + Rectangle, got {}", prog.structs.len());
+        assert!(
+            prog.structs.len() >= 3,
+            "should have Shape + Circle + Rectangle, got {}",
+            prog.structs.len()
+        );
     }
 
     #[test]
     fn test_example_template_basic() {
         let source = std::fs::read_to_string("examples/cpp/test_template_basic.cpp").unwrap();
         let prog = compile_cpp_to_program(&source).expect("test_template_basic.cpp failed");
-        assert!(prog.functions.len() >= 4, "should have max + min + abs + main");
+        assert!(
+            prog.functions.len() >= 4,
+            "should have max + min + abs + main"
+        );
     }
 
     #[test]
@@ -1718,28 +2398,40 @@ mod tests {
     fn test_example_constexpr() {
         let source = std::fs::read_to_string("examples/cpp/test_constexpr.cpp").unwrap();
         let prog = compile_cpp_to_program(&source).expect("test_constexpr.cpp failed");
-        assert!(prog.functions.len() >= 4, "should have factorial + fib + square + cube + main");
+        assert!(
+            prog.functions.len() >= 4,
+            "should have factorial + fib + square + cube + main"
+        );
     }
 
     #[test]
     fn test_example_auto_nullptr() {
         let source = std::fs::read_to_string("examples/cpp/test_auto_nullptr.cpp").unwrap();
         let prog = compile_cpp_to_program(&source).expect("test_auto_nullptr.cpp failed");
-        assert!(prog.functions.len() >= 3, "should have add + multiply + main");
+        assert!(
+            prog.functions.len() >= 3,
+            "should have add + multiply + main"
+        );
     }
 
     #[test]
     fn test_example_nested_namespace() {
         let source = std::fs::read_to_string("examples/cpp/test_nested_namespace.cpp").unwrap();
         let prog = compile_cpp_to_program(&source).expect("test_nested_namespace.cpp failed");
-        assert!(prog.functions.len() >= 4, "should have multiple namespace functions + main");
+        assert!(
+            prog.functions.len() >= 4,
+            "should have multiple namespace functions + main"
+        );
     }
 
     #[test]
     fn test_example_using_alias() {
         let source = std::fs::read_to_string("examples/cpp/test_using_alias.cpp").unwrap();
         let prog = compile_cpp_to_program(&source).expect("test_using_alias.cpp failed");
-        assert!(prog.functions.len() >= 3, "should have double_val + triple_val + main");
+        assert!(
+            prog.functions.len() >= 3,
+            "should have double_val + triple_val + main"
+        );
     }
 
     #[test]
@@ -1753,7 +2445,10 @@ mod tests {
     fn test_example_cpp_control_flow() {
         let source = std::fs::read_to_string("examples/cpp/test_cpp_control_flow.cpp").unwrap();
         let prog = compile_cpp_to_program(&source).expect("test_cpp_control_flow.cpp failed");
-        assert!(prog.functions.len() >= 3, "should have fibonacci + is_prime + main");
+        assert!(
+            prog.functions.len() >= 3,
+            "should have fibonacci + is_prime + main"
+        );
     }
 
     // --- Existing .cpp test file validations ---
@@ -1811,7 +2506,8 @@ mod tests {
 
     #[test]
     fn test_cpp_class_with_constructor() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             class Vector2D {
             public:
                 int x;
@@ -1821,13 +2517,16 @@ mod tests {
                 int magnitude_sq() { return x * x + y * y; }
             };
             int main() { return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.structs.len() >= 1);
     }
 
     #[test]
     fn test_cpp_multiple_classes() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             class A {
             public:
                 int val;
@@ -1841,13 +2540,16 @@ mod tests {
                 int get() { return data; }
             };
             int main() { return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.structs.len() >= 2);
     }
 
     #[test]
     fn test_cpp_namespace_with_classes() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             namespace game {
                 class Entity {
                 public:
@@ -1857,13 +2559,16 @@ mod tests {
                 int next_id() { return 42; }
             }
             int main() { return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.functions.len() >= 1);
     }
 
     #[test]
     fn test_cpp_virtual_method() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             class Base {
             public:
                 virtual int value() { return 0; }
@@ -1873,13 +2578,16 @@ mod tests {
                 int value() override { return 42; }
             };
             int main() { return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.structs.len() >= 2);
     }
 
     #[test]
     fn test_cpp_explicit_constructor() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             class Wrapper {
             public:
                 int val;
@@ -1890,13 +2598,16 @@ mod tests {
                 Wrapper w(42);
                 return 0;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.structs.len() >= 1);
     }
 
     #[test]
     fn test_cpp_const_method() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             class Buffer {
             public:
                 int size;
@@ -1905,13 +2616,16 @@ mod tests {
                 bool empty() const { return size <= 0; }
             };
             int main() { return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.structs.len() >= 1);
     }
 
     #[test]
     fn test_cpp_noexcept() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             class Safe {
             public:
                 int val;
@@ -1920,13 +2634,16 @@ mod tests {
                 int get() noexcept { return val; }
             };
             int main() { return 0; }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.structs.len() >= 1);
     }
 
     #[test]
     fn test_cpp_for_loop_with_namespace() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             namespace util {
                 int sum(int n) {
                     int total = 0;
@@ -1940,13 +2657,16 @@ mod tests {
                 int s = util::sum(100);
                 return s;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(prog.functions.len() >= 2);
     }
 
     #[test]
     fn test_cpp_while_loop() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             int power(int base, int exp) {
                 int result = 1;
                 while (exp > 0) {
@@ -1959,13 +2679,16 @@ mod tests {
                 int r = power(2, 10);
                 return r;
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 2);
     }
 
     #[test]
     fn test_cpp_ternary_operator() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             int abs_val(int x) {
                 return (x < 0) ? (0 - x) : x;
             }
@@ -1973,7 +2696,9 @@ mod tests {
                 return (a > b) ? a : b;
             }
             int main() { return abs_val(-5) + max2(3, 7); }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(prog.functions.len(), 3);
     }
 
@@ -1981,14 +2706,17 @@ mod tests {
 
     #[test]
     fn test_cpp_e2e_hello() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             int main() {
                 printf("Hello C++!\n");
                 return 0;
             }
-        "#).unwrap();
-        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
-            crate::isa::isa_compiler::Target::Windows);
+        "#,
+        )
+        .unwrap();
+        let mut compiler =
+            crate::isa::isa_compiler::IsaCompiler::new(crate::isa::isa_compiler::Target::Windows);
         let (code, data, _, _) = compiler.compile(&prog);
         assert!(!code.is_empty(), "should generate code");
         assert!(!data.is_empty(), "should have string data");
@@ -1996,7 +2724,8 @@ mod tests {
 
     #[test]
     fn test_cpp_e2e_namespace() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             namespace math {
                 int add(int a, int b) { return a + b; }
                 int mul(int a, int b) { return a * b; }
@@ -2006,16 +2735,19 @@ mod tests {
                 printf("result=%d\n", r);
                 return 0;
             }
-        "#).unwrap();
-        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
-            crate::isa::isa_compiler::Target::Windows);
+        "#,
+        )
+        .unwrap();
+        let mut compiler =
+            crate::isa::isa_compiler::IsaCompiler::new(crate::isa::isa_compiler::Target::Windows);
         let (code, _, _, _) = compiler.compile(&prog);
         assert!(!code.is_empty());
     }
 
     #[test]
     fn test_cpp_e2e_class() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             class Point {
             public:
                 int x;
@@ -2027,16 +2759,19 @@ mod tests {
                 printf("done\n");
                 return 0;
             }
-        "#).unwrap();
-        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
-            crate::isa::isa_compiler::Target::Windows);
+        "#,
+        )
+        .unwrap();
+        let mut compiler =
+            crate::isa::isa_compiler::IsaCompiler::new(crate::isa::isa_compiler::Target::Windows);
         let (code, _, _, _) = compiler.compile(&prog);
         assert!(!code.is_empty());
     }
 
     #[test]
     fn test_cpp_e2e_template() {
-        let prog = compile_cpp_to_program(r#"
+        let prog = compile_cpp_to_program(
+            r#"
             template<typename T>
             T add(T a, T b) { return a + b; }
             int main() {
@@ -2044,20 +2779,22 @@ mod tests {
                 printf("add=%d\n", r);
                 return 0;
             }
-        "#).unwrap();
-        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
-            crate::isa::isa_compiler::Target::Windows);
+        "#,
+        )
+        .unwrap();
+        let mut compiler =
+            crate::isa::isa_compiler::IsaCompiler::new(crate::isa::isa_compiler::Target::Windows);
         let (code, _, _, _) = compiler.compile(&prog);
         assert!(!code.is_empty());
     }
 
     #[test]
     fn test_cpp_e2e_full_oop_example() {
-        let source = std::fs::read_to_string("examples/cpp/cpp_oop.cpp")
-            .expect("cpp_oop.cpp should exist");
+        let source =
+            std::fs::read_to_string("examples/cpp/cpp_oop.cpp").expect("cpp_oop.cpp should exist");
         let prog = compile_cpp_to_program(&source).expect("cpp_oop.cpp should parse");
-        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
-            crate::isa::isa_compiler::Target::Windows);
+        let mut compiler =
+            crate::isa::isa_compiler::IsaCompiler::new(crate::isa::isa_compiler::Target::Windows);
         let (code, data, _, _) = compiler.compile(&prog);
         assert!(!code.is_empty(), "cpp_oop.cpp should generate code");
         assert!(!data.is_empty(), "cpp_oop.cpp should have string data");
@@ -2068,8 +2805,8 @@ mod tests {
         let source = std::fs::read_to_string("examples/cpp/cpp_templates.cpp")
             .expect("cpp_templates.cpp should exist");
         let prog = compile_cpp_to_program(&source).expect("cpp_templates.cpp should parse");
-        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
-            crate::isa::isa_compiler::Target::Windows);
+        let mut compiler =
+            crate::isa::isa_compiler::IsaCompiler::new(crate::isa::isa_compiler::Target::Windows);
         let (code, _, _, _) = compiler.compile(&prog);
         assert!(!code.is_empty(), "cpp_templates.cpp should generate code");
     }
@@ -2079,11 +2816,9 @@ mod tests {
         let source = std::fs::read_to_string("examples/cpp/cpp_modern.cpp")
             .expect("cpp_modern.cpp should exist");
         let prog = compile_cpp_to_program(&source).expect("cpp_modern.cpp should parse");
-        let mut compiler = crate::isa::isa_compiler::IsaCompiler::new(
-            crate::isa::isa_compiler::Target::Windows);
+        let mut compiler =
+            crate::isa::isa_compiler::IsaCompiler::new(crate::isa::isa_compiler::Target::Windows);
         let (code, _, _, _) = compiler.compile(&prog);
         assert!(!code.is_empty(), "cpp_modern.cpp should generate code");
     }
 }
-
-

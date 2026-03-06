@@ -13,19 +13,20 @@ pub enum CType {
     Float,
     Double,
     Bool,
-    Unsigned(Box<CType>),  // unsigned int, unsigned char, etc.
-    Signed(Box<CType>),    // explicit signed
-    Pointer(Box<CType>),   // T*
-    Array(Box<CType>, Option<usize>),  // T[N] or T[]
-    Struct(String),        // struct name
-    Enum(String),          // enum name
-    Typedef(String),       // typedef'd name
-    Function {             // function pointer type
+    Unsigned(Box<CType>),             // unsigned int, unsigned char, etc.
+    Signed(Box<CType>),               // explicit signed
+    Pointer(Box<CType>),              // T*
+    Array(Box<CType>, Option<usize>), // T[N] or T[]
+    Struct(String),                   // struct name
+    Enum(String),                     // enum name
+    Typedef(String),                  // typedef'd name
+    Function {
+        // function pointer type
         return_type: Box<CType>,
         params: Vec<CType>,
     },
-    Const(Box<CType>),     // const T
-    Volatile(Box<CType>),  // volatile T
+    Const(Box<CType>),    // const T
+    Volatile(Box<CType>), // volatile T
 }
 
 /// C expression
@@ -48,7 +49,7 @@ pub enum CExpr {
     UnaryOp {
         op: CUnaryOp,
         expr: Box<CExpr>,
-        prefix: bool,  // true for prefix (++x), false for postfix (x++)
+        prefix: bool, // true for prefix (++x), false for postfix (x++)
     },
 
     // Function call
@@ -117,36 +118,50 @@ pub enum CExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CBinOp {
-    Add, Sub, Mul, Div, Mod,
-    BitAnd, BitOr, BitXor, Shl, Shr,
-    LogAnd, LogOr,
-    Eq, Ne, Lt, Gt, Le, Ge,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    LogAnd,
+    LogOr,
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CUnaryOp {
-    Neg,        // -x
-    LogNot,     // !x
-    BitNot,     // ~x
-    PreInc,     // ++x
-    PreDec,     // --x
-    PostInc,    // x++
-    PostDec,    // x--
+    Neg,     // -x
+    LogNot,  // !x
+    BitNot,  // ~x
+    PreInc,  // ++x
+    PreDec,  // --x
+    PostInc, // x++
+    PostDec, // x--
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CAssignOp {
-    Assign,       // =
-    AddAssign,    // +=
-    SubAssign,    // -=
-    MulAssign,    // *=
-    DivAssign,    // /=
-    ModAssign,    // %=
-    AndAssign,    // &=
-    OrAssign,     // |=
-    XorAssign,    // ^=
-    ShlAssign,    // <<=
-    ShrAssign,    // >>=
+    Assign,    // =
+    AddAssign, // +=
+    SubAssign, // -=
+    MulAssign, // *=
+    DivAssign, // /=
+    ModAssign, // %=
+    AndAssign, // &=
+    OrAssign,  // |=
+    XorAssign, // ^=
+    ShlAssign, // <<=
+    ShrAssign, // >>=
 }
 
 /// C statement
@@ -189,7 +204,7 @@ pub enum CStmt {
 
     // For loop
     For {
-        init: Option<Box<CStmt>>,       // can be VarDecl or Expr
+        init: Option<Box<CStmt>>, // can be VarDecl or Expr
         condition: Option<CExpr>,
         update: Option<CExpr>,
         body: Box<CStmt>,
@@ -215,12 +230,15 @@ pub enum CStmt {
 
     // Empty statement: ;
     Empty,
+
+    // DEBUGINFO Line tracking
+    LineMarker(usize),
 }
 
 /// Switch case
 #[derive(Debug, Clone)]
 pub struct CSwitchCase {
-    pub value: Option<CExpr>,  // None = default
+    pub value: Option<CExpr>, // None = default
     pub body: Vec<CStmt>,
 }
 
@@ -228,15 +246,15 @@ pub struct CSwitchCase {
 #[derive(Debug, Clone)]
 pub struct CDeclarator {
     pub name: String,
-    pub derived_type: Option<CDerivedType>,  // pointer/array modifications
+    pub derived_type: Option<CDerivedType>, // pointer/array modifications
     pub initializer: Option<CExpr>,
 }
 
 /// Type modifications on declarators
 #[derive(Debug, Clone)]
 pub enum CDerivedType {
-    Pointer(Option<Box<CDerivedType>>),     // *
-    Array(Option<usize>, Option<Box<CDerivedType>>),  // [N]
+    Pointer(Option<Box<CDerivedType>>),              // *
+    Array(Option<usize>, Option<Box<CDerivedType>>), // [N]
 }
 
 /// Top-level C declarations
@@ -286,7 +304,7 @@ pub enum CTopLevel {
 #[derive(Debug, Clone)]
 pub struct CParam {
     pub param_type: CType,
-    pub name: Option<String>,  // can be unnamed in prototypes
+    pub name: Option<String>, // can be unnamed in prototypes
 }
 
 /// Struct field
@@ -304,6 +322,8 @@ pub struct CTranslationUnit {
 
 impl CTranslationUnit {
     pub fn new() -> Self {
-        Self { declarations: Vec::new() }
+        Self {
+            declarations: Vec::new(),
+        }
     }
 }

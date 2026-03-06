@@ -85,7 +85,8 @@ impl Encoder {
     pub fn encode_all(&mut self, ops: &[ADeadOp]) -> EncodeResult {
         // Track which (jump_index, target_label) can use short encoding.
         // Key = index into ops[] of the Jmp/Jcc, value = true if short-safe.
-        let mut short_jump_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut short_jump_indices: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
         let max_passes = 3;
 
         for _pass in 0..max_passes {
@@ -284,7 +285,11 @@ impl Encoder {
                 });
             }
             ADeadOp::FarJmp { selector, offset } => self.encode_far_jmp(*selector, *offset),
-            ADeadOp::LabelAddrRef { label, size, base_addr } => {
+            ADeadOp::LabelAddrRef {
+                label,
+                size,
+                base_addr,
+            } => {
                 // Emit the absolute address of a label
                 // This requires the label to be already defined (resolved in second pass)
                 if let Some(&pos) = self.label_positions.get(&label.0) {
@@ -631,12 +636,12 @@ impl Encoder {
     fn encode_jcc(&mut self, cond: &Condition, target: &Label) {
         // FASM pattern: condition code table instead of per-condition match
         let cc = match cond {
-            Condition::Equal => 0x04u8,    // JE/JZ
-            Condition::NotEqual => 0x05,   // JNE/JNZ
-            Condition::Less => 0x0C,       // JL
-            Condition::LessEq => 0x0E,     // JLE
-            Condition::Greater => 0x0F,    // JG
-            Condition::GreaterEq => 0x0D,  // JGE
+            Condition::Equal => 0x04u8,   // JE/JZ
+            Condition::NotEqual => 0x05,  // JNE/JNZ
+            Condition::Less => 0x0C,      // JL
+            Condition::LessEq => 0x0E,    // JLE
+            Condition::Greater => 0x0F,   // JG
+            Condition::GreaterEq => 0x0D, // JGE
             Condition::Always => {
                 self.encode_jmp(target);
                 return;
@@ -693,9 +698,15 @@ impl Encoder {
     #[inline(always)]
     fn rex_wrxb(&self, w: bool, reg_ext: bool, rm_ext: bool) -> u8 {
         let mut rex = 0x40u8;
-        if w { rex |= 0x08; }       // REX.W
-        if reg_ext { rex |= 0x04; } // REX.R
-        if rm_ext { rex |= 0x01; }  // REX.B
+        if w {
+            rex |= 0x08;
+        } // REX.W
+        if reg_ext {
+            rex |= 0x04;
+        } // REX.R
+        if rm_ext {
+            rex |= 0x01;
+        } // REX.B
         rex
     }
 
@@ -756,15 +767,21 @@ impl Encoder {
     /// Generic PUSH reg — FASM pattern: 50+rd or REX.B 50+rd
     fn encode_push_reg(&mut self, r: &Reg) {
         let (idx, ext) = reg_index(r);
-        if ext { self.emit(&[0x41, 0x50 + idx]); }
-        else { self.emit(&[0x50 + idx]); }
+        if ext {
+            self.emit(&[0x41, 0x50 + idx]);
+        } else {
+            self.emit(&[0x50 + idx]);
+        }
     }
 
     /// Generic POP reg — FASM pattern: 58+rd or REX.B 58+rd
     fn encode_pop_reg(&mut self, r: &Reg) {
         let (idx, ext) = reg_index(r);
-        if ext { self.emit(&[0x41, 0x58 + idx]); }
-        else { self.emit(&[0x58 + idx]); }
+        if ext {
+            self.emit(&[0x41, 0x58 + idx]);
+        } else {
+            self.emit(&[0x58 + idx]);
+        }
     }
 
     /// Generic ALU reg, imm with auto imm8/imm32 selection

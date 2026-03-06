@@ -13,14 +13,14 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
-use std::path::Path;
-use std::fmt;
-use crate::isa::ADeadOp;
-use crate::isa::decoder::Decoder;
 use super::arch_map::ArchitectureMap;
-use super::binary_loader::{BinaryLoader, BinaryInfo};
+use super::binary_loader::{BinaryInfo, BinaryLoader};
 use super::capability::CapabilityMapper;
-use super::policy::{PolicyEngine, SecurityPolicy, SecurityLevel, Verdict};
+use super::policy::{PolicyEngine, SecurityLevel, SecurityPolicy, Verdict};
+use crate::isa::decoder::Decoder;
+use crate::isa::ADeadOp;
+use std::fmt;
+use std::path::Path;
 
 // ============================================================
 // Analysis Result
@@ -66,7 +66,11 @@ impl fmt::Display for AnalysisResult {
             }
             Verdict::Denied { violations } => {
                 writeln!(f, "  │              ✗  DENIED                  │")?;
-                writeln!(f, "  │  {} violation(s):                       │", violations.len())?;
+                writeln!(
+                    f,
+                    "  │  {} violation(s):                       │",
+                    violations.len()
+                )?;
                 for v in violations {
                     writeln!(f, "  │    {}", v)?;
                 }
@@ -109,7 +113,9 @@ impl BinaryGuardian {
             let region_type = match section.kind {
                 super::binary_loader::SectionKind::Code => super::arch_map::RegionType::Code,
                 super::binary_loader::SectionKind::Data => super::arch_map::RegionType::Data,
-                super::binary_loader::SectionKind::ReadOnly => super::arch_map::RegionType::ReadOnly,
+                super::binary_loader::SectionKind::ReadOnly => {
+                    super::arch_map::RegionType::ReadOnly
+                }
                 super::binary_loader::SectionKind::RWX => super::arch_map::RegionType::RWX,
                 super::binary_loader::SectionKind::Unknown => super::arch_map::RegionType::Data,
             };
@@ -149,14 +155,20 @@ impl BinaryGuardian {
         }
 
         // Entry at section start
-        map.integrity.entry_at_section_start = info.sections.iter().any(|s| {
-            s.executable && info.entry_point == s.virtual_address
-        });
+        map.integrity.entry_at_section_start = info
+            .sections
+            .iter()
+            .any(|s| s.executable && info.entry_point == s.virtual_address);
 
         // ==== Import/Export Map — NUEVO ====
         for imp in &info.imports {
-            let lib = if imp.library.is_empty() { "unknown".to_string() } else { imp.library.clone() };
-            map.import_export_map.imports_by_library
+            let lib = if imp.library.is_empty() {
+                "unknown".to_string()
+            } else {
+                imp.library.clone()
+            };
+            map.import_export_map
+                .imports_by_library
                 .entry(lib)
                 .or_insert_with(Vec::new)
                 .push(imp.function.clone());
@@ -225,9 +237,17 @@ mod tests {
     #[test]
     fn test_analyze_safe_ops() {
         let ops = vec![
-            ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RBP), src: Operand::Reg(Reg::RSP) },
-            ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP),
+            },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBP),
+                src: Operand::Reg(Reg::RSP),
+            },
+            ADeadOp::Xor {
+                dst: Reg::EAX,
+                src: Reg::EAX,
+            },
             ADeadOp::Pop { dst: Reg::RBP },
             ADeadOp::Ret,
         ];
@@ -243,7 +263,10 @@ mod tests {
         assert!(BinaryGuardian::quick_check(&safe, &SecurityPolicy::user()));
 
         let priv_ops = vec![ADeadOp::Cli, ADeadOp::Hlt];
-        assert!(!BinaryGuardian::quick_check(&priv_ops, &SecurityPolicy::user()));
+        assert!(!BinaryGuardian::quick_check(
+            &priv_ops,
+            &SecurityPolicy::user()
+        ));
     }
 
     #[test]
@@ -256,7 +279,12 @@ mod tests {
 
     #[test]
     fn test_inspect() {
-        let ops = vec![ADeadOp::Syscall, ADeadOp::InByte { port: Operand::Imm8(0x60) }];
+        let ops = vec![
+            ADeadOp::Syscall,
+            ADeadOp::InByte {
+                port: Operand::Imm8(0x60),
+            },
+        ];
         let map = BinaryGuardian::inspect(&ops);
         assert!(map.capabilities.syscalls);
         assert!(map.capabilities.io_port_access);

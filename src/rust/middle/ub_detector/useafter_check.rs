@@ -6,8 +6,8 @@
 // UBKind::UseAfterFree, UBKind::DanglingPointer
 // ============================================================
 
-use crate::ast::{Program, Stmt, Expr};
-use super::report::{UBReport, UBSeverity, UBKind};
+use super::report::{UBKind, UBReport, UBSeverity};
+use crate::ast::{Expr, Program, Stmt};
 use std::collections::HashMap;
 
 pub fn analyze_use_after_free(program: &Program) -> Vec<UBReport> {
@@ -46,6 +46,7 @@ struct UseAfterAnalyzer {
     scope_depth: usize,
     /// Variables declaradas en cada scope
     scope_vars: Vec<Vec<String>>,
+    current_line: usize,
     reports: Vec<UBReport>,
 }
 
@@ -56,12 +57,16 @@ impl UseAfterAnalyzer {
             ptr_states: HashMap::new(),
             scope_depth: 0,
             scope_vars: vec![Vec::new()],
+            current_line: 0,
             reports: Vec::new(),
         }
     }
 
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::LineMarker(l) => {
+                self.current_line = *l;
+            }
             Stmt::Free(expr) => {
                 if let Expr::Variable(name) = expr {
                     if self.ptr_states.get(name) == Some(&PtrState::Freed) {
@@ -78,15 +83,31 @@ impl UseAfterAnalyzer {
             Stmt::Assign { name, value } => {
                 // Si se asigna la direccion de una variable local
                 if is_address_of_local(value) {
-                    self.ptr_states.insert(name.clone(), PtrState::PointsToStack);
+                    self.ptr_states
+                        .insert(name.clone(), PtrState::PointsToStack);
                 }
                 self.check_expr_use(value);
+            }
+            Stmt::Expr(expr) => {
+                if let Expr::Call { name, args } = expr {
+                    if name == "free" && args.len() == 1 {
+                        if let Expr::Variable(ptr_name) = &args[0] {
+                            self.ptr_states.insert(ptr_name.clone(), PtrState::Freed);
+                        }
+                    }
+                }
+                self.check_expr_use(expr);
             }
             Stmt::DerefAssign { pointer, value } => {
                 self.check_expr_use(pointer);
                 self.check_expr_use(value);
             }
-            Stmt::If { condition, then_body, else_body, .. } => {
+            Stmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 self.check_expr_use(condition);
                 self.enter_scope();
                 for s in then_body {
@@ -123,7 +144,9 @@ impl UseAfterAnalyzer {
         if let Some(leaving_vars) = self.scope_vars.pop() {
             for var in &leaving_vars {
                 // Cualquier puntero que apunte a estas variables es dangling
-                let dangling_ptrs: Vec<String> = self.ptr_states.iter()
+                let dangling_ptrs: Vec<String> = self
+                    .ptr_states
+                    .iter()
                     .filter(|(_, state)| **state == PtrState::PointsToStack)
                     .map(|(name, _)| name.clone())
                     .collect();
@@ -138,10 +161,10 @@ impl UseAfterAnalyzer {
                                 ptr_name, var
                             ),
                         )
-                        .with_location(self.func_name.clone(), 0)
+                        .with_location(self.func_name.clone(), self.current_line)
                         .with_suggestion(
-                            "Do not take address of stack variable that outlives scope".to_string()
-                        )
+                            "Do not take address of stack variable that outlives scope".to_string(),
+                        ),
                     );
                 }
             }
@@ -159,8 +182,8 @@ impl UseAfterAnalyzer {
                             UBKind::UseAfterFree,
                             format!("Use of freed pointer '{}'", name),
                         )
-                        .with_location(self.func_name.clone(), 0)
-                        .with_suggestion("Do not use pointer after free()".to_string())
+                        .with_location(self.func_name.clone(), self.current_line)
+                        .with_suggestion("Do not use pointer after free()".to_string()),
                     );
                 }
             }
@@ -170,6 +193,11 @@ impl UseAfterAnalyzer {
             Expr::BinaryOp { left, right, .. } => {
                 self.check_expr_use(left);
                 self.check_expr_use(right);
+            }
+            Expr::Call { args, .. } => {
+                for arg in args {
+                    self.check_expr_use(arg);
+                }
             }
             _ => {}
         }

@@ -36,7 +36,9 @@ impl TypeChecker {
     pub fn check_program(&mut self, program: &Program) -> HashMap<String, Type> {
         // 1. Registrar structs con sus campos
         for s in &program.structs {
-            let fields: StructFields = s.fields.iter()
+            let fields: StructFields = s
+                .fields
+                .iter()
                 .map(|f| (f.name.clone(), f.field_type.clone()))
                 .collect();
             self.struct_registry.insert(s.name.clone(), fields);
@@ -44,18 +46,19 @@ impl TypeChecker {
 
         // 2. Registrar firmas de funciones libres
         for func in &program.functions {
-            let param_types: Vec<Type> = func.params.iter()
-                .map(|p| p.param_type.clone())
-                .collect();
+            let param_types: Vec<Type> = func.params.iter().map(|p| p.param_type.clone()).collect();
             let ret = Type::from_c_name(func.return_type.as_deref().unwrap_or("void"));
-            self.function_registry.insert(func.name.clone(), (param_types, ret));
+            self.function_registry
+                .insert(func.name.clone(), (param_types, ret));
         }
 
         // 3. Registrar métodos de impl como "Struct::method"
         for imp in &program.impls {
             let struct_name = &imp.struct_name;
             for method in &imp.methods {
-                let param_types: Vec<Type> = method.params.iter()
+                let param_types: Vec<Type> = method
+                    .params
+                    .iter()
                     // skip &self / &mut self
                     .filter(|p| p.name != "self")
                     .map(|p| p.param_type.clone())
@@ -102,7 +105,8 @@ impl TypeChecker {
     fn check_function(&mut self, func: &Function) {
         self.symbol_table.clear();
         for param in &func.params {
-            self.symbol_table.insert(param.name.clone(), param.param_type.clone());
+            self.symbol_table
+                .insert(param.name.clone(), param.param_type.clone());
         }
         self.current_return_type = Type::from_c_name(func.return_type.as_deref().unwrap_or("void"));
         for stmt in &func.body {
@@ -117,7 +121,8 @@ impl TypeChecker {
         self.symbol_table.insert("self".to_string(), self_type);
         for param in &func.params {
             if param.name != "self" {
-                self.symbol_table.insert(param.name.clone(), param.param_type.clone());
+                self.symbol_table
+                    .insert(param.name.clone(), param.param_type.clone());
             }
         }
         self.current_return_type = Type::from_c_name(func.return_type.as_deref().unwrap_or("void"));
@@ -132,10 +137,12 @@ impl TypeChecker {
         self.symbol_table.insert("self".to_string(), self_type);
         for param in &method.params {
             if param.name != "self" {
-                self.symbol_table.insert(param.name.clone(), param.param_type.clone());
+                self.symbol_table
+                    .insert(param.name.clone(), param.param_type.clone());
             }
         }
-        self.current_return_type = Type::from_c_name(method.return_type.as_deref().unwrap_or("void"));
+        self.current_return_type =
+            Type::from_c_name(method.return_type.as_deref().unwrap_or("void"));
         for stmt in &method.body {
             self.check_stmt(stmt);
         }
@@ -154,12 +161,18 @@ impl TypeChecker {
             }
 
             // Declaración tipada: int x = 5  /  int* ptr = &x
-            Stmt::VarDecl { var_type, name, value } => {
+            Stmt::VarDecl {
+                var_type,
+                name,
+                value,
+            } => {
                 if let Some(init) = value {
                     let inferred = self.infer_expr(init);
                     if !self.types_compatible(var_type, &inferred) {
-                        eprintln!("⚠️  Warning: '{}' declared as {} but initialized with {}",
-                                  name, var_type, inferred);
+                        eprintln!(
+                            "⚠️  Warning: '{}' declared as {} but initialized with {}",
+                            name, var_type, inferred
+                        );
                     }
                 }
                 self.symbol_table.insert(name.clone(), var_type.clone());
@@ -169,12 +182,19 @@ impl TypeChecker {
             Stmt::CompoundAssign { name, op: _, value } => {
                 let _val_type = self.infer_expr(value);
                 if !self.symbol_table.contains_key(name.as_str()) {
-                    eprintln!("⚠️  Warning: CompoundAssign to undeclared variable '{}'", name);
+                    eprintln!(
+                        "⚠️  Warning: CompoundAssign to undeclared variable '{}'",
+                        name
+                    );
                 }
             }
 
             // Asignación a campo: obj.field = value
-            Stmt::FieldAssign { object, field, value } => {
+            Stmt::FieldAssign {
+                object,
+                field,
+                value,
+            } => {
                 let obj_type = self.infer_expr(object);
                 let _val_type = self.infer_expr(value);
                 self.check_field_access(&obj_type, field, "assign");
@@ -190,10 +210,15 @@ impl TypeChecker {
             }
 
             // Index assign: arr[i] = val
-            Stmt::IndexAssign { object, index: _, value: _ } => {
+            Stmt::IndexAssign {
+                object,
+                index: _,
+                value: _,
+            } => {
                 let arr_type = self.infer_expr(object);
                 if !matches!(arr_type, Type::Array(_, _) | Type::Pointer(_))
-                    && arr_type != Type::Unknown {
+                    && arr_type != Type::Unknown
+                {
                     eprintln!("⚠️  Warning: Index assign on non-array type: {}", arr_type);
                 }
             }
@@ -206,54 +231,87 @@ impl TypeChecker {
             }
 
             // If / else
-            Stmt::If { condition, then_body, else_body } => {
+            Stmt::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 self.infer_expr(condition);
-                for s in then_body { self.check_stmt(s); }
+                for s in then_body {
+                    self.check_stmt(s);
+                }
                 if let Some(eb) = else_body {
-                    for s in eb { self.check_stmt(s); }
+                    for s in eb {
+                        self.check_stmt(s);
+                    }
                 }
             }
 
             // While
             Stmt::While { condition, body } => {
                 self.infer_expr(condition);
-                for s in body { self.check_stmt(s); }
+                for s in body {
+                    self.check_stmt(s);
+                }
             }
 
             // Do-While
             Stmt::DoWhile { body, condition } => {
-                for s in body { self.check_stmt(s); }
+                for s in body {
+                    self.check_stmt(s);
+                }
                 self.infer_expr(condition);
             }
 
             // For (C-style index)
-            Stmt::For { var, start, end, body } => {
+            Stmt::For {
+                var,
+                start,
+                end,
+                body,
+            } => {
                 let start_type = self.infer_expr(start);
                 self.symbol_table.insert(var.clone(), start_type);
                 self.infer_expr(end);
-                for s in body { self.check_stmt(s); }
+                for s in body {
+                    self.check_stmt(s);
+                }
             }
 
             // ForEach
-            Stmt::ForEach { var, iterable, body } => {
+            Stmt::ForEach {
+                var,
+                iterable,
+                body,
+            } => {
                 let iter_type = self.infer_expr(iterable);
                 let elem_type = match &iter_type {
                     Type::Array(inner, _) => *inner.clone(),
                     _ => Type::Unknown,
                 };
                 self.symbol_table.insert(var.clone(), elem_type);
-                for s in body { self.check_stmt(s); }
+                for s in body {
+                    self.check_stmt(s);
+                }
             }
 
             // Switch
-            Stmt::Switch { expr, cases, default } => {
+            Stmt::Switch {
+                expr,
+                cases,
+                default,
+            } => {
                 self.infer_expr(expr);
                 for case in cases {
                     self.infer_expr(&case.value);
-                    for s in &case.body { self.check_stmt(s); }
+                    for s in &case.body {
+                        self.check_stmt(s);
+                    }
                 }
                 if let Some(def) = default {
-                    for s in def { self.check_stmt(s); }
+                    for s in def {
+                        self.check_stmt(s);
+                    }
                 }
             }
 
@@ -265,17 +323,24 @@ impl TypeChecker {
                     && self.current_return_type != Type::Unknown
                     && !self.types_compatible(&self.current_return_type.clone(), &ret_type)
                 {
-                    eprintln!("⚠️  Warning: Return type mismatch. Expected {}, found {}",
-                              self.current_return_type, ret_type);
+                    eprintln!(
+                        "⚠️  Warning: Return type mismatch. Expected {}, found {}",
+                        self.current_return_type, ret_type
+                    );
                 }
             }
             Stmt::Return(None) => {
                 if self.current_return_type != Type::Void
-                    && self.current_return_type != Type::Unknown {
-                    eprintln!("⚠️  Warning: Missing return value (expected {})",
-                              self.current_return_type);
+                    && self.current_return_type != Type::Unknown
+                {
+                    eprintln!(
+                        "⚠️  Warning: Missing return value (expected {})",
+                        self.current_return_type
+                    );
                 }
             }
+
+            Stmt::LineMarker(_) => {}
 
             // Expresión como statement (llamada a función, etc.)
             Stmt::Expr(expr) => {
@@ -296,24 +361,47 @@ impl TypeChecker {
             }
 
             // OS-level: ignorar semánticamente (correcto por definición en Modo 1)
-            Stmt::Cli | Stmt::Sti | Stmt::Hlt | Stmt::Iret | Stmt::Cpuid
-            | Stmt::RawBlock { .. } | Stmt::OrgDirective { .. } | Stmt::AlignDirective { .. }
-            | Stmt::FarJump { .. } | Stmt::LabelDef { .. } | Stmt::JumpTo { .. }
-            | Stmt::JumpIfZero { .. } | Stmt::JumpIfNotZero { .. }
-            | Stmt::JumpIfCarry { .. } | Stmt::JumpIfNotCarry { .. }
-            | Stmt::DataBytes { .. } | Stmt::DataWords { .. } | Stmt::DataDwords { .. }
-            | Stmt::TimesDirective { .. } | Stmt::IntCall { .. }
-            | Stmt::PortOut { .. } | Stmt::MemWrite { .. } | Stmt::RegAssign { .. } => {}
+            Stmt::Cli
+            | Stmt::Sti
+            | Stmt::Hlt
+            | Stmt::Iret
+            | Stmt::Cpuid
+            | Stmt::RawBlock { .. }
+            | Stmt::OrgDirective { .. }
+            | Stmt::AlignDirective { .. }
+            | Stmt::FarJump { .. }
+            | Stmt::LabelDef { .. }
+            | Stmt::JumpTo { .. }
+            | Stmt::JumpIfZero { .. }
+            | Stmt::JumpIfNotZero { .. }
+            | Stmt::JumpIfCarry { .. }
+            | Stmt::JumpIfNotCarry { .. }
+            | Stmt::DataBytes { .. }
+            | Stmt::DataWords { .. }
+            | Stmt::DataDwords { .. }
+            | Stmt::TimesDirective { .. }
+            | Stmt::IntCall { .. }
+            | Stmt::PortOut { .. }
+            | Stmt::MemWrite { .. }
+            | Stmt::RegAssign { .. } => {}
 
             // Break / Continue / Pass / Assert
             Stmt::Break | Stmt::Continue | Stmt::Pass => {}
-            Stmt::Assert { condition, .. } => { self.infer_expr(condition); }
+            Stmt::Assert { condition, .. } => {
+                self.infer_expr(condition);
+            }
 
             // Delete
-            Stmt::Delete { expr, .. } => { self.infer_expr(expr); }
+            Stmt::Delete { expr, .. } => {
+                self.infer_expr(expr);
+            }
 
             // ArrowAssign: ptr->field = val
-            Stmt::ArrowAssign { pointer, field: _, value } => {
+            Stmt::ArrowAssign {
+                pointer,
+                field: _,
+                value,
+            } => {
                 let ptr_t = self.infer_expr(pointer);
                 let _val_t = self.infer_expr(value);
                 if !matches!(ptr_t, Type::Pointer(_)) && ptr_t != Type::Unknown {
@@ -330,12 +418,12 @@ impl TypeChecker {
     fn infer_expr(&self, expr: &Expr) -> Type {
         match expr {
             // Literales
-            Expr::Number(_)  => Type::I64,
-            Expr::Float(_)   => Type::F64,
-            Expr::String(_)  => Type::Str,
-            Expr::Bool(_)    => Type::Bool,
-            Expr::Null       => Type::Unknown,
-            Expr::Nullptr    => Type::Pointer(Box::new(Type::Void)),
+            Expr::Number(_) => Type::I64,
+            Expr::Float(_) => Type::F64,
+            Expr::String(_) => Type::Str,
+            Expr::Bool(_) => Type::Bool,
+            Expr::Null => Type::Unknown,
+            Expr::Nullptr => Type::Pointer(Box::new(Type::Void)),
 
             // Variable
             Expr::Variable(name) => {
@@ -351,9 +439,13 @@ impl TypeChecker {
                 let r = self.infer_expr(right);
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
-                        if l.is_float() || r.is_float() { Type::F64 }
-                        else if l.is_numeric() && r.is_numeric() { Type::I64 }
-                        else { Type::Unknown }
+                        if l.is_float() || r.is_float() {
+                            Type::F64
+                        } else if l.is_numeric() && r.is_numeric() {
+                            Type::I64
+                        } else {
+                            Type::Unknown
+                        }
                     }
                     BinOp::And | BinOp::Or => Type::Bool,
                 }
@@ -363,22 +455,29 @@ impl TypeChecker {
             Expr::Comparison { .. } => Type::Bool,
 
             // Operaciones bitwise
-            Expr::BitwiseOp { left, right: _, op: _ } => self.infer_expr(left),
+            Expr::BitwiseOp {
+                left,
+                right: _,
+                op: _,
+            } => self.infer_expr(left),
 
             // NOT bitwise
             Expr::BitwiseNot(inner) => self.infer_expr(inner),
 
             // NOT lógico → bool
-            Expr::UnaryOp { op: UnaryOp::Not, .. } => Type::Bool,
-            Expr::UnaryOp { op: UnaryOp::Neg, expr } => self.infer_expr(expr),
+            Expr::UnaryOp {
+                op: UnaryOp::Not, ..
+            } => Type::Bool,
+            Expr::UnaryOp {
+                op: UnaryOp::Neg,
+                expr,
+            } => self.infer_expr(expr),
 
             // Deref: *ptr → tipo apuntado
-            Expr::Deref(inner) => {
-                match self.infer_expr(inner) {
-                    Type::Pointer(inner_t) => *inner_t,
-                    _ => Type::Unknown,
-                }
-            }
+            Expr::Deref(inner) => match self.infer_expr(inner) {
+                Type::Pointer(inner_t) => *inner_t,
+                _ => Type::Unknown,
+            },
 
             // Address-of: &x → Pointer(T)
             Expr::AddressOf(inner) => {
@@ -388,20 +487,19 @@ impl TypeChecker {
 
             // Array literal
             Expr::Array(elements) => {
-                let elem_type = elements.first()
+                let elem_type = elements
+                    .first()
                     .map(|e| self.infer_expr(e))
                     .unwrap_or(Type::Unknown);
                 Type::Array(Box::new(elem_type), Some(elements.len()))
             }
 
             // Index: arr[i] → elem type
-            Expr::Index { object, index: _ } => {
-                match self.infer_expr(object) {
-                    Type::Array(inner, _) => *inner,
-                    Type::Pointer(inner) => *inner,
-                    _ => Type::Unknown,
-                }
-            }
+            Expr::Index { object, index: _ } => match self.infer_expr(object) {
+                Type::Array(inner, _) => *inner,
+                Type::Pointer(inner) => *inner,
+                _ => Type::Unknown,
+            },
 
             // Field access: obj.field
             Expr::FieldAccess { object, field } => {
@@ -419,7 +517,11 @@ impl TypeChecker {
             }
 
             // Method call: obj.method(args)
-            Expr::MethodCall { object, method, args } => {
+            Expr::MethodCall {
+                object,
+                method,
+                args,
+            } => {
                 let obj_type = self.infer_expr(object);
                 let struct_name = match &obj_type {
                     Type::Named(n) | Type::Struct(n) | Type::Class(n) => n.clone(),
@@ -429,8 +531,13 @@ impl TypeChecker {
                 if let Some((param_types, ret)) = self.function_registry.get(&key) {
                     // Verificar aridad (sin contar self)
                     if args.len() != param_types.len() {
-                        eprintln!("⚠️  Warning: {}.{}() expects {} args, got {}",
-                                  struct_name, method, param_types.len(), args.len());
+                        eprintln!(
+                            "⚠️  Warning: {}.{}() expects {} args, got {}",
+                            struct_name,
+                            method,
+                            param_types.len(),
+                            args.len()
+                        );
                     }
                     ret.clone()
                 } else {
@@ -439,16 +546,18 @@ impl TypeChecker {
             }
 
             // Struct literal: Punto { x: 1, y: 2 }
-            Expr::New { class_name, .. } => {
-                Type::Named(class_name.clone())
-            }
+            Expr::New { class_name, .. } => Type::Named(class_name.clone()),
 
             // Function call: add(a, b)
             Expr::Call { name, args } => {
                 if let Some((param_types, ret)) = self.function_registry.get(name) {
                     if args.len() != param_types.len() {
-                        eprintln!("⚠️  Warning: {}() expects {} args, got {}",
-                                  name, param_types.len(), args.len());
+                        eprintln!(
+                            "⚠️  Warning: {}() expects {} args, got {}",
+                            name,
+                            param_types.len(),
+                            args.len()
+                        );
                     }
                     ret.clone()
                 } else {
@@ -467,14 +576,16 @@ impl TypeChecker {
             Expr::Cast { target_type, .. } => target_type.clone(),
 
             // Type casts
-            Expr::IntCast(_)   => Type::I64,
+            Expr::IntCast(_) => Type::I64,
             Expr::FloatCast(_) => Type::F64,
-            Expr::StrCast(_)   => Type::Str,
-            Expr::BoolCast(_)  => Type::Bool,
+            Expr::StrCast(_) => Type::Str,
+            Expr::BoolCast(_) => Type::Bool,
 
             // Pre/post inc/dec
-            Expr::PreIncrement(e) | Expr::PostIncrement(e) |
-            Expr::PreDecrement(e) | Expr::PostDecrement(e) => self.infer_expr(e),
+            Expr::PreIncrement(e)
+            | Expr::PostIncrement(e)
+            | Expr::PreDecrement(e)
+            | Expr::PostDecrement(e) => self.infer_expr(e),
 
             // Ternario
             Expr::Ternary { then_expr, .. } => self.infer_expr(then_expr),
@@ -498,12 +609,16 @@ impl TypeChecker {
             // OS-level
             Expr::RegRead { .. } => Type::U64,
             Expr::MemRead { .. } => Type::U64,
-            Expr::PortIn { .. }  => Type::U8,
-            Expr::CpuidExpr      => Type::U32,
+            Expr::PortIn { .. } => Type::U8,
+            Expr::CpuidExpr => Type::U32,
             Expr::LabelAddr { .. } => Type::U64,
 
             // This / Super
-            Expr::This  => self.symbol_table.get("self").cloned().unwrap_or(Type::Unknown),
+            Expr::This => self
+                .symbol_table
+                .get("self")
+                .cloned()
+                .unwrap_or(Type::Unknown),
             Expr::Super => Type::Unknown,
 
             // Input
@@ -533,7 +648,10 @@ impl TypeChecker {
                     return ftype.clone();
                 }
             }
-            eprintln!("⚠️  Warning: struct '{}' has no field '{}'", struct_name, field);
+            eprintln!(
+                "⚠️  Warning: struct '{}' has no field '{}'",
+                struct_name, field
+            );
         }
         Type::Unknown
     }
@@ -544,25 +662,39 @@ impl TypeChecker {
             Type::Named(n) | Type::Struct(n) | Type::Class(n) => n.clone(),
             Type::Unknown => return,
             _ => {
-                eprintln!("⚠️  Warning: Field {} '{}' on non-struct type: {}", context, field, obj_type);
+                eprintln!(
+                    "⚠️  Warning: Field {} '{}' on non-struct type: {}",
+                    context, field, obj_type
+                );
                 return;
             }
         };
         if let Some(fields) = self.struct_registry.get(&struct_name) {
             if !fields.iter().any(|(n, _)| n == field) {
-                eprintln!("⚠️  Warning: struct '{}' has no field '{}' ({})", struct_name, field, context);
+                eprintln!(
+                    "⚠️  Warning: struct '{}' has no field '{}' ({})",
+                    struct_name, field, context
+                );
             }
         }
     }
 
     /// Compatibilidad de tipos (permisiva para types numéricos y Unknown)
     fn types_compatible(&self, declared: &Type, inferred: &Type) -> bool {
-        if declared == inferred { return true; }
-        if *inferred == Type::Unknown || *declared == Type::Unknown { return true; }
+        if declared == inferred {
+            return true;
+        }
+        if *inferred == Type::Unknown || *declared == Type::Unknown {
+            return true;
+        }
         // Numérico ↔ numérico es compatible (conversión implícita)
-        if declared.is_numeric() && inferred.is_numeric() { return true; }
+        if declared.is_numeric() && inferred.is_numeric() {
+            return true;
+        }
         // Puntero ↔ nullptr
-        if declared.is_pointer() && *inferred == Type::Pointer(Box::new(Type::Void)) { return true; }
+        if declared.is_pointer() && *inferred == Type::Pointer(Box::new(Type::Void)) {
+            return true;
+        }
         false
     }
 }

@@ -79,15 +79,40 @@ impl Decoder {
 
         match b0 {
             // Single-byte
-            0x55 => Some((ADeadOp::Push { src: Operand::Reg(Reg::RBP) }, 1)),
+            0x55 => Some((
+                ADeadOp::Push {
+                    src: Operand::Reg(Reg::RBP),
+                },
+                1,
+            )),
             0x5D => Some((ADeadOp::Pop { dst: Reg::RBP }, 1)),
-            0x50 => Some((ADeadOp::Push { src: Operand::Reg(Reg::RAX) }, 1)),
+            0x50 => Some((
+                ADeadOp::Push {
+                    src: Operand::Reg(Reg::RAX),
+                },
+                1,
+            )),
             0x58 => Some((ADeadOp::Pop { dst: Reg::RAX }, 1)),
-            0x51 => Some((ADeadOp::Push { src: Operand::Reg(Reg::RCX) }, 1)),
+            0x51 => Some((
+                ADeadOp::Push {
+                    src: Operand::Reg(Reg::RCX),
+                },
+                1,
+            )),
             0x59 => Some((ADeadOp::Pop { dst: Reg::RCX }, 1)),
-            0x52 => Some((ADeadOp::Push { src: Operand::Reg(Reg::RDX) }, 1)),
+            0x52 => Some((
+                ADeadOp::Push {
+                    src: Operand::Reg(Reg::RDX),
+                },
+                1,
+            )),
             0x5A => Some((ADeadOp::Pop { dst: Reg::RDX }, 1)),
-            0x53 => Some((ADeadOp::Push { src: Operand::Reg(Reg::RBX) }, 1)),
+            0x53 => Some((
+                ADeadOp::Push {
+                    src: Operand::Reg(Reg::RBX),
+                },
+                1,
+            )),
             0x5B => Some((ADeadOp::Pop { dst: Reg::RBX }, 1)),
             0xC3 => Some((ADeadOp::Ret, 1)),
             0x90 => Some((ADeadOp::Nop, 1)),
@@ -96,66 +121,93 @@ impl Decoder {
             0xB8 => {
                 if offset + 5 <= code.len() {
                     let v = read_i32(code, offset + 1);
-                    Some((ADeadOp::Mov {
-                        dst: Operand::Reg(Reg::EAX),
-                        src: Operand::Imm32(v),
-                    }, 5))
-                } else { None }
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::EAX),
+                            src: Operand::Imm32(v),
+                        },
+                        5,
+                    ))
+                } else {
+                    None
+                }
             }
 
             // 0x41 prefix (R8-R15)
-            0x41 if offset + 1 < code.len() => {
-                match code[offset + 1] {
-                    0x50 => Some((ADeadOp::Push { src: Operand::Reg(Reg::R8) }, 2)),
-                    0x51 => Some((ADeadOp::Push { src: Operand::Reg(Reg::R9) }, 2)),
-                    0x58 => Some((ADeadOp::Pop { dst: Reg::R8 }, 2)),
-                    0x59 => Some((ADeadOp::Pop { dst: Reg::R9 }, 2)),
-                    _ => None,
-                }
-            }
+            0x41 if offset + 1 < code.len() => match code[offset + 1] {
+                0x50 => Some((
+                    ADeadOp::Push {
+                        src: Operand::Reg(Reg::R8),
+                    },
+                    2,
+                )),
+                0x51 => Some((
+                    ADeadOp::Push {
+                        src: Operand::Reg(Reg::R9),
+                    },
+                    2,
+                )),
+                0x58 => Some((ADeadOp::Pop { dst: Reg::R8 }, 2)),
+                0x59 => Some((ADeadOp::Pop { dst: Reg::R9 }, 2)),
+                _ => None,
+            },
 
             // xor r32, r32
-            0x31 if offset + 1 < code.len() => {
-                match code[offset + 1] {
-                    0xC0 => Some((ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX }, 2)),
-                    0xC9 => Some((ADeadOp::Xor { dst: Reg::ECX, src: Reg::ECX }, 2)),
-                    _ => None,
-                }
-            }
+            0x31 if offset + 1 < code.len() => match code[offset + 1] {
+                0xC0 => Some((
+                    ADeadOp::Xor {
+                        dst: Reg::EAX,
+                        src: Reg::EAX,
+                    },
+                    2,
+                )),
+                0xC9 => Some((
+                    ADeadOp::Xor {
+                        dst: Reg::ECX,
+                        src: Reg::ECX,
+                    },
+                    2,
+                )),
+                _ => None,
+            },
 
             // Short jumps (rel8)
             0x7C if offset + 1 < code.len() => {
                 let rel = code[offset + 1] as i8;
                 let target_addr = (offset as isize + 2 + rel as isize) as usize;
                 let label = self.get_or_create_label(target_addr);
-                Some((ADeadOp::Jcc { cond: Condition::Less, target: label }, 2))
+                Some((
+                    ADeadOp::Jcc {
+                        cond: Condition::Less,
+                        target: label,
+                    },
+                    2,
+                ))
             }
             0x7D if offset + 1 < code.len() => {
                 let rel = code[offset + 1] as i8;
                 let target_addr = (offset as isize + 2 + rel as isize) as usize;
                 let label = self.get_or_create_label(target_addr);
-                Some((ADeadOp::Jcc { cond: Condition::GreaterEq, target: label }, 2))
+                Some((
+                    ADeadOp::Jcc {
+                        cond: Condition::GreaterEq,
+                        target: label,
+                    },
+                    2,
+                ))
             }
 
             // 0x0F two-byte opcodes
-            0x0F if offset + 2 < code.len() => {
-                self.decode_0f(code, offset)
-            }
+            0x0F if offset + 2 < code.len() => self.decode_0f(code, offset),
 
             // REX.W = 0x48
-            0x48 if offset + 1 < code.len() => {
-                self.decode_rex_w(code, offset)
-            }
+            0x48 if offset + 1 < code.len() => self.decode_rex_w(code, offset),
 
             // REX.WB = 0x49 (R8-R15 dst)
-            0x49 if offset + 1 < code.len() => {
-                self.decode_rex_wb(code, offset)
-            }
+            0x49 if offset + 1 < code.len() => self.decode_rex_wb(code, offset),
 
             // REX.WR = 0x4C (R8-R15 src)
-            0x4C if offset + 1 < code.len() => {
-                self.decode_rex_wr(code, offset)
-            }
+            0x4C if offset + 1 < code.len() => self.decode_rex_wr(code, offset),
 
             // JMP rel32
             0xE9 if offset + 4 < code.len() => {
@@ -169,17 +221,23 @@ impl Decoder {
             0xE8 if offset + 4 < code.len() => {
                 let rel = read_i32(code, offset + 1);
                 let target_addr = (offset as isize + 5 + rel as isize) as usize;
-                Some((ADeadOp::Call {
-                    target: CallTarget::Name(format!("func_{:04X}", target_addr)),
-                }, 5))
+                Some((
+                    ADeadOp::Call {
+                        target: CallTarget::Name(format!("func_{:04X}", target_addr)),
+                    },
+                    5,
+                ))
             }
 
             // CALL [rip+disp32] / JMP [rip+disp32]
             0xFF if offset + 5 < code.len() && code[offset + 1] == 0x15 => {
                 let disp = read_i32(code, offset + 2);
-                Some((ADeadOp::Call {
-                    target: CallTarget::RipRelative(disp),
-                }, 6))
+                Some((
+                    ADeadOp::Call {
+                        target: CallTarget::RipRelative(disp),
+                    },
+                    6,
+                ))
             }
 
             // SSE: F2 prefix (cvtsi2sd)
@@ -189,16 +247,20 @@ impl Decoder {
                     && code[offset + 3] == 0x2A
                     && code[offset + 4] == 0xC0
                 {
-                    Some((ADeadOp::CvtSi2Sd { dst: Reg::XMM0, src: Reg::RAX }, 5))
+                    Some((
+                        ADeadOp::CvtSi2Sd {
+                            dst: Reg::XMM0,
+                            src: Reg::RAX,
+                        },
+                        5,
+                    ))
                 } else {
                     None
                 }
             }
 
             // SSE: 66 prefix (movq)
-            0x66 if offset + 4 < code.len() => {
-                self.decode_66_prefix(code, offset)
-            }
+            0x66 if offset + 4 < code.len() => self.decode_66_prefix(code, offset),
 
             _ => None,
         }
@@ -212,54 +274,108 @@ impl Decoder {
         let b1 = code[offset + 1];
         match b1 {
             // SETcc al
-            0x94 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::SetCC { cond: Condition::Equal, dst: Reg::AL }, 3))
-            }
-            0x95 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::SetCC { cond: Condition::NotEqual, dst: Reg::AL }, 3))
-            }
-            0x9C if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::SetCC { cond: Condition::Less, dst: Reg::AL }, 3))
-            }
-            0x9E if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::SetCC { cond: Condition::LessEq, dst: Reg::AL }, 3))
-            }
-            0x9F if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::SetCC { cond: Condition::Greater, dst: Reg::AL }, 3))
-            }
-            0x9D if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::SetCC { cond: Condition::GreaterEq, dst: Reg::AL }, 3))
-            }
+            0x94 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::SetCC {
+                    cond: Condition::Equal,
+                    dst: Reg::AL,
+                },
+                3,
+            )),
+            0x95 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::SetCC {
+                    cond: Condition::NotEqual,
+                    dst: Reg::AL,
+                },
+                3,
+            )),
+            0x9C if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::SetCC {
+                    cond: Condition::Less,
+                    dst: Reg::AL,
+                },
+                3,
+            )),
+            0x9E if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::SetCC {
+                    cond: Condition::LessEq,
+                    dst: Reg::AL,
+                },
+                3,
+            )),
+            0x9F if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::SetCC {
+                    cond: Condition::Greater,
+                    dst: Reg::AL,
+                },
+                3,
+            )),
+            0x9D if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::SetCC {
+                    cond: Condition::GreaterEq,
+                    dst: Reg::AL,
+                },
+                3,
+            )),
             // Jcc rel32
             0x84 if offset + 5 < code.len() => {
                 let rel = read_i32(code, offset + 2);
                 let target_addr = (offset as isize + 6 + rel as isize) as usize;
                 let label = self.get_or_create_label(target_addr);
-                Some((ADeadOp::Jcc { cond: Condition::Equal, target: label }, 6))
+                Some((
+                    ADeadOp::Jcc {
+                        cond: Condition::Equal,
+                        target: label,
+                    },
+                    6,
+                ))
             }
             0x85 if offset + 5 < code.len() => {
                 let rel = read_i32(code, offset + 2);
                 let target_addr = (offset as isize + 6 + rel as isize) as usize;
                 let label = self.get_or_create_label(target_addr);
-                Some((ADeadOp::Jcc { cond: Condition::NotEqual, target: label }, 6))
+                Some((
+                    ADeadOp::Jcc {
+                        cond: Condition::NotEqual,
+                        target: label,
+                    },
+                    6,
+                ))
             }
             0x8C if offset + 5 < code.len() => {
                 let rel = read_i32(code, offset + 2);
                 let target_addr = (offset as isize + 6 + rel as isize) as usize;
                 let label = self.get_or_create_label(target_addr);
-                Some((ADeadOp::Jcc { cond: Condition::Less, target: label }, 6))
+                Some((
+                    ADeadOp::Jcc {
+                        cond: Condition::Less,
+                        target: label,
+                    },
+                    6,
+                ))
             }
             0x8D if offset + 5 < code.len() => {
                 let rel = read_i32(code, offset + 2);
                 let target_addr = (offset as isize + 6 + rel as isize) as usize;
                 let label = self.get_or_create_label(target_addr);
-                Some((ADeadOp::Jcc { cond: Condition::GreaterEq, target: label }, 6))
+                Some((
+                    ADeadOp::Jcc {
+                        cond: Condition::GreaterEq,
+                        target: label,
+                    },
+                    6,
+                ))
             }
             0x8F if offset + 5 < code.len() => {
                 let rel = read_i32(code, offset + 2);
                 let target_addr = (offset as isize + 6 + rel as isize) as usize;
                 let label = self.get_or_create_label(target_addr);
-                Some((ADeadOp::Jcc { cond: Condition::Greater, target: label }, 6))
+                Some((
+                    ADeadOp::Jcc {
+                        cond: Condition::Greater,
+                        target: label,
+                    },
+                    6,
+                ))
             }
             // SYSCALL
             0x05 => Some((ADeadOp::Syscall, 2)),
@@ -278,96 +394,200 @@ impl Decoder {
             0xB8 => {
                 if offset + 10 <= code.len() {
                     let v = read_u64(code, offset + 2);
-                    Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Imm64(v) }, 10))
-                } else { None }
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Imm64(v),
+                        },
+                        10,
+                    ))
+                } else {
+                    None
+                }
             }
             0xB9 => {
                 if offset + 10 <= code.len() {
                     let v = read_u64(code, offset + 2);
-                    Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Imm64(v) }, 10))
-                } else { None }
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RCX),
+                            src: Operand::Imm64(v),
+                        },
+                        10,
+                    ))
+                } else {
+                    None
+                }
             }
             0xBA => {
                 if offset + 10 <= code.len() {
                     let v = read_u64(code, offset + 2);
-                    Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(v) }, 10))
-                } else { None }
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RDX),
+                            src: Operand::Imm64(v),
+                        },
+                        10,
+                    ))
+                } else {
+                    None
+                }
             }
             0xBB => {
                 if offset + 10 <= code.len() {
                     let v = read_u64(code, offset + 2);
-                    Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RBX), src: Operand::Imm64(v) }, 10))
-                } else { None }
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RBX),
+                            src: Operand::Imm64(v),
+                        },
+                        10,
+                    ))
+                } else {
+                    None
+                }
             }
             0xBE => {
                 if offset + 10 <= code.len() {
                     let v = read_u64(code, offset + 2);
-                    Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RSI), src: Operand::Imm64(v) }, 10))
-                } else { None }
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RSI),
+                            src: Operand::Imm64(v),
+                        },
+                        10,
+                    ))
+                } else {
+                    None
+                }
             }
             0xBF => {
                 if offset + 10 <= code.len() {
                     let v = read_u64(code, offset + 2);
-                    Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RDI), src: Operand::Imm64(v) }, 10))
-                } else { None }
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(Reg::RDI),
+                            src: Operand::Imm64(v),
+                        },
+                        10,
+                    ))
+                } else {
+                    None
+                }
             }
 
             // MOV with ModR/M
-            0x89 if offset + 2 < code.len() => {
-                self.decode_48_89(code, offset)
-            }
-            0x8B if offset + 2 < code.len() => {
-                self.decode_48_8b(code, offset)
-            }
+            0x89 if offset + 2 < code.len() => self.decode_48_89(code, offset),
+            0x8B if offset + 2 < code.len() => self.decode_48_8b(code, offset),
 
             // ADD, SUB, CMP reg, reg
-            0x01 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => {
-                Some((ADeadOp::Add { dst: Operand::Reg(Reg::RAX), src: Operand::Reg(Reg::RBX) }, 3))
-            }
-            0x29 if offset + 2 < code.len() => {
-                match code[offset + 2] {
-                    0xD8 => Some((ADeadOp::Sub { dst: Operand::Reg(Reg::RAX), src: Operand::Reg(Reg::RBX) }, 3)),
-                    0xC3 => Some((ADeadOp::Sub { dst: Operand::Reg(Reg::RBX), src: Operand::Reg(Reg::RAX) }, 3)),
-                    _ => None,
-                }
-            }
-            0x39 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => {
-                Some((ADeadOp::Cmp { left: Operand::Reg(Reg::RAX), right: Operand::Reg(Reg::RBX) }, 3))
-            }
+            0x01 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => Some((
+                ADeadOp::Add {
+                    dst: Operand::Reg(Reg::RAX),
+                    src: Operand::Reg(Reg::RBX),
+                },
+                3,
+            )),
+            0x29 if offset + 2 < code.len() => match code[offset + 2] {
+                0xD8 => Some((
+                    ADeadOp::Sub {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(Reg::RBX),
+                    },
+                    3,
+                )),
+                0xC3 => Some((
+                    ADeadOp::Sub {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    },
+                    3,
+                )),
+                _ => None,
+            },
+            0x39 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => Some((
+                ADeadOp::Cmp {
+                    left: Operand::Reg(Reg::RAX),
+                    right: Operand::Reg(Reg::RBX),
+                },
+                3,
+            )),
             0x3B if offset + 2 < code.len() && code[offset + 2] == 0x85 => {
                 if offset + 6 < code.len() {
                     let disp = read_i32(code, offset + 3);
-                    Some((ADeadOp::Cmp {
-                        left: Operand::Reg(Reg::RAX),
-                        right: Operand::Mem { base: Reg::RBP, disp },
-                    }, 7))
-                } else { None }
+                    Some((
+                        ADeadOp::Cmp {
+                            left: Operand::Reg(Reg::RAX),
+                            right: Operand::Mem {
+                                base: Reg::RBP,
+                                disp,
+                            },
+                        },
+                        7,
+                    ))
+                } else {
+                    None
+                }
             }
 
             // IMUL rax, rbx
-            0x0F if offset + 3 < code.len() && code[offset + 2] == 0xAF && code[offset + 3] == 0xC3 => {
-                Some((ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX }, 4))
+            0x0F if offset + 3 < code.len()
+                && code[offset + 2] == 0xAF
+                && code[offset + 3] == 0xC3 =>
+            {
+                Some((
+                    ADeadOp::Mul {
+                        dst: Reg::RAX,
+                        src: Reg::RBX,
+                    },
+                    4,
+                ))
             }
             // MOVZX rax, al
-            0x0F if offset + 3 < code.len() && code[offset + 2] == 0xB6 && code[offset + 3] == 0xC0 => {
-                Some((ADeadOp::MovZx { dst: Reg::RAX, src: Reg::AL }, 4))
+            0x0F if offset + 3 < code.len()
+                && code[offset + 2] == 0xB6
+                && code[offset + 3] == 0xC0 =>
+            {
+                Some((
+                    ADeadOp::MovZx {
+                        dst: Reg::RAX,
+                        src: Reg::AL,
+                    },
+                    4,
+                ))
             }
 
             // Bitwise
-            0x21 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => {
-                Some((ADeadOp::And { dst: Reg::RAX, src: Reg::RBX }, 3))
-            }
-            0x09 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => {
-                Some((ADeadOp::Or { dst: Reg::RAX, src: Reg::RBX }, 3))
-            }
-            0x31 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::Xor { dst: Reg::RAX, src: Reg::RAX }, 3))
-            }
+            0x21 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => Some((
+                ADeadOp::And {
+                    dst: Reg::RAX,
+                    src: Reg::RBX,
+                },
+                3,
+            )),
+            0x09 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => Some((
+                ADeadOp::Or {
+                    dst: Reg::RAX,
+                    src: Reg::RBX,
+                },
+                3,
+            )),
+            0x31 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::Xor {
+                    dst: Reg::RAX,
+                    src: Reg::RAX,
+                },
+                3,
+            )),
 
             // TEST rax, rax
-            0x85 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => {
-                Some((ADeadOp::Test { left: Reg::RAX, right: Reg::RAX }, 3))
-            }
+            0x85 if offset + 2 < code.len() && code[offset + 2] == 0xC0 => Some((
+                ADeadOp::Test {
+                    left: Reg::RAX,
+                    right: Reg::RAX,
+                },
+                3,
+            )),
 
             // NEG rax
             0xF7 if offset + 2 < code.len() && code[offset + 2] == 0xD8 => {
@@ -380,7 +600,11 @@ impl Decoder {
 
             // CQO (0x48 0x99) — consumed as part of Div when followed by idiv
             0x99 => {
-                if offset + 4 < code.len() && code[offset + 2] == 0x48 && code[offset + 3] == 0xF7 && code[offset + 4] == 0xFB {
+                if offset + 4 < code.len()
+                    && code[offset + 2] == 0x48
+                    && code[offset + 3] == 0xF7
+                    && code[offset + 4] == 0xFB
+                {
                     Some((ADeadOp::Div { src: Reg::RBX }, 5))
                 } else {
                     Some((ADeadOp::RawBytes(vec![0x48, 0x99]), 2))
@@ -388,37 +612,55 @@ impl Decoder {
             }
 
             // INC/DEC
-            0xFF if offset + 2 < code.len() => {
-                self.decode_48_ff(code, offset)
-            }
+            0xFF if offset + 2 < code.len() => self.decode_48_ff(code, offset),
 
             // SUB/ADD rsp
-            0x81 if offset + 2 < code.len() => {
-                match code[offset + 2] {
-                    0xEC if offset + 6 < code.len() => {
-                        let v = read_i32(code, offset + 3);
-                        Some((ADeadOp::Sub { dst: Operand::Reg(Reg::RSP), src: Operand::Imm32(v) }, 7))
-                    }
-                    0xC4 if offset + 6 < code.len() => {
-                        let v = read_i32(code, offset + 3);
-                        Some((ADeadOp::Add { dst: Operand::Reg(Reg::RSP), src: Operand::Imm32(v) }, 7))
-                    }
-                    _ => None,
+            0x81 if offset + 2 < code.len() => match code[offset + 2] {
+                0xEC if offset + 6 < code.len() => {
+                    let v = read_i32(code, offset + 3);
+                    Some((
+                        ADeadOp::Sub {
+                            dst: Operand::Reg(Reg::RSP),
+                            src: Operand::Imm32(v),
+                        },
+                        7,
+                    ))
                 }
-            }
-            0x83 if offset + 3 < code.len() => {
-                match code[offset + 2] {
-                    0xEC => {
-                        let v = code[offset + 3] as i8;
-                        Some((ADeadOp::Sub { dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(v) }, 4))
-                    }
-                    0xC4 => {
-                        let v = code[offset + 3] as i8;
-                        Some((ADeadOp::Add { dst: Operand::Reg(Reg::RSP), src: Operand::Imm8(v) }, 4))
-                    }
-                    _ => None,
+                0xC4 if offset + 6 < code.len() => {
+                    let v = read_i32(code, offset + 3);
+                    Some((
+                        ADeadOp::Add {
+                            dst: Operand::Reg(Reg::RSP),
+                            src: Operand::Imm32(v),
+                        },
+                        7,
+                    ))
                 }
-            }
+                _ => None,
+            },
+            0x83 if offset + 3 < code.len() => match code[offset + 2] {
+                0xEC => {
+                    let v = code[offset + 3] as i8;
+                    Some((
+                        ADeadOp::Sub {
+                            dst: Operand::Reg(Reg::RSP),
+                            src: Operand::Imm8(v),
+                        },
+                        4,
+                    ))
+                }
+                0xC4 => {
+                    let v = code[offset + 3] as i8;
+                    Some((
+                        ADeadOp::Add {
+                            dst: Operand::Reg(Reg::RSP),
+                            src: Operand::Imm8(v),
+                        },
+                        4,
+                    ))
+                }
+                _ => None,
+            },
 
             // MOV reg64, imm32 (sign-extended)
             0xC7 if offset + 6 < code.len() => {
@@ -430,31 +672,58 @@ impl Decoder {
                     0xC7 => Some(Reg::RDI),
                     _ => None,
                 };
-                reg.map(|r| (ADeadOp::Mov {
-                    dst: Operand::Reg(r),
-                    src: Operand::Imm32(v),
-                }, 7))
+                reg.map(|r| {
+                    (
+                        ADeadOp::Mov {
+                            dst: Operand::Reg(r),
+                            src: Operand::Imm32(v),
+                        },
+                        7,
+                    )
+                })
             }
 
             // LEA
-            0x8D if offset + 2 < code.len() => {
-                match code[offset + 2] {
-                    0x85 if offset + 6 < code.len() => {
-                        let disp = read_i32(code, offset + 3);
-                        Some((ADeadOp::Lea { dst: Reg::RAX, src: Operand::Mem { base: Reg::RBP, disp } }, 7))
-                    }
-                    0x95 if offset + 6 < code.len() => {
-                        let disp = read_i32(code, offset + 3);
-                        Some((ADeadOp::Lea { dst: Reg::RDX, src: Operand::Mem { base: Reg::RBP, disp } }, 7))
-                    }
-                    _ => None,
+            0x8D if offset + 2 < code.len() => match code[offset + 2] {
+                0x85 if offset + 6 < code.len() => {
+                    let disp = read_i32(code, offset + 3);
+                    Some((
+                        ADeadOp::Lea {
+                            dst: Reg::RAX,
+                            src: Operand::Mem {
+                                base: Reg::RBP,
+                                disp,
+                            },
+                        },
+                        7,
+                    ))
                 }
-            }
+                0x95 if offset + 6 < code.len() => {
+                    let disp = read_i32(code, offset + 3);
+                    Some((
+                        ADeadOp::Lea {
+                            dst: Reg::RDX,
+                            src: Operand::Mem {
+                                base: Reg::RBP,
+                                disp,
+                            },
+                        },
+                        7,
+                    ))
+                }
+                _ => None,
+            },
 
             // SHL rax, imm8
             0xC1 if offset + 3 < code.len() && code[offset + 2] == 0xE0 => {
                 let amount = code[offset + 3];
-                Some((ADeadOp::Shl { dst: Reg::RAX, amount }, 4))
+                Some((
+                    ADeadOp::Shl {
+                        dst: Reg::RAX,
+                        amount,
+                    },
+                    4,
+                ))
             }
 
             _ => None,
@@ -468,33 +737,114 @@ impl Decoder {
     fn decode_48_89(&self, code: &[u8], offset: usize) -> Option<(ADeadOp, usize)> {
         let modrm = code[offset + 2];
         match modrm {
-            0xE5 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RBP), src: Operand::Reg(Reg::RSP) }, 3)),
-            0xEC => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RSP), src: Operand::Reg(Reg::RBP) }, 3)),
-            0xC3 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RBX), src: Operand::Reg(Reg::RAX) }, 3)),
-            0xC1 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Reg(Reg::RAX) }, 3)),
-            0xC2 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Reg(Reg::RAX) }, 3)),
-            0xC8 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Reg(Reg::RCX) }, 3)),
+            0xE5 => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBP),
+                    src: Operand::Reg(Reg::RSP),
+                },
+                3,
+            )),
+            0xEC => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RSP),
+                    src: Operand::Reg(Reg::RBP),
+                },
+                3,
+            )),
+            0xC3 => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                },
+                3,
+            )),
+            0xC1 => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RCX),
+                    src: Operand::Reg(Reg::RAX),
+                },
+                3,
+            )),
+            0xC2 => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RDX),
+                    src: Operand::Reg(Reg::RAX),
+                },
+                3,
+            )),
+            0xC8 => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RAX),
+                    src: Operand::Reg(Reg::RCX),
+                },
+                3,
+            )),
             // [rbp+disp32] stores
             0x85 if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Mov { dst: Operand::Mem { base: Reg::RBP, disp }, src: Operand::Reg(Reg::RAX) }, 7))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                        src: Operand::Reg(Reg::RAX),
+                    },
+                    7,
+                ))
             }
             0x8D if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Mov { dst: Operand::Mem { base: Reg::RBP, disp }, src: Operand::Reg(Reg::RCX) }, 7))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                        src: Operand::Reg(Reg::RCX),
+                    },
+                    7,
+                ))
             }
             0x95 if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Mov { dst: Operand::Mem { base: Reg::RBP, disp }, src: Operand::Reg(Reg::RDX) }, 7))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                        src: Operand::Reg(Reg::RDX),
+                    },
+                    7,
+                ))
             }
             // [rbp+disp8] stores
             0x4D if offset + 3 < code.len() => {
                 let disp = code[offset + 3] as i8 as i32;
-                Some((ADeadOp::Mov { dst: Operand::Mem { base: Reg::RBP, disp }, src: Operand::Reg(Reg::RCX) }, 4))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                        src: Operand::Reg(Reg::RCX),
+                    },
+                    4,
+                ))
             }
             0x55 if offset + 3 < code.len() => {
                 let disp = code[offset + 3] as i8 as i32;
-                Some((ADeadOp::Mov { dst: Operand::Mem { base: Reg::RBP, disp }, src: Operand::Reg(Reg::RDX) }, 4))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                        src: Operand::Reg(Reg::RDX),
+                    },
+                    4,
+                ))
             }
             _ => None,
         }
@@ -510,19 +860,64 @@ impl Decoder {
             // [rbp+disp32] loads
             0x85 if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Mem { base: Reg::RBP, disp } }, 7))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                    },
+                    7,
+                ))
             }
             0x8D if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Mem { base: Reg::RBP, disp } }, 7))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RCX),
+                        src: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                    },
+                    7,
+                ))
             }
             0x9D if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RBX), src: Operand::Mem { base: Reg::RBP, disp } }, 7))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                    },
+                    7,
+                ))
             }
             // [reg] loads (no displacement)
-            0x00 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Mem { base: Reg::RAX, disp: 0 } }, 3)),
-            0x03 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::RAX), src: Operand::Mem { base: Reg::RBX, disp: 0 } }, 3)),
+            0x00 => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RAX),
+                    src: Operand::Mem {
+                        base: Reg::RAX,
+                        disp: 0,
+                    },
+                },
+                3,
+            )),
+            0x03 => Some((
+                ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RAX),
+                    src: Operand::Mem {
+                        base: Reg::RBX,
+                        disp: 0,
+                    },
+                },
+                3,
+            )),
             _ => None,
         }
     }
@@ -535,19 +930,50 @@ impl Decoder {
         let modrm = code[offset + 2];
         match modrm {
             // inc reg
-            0xC0 => Some((ADeadOp::Inc { dst: Operand::Reg(Reg::RAX) }, 3)),
-            0xC1 => Some((ADeadOp::Inc { dst: Operand::Reg(Reg::RCX) }, 3)),
+            0xC0 => Some((
+                ADeadOp::Inc {
+                    dst: Operand::Reg(Reg::RAX),
+                },
+                3,
+            )),
+            0xC1 => Some((
+                ADeadOp::Inc {
+                    dst: Operand::Reg(Reg::RCX),
+                },
+                3,
+            )),
             // dec reg
-            0xC9 => Some((ADeadOp::Dec { dst: Operand::Reg(Reg::RCX) }, 3)),
+            0xC9 => Some((
+                ADeadOp::Dec {
+                    dst: Operand::Reg(Reg::RCX),
+                },
+                3,
+            )),
             // inc [rbp+disp32]
             0x85 if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Inc { dst: Operand::Mem { base: Reg::RBP, disp } }, 7))
+                Some((
+                    ADeadOp::Inc {
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                    },
+                    7,
+                ))
             }
             // dec [rbp+disp32]
             0x8D if offset + 6 < code.len() => {
                 let disp = read_i32(code, offset + 3);
-                Some((ADeadOp::Dec { dst: Operand::Mem { base: Reg::RBP, disp } }, 7))
+                Some((
+                    ADeadOp::Dec {
+                        dst: Operand::Mem {
+                            base: Reg::RBP,
+                            disp,
+                        },
+                    },
+                    7,
+                ))
             }
             _ => None,
         }
@@ -562,19 +988,41 @@ impl Decoder {
         match b1 {
             0xB8 if offset + 10 <= code.len() => {
                 let v = read_u64(code, offset + 2);
-                Some((ADeadOp::Mov { dst: Operand::Reg(Reg::R8), src: Operand::Imm64(v) }, 10))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::R8),
+                        src: Operand::Imm64(v),
+                    },
+                    10,
+                ))
             }
             0xB9 if offset + 10 <= code.len() => {
                 let v = read_u64(code, offset + 2);
-                Some((ADeadOp::Mov { dst: Operand::Reg(Reg::R9), src: Operand::Imm64(v) }, 10))
+                Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::R9),
+                        src: Operand::Imm64(v),
+                    },
+                    10,
+                ))
             }
-            0x89 if offset + 2 < code.len() => {
-                match code[offset + 2] {
-                    0xC0 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::R8), src: Operand::Reg(Reg::RAX) }, 3)),
-                    0xC1 => Some((ADeadOp::Mov { dst: Operand::Reg(Reg::R9), src: Operand::Reg(Reg::RAX) }, 3)),
-                    _ => None,
-                }
-            }
+            0x89 if offset + 2 < code.len() => match code[offset + 2] {
+                0xC0 => Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::R8),
+                        src: Operand::Reg(Reg::RAX),
+                    },
+                    3,
+                )),
+                0xC1 => Some((
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::R9),
+                        src: Operand::Reg(Reg::RAX),
+                    },
+                    3,
+                )),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -587,39 +1035,59 @@ impl Decoder {
         let b1 = code[offset + 1];
         match b1 {
             // CMP
-            0x39 if offset + 2 < code.len() => {
-                match code[offset + 2] {
-                    0xC1 => Some((ADeadOp::Cmp { left: Operand::Reg(Reg::RCX), right: Operand::Reg(Reg::R8) }, 3)),
-                    0x85 if offset + 6 < code.len() => {
-                        let disp = read_i32(code, offset + 3);
-                        Some((ADeadOp::Cmp {
-                            left: Operand::Mem { base: Reg::RBP, disp },
+            0x39 if offset + 2 < code.len() => match code[offset + 2] {
+                0xC1 => Some((
+                    ADeadOp::Cmp {
+                        left: Operand::Reg(Reg::RCX),
+                        right: Operand::Reg(Reg::R8),
+                    },
+                    3,
+                )),
+                0x85 if offset + 6 < code.len() => {
+                    let disp = read_i32(code, offset + 3);
+                    Some((
+                        ADeadOp::Cmp {
+                            left: Operand::Mem {
+                                base: Reg::RBP,
+                                disp,
+                            },
                             right: Operand::Reg(Reg::R8),
-                        }, 7))
-                    }
-                    _ => None,
+                        },
+                        7,
+                    ))
                 }
-            }
+                _ => None,
+            },
             // MOV [rbp+disp8], R8/R9
-            0x89 if offset + 3 < code.len() => {
-                match code[offset + 2] {
-                    0x45 => {
-                        let disp = code[offset + 3] as i8 as i32;
-                        Some((ADeadOp::Mov {
-                            dst: Operand::Mem { base: Reg::RBP, disp },
+            0x89 if offset + 3 < code.len() => match code[offset + 2] {
+                0x45 => {
+                    let disp = code[offset + 3] as i8 as i32;
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Mem {
+                                base: Reg::RBP,
+                                disp,
+                            },
                             src: Operand::Reg(Reg::R8),
-                        }, 4))
-                    }
-                    0x4D => {
-                        let disp = code[offset + 3] as i8 as i32;
-                        Some((ADeadOp::Mov {
-                            dst: Operand::Mem { base: Reg::RBP, disp },
-                            src: Operand::Reg(Reg::R9),
-                        }, 4))
-                    }
-                    _ => None,
+                        },
+                        4,
+                    ))
                 }
-            }
+                0x4D => {
+                    let disp = code[offset + 3] as i8 as i32;
+                    Some((
+                        ADeadOp::Mov {
+                            dst: Operand::Mem {
+                                base: Reg::RBP,
+                                disp,
+                            },
+                            src: Operand::Reg(Reg::R9),
+                        },
+                        4,
+                    ))
+                }
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -629,23 +1097,32 @@ impl Decoder {
     // ========================================
 
     fn decode_66_prefix(&self, code: &[u8], offset: usize) -> Option<(ADeadOp, usize)> {
-        if offset + 4 < code.len()
-            && code[offset + 1] == 0x48
-            && code[offset + 2] == 0x0F
-        {
+        if offset + 4 < code.len() && code[offset + 1] == 0x48 && code[offset + 2] == 0x0F {
             match code[offset + 3] {
                 // movq rax, xmm0
-                0x7E if offset + 4 < code.len() && code[offset + 4] == 0xC0 => {
-                    Some((ADeadOp::MovQ { dst: Reg::RAX, src: Reg::XMM0 }, 5))
-                }
+                0x7E if offset + 4 < code.len() && code[offset + 4] == 0xC0 => Some((
+                    ADeadOp::MovQ {
+                        dst: Reg::RAX,
+                        src: Reg::XMM0,
+                    },
+                    5,
+                )),
                 // movq xmm1, rdx
-                0x6E if offset + 4 < code.len() && code[offset + 4] == 0xCA => {
-                    Some((ADeadOp::MovQ { dst: Reg::XMM1, src: Reg::RDX }, 5))
-                }
+                0x6E if offset + 4 < code.len() && code[offset + 4] == 0xCA => Some((
+                    ADeadOp::MovQ {
+                        dst: Reg::XMM1,
+                        src: Reg::RDX,
+                    },
+                    5,
+                )),
                 // movq xmm0, rax
-                0x6E if offset + 4 < code.len() && code[offset + 4] == 0xC0 => {
-                    Some((ADeadOp::MovQ { dst: Reg::XMM0, src: Reg::RAX }, 5))
-                }
+                0x6E if offset + 4 < code.len() && code[offset + 4] == 0xC0 => Some((
+                    ADeadOp::MovQ {
+                        dst: Reg::XMM0,
+                        src: Reg::RAX,
+                    },
+                    5,
+                )),
                 _ => None,
             }
         } else {
@@ -709,11 +1186,19 @@ mod tests {
         let code = vec![0x55, 0x48, 0x89, 0xE5, 0x5D, 0xC3];
         let ops = dec.decode_all(&code);
 
-        assert_eq!(ops[0], ADeadOp::Push { src: Operand::Reg(Reg::RBP) });
-        assert_eq!(ops[1], ADeadOp::Mov {
-            dst: Operand::Reg(Reg::RBP),
-            src: Operand::Reg(Reg::RSP),
-        });
+        assert_eq!(
+            ops[0],
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP)
+            }
+        );
+        assert_eq!(
+            ops[1],
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBP),
+                src: Operand::Reg(Reg::RSP),
+            }
+        );
         assert_eq!(ops[2], ADeadOp::Pop { dst: Reg::RBP });
         assert_eq!(ops[3], ADeadOp::Ret);
     }
@@ -723,7 +1208,13 @@ mod tests {
         let mut dec = Decoder::new();
         let code = vec![0x31, 0xC0];
         let ops = dec.decode_all(&code);
-        assert_eq!(ops[0], ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX });
+        assert_eq!(
+            ops[0],
+            ADeadOp::Xor {
+                dst: Reg::EAX,
+                src: Reg::EAX
+            }
+        );
     }
 
     #[test]
@@ -732,20 +1223,34 @@ mod tests {
         let mut code = vec![0x48, 0xB8];
         code.extend_from_slice(&42u64.to_le_bytes());
         let ops = dec.decode_all(&code);
-        assert_eq!(ops[0], ADeadOp::Mov {
-            dst: Operand::Reg(Reg::RAX),
-            src: Operand::Imm64(42),
-        });
+        assert_eq!(
+            ops[0],
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Imm64(42),
+            }
+        );
     }
 
     #[test]
     fn test_roundtrip_prologue() {
         // Encode → bytes → Decode → verify same ops
         let original_ops = vec![
-            ADeadOp::Push { src: Operand::Reg(Reg::RBP) },
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RBP), src: Operand::Reg(Reg::RSP) },
-            ADeadOp::Xor { dst: Reg::EAX, src: Reg::EAX },
-            ADeadOp::Mov { dst: Operand::Reg(Reg::RSP), src: Operand::Reg(Reg::RBP) },
+            ADeadOp::Push {
+                src: Operand::Reg(Reg::RBP),
+            },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBP),
+                src: Operand::Reg(Reg::RSP),
+            },
+            ADeadOp::Xor {
+                dst: Reg::EAX,
+                src: Reg::EAX,
+            },
+            ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Reg(Reg::RBP),
+            },
             ADeadOp::Pop { dst: Reg::RBP },
             ADeadOp::Ret,
         ];

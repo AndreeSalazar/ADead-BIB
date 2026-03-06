@@ -83,8 +83,8 @@ impl Reg {
     pub const RBP: Reg = Reg(5);
     pub const RSI: Reg = Reg(6);
     pub const RDI: Reg = Reg(7);
-    pub const R8:  Reg = Reg(8);
-    pub const R9:  Reg = Reg(9);
+    pub const R8: Reg = Reg(8);
+    pub const R9: Reg = Reg(9);
     pub const R10: Reg = Reg(10);
     pub const R11: Reg = Reg(11);
     pub const R12: Reg = Reg(12);
@@ -94,11 +94,26 @@ impl Reg {
 
     pub fn name(self) -> &'static str {
         match self.0 {
-            0  => "rax", 1  => "rcx", 2  => "rdx", 3  => "rbx",
-            4  => "rsp", 5  => "rbp", 6  => "rsi", 7  => "rdi",
-            8  => "r8",  9  => "r9",  10 => "r10", 11 => "r11",
-            12 => "r12", 13 => "r13", 14 => "r14", 15 => "r15",
-            n  => { let _ = n; "??" }
+            0 => "rax",
+            1 => "rcx",
+            2 => "rdx",
+            3 => "rbx",
+            4 => "rsp",
+            5 => "rbp",
+            6 => "rsi",
+            7 => "rdi",
+            8 => "r8",
+            9 => "r9",
+            10 => "r10",
+            11 => "r11",
+            12 => "r12",
+            13 => "r13",
+            14 => "r14",
+            15 => "r15",
+            n => {
+                let _ = n;
+                "??"
+            }
         }
     }
 }
@@ -116,7 +131,7 @@ pub struct CallFrame {
     /// Integer/pointer argument registers, in order.
     pub int_param_regs: &'static [Reg],
     /// Floating-point argument registers (XMM), in order.
-    pub fp_param_regs: &'static [u8],   // XMM index 0..7
+    pub fp_param_regs: &'static [u8], // XMM index 0..7
     /// Return value in integer register.
     pub int_return_reg: Reg,
     /// Return value in XMM register (index).
@@ -138,70 +153,75 @@ pub struct CallFrame {
 // ── Static frame tables ─────────────────────────────────────────────────────
 
 static WIN64_INT_PARAMS: &[Reg] = &[Reg::RCX, Reg::RDX, Reg::R8, Reg::R9];
-static SYSV_INT_PARAMS:  &[Reg] = &[Reg::RDI, Reg::RSI, Reg::RDX, Reg::RCX, Reg::R8, Reg::R9];
+static SYSV_INT_PARAMS: &[Reg] = &[Reg::RDI, Reg::RSI, Reg::RDX, Reg::RCX, Reg::R8, Reg::R9];
 
 static WIN64_CALLEE_SAVED: &[Reg] = &[
-    Reg::RBX, Reg::RBP, Reg::RDI, Reg::RSI, Reg::R12, Reg::R13, Reg::R14, Reg::R15,
+    Reg::RBX,
+    Reg::RBP,
+    Reg::RDI,
+    Reg::RSI,
+    Reg::R12,
+    Reg::R13,
+    Reg::R14,
+    Reg::R15,
 ];
-static SYSV_CALLEE_SAVED: &[Reg] = &[
-    Reg::RBX, Reg::RBP, Reg::R12, Reg::R13, Reg::R14, Reg::R15,
-];
+static SYSV_CALLEE_SAVED: &[Reg] = &[Reg::RBX, Reg::RBP, Reg::R12, Reg::R13, Reg::R14, Reg::R15];
 static CDECL_CALLEE_SAVED: &[Reg] = &[Reg::RBX, Reg::RBP, Reg::RSI, Reg::RDI];
 
 /// Pre-built call frame for Win64.
 pub const FRAME_WIN64: CallFrame = CallFrame {
-    name:            "Win64",
-    int_param_regs:  WIN64_INT_PARAMS,
-    fp_param_regs:   &[0, 1, 2, 3],   // XMM0-3
-    int_return_reg:  Reg::RAX,
-    fp_return_xmm:   0,               // XMM0
-    callee_saved:    WIN64_CALLEE_SAVED,
-    shadow_bytes:    32,
-    red_zone_bytes:  0,
-    callee_cleanup:  false,
-    stack_align:     16,
+    name: "Win64",
+    int_param_regs: WIN64_INT_PARAMS,
+    fp_param_regs: &[0, 1, 2, 3], // XMM0-3
+    int_return_reg: Reg::RAX,
+    fp_return_xmm: 0, // XMM0
+    callee_saved: WIN64_CALLEE_SAVED,
+    shadow_bytes: 32,
+    red_zone_bytes: 0,
+    callee_cleanup: false,
+    stack_align: 16,
 };
 
 /// Pre-built call frame for System V AMD64.
 pub const FRAME_SYSV: CallFrame = CallFrame {
-    name:            "SysV AMD64",
-    int_param_regs:  SYSV_INT_PARAMS,
-    fp_param_regs:   &[0, 1, 2, 3, 4, 5, 6, 7],  // XMM0-7
-    int_return_reg:  Reg::RAX,
-    fp_return_xmm:   0,
-    callee_saved:    SYSV_CALLEE_SAVED,
-    shadow_bytes:    0,
-    red_zone_bytes:  128,
-    callee_cleanup:  false,
-    stack_align:     16,
+    name: "SysV AMD64",
+    int_param_regs: SYSV_INT_PARAMS,
+    fp_param_regs: &[0, 1, 2, 3, 4, 5, 6, 7], // XMM0-7
+    int_return_reg: Reg::RAX,
+    fp_return_xmm: 0,
+    callee_saved: SYSV_CALLEE_SAVED,
+    shadow_bytes: 0,
+    red_zone_bytes: 128,
+    callee_cleanup: false,
+    stack_align: 16,
 };
 
 /// Pre-built call frame for x86 cdecl.
 pub const FRAME_CDECL: CallFrame = CallFrame {
-    name:            "cdecl",
-    int_param_regs:  &[],        // All args on stack
-    fp_param_regs:   &[],
-    int_return_reg:  Reg::RAX,   // EAX in 32-bit mode
-    fp_return_xmm:   0,
-    callee_saved:    CDECL_CALLEE_SAVED,
-    shadow_bytes:    0,
-    red_zone_bytes:  0,
-    callee_cleanup:  false,
-    stack_align:     4,
+    name: "cdecl",
+    int_param_regs: &[], // All args on stack
+    fp_param_regs: &[],
+    int_return_reg: Reg::RAX, // EAX in 32-bit mode
+    fp_return_xmm: 0,
+    callee_saved: CDECL_CALLEE_SAVED,
+    shadow_bytes: 0,
+    red_zone_bytes: 0,
+    callee_cleanup: false,
+    stack_align: 4,
 };
 
 /// Pre-built call frame for x86 __stdcall.
 pub const FRAME_STDCALL: CallFrame = CallFrame {
-    name:            "stdcall",
-    int_param_regs:  &[],
-    fp_param_regs:   &[],
-    int_return_reg:  Reg::RAX,
-    fp_return_xmm:   0,
-    callee_saved:    CDECL_CALLEE_SAVED,
-    shadow_bytes:    0,
-    red_zone_bytes:  0,
-    callee_cleanup:  true,
-    stack_align:     4,
+    name: "stdcall",
+    int_param_regs: &[],
+    fp_param_regs: &[],
+    int_return_reg: Reg::RAX,
+    fp_return_xmm: 0,
+    callee_saved: CDECL_CALLEE_SAVED,
+    shadow_bytes: 0,
+    red_zone_bytes: 0,
+    callee_cleanup: true,
+    stack_align: 4,
 };
 
 // ── API Functions ───────────────────────────────────────────────────────────
@@ -209,16 +229,19 @@ pub const FRAME_STDCALL: CallFrame = CallFrame {
 /// Retrieve the call frame description for a given convention.
 pub fn frame_for(conv: CallingConvention) -> &'static CallFrame {
     match conv.resolve() {
-        CallingConvention::Win64    | CallingConvention::Thiscall => &FRAME_WIN64,
-        CallingConvention::SysV
-        | CallingConvention::LlvmFast
-        | CallingConvention::LlvmCold                            => &FRAME_SYSV,
-        CallingConvention::Cdecl                                  => &FRAME_CDECL,
-        CallingConvention::Stdcall
-        | CallingConvention::Fastcall                             => &FRAME_STDCALL,
+        CallingConvention::Win64 | CallingConvention::Thiscall => &FRAME_WIN64,
+        CallingConvention::SysV | CallingConvention::LlvmFast | CallingConvention::LlvmCold => {
+            &FRAME_SYSV
+        }
+        CallingConvention::Cdecl => &FRAME_CDECL,
+        CallingConvention::Stdcall | CallingConvention::Fastcall => &FRAME_STDCALL,
         _ => {
             // Vectorcall, Naked, Default (post-resolve shouldn't happen) — fall back
-            if cfg!(target_os = "windows") { &FRAME_WIN64 } else { &FRAME_SYSV }
+            if cfg!(target_os = "windows") {
+                &FRAME_WIN64
+            } else {
+                &FRAME_SYSV
+            }
         }
     }
 }
@@ -237,15 +260,15 @@ pub fn detect_convention(attrs: &[&str]) -> CallingConvention {
         let a_lower = a.to_lowercase();
         let a_trimmed = a_lower.trim_matches('_');
         match a_trimmed {
-            "cdecl"      => return CallingConvention::Cdecl,
-            "stdcall"    => return CallingConvention::Stdcall,
-            "fastcall"   => return CallingConvention::Fastcall,
+            "cdecl" => return CallingConvention::Cdecl,
+            "stdcall" => return CallingConvention::Stdcall,
+            "fastcall" => return CallingConvention::Fastcall,
             "vectorcall" => return CallingConvention::Vectorcall,
-            "thiscall"   => return CallingConvention::Thiscall,
-            "win64cc"    => return CallingConvention::Win64,
-            "sysv"       | "sysvcc" => return CallingConvention::SysV,
-            "naked"      => return CallingConvention::Naked,
-            _            => {}
+            "thiscall" => return CallingConvention::Thiscall,
+            "win64cc" => return CallingConvention::Win64,
+            "sysv" | "sysvcc" => return CallingConvention::SysV,
+            "naked" => return CallingConvention::Naked,
+            _ => {}
         }
     }
     CallingConvention::Default
@@ -256,7 +279,7 @@ pub fn detect_convention(attrs: &[&str]) -> CallingConvention {
 /// Returns raw x86-64 bytes for the standard function prologue.
 pub fn emit_standard_prologue() -> Vec<u8> {
     vec![
-        0x55,             // PUSH RBP
+        0x55, // PUSH RBP
         0x48, 0x89, 0xE5, // MOV RBP, RSP
     ]
 }
@@ -264,8 +287,8 @@ pub fn emit_standard_prologue() -> Vec<u8> {
 /// Emit the `POP rbp / RET` standard frame epilogue bytes.
 pub fn emit_standard_epilogue() -> Vec<u8> {
     vec![
-        0x5D,  // POP RBP
-        0xC3,  // RET
+        0x5D, // POP RBP
+        0xC3, // RET
     ]
 }
 

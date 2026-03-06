@@ -2,10 +2,10 @@
 // ISA Compiler — Main compile() and string collection
 // ============================================================
 
+use super::core::{CompiledFunction, IsaCompiler};
 use crate::frontend::ast::*;
-use crate::isa::ADeadOp;
 use crate::isa::encoder::Encoder;
-use super::core::{IsaCompiler, CompiledFunction};
+use crate::isa::ADeadOp;
 
 impl IsaCompiler {
     /// Compila un programa completo
@@ -18,11 +18,14 @@ impl IsaCompiler {
         let has_main = program.functions.iter().any(|f| f.name == "main");
         for func in &program.functions {
             let label = self.ir.new_label();
-            self.functions.insert(func.name.clone(), CompiledFunction {
-                name: func.name.clone(),
-                label,
-                params: func.params.iter().map(|p| p.name.clone()).collect(),
-            });
+            self.functions.insert(
+                func.name.clone(),
+                CompiledFunction {
+                    name: func.name.clone(),
+                    label,
+                    params: func.params.iter().map(|p| p.name.clone()).collect(),
+                },
+            );
         }
 
         // Fase 3: Si hay main, saltar a main
@@ -68,7 +71,12 @@ impl IsaCompiler {
         // Fase 9: Generar sección de datos
         let data = self.generate_data_section();
 
-        (code, data, result.iat_call_offsets, result.string_imm64_offsets)
+        (
+            code,
+            data,
+            result.iat_call_offsets,
+            result.string_imm64_offsets,
+        )
     }
 
     pub(crate) fn collect_all_strings(&mut self, program: &Program) {
@@ -91,7 +99,10 @@ impl IsaCompiler {
     pub(crate) fn collect_strings_from_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::String(s) => {
-                let processed = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r");
+                let processed = s
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\r", "\r");
                 if !self.strings.contains(&processed) {
                     self.strings.push(processed);
                 }
@@ -112,7 +123,11 @@ impl IsaCompiler {
                 self.collect_strings_from_expr(left);
                 self.collect_strings_from_expr(right);
             }
-            Expr::Ternary { condition, then_expr, else_expr } => {
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
                 self.collect_strings_from_expr(condition);
                 self.collect_strings_from_expr(then_expr);
                 self.collect_strings_from_expr(else_expr);
@@ -158,7 +173,11 @@ impl IsaCompiler {
                         self.collect_strings_from_expr(val);
                     }
                 }
-                Stmt::If { condition, then_body, else_body } => {
+                Stmt::If {
+                    condition,
+                    then_body,
+                    else_body,
+                } => {
                     self.collect_strings_from_expr(condition);
                     self.collect_strings_from_stmts(then_body);
                     if let Some(else_stmts) = else_body {
@@ -173,7 +192,9 @@ impl IsaCompiler {
                     self.collect_strings_from_stmts(body);
                     self.collect_strings_from_expr(condition);
                 }
-                Stmt::For { start, end, body, .. } => {
+                Stmt::For {
+                    start, end, body, ..
+                } => {
                     self.collect_strings_from_expr(start);
                     self.collect_strings_from_expr(end);
                     self.collect_strings_from_stmts(body);
@@ -191,7 +212,11 @@ impl IsaCompiler {
                 Stmt::CompoundAssign { value, .. } => {
                     self.collect_strings_from_expr(value);
                 }
-                Stmt::IndexAssign { object, index, value } => {
+                Stmt::IndexAssign {
+                    object,
+                    index,
+                    value,
+                } => {
                     self.collect_strings_from_expr(object);
                     self.collect_strings_from_expr(index);
                     self.collect_strings_from_expr(value);

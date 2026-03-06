@@ -7,44 +7,44 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     // Signed integers with explicit size (C-style)
-    I8,             // char / int8_t       (1 byte)
-    I16,            // short / int16_t     (2 bytes)
-    I32,            // int / int32_t       (4 bytes)
-    I64,            // long / int64_t      (8 bytes)
+    I8,  // char / int8_t       (1 byte)
+    I16, // short / int16_t     (2 bytes)
+    I32, // int / int32_t       (4 bytes)
+    I64, // long / int64_t      (8 bytes)
 
     // Unsigned integers
-    U8,             // unsigned char       (1 byte)
-    U16,            // unsigned short      (2 bytes)
-    U32,            // unsigned int        (4 bytes)
-    U64,            // unsigned long       (8 bytes)
+    U8,  // unsigned char       (1 byte)
+    U16, // unsigned short      (2 bytes)
+    U32, // unsigned int        (4 bytes)
+    U64, // unsigned long       (8 bytes)
 
     // Floating point
-    F32,            // float               (4 bytes)
-    F64,            // double              (8 bytes)
+    F32, // float               (4 bytes)
+    F64, // double              (8 bytes)
 
     // Other primitives
-    Bool,           // bool                (1 byte)
-    Void,           // void                (0 bytes)
-    Str,            // string (pointer)    (8 bytes)
+    Bool, // bool                (1 byte)
+    Void, // void                (0 bytes)
+    Str,  // string (pointer)    (8 bytes)
 
     // Composite types
-    Pointer(Box<Type>),                  // T*
-    Reference(Box<Type>),                // T&
-    Array(Box<Type>, Option<usize>),     // T[N] or T[]
-    Struct(String),                      // struct Name
-    Class(String),                       // class Name
-    Function(Vec<Type>, Box<Type>),      // fn(args) -> ret
+    Pointer(Box<Type>),              // T*
+    Reference(Box<Type>),            // T&
+    Array(Box<Type>, Option<usize>), // T[N] or T[]
+    Struct(String),                  // struct Name
+    Class(String),                   // class Name
+    Function(Vec<Type>, Box<Type>),  // fn(args) -> ret
 
     // SIMD
-    Vec4,           // 4×f32 (128-bit SSE)
-    Vec8,           // 8×f32 (256-bit AVX)
-    Vec16,          // 16×f32 (512-bit AVX-512)
+    Vec4,  // 4×f32 (128-bit SSE)
+    Vec8,  // 8×f32 (256-bit AVX)
+    Vec16, // 16×f32 (512-bit AVX-512)
 
     // Named / user-defined
     Named(String),
 
     // Inference
-    Auto,           // compiler deduces type
+    Auto, // compiler deduces type
 
     // Unknown (for incomplete inference)
     Unknown,
@@ -53,10 +53,10 @@ pub enum Type {
 /// Register size classification for codegen
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RegSize {
-    Byte,   // 8-bit: AL, BL, CL, DL
-    Word,   // 16-bit: AX, BX, CX, DX
-    DWord,  // 32-bit: EAX, EBX, ECX, EDX
-    QWord,  // 64-bit: RAX, RBX, RCX, RDX
+    Byte,  // 8-bit: AL, BL, CL, DL
+    Word,  // 16-bit: AX, BX, CX, DX
+    DWord, // 32-bit: EAX, EBX, ECX, EDX
+    QWord, // 64-bit: RAX, RBX, RCX, RDX
 }
 
 impl Type {
@@ -103,10 +103,18 @@ impl Type {
 
     /// Is this a numeric type?
     pub fn is_numeric(&self) -> bool {
-        matches!(self, 
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 |
-            Type::U8 | Type::U16 | Type::U32 | Type::U64 |
-            Type::F32 | Type::F64
+        matches!(
+            self,
+            Type::I8
+                | Type::I16
+                | Type::I32
+                | Type::I64
+                | Type::U8
+                | Type::U16
+                | Type::U32
+                | Type::U64
+                | Type::F32
+                | Type::F64
         )
     }
 
@@ -202,7 +210,9 @@ impl std::fmt::Display for Type {
             Type::Function(args, ret) => {
                 write!(f, "fn(")?;
                 for (i, a) in args.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", a)?;
                 }
                 write!(f, ") -> {}", ret)

@@ -13,24 +13,25 @@
 // ============================================================
 
 pub mod analyzer;
-pub mod null_check;
 pub mod bounds_check;
-pub mod overflow_check;
+pub mod cache;
 pub mod lifetime;
+pub mod null_check;
+pub mod overflow_check;
+pub mod race_check;
+pub mod report;
+pub mod type_check;
 pub mod uninit_check;
 pub mod useafter_check;
-pub mod type_check;
-pub mod race_check;
-pub mod cache;
-pub mod report;
 
 use crate::ast::Program;
-pub use report::{UBReport, UBSeverity, UBKind};
+pub use report::{UBKind, UBReport, UBSeverity};
 
 /// UB_Detector principal — analiza un programa IR completo
 pub struct UBDetector {
     reports: Vec<UBReport>,
     strict_mode: bool,
+    file_path: Option<String>,
 }
 
 impl UBDetector {
@@ -40,6 +41,7 @@ impl UBDetector {
         Self {
             reports: Vec::new(),
             strict_mode: true, // Default: modo estricto — se detiene en UB
+            file_path: None,
         }
     }
 
@@ -52,6 +54,11 @@ impl UBDetector {
 
     pub fn with_strict_mode(mut self) -> Self {
         self.strict_mode = true;
+        self
+    }
+
+    pub fn with_file(mut self, file_path: String) -> Self {
+        self.file_path = Some(file_path);
         self
     }
 
@@ -93,6 +100,13 @@ impl UBDetector {
 
         // Ordenar por severidad (Error > Warning > Info)
         self.reports.sort_by(|a, b| b.severity.cmp(&a.severity));
+
+        // Inject file path
+        if let Some(path) = &self.file_path {
+            for r in &mut self.reports {
+                r.file_path = Some(path.clone());
+            }
+        }
 
         self.reports.clone()
     }

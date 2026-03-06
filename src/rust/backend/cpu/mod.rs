@@ -33,11 +33,11 @@
 // ============================================================
 
 // === Core format generators ===
+pub mod elf;
+pub mod fastos_format;
+pub mod flat_binary;
 pub mod pe;
 pub mod pe_tiny;
-pub mod elf;
-pub mod flat_binary;
-pub mod fastos_format;
 
 // === Code generation ===
 pub mod codegen;

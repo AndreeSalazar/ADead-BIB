@@ -8,5 +8,5 @@
 pub mod pass_manager;
 pub mod transform;
 
-pub use pass_manager::{PassManager, Pass, PassKind, OptLevel};
+pub use pass_manager::{OptLevel, Pass, PassKind, PassManager};
 pub use transform::*;
