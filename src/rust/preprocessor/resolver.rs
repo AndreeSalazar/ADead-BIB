@@ -39,12 +39,20 @@ impl HeaderResolver {
         }
     }
 
-    /// Configura paths default: directorio del archivo fuente + include/
+    /// Configura paths default: directorio del archivo fuente + include/ + ~/.adead/include/
     pub fn setup_default_paths(&mut self, source_file: &Path) {
+        // 1. Carpeta actual del proyecto
         if let Some(parent) = source_file.parent() {
             self.add_search_path(parent.to_path_buf());
             self.add_search_path(parent.join("include"));
             self.add_search_path(parent.join("src"));
+        }
+        // 2. ~/.adead/include/ (global headers)
+        if let Some(home) = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+        {
+            let global_include = PathBuf::from(home).join(".adead").join("include");
+            self.add_search_path(global_include);
         }
     }
 

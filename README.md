@@ -13,7 +13,7 @@
 │  Tu Código (.c / .cpp)                                               │
 │                    ↓                                                 │
 │  ┌────────────────────────────────────────────────────────────────┐  │
-│  │              ADead-BIB Compiler (adeadc)                       │  │
+│  │              ADead-BIB Compiler (adb)                          │  │
 │  │                                                                │  │
 │  │   .c   ──→ CPreprocessor → CLexer → CParser → CAST ──┐         │  │
 │  │   .cpp ──→ CppPreprocessor → CppLexer → CppParser ───┤         │  │
@@ -120,33 +120,91 @@ DESPUÉS (lo que ADead-BIB genera):
 
 ---
 
-## Inicio Rápido
+## Instalación
 
 ```bash
-# Clonar y compilar el compilador
+# 1. Clonar y compilar
 git clone https://github.com/AndreeSalazar/ADead-BIB.git
 cd ADead-BIB
 cargo build --release
 
-# Compilar C99
-adeadc cc examples/c/hello.c -o hello.exe
+# 2. Agregar adb al PATH
+#    Windows (PowerShell):
+$env:Path += ";C:\ruta\a\ADead-BIB\target\release"
+#    Para hacerlo permanente (Admin):
+[Environment]::SetEnvironmentVariable('Path', $env:Path + ';C:\ruta\a\ADead-BIB\target\release', 'User')
 
-# Compilar C++
-adeadc cxx examples/cpp/hello.cpp -o hello.exe
+#    Linux / macOS:
+export PATH="$PATH:$HOME/ADead-BIB/target/release"
+#    Para hacerlo permanente:
+echo 'export PATH="$PATH:$HOME/ADead-BIB/target/release"' >> ~/.bashrc
 
-# Auto-detect por extensión
-adeadc build examples/c/hello.c -o hello.exe
-adeadc build examples/cpp/cpp_oop.cpp -o oop.exe
+#    FastOS: No necesita PATH — adb es nativo del sistema
 
-# Compilar y ejecutar
-adeadc run examples/c/hello.c
+# 3. Instalar headers globales
+adb install
 
-# Ver ruta del ejecutable + instrucciones para PATH
-adeadc --version
-
-# GPU (SPIR-V directo)
-adeadc gpu
+# 4. Verificar
+adb --version
 ```
+
+> **Nota:** `adb --version` muestra la ruta exacta y las instrucciones de PATH para tu sistema.
+
+---
+
+## Inicio Rápido
+
+```bash
+# ── Crear proyecto (como cargo new) ───────────────
+adb create hola              # Proyecto C
+adb create mundo --cpp       # Proyecto C++
+
+# ── Compilar y ejecutar proyecto ──────────────────
+cd hola
+adb run                      # Compila src/main.c → bin/hola.exe y ejecuta
+# → "Hola desde hola"
+
+# ── Compilar archivos sueltos ─────────────────────
+adb cc hello.c -o hello.exe
+adb cxx app.cpp -o app.exe
+adb run test.c               # Compila y ejecuta
+
+# ── GPU (SPIR-V directo) ─────────────────────────
+adb gpu
+```
+
+### Estructura de un Proyecto (`adb create`)
+
+```
+hola/
+├── adb.toml           # Configuración del proyecto
+│     [project]
+│     name = "hola"
+│     version = "0.1.0"
+│     lang = "c"       # o "cpp"
+│     standard = "c99" # o "cpp17"
+│
+│     [build]
+│     src = "src/"
+│     include = "include/"
+│     output = "bin/"
+│
+├── include/
+│   └── header_main.h   ← todo disponible
+├── src/
+│   └── main.c          ← tu código
+└── bin/                 ← output de compilación
+```
+
+### Resolución de Headers (sin flags -I)
+
+Cuando escribes `#include <header.h>`, ADead-BIB busca en este orden:
+
+1. **Carpeta `include/` del proyecto** — headers locales
+2. **`~/.adead/include/`** — headers globales (`adb install`)
+3. **stdlib interna** — C99/C++ completa (fallback)
+
+= Sin `-I flags`, sin CMake, sin Makefile. Encuentra solo.
 
 ---
 
@@ -304,7 +362,7 @@ El corazón de ADead-BIB es la capa ISA que convierte operaciones abstractas (`A
 ```
 ADead-BIB/
 ├── src/rust/
-│   ├── main.rs                    # CLI driver (adeadc)
+│   ├── main.rs                    # CLI driver (adb)
 │   ├── lib.rs                     # Exports públicos
 │   ├── builder.rs                 # Orchestrator
 │   │
@@ -412,7 +470,8 @@ ADead-BIB/
 | **C99 Canon** | 18 | 18 | **100%** ✅ |
 | **C++98 Canon** | 15 | 15 | **100%** ✅ |
 | **Integration tests** | 18 | 18 | **100%** ✅ |
-| **Total Rust tests** | **520** | **520** | **100%** ✅ |
+| **FASE tests (C99+C++17+PE)** | 19 | 19 | **100%** ✅ |
+| **Total Rust tests** | **539** | **539** | **100%** ✅ |
 
 ### Test-Canon Verificado
 
@@ -434,35 +493,45 @@ Integration (18 tests): header_main.h C/C++, fastos_*.h,
 
 ---
 
-## Comandos CLI (`adeadc`)
+## Comandos CLI (`adb`)
 
 ```bash
+# ── Proyectos (como cargo) ────────────────────────
+adb create hola                       # Nuevo proyecto C
+adb create hola --cpp                 # Nuevo proyecto C++
+adb build                             # Compilar proyecto (lee adb.toml)
+adb run                               # Compilar y ejecutar proyecto
+
 # ── C99 ────────────────────────────────────────────
-adeadc cc hello.c -o hello.exe        # Compilar C99
-adeadc cc main.c                      # → main.exe automático
+adb cc hello.c -o hello.exe           # Compilar C99
+adb cc main.c                         # → main.exe automático
 
 # ── C++ ────────────────────────────────────────────
-adeadc cxx app.cpp -o app.exe         # Compilar C++
-adeadc cxx main.cpp                   # → main.exe automático
+adb cxx app.cpp -o app.exe            # Compilar C++
+adb cxx main.cpp                      # → main.exe automático
 
 # ── Auto-detect ───────────────────────────────────
-adeadc build program.c                # Detecta .c → C99
-adeadc build program.cpp              # Detecta .cpp → C++
+adb build program.c                   # Detecta .c → C99
+adb build program.cpp                 # Detecta .cpp → C++
 
 # ── Build + Run ───────────────────────────────────
-adeadc run test.c                     # Compilar y ejecutar
+adb run test.c                        # Compilar y ejecutar
+
+# ── Headers globales ──────────────────────────────
+adb install                           # Instala headers en ~/.adead/include/
+adb include                           # Muestra ruta de headers
 
 # ── Flat Binary (OS/Kernel) ──────────────────────
-adeadc cc kernel.c -o kernel.bin --flat
-adeadc cc boot.c -o boot.bin --flat16 --org=0x7C00 --size=512
+adb cc kernel.c -o kernel.bin --flat
+adb cc boot.c -o boot.bin --flat16 --org=0x7C00 --size=512
 
 # ── Binarios Mínimos ─────────────────────────────
-adeadc nano output.exe                # PE más pequeño posible
-adeadc micro output.exe               # PE32 < 256 bytes
+adb nano output.exe                   # PE más pequeño posible
+adb micro output.exe                  # PE32 < 256 bytes
 
 # ── GPU ───────────────────────────────────────────
-adeadc gpu                            # Detectar GPU + generar shader
-adeadc spirv matmul 1024              # SPIR-V compute shader
+adb gpu                               # Detectar GPU + generar shader
+adb spirv matmul 1024                 # SPIR-V compute shader
 ```
 
 ---
@@ -514,9 +583,18 @@ eddi.salazar.dev@gmail.com
 **Resultado = Zero Overhead, Zero Bloat, Zero Dead Code**  
 **v7.0 = 100% Autosuficiente — Sin libc, Sin linker, header_main.h = TODO**
 
+```bash
+# Tu primer proyecto con ADead-BIB:
+adb create hola
+cd hola
+adb run
+# → "Hola desde hola" — 2KB, sin GCC, sin linker
+```
+
 **"C = intención absoluta del programador  
 C++ = zero overhead principle  
 Rust = guardián de correctitud  
 FASM = bytes directos al CPU  
 header_main.h = un include, todo disponible  
+adb create = como cargo new, pero para C/C++  
 ADead-BIB = único en el mundo 💀🦈 🇵🇪"**

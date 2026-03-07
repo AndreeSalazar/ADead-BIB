@@ -19,7 +19,7 @@ name = "adead_bib"
 path = "src/rust/lib.rs"
 
 [[bin]]
-name = "adeadc"
+name = "adb"
 path = "src/rust/main.rs"
 
 # ADead-BIB es 100% Rust - No requiere dependencias de C++

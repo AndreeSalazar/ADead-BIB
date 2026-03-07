@@ -14,7 +14,7 @@ use adead_bib::frontend::cpp::compile_cpp_to_program;
 use adead_bib::isa::isa_compiler::Target;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "cc" | "c" => {
             if args.len() < 3 {
                 eprintln!("❌ Error: Missing C source file");
-                eprintln!("   Usage: adB cc <file.c> [-o output.exe]");
+                eprintln!("   Usage: adb cc <file.c> [-o output.exe]");
                 std::process::exit(1);
             }
             compile_c_file(&args[2], &args)?;
@@ -46,34 +46,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "cxx" | "c++" | "cpp" | "g++" => {
             if args.len() < 3 {
                 eprintln!("❌ Error: Missing C++ source file");
-                eprintln!("   Usage: adB cxx <file.cpp> [-o output.exe]");
+                eprintln!("   Usage: adb cxx <file.cpp> [-o output.exe]");
                 std::process::exit(1);
             }
             compile_cpp_file(&args[2], &args)?;
         }
 
         // ============================================================
-        // BUILD — Auto-detect by extension
+        // BUILD — Auto-detect by extension or adb.toml project
         // ============================================================
         "build" => {
             if args.len() < 3 {
-                eprintln!("❌ Error: Missing source file");
-                eprintln!("   Usage: adB build <file.c|file.cpp> [-o output.exe]");
-                std::process::exit(1);
-            }
-            let input_file = &args[2];
-            let ext = Path::new(input_file)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-
-            match ext {
-                "c" | "h" => compile_c_file(input_file, &args)?,
-                "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
-                _ => {
-                    eprintln!("❌ Error: Unknown file extension '.{}'", ext);
-                    eprintln!("   Supported: .c, .cpp, .cxx, .cc");
+                // No file argument — try adb.toml project
+                if let Some(proj) = load_adb_toml(".") {
+                    build_project(&proj, &args)?;
+                } else {
+                    eprintln!("❌ Error: No source file and no adb.toml found");
+                    eprintln!("   Usage: adb build <file.c|file.cpp>");
+                    eprintln!("   Or run from a project created with: adb create <name>");
                     std::process::exit(1);
+                }
+            } else {
+                let input_file = &args[2];
+                let ext = Path::new(input_file)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+
+                match ext {
+                    "c" | "h" => compile_c_file(input_file, &args)?,
+                    "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
+                    _ => {
+                        eprintln!("❌ Error: Unknown file extension '.{}'", ext);
+                        eprintln!("   Supported: .c, .cpp, .cxx, .cc");
+                        std::process::exit(1);
+                    }
                 }
             }
         }
@@ -83,38 +90,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // ============================================================
         "run" => {
             if args.len() < 3 {
-                eprintln!("❌ Error: Missing source file");
-                eprintln!("   Usage: adB run <file.c|file.cpp>");
-                std::process::exit(1);
-            }
-            let input_file = &args[2];
-            let output_file = get_output_filename(input_file, &args);
-            let ext = Path::new(input_file)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-
-            // Build
-            match ext {
-                "c" | "h" => compile_c_file(input_file, &args)?,
-                "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
-                _ => {
-                    eprintln!("❌ Error: Unknown file extension '.{}'", ext);
+                // No file argument — try adb.toml project
+                if let Some(proj) = load_adb_toml(".") {
+                    let output_file = build_project(&proj, &args)?;
+                    println!("🚀 Running {}...\n", proj.name);
+                    let exe_path = if cfg!(target_os = "windows") {
+                        format!(".\\{}", output_file)
+                    } else {
+                        format!("./{}", output_file)
+                    };
+                    let status = Command::new(&exe_path).status()?;
+                    if !status.success() {
+                        eprintln!("\n⚠️  Program exited with status: {}", status);
+                    }
+                } else {
+                    eprintln!("❌ Error: No source file and no adb.toml found");
+                    eprintln!("   Usage: adb run <file.c|file.cpp>");
+                    eprintln!("   Or run from a project created with: adb create <name>");
                     std::process::exit(1);
                 }
-            }
-
-            // Run
-            println!("🚀 Running {}...\n", input_file);
-            let exe_path = if cfg!(target_os = "windows") {
-                format!(".\\{}", output_file)
             } else {
-                format!("./{}", output_file)
-            };
-            let status = Command::new(&exe_path).status()?;
+                let input_file = &args[2];
+                let output_file = get_output_filename(input_file, &args);
+                let ext = Path::new(input_file)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
 
-            if !status.success() {
-                eprintln!("\n⚠️  Program exited with status: {}", status);
+                // Build
+                match ext {
+                    "c" | "h" => compile_c_file(input_file, &args)?,
+                    "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
+                    _ => {
+                        eprintln!("❌ Error: Unknown file extension '.{}'", ext);
+                        std::process::exit(1);
+                    }
+                }
+
+                // Run
+                println!("🚀 Running {}...\n", input_file);
+                let exe_path = if cfg!(target_os = "windows") {
+                    format!(".\\{}", output_file)
+                } else {
+                    format!("./{}", output_file)
+                };
+                let status = Command::new(&exe_path).status()?;
+                if !status.success() {
+                    eprintln!("\n⚠️  Program exited with status: {}", status);
+                }
             }
         }
 
@@ -376,6 +399,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // ============================================================
+        // CREATE — New project (like cargo new)
+        // ============================================================
+        "create" | "new" | "init" => {
+            if args.len() < 3 {
+                eprintln!("❌ Error: Missing project name");
+                eprintln!("   Usage: adb create <name> [--cpp|--c]");
+                std::process::exit(1);
+            }
+            let name = &args[2];
+            let is_cpp = args.iter().any(|a| a == "--cpp" || a == "--c++" || a == "--cxx");
+            create_project(name, is_cpp)?;
+        }
+
+        // ============================================================
+        // INSTALL — Copy headers to ~/.adead/include/
+        // ============================================================
+        "install" => {
+            install_global_headers()?;
+        }
+
+        // ============================================================
+        // INCLUDE — Show global include path
+        // ============================================================
+        "include" => {
+            let include_dir = get_global_include_dir();
+            println!("📂 ADead-BIB global include directory:");
+            println!("   {}", include_dir.display());
+            if include_dir.exists() {
+                let count = fs::read_dir(&include_dir).map(|d| d.count()).unwrap_or(0);
+                println!("   ✅ {} headers installed", count);
+            } else {
+                println!("   ⚠️  Not installed yet. Run: adb install");
+            }
+        }
+
+        // ============================================================
         // HELP / VERSION
         // ============================================================
         "help" | "-h" | "--help" => {
@@ -383,19 +442,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "version" | "-v" | "--version" => {
-            println!("ADead-BIB v7.0.0 — C/C++ Native Compiler");
+            println!("ADead-BIB v7.0.0 💀🦈 🇵🇪 — C/C++ Native Compiler");
             println!("Sin GCC, Sin LLVM, Sin Clang — 100% ADead-BIB");
             println!("Sin libc externa, Sin linker — Totalmente autosuficiente");
             println!();
             if let Ok(exe) = env::current_exe() {
                 println!("Executable: {}", exe.display());
                 if let Some(dir) = exe.parent() {
-                    println!("\n  To add to PATH (Windows PowerShell):");
-                    println!("  $env:Path += \";{}\"  ", dir.display());
-                    println!("\n  To add permanently (run as Admin):");
-                    println!("  [Environment]::SetEnvironmentVariable('Path', $env:Path + ';{}', 'User')", dir.display());
+                    println!();
+                    if cfg!(target_os = "windows") {
+                        println!("  Agrega adb al PATH (Windows PowerShell):");
+                        println!("  $env:Path += \";{}\"  ", dir.display());
+                        println!();
+                        println!("  Para agregar permanente (Admin):");
+                        println!("  [Environment]::SetEnvironmentVariable('Path', $env:Path + ';{}', 'User')", dir.display());
+                    } else {
+                        println!("  Agrega adb al PATH (Linux/macOS):");
+                        println!("  export PATH=\"$PATH:{}\"", dir.display());
+                    }
                 }
             }
+            println!();
+            println!("  Headers globales: {}", get_global_include_dir().display());
         }
 
         // ============================================================
@@ -413,7 +481,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
                 _ => {
                     eprintln!("❌ Unknown command or file: {}", command);
-                    eprintln!("   Use 'adB help' for usage information.");
+                    eprintln!("   Use 'adb help' for usage information.");
                     std::process::exit(1);
                 }
             }
@@ -579,6 +647,7 @@ fn compile_c_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std::
     }
 
     println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB");
+    print_path_hint();
 
     Ok(())
 }
@@ -705,6 +774,7 @@ fn compile_cpp_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std
         println!("✅ C++ compilation complete: {}", output_file);
     }
     println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB C++");
+    print_path_hint();
 
     Ok(())
 }
@@ -712,6 +782,261 @@ fn compile_cpp_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std
 // ============================================================
 // UTILITIES
 // ============================================================
+fn print_path_hint() {
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            println!();
+            if cfg!(target_os = "windows") {
+                println!("   Para agregar adb al PATH en Windows:");
+                println!("   $env:PATH += \";{}\"", dir.display());
+            } else {
+                println!("   Para agregar adb al PATH:");
+                println!("   export PATH=\"$PATH:{}\"", dir.display());
+            }
+        }
+    }
+}
+
+/// Returns the global include directory: ~/.adead/include/
+fn get_global_include_dir() -> PathBuf {
+    if let Some(home) = env::var_os("USERPROFILE")
+        .or_else(|| env::var_os("HOME"))
+    {
+        PathBuf::from(home).join(".adead").join("include")
+    } else {
+        PathBuf::from(".adead").join("include")
+    }
+}
+
+/// Install global headers to ~/.adead/include/
+fn install_global_headers() -> Result<(), Box<dyn std::error::Error>> {
+    let include_dir = get_global_include_dir();
+    fs::create_dir_all(&include_dir)?;
+
+    println!("📦 ADead-BIB — Instalando headers globales...");
+    println!("   Destino: {}", include_dir.display());
+    println!();
+
+    let mut count = 0;
+
+    // Write header_main.h
+    let header_main_content = adead_bib::frontend::c::c_stdlib::get_header("header_main.h")
+        .unwrap_or("// header_main.h\n");
+    fs::write(include_dir.join("header_main.h"), header_main_content)?;
+    println!("   ✅ header_main.h");
+    count += 1;
+
+    // Write all fastos_*.h headers
+    let fastos_headers = [
+        "fastos_stdio.h", "fastos_stdlib.h", "fastos_string.h",
+        "fastos_math.h", "fastos_time.h", "fastos_assert.h",
+        "fastos_errno.h", "fastos_limits.h", "fastos_types.h",
+    ];
+    for name in &fastos_headers {
+        if let Some(content) = adead_bib::frontend::c::c_stdlib::get_header(name) {
+            fs::write(include_dir.join(name), content)?;
+            println!("   ✅ {}", name);
+            count += 1;
+        }
+    }
+
+    // Write standard C headers
+    let std_headers = [
+        "stdio.h", "stdlib.h", "string.h", "math.h", "time.h",
+        "stdint.h", "stddef.h", "stdbool.h", "stdarg.h",
+        "limits.h", "float.h", "errno.h", "assert.h",
+        "signal.h", "ctype.h", "locale.h", "setjmp.h",
+    ];
+    for name in &std_headers {
+        if let Some(content) = adead_bib::frontend::c::c_stdlib::get_header(name) {
+            fs::write(include_dir.join(name), content)?;
+            println!("   ✅ {}", name);
+            count += 1;
+        }
+    }
+
+    println!();
+    println!("✅ {} headers instalados en {}", count, include_dir.display());
+    println!();
+    println!("   Ahora puedes usar desde cualquier carpeta:");
+    println!("   #include <header_main.h>");
+    println!();
+    println!("   También puedes agregar tus propios headers en:");
+    println!("   {}", include_dir.display());
+
+    Ok(())
+}
+
+// ============================================================
+// PROJECT SYSTEM (adb create / adb.toml)
+// ============================================================
+
+#[allow(dead_code)]
+struct AdbProject {
+    name: String,
+    lang: String,       // "c" or "cpp"
+    standard: String,   // "c99" or "cpp17"
+    src_dir: String,    // "src/"
+    include_dir: String,// "include/"
+    output_dir: String, // "bin/"
+}
+
+/// Create a new project: adb create <name> [--cpp]
+fn create_project(name: &str, is_cpp: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let project_dir = Path::new(name);
+    if project_dir.exists() {
+        eprintln!("❌ Error: Directory '{}' already exists", name);
+        std::process::exit(1);
+    }
+
+    let (lang, standard, ext) = if is_cpp {
+        ("cpp", "cpp17", "cpp")
+    } else {
+        ("c", "c99", "c")
+    };
+
+    println!("📦 Creando proyecto ADead-BIB: {}", name);
+    println!("   Lenguaje: {} ({})", lang.to_uppercase(), standard);
+    println!();
+
+    // Create directories
+    fs::create_dir_all(project_dir.join("src"))?;
+    fs::create_dir_all(project_dir.join("include"))?;
+    fs::create_dir_all(project_dir.join("bin"))?;
+
+    // Write adb.toml
+    let toml_content = format!(
+        "[project]\nname = \"{}\"\nversion = \"0.1.0\"\nlang = \"{}\"\nstandard = \"{}\"\n\n[build]\nsrc = \"src/\"\ninclude = \"include/\"\noutput = \"bin/\"\n",
+        name, lang, standard
+    );
+    fs::write(project_dir.join("adb.toml"), &toml_content)?;
+    println!("   ✅ adb.toml");
+
+    // Copy header_main.h to include/
+    let header_content = adead_bib::frontend::c::c_stdlib::get_header("header_main.h")
+        .unwrap_or("// header_main.h — ADead-BIB\n");
+    fs::write(project_dir.join("include").join("header_main.h"), header_content)?;
+    println!("   ✅ include/header_main.h");
+
+    // Write main source file
+    let main_file = format!("src/main.{}", ext);
+    let main_content = if is_cpp {
+        format!(
+            "#include <header_main.h>\n\nint main() {{\n    printf(\"Hola desde %s\\n\", \"{}\");\n    return 0;\n}}\n",
+            name
+        )
+    } else {
+        format!(
+            "#include <header_main.h>\n\nint main() {{\n    printf(\"Hola desde %s\\n\", \"{}\");\n    return 0;\n}}\n",
+            name
+        )
+    };
+    fs::write(project_dir.join(&main_file), &main_content)?;
+    println!("   ✅ {}", main_file);
+
+    println!("   ✅ bin/");
+    println!();
+    println!("✅ Proyecto '{}' creado!", name);
+    println!();
+    println!("   Para compilar y ejecutar:");
+    println!("   cd {}", name);
+    println!("   adb run");
+    println!();
+    println!("   Estructura:");
+    println!("   {}/", name);
+    println!("   ├── adb.toml");
+    println!("   ├── include/");
+    println!("   │   └── header_main.h");
+    println!("   ├── src/");
+    println!("   │   └── main.{}", ext);
+    println!("   └── bin/");
+
+    Ok(())
+}
+
+/// Load adb.toml from a directory. Returns None if not found.
+fn load_adb_toml(dir: &str) -> Option<AdbProject> {
+    let toml_path = Path::new(dir).join("adb.toml");
+    let content = fs::read_to_string(&toml_path).ok()?;
+
+    let mut name = String::new();
+    let mut lang = String::from("c");
+    let mut standard = String::from("c99");
+    let mut src_dir = String::from("src/");
+    let mut include_dir = String::from("include/");
+    let mut output_dir = String::from("bin/");
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("name") {
+            if let Some(val) = extract_toml_value(line) { name = val; }
+        } else if line.starts_with("lang") {
+            if let Some(val) = extract_toml_value(line) { lang = val; }
+        } else if line.starts_with("standard") {
+            if let Some(val) = extract_toml_value(line) { standard = val; }
+        } else if line.starts_with("src") {
+            if let Some(val) = extract_toml_value(line) { src_dir = val; }
+        } else if line.starts_with("include") && line.contains('=') {
+            if let Some(val) = extract_toml_value(line) { include_dir = val; }
+        } else if line.starts_with("output") {
+            if let Some(val) = extract_toml_value(line) { output_dir = val; }
+        }
+    }
+
+    if name.is_empty() { return None; }
+
+    Some(AdbProject { name, lang, standard, src_dir, include_dir, output_dir })
+}
+
+/// Extract value from a TOML line like: key = "value"
+fn extract_toml_value(line: &str) -> Option<String> {
+    let parts: Vec<&str> = line.splitn(2, '=').collect();
+    if parts.len() == 2 {
+        let val = parts[1].trim().trim_matches('"');
+        Some(val.to_string())
+    } else {
+        None
+    }
+}
+
+/// Build an adb.toml project. Returns the output filename.
+fn build_project(proj: &AdbProject, args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
+    // Find main source file
+    let ext = if proj.lang == "cpp" { "cpp" } else { "c" };
+    let main_src = Path::new(&proj.src_dir).join(format!("main.{}", ext));
+
+    if !main_src.exists() {
+        eprintln!("❌ Error: Source file not found: {}", main_src.display());
+        eprintln!("   Expected: {}/main.{}", proj.src_dir, ext);
+        std::process::exit(1);
+    }
+
+    // Ensure output directory exists
+    fs::create_dir_all(&proj.output_dir).ok();
+
+    // Build output path
+    let exe_ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let output_file = format!("{}{}{}", proj.output_dir, proj.name, exe_ext);
+
+    // Build args with -o and include path
+    let mut build_args = args.to_vec();
+    // Add -o if not already specified
+    if !build_args.iter().any(|a| a == "-o") {
+        build_args.push("-o".to_string());
+        build_args.push(output_file.clone());
+    }
+
+    let main_src_str = main_src.to_str().unwrap_or("src/main.c");
+
+    if proj.lang == "cpp" {
+        compile_cpp_file(main_src_str, &build_args)?;
+    } else {
+        compile_c_file(main_src_str, &build_args)?;
+    }
+
+    Ok(output_file)
+}
+
 fn is_fastos_target(args: &[String]) -> bool {
     for i in 0..args.len() {
         if args[i] == "--target" && i + 1 < args.len() {
@@ -776,37 +1101,49 @@ fn get_output_filename(input: &str, args: &[String]) -> String {
 
 fn print_usage(_program: &str) {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║         🔥 ADead-BIB v7.0.0 — C/C++ Compiler 🔥             ║");
-    println!("║    Sin GCC, Sin LLVM, Sin Clang — 100% Self-Sufficient       ║");
-    println!("║    Sin libc, Sin linker — header_main.h = TODO               ║");
+    println!("║       🔥 ADead-BIB v7.0.0 💀🦈 — C/C++ Compiler 🔥        ║");
+    println!("║    Sin GCC, Sin LLVM, Sin Clang — 100% Self-Sufficient      ║");
+    println!("║    Sin libc, Sin linker — header_main.h = TODO              ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
-    println!("📋 COMPILAR C/C++:");
-    println!("   adB cc <file.c> [-o output]     Compile C99/C11");
-    println!("   adB cxx <file.cpp> [-o output]  Compile C++11/14/17/20");
+    println!("� PROYECTOS (como cargo):");
+    println!("   adb create <name>               Nuevo proyecto C (adb.toml)");
+    println!("   adb create <name> --cpp         Nuevo proyecto C++");
+    println!("   adb build                       Compilar proyecto (lee adb.toml)");
+    println!("   adb run                         Compilar y ejecutar proyecto");
+    println!();
+    println!("�📋 COMPILAR C/C++:");
+    println!("   adb cc <file.c> [-o output]     Compile C99/C11");
+    println!("   adb cxx <file.cpp> [-o output]  Compile C++11/14/17/20");
     println!("     [--target fastos|windows|linux]");
     println!("     [--warn-ub] (Warning only, don't stop on UB)");
-    println!("   adB build <file> [-o output]    Auto-detect by extension");
-    println!("   adB run <file>                  Build and execute");
-    println!("   adB <file.c|file.cpp>           Direct compilation");
+    println!("   adb build <file> [-o output]    Auto-detect by extension");
+    println!("   adb run <file>                  Build and execute");
+    println!("   adb <file.c|file.cpp>           Direct compilation");
+    println!();
+    println!("📦 HEADERS GLOBALES:");
+    println!("   adb install                     Instala headers en ~/.adead/include/");
+    println!("   adb include                     Muestra ruta de headers globales");
     println!();
     println!("🚀 EXAMPLES:");
-    println!("   adB cc hello.c                  Compile hello.c → hello.exe");
-    println!("   adB cxx main.cpp -o app.exe     Compile main.cpp → app.exe");
-    println!("   adB run test.c                  Compile and run test.c");
-    println!("   adB hello.cpp                   Direct: hello.cpp → hello.exe");
+    println!("   adb create hola                 Nuevo proyecto C");
+    println!("   cd hola && adb run              Compilar y ejecutar");
+    println!("   adb cc hello.c                  Compile hello.c → hello.exe");
+    println!("   adb cxx main.cpp -o app.exe     Compile main.cpp → app.exe");
+    println!("   adb run test.c                  Compile and run test.c");
+    println!("   adb install                     Setup global headers");
     println!();
     println!("⚡ MINIMAL BINARIES:");
-    println!("   adB nano [output] [exit_code]   Smallest valid x64 PE (~1KB)");
-    println!("   adB micro [output] [exit_code]  Sub-256 byte x86 PE");
-    println!("   adB vm [output] [exit_code]     MicroVM bytecode");
+    println!("   adb nano [output] [exit_code]   Smallest valid x64 PE (~1KB)");
+    println!("   adb micro [output] [exit_code]  Sub-256 byte x86 PE");
+    println!("   adb vm [output] [exit_code]     MicroVM bytecode");
     println!();
     println!("🎮 GPU (Vulkan/CUDA):");
-    println!("   adB gpu                         Detect GPU, generate shader");
-    println!("   adB spirv [op] [size]           Generate SPIR-V compute shader");
-    println!("   adB vulkan                      Initialize Vulkan runtime");
-    println!("   adB cuda [op] [size]            Generate CUDA code (.cu)");
-    println!("   adB unified [op] [size]         Auto CPU↔GPU decision");
+    println!("   adb gpu                         Detect GPU, generate shader");
+    println!("   adb spirv [op] [size]           Generate SPIR-V compute shader");
+    println!("   adb vulkan                      Initialize Vulkan runtime");
+    println!("   adb cuda [op] [size]            Generate CUDA code (.cu)");
+    println!("   adb unified [op] [size]         Auto CPU↔GPU decision");
     println!();
     println!("📝 SUPPORTED FEATURES:");
     println!("   C:   C99/C11, structs, pointers, arrays, printf, malloc");
@@ -818,7 +1155,8 @@ fn print_usage(_program: &str) {
     println!("   Linux:   ELF executable");
     println!("   FastOS:  Po executable (.po)");
     println!();
-    println!("🔧 PATH SETUP:");
-    println!("   adB --version      Show path and setup instructions");
+    println!("🔧 SETUP:");
+    println!("   adb --version      Show path and setup instructions");
+    println!("   adb install        Install global headers");
     println!();
 }
