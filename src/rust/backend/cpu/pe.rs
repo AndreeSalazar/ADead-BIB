@@ -13,6 +13,162 @@ pub fn generate_pe(
     generate_pe_with_offsets(opcodes, _data, output_path, &[], &[])
 }
 
+/// Generate PE bytes in memory (no file I/O) — used by integration tests
+pub fn generate_pe_bytes(
+    opcodes: &[u8],
+    data: &[u8],
+    iat_call_offsets: &[usize],
+    string_imm64_offsets: &[usize],
+) -> Vec<u8> {
+    let file_align: usize = 0x200;
+    let section_align: u32 = 0x1000;
+    let code_raw_size = ((opcodes.len() + file_align - 1) / file_align * file_align) as u32;
+    let code_virtual_size = opcodes.len() as u32;
+    let text_virtual_pages = (code_virtual_size + section_align - 1) / section_align;
+    let idata_rva: u32 = 0x1000 + text_virtual_pages * section_align;
+
+    let mut idata = vec![0u8; file_align];
+    idata[0..4].copy_from_slice(&(idata_rva + 0x28).to_le_bytes());
+    idata[12..16].copy_from_slice(&(idata_rva + 0x78).to_le_bytes());
+    idata[16..20].copy_from_slice(&(idata_rva + 0x50).to_le_bytes());
+    let printf_hint_rva: u32 = idata_rva + 0x84;
+    let scanf_hint_rva: u32 = idata_rva + 0x8E;
+    let malloc_hint_rva: u32 = idata_rva + 0x96;
+    let free_hint_rva: u32 = idata_rva + 0xA0;
+    idata[0x28..0x30].copy_from_slice(&(printf_hint_rva as u64).to_le_bytes());
+    idata[0x30..0x38].copy_from_slice(&(scanf_hint_rva as u64).to_le_bytes());
+    idata[0x38..0x40].copy_from_slice(&(malloc_hint_rva as u64).to_le_bytes());
+    idata[0x40..0x48].copy_from_slice(&(free_hint_rva as u64).to_le_bytes());
+    idata[0x50..0x58].copy_from_slice(&(printf_hint_rva as u64).to_le_bytes());
+    idata[0x58..0x60].copy_from_slice(&(scanf_hint_rva as u64).to_le_bytes());
+    idata[0x60..0x68].copy_from_slice(&(malloc_hint_rva as u64).to_le_bytes());
+    idata[0x68..0x70].copy_from_slice(&(free_hint_rva as u64).to_le_bytes());
+    idata[0x78..0x78 + b"msvcrt.dll\0".len()].copy_from_slice(b"msvcrt.dll\0");
+    idata[0x84] = 0; idata[0x85] = 0;
+    idata[0x86..0x86 + b"printf\0".len()].copy_from_slice(b"printf\0");
+    idata[0x8E] = 0; idata[0x8F] = 0;
+    idata[0x90..0x90 + b"scanf\0".len()].copy_from_slice(b"scanf\0");
+    idata[0x96] = 0; idata[0x97] = 0;
+    idata[0x98..0x98 + b"malloc\0".len()].copy_from_slice(b"malloc\0");
+    idata[0xA0] = 0; idata[0xA1] = 0;
+    idata[0xA2..0xA2 + b"free\0".len()].copy_from_slice(b"free\0");
+
+    let program_strings_offset = 0xA8usize;
+    if program_strings_offset + data.len() > idata.len() {
+        let needed = program_strings_offset + data.len();
+        let aligned = ((needed + file_align - 1) / file_align) * file_align;
+        idata.resize(aligned, 0);
+    }
+    idata[program_strings_offset..program_strings_offset + data.len()].copy_from_slice(data);
+
+    let idata_raw_size = idata.len() as u32;
+    let idata_virtual_size = idata_raw_size;
+    let idata_virtual_pages = (idata_virtual_size + section_align - 1) / section_align;
+    let size_of_image = idata_rva + idata_virtual_pages * section_align;
+
+    let mut patched_opcodes = opcodes.to_vec();
+    let iat_delta = idata_rva as i32 - 0x2000i32;
+    let image_base: u64 = 0x0000000140000000;
+    let old_string_base = image_base + 0x20A8;
+    let new_string_base = image_base + idata_rva as u64 + 0xA8;
+    let string_delta = new_string_base as i64 - old_string_base as i64;
+
+    if iat_delta != 0 || string_delta != 0 {
+        if !iat_call_offsets.is_empty() || !string_imm64_offsets.is_empty() {
+            for &offset in iat_call_offsets {
+                if offset + 4 <= patched_opcodes.len() {
+                    let old_val = i32::from_le_bytes([
+                        patched_opcodes[offset], patched_opcodes[offset + 1],
+                        patched_opcodes[offset + 2], patched_opcodes[offset + 3],
+                    ]);
+                    patched_opcodes[offset..offset + 4].copy_from_slice(&(old_val + iat_delta).to_le_bytes());
+                }
+            }
+            for &offset in string_imm64_offsets {
+                if offset + 8 <= patched_opcodes.len() {
+                    let imm64 = u64::from_le_bytes([
+                        patched_opcodes[offset], patched_opcodes[offset + 1],
+                        patched_opcodes[offset + 2], patched_opcodes[offset + 3],
+                        patched_opcodes[offset + 4], patched_opcodes[offset + 5],
+                        patched_opcodes[offset + 6], patched_opcodes[offset + 7],
+                    ]);
+                    if imm64 >= old_string_base && imm64 < old_string_base + 0x10000 {
+                        let new_imm64 = (imm64 as i64 + string_delta) as u64;
+                        patched_opcodes[offset..offset + 8].copy_from_slice(&new_imm64.to_le_bytes());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut pe = Vec::new();
+    // DOS Header
+    let mut dos = vec![0u8; 64];
+    dos[0] = 0x4D; dos[1] = 0x5A; dos[0x3C] = 0x40;
+    pe.extend_from_slice(&dos);
+    pe.extend_from_slice(b"PE\0\0");
+    // COFF Header
+    let mut coff = vec![0u8; 20];
+    coff[0] = 0x64; coff[1] = 0x86; coff[2] = 0x02; coff[3] = 0x00;
+    coff[16] = 0xF0; coff[17] = 0x00; coff[18] = 0x22; coff[19] = 0x00;
+    pe.extend_from_slice(&coff);
+    // Optional Header
+    let mut opt = vec![0u8; 240];
+    opt[0] = 0x0B; opt[1] = 0x02; opt[2] = 14;
+    opt[4..8].copy_from_slice(&code_raw_size.to_le_bytes());
+    opt[8..12].copy_from_slice(&idata_raw_size.to_le_bytes());
+    opt[16..20].copy_from_slice(&0x1000u32.to_le_bytes());
+    opt[20..24].copy_from_slice(&0x1000u32.to_le_bytes());
+    opt[24..32].copy_from_slice(&0x0000000140000000u64.to_le_bytes());
+    opt[32..36].copy_from_slice(&section_align.to_le_bytes());
+    opt[36..40].copy_from_slice(&(file_align as u32).to_le_bytes());
+    opt[40] = 6; opt[48] = 6;
+    opt[56..60].copy_from_slice(&size_of_image.to_le_bytes());
+    opt[60..64].copy_from_slice(&0x400u32.to_le_bytes());
+    opt[68] = 0x03;
+    opt[70..72].copy_from_slice(&0x0100u16.to_le_bytes());
+    opt[72..80].copy_from_slice(&0x100000u64.to_le_bytes());
+    opt[80..88].copy_from_slice(&0x1000u64.to_le_bytes());
+    opt[88..96].copy_from_slice(&0x100000u64.to_le_bytes());
+    opt[96..104].copy_from_slice(&0x1000u64.to_le_bytes());
+    opt[108..112].copy_from_slice(&16u32.to_le_bytes());
+    opt[120..124].copy_from_slice(&idata_rva.to_le_bytes());
+    opt[124..128].copy_from_slice(&40u32.to_le_bytes());
+    opt[208..212].copy_from_slice(&(idata_rva + 0x50).to_le_bytes());
+    opt[212..216].copy_from_slice(&40u32.to_le_bytes());
+    pe.extend_from_slice(&opt);
+    // .text section header
+    let mut sec_text = vec![0u8; 40];
+    sec_text[0..5].copy_from_slice(b".text");
+    sec_text[8..12].copy_from_slice(&code_virtual_size.to_le_bytes());
+    sec_text[12..16].copy_from_slice(&0x1000u32.to_le_bytes());
+    sec_text[16..20].copy_from_slice(&code_raw_size.to_le_bytes());
+    sec_text[20..24].copy_from_slice(&0x400u32.to_le_bytes());
+    sec_text[36..40].copy_from_slice(&0x60000020u32.to_le_bytes());
+    pe.extend_from_slice(&sec_text);
+    // .idata section header
+    let mut sec_idata = vec![0u8; 40];
+    sec_idata[0..6].copy_from_slice(b".idata");
+    sec_idata[8..12].copy_from_slice(&idata_virtual_size.to_le_bytes());
+    sec_idata[12..16].copy_from_slice(&idata_rva.to_le_bytes());
+    sec_idata[16..20].copy_from_slice(&idata_raw_size.to_le_bytes());
+    let idata_ptr = 0x400 + code_raw_size;
+    sec_idata[20..24].copy_from_slice(&idata_ptr.to_le_bytes());
+    sec_idata[36..40].copy_from_slice(&0xC0000040u32.to_le_bytes());
+    pe.extend_from_slice(&sec_idata);
+    // Padding to 0x400
+    let _headers_size = pe.len();
+    pe.resize(0x400, 0);
+    // .text section data
+    pe.extend_from_slice(&patched_opcodes);
+    let text_padding = code_raw_size as usize - patched_opcodes.len();
+    pe.extend(std::iter::repeat(0u8).take(text_padding));
+    // .idata section data
+    pe.extend_from_slice(&idata);
+
+    pe
+}
+
 /// FASM-inspired PE generator with precise offset tracking.
 /// Uses exact IAT call and string address offsets from the encoder
 /// instead of fragile byte-pattern scanning.
