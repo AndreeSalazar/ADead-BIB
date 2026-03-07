@@ -883,6 +883,35 @@ struct AdbProject {
 
 /// Create a new project: adb create <name> [--cpp]
 fn create_project(name: &str, is_cpp: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate project name
+    if name.is_empty() || name.starts_with('-') || name.starts_with('.') {
+        eprintln!("❌ Error: Invalid project name '{}'", name);
+        std::process::exit(1);
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        eprintln!("❌ Error: Project name '{}' contains invalid characters", name);
+        eprintln!("   Use only letters, numbers, _ and -");
+        std::process::exit(1);
+    }
+
+    // Check if we're already inside a project with this name
+    if let Ok(cwd) = env::current_dir() {
+        if let Some(dir_name) = cwd.file_name().and_then(|n| n.to_str()) {
+            if dir_name == name && cwd.join("adb.toml").exists() {
+                eprintln!("❌ Error: You are already inside project '{}'", name);
+                eprintln!("   Current directory is already the '{}' project.", name);
+                eprintln!("   To recreate, go to the parent directory first.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Check if an adb.toml exists in current directory (we're inside some project)
+    if Path::new("adb.toml").exists() {
+        eprintln!("⚠️  Warning: An adb.toml already exists in the current directory.");
+        eprintln!("   Creating '{}' as a subdirectory project.", name);
+    }
+
     let project_dir = Path::new(name);
     if project_dir.exists() {
         eprintln!("❌ Error: Directory '{}' already exists", name);
@@ -1112,7 +1141,7 @@ fn print_usage(_program: &str) {
     println!("   adb build                       Compilar proyecto (lee adb.toml)");
     println!("   adb run                         Compilar y ejecutar proyecto");
     println!();
-    println!("�📋 COMPILAR C/C++:");
+    println!("�� COMPILAR C/C++:");
     println!("   adb cc <file.c> [-o output]     Compile C99/C11");
     println!("   adb cxx <file.cpp> [-o output]  Compile C++11/14/17/20");
     println!("     [--target fastos|windows|linux]");

@@ -451,6 +451,7 @@ impl CppToIR {
                 condition,
                 then_body,
                 else_body,
+                is_constexpr,
             } => CppStmt::If {
                 init: init.map(|i| {
                     Box::new(Self::subst_this_in_stmt(
@@ -475,6 +476,7 @@ impl CppToIR {
                         class_name,
                     ))
                 }),
+                is_constexpr,
             },
             CppStmt::While { condition, body } => CppStmt::While {
                 condition: sub(condition),
@@ -523,11 +525,13 @@ impl CppToIR {
                 condition,
                 then_body,
                 else_body,
+                is_constexpr,
             } => CppStmt::If {
                 init: init.map(|i| Box::new(Self::subst_param_in_stmt(*i, param, arg))),
                 condition: sub(condition),
                 then_body: Box::new(Self::subst_param_in_stmt(*then_body, param, arg)),
                 else_body: else_body.map(|eb| Box::new(Self::subst_param_in_stmt(*eb, param, arg))),
+                is_constexpr,
             },
             CppStmt::While { condition, body } => CppStmt::While {
                 condition: sub(condition),
@@ -694,6 +698,40 @@ impl CppToIR {
                         }
                     }
                 }
+                // Template specialization — collect fields like ClassDef
+                CppTopLevel::TemplateSpecialization {
+                    name, members, ..
+                } => {
+                    let mut field_names = Vec::new();
+                    for member in members {
+                        match member {
+                            CppClassMember::Field { name: field_name, type_spec, .. } => {
+                                field_names.push(field_name.clone());
+                                self.class_field_type_map.push((name.clone(), field_name.clone(), type_spec.clone()));
+                                if matches!(type_spec, CppType::Array(_, _)) {
+                                    if !self.classes_with_array_fields.contains(name) {
+                                        self.classes_with_array_fields.push(name.clone());
+                                    }
+                                }
+                            }
+                            CppClassMember::Method { name: method_name, params, return_type, body, .. } => {
+                                self.class_methods.push((name.clone(), method_name.clone(), params.clone(), return_type.clone()));
+                                if let Some(method_body) = body {
+                                    let param_names: Vec<String> = params.iter().filter_map(|p| p.name.clone()).collect();
+                                    self.class_method_bodies.push((name.clone(), method_name.clone(), param_names, method_body.clone()));
+                                }
+                            }
+                            CppClassMember::Constructor { params, initializer_list, body, .. } => {
+                                let param_names: Vec<String> = params.iter().filter_map(|p| p.name.clone()).collect();
+                                let body_stmts = body.clone().unwrap_or_default();
+                                self.class_ctor_inits.push((name.clone(), param_names, initializer_list.clone(), body_stmts));
+                            }
+                            _ => {}
+                        }
+                    }
+                    self.class_fields.push((name.clone(), field_names.clone()));
+                    self.class_field_order.push((name.clone(), field_names));
+                }
                 CppTopLevel::FunctionDef { name, params, .. } => {
                     let ref_flags: Vec<bool> = params
                         .iter()
@@ -815,6 +853,59 @@ impl CppToIR {
                             value: init,
                         });
                     }
+                }
+                // Template class specialization → treat like ClassDef
+                CppTopLevel::TemplateSpecialization {
+                    name,
+                    members,
+                    ..
+                } => {
+                    let ir_struct = self.convert_class_to_struct(name, members, &[])?;
+                    program.structs.push(ir_struct);
+
+                    for member in members {
+                        match member {
+                            CppClassMember::Method {
+                                name: method_name,
+                                return_type,
+                                params,
+                                body: Some(body),
+                                ..
+                            } => {
+                                let func_name = format!("{}::{}", name, method_name);
+                                let func = self.convert_method(
+                                    return_type,
+                                    &func_name,
+                                    name,
+                                    params,
+                                    body,
+                                )?;
+                                program.functions.push(func);
+                            }
+                            CppClassMember::Constructor {
+                                params,
+                                body: Some(body),
+                                initializer_list,
+                                ..
+                            } => {
+                                let func =
+                                    self.convert_constructor(name, params, initializer_list, body)?;
+                                program.functions.push(func);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                // Template function specialization → treat like FunctionDef
+                CppTopLevel::TemplateFuncSpecialization {
+                    name,
+                    return_type,
+                    params,
+                    body,
+                    ..
+                } => {
+                    let func = self.convert_function(return_type, name, params, body)?;
+                    program.functions.push(func);
                 }
                 CppTopLevel::FunctionDecl { .. } => {} // Prototypes â€” skip
                 CppTopLevel::UsingNamespace(_) => {}

@@ -427,6 +427,26 @@ impl CppParser {
         Ok(base)
     }
 
+    /// Try to parse a single template argument (type or non-type integer/bool/identifier)
+    fn try_parse_one_template_arg(&mut self) -> Result<CppType, String> {
+        // Non-type args: integer literals → represent as Named("N") for IR
+        match self.current().clone() {
+            CppToken::IntLiteral(n) => {
+                self.advance();
+                Ok(CppType::Named(format!("{}", n)))
+            }
+            CppToken::True => {
+                self.advance();
+                Ok(CppType::Named("true".to_string()))
+            }
+            CppToken::False => {
+                self.advance();
+                Ok(CppType::Named("false".to_string()))
+            }
+            _ => self.parse_type(),
+        }
+    }
+
     fn try_parse_template_args(&mut self) -> Result<Vec<CppType>, String> {
         let save_pos = self.pos;
         if !self.eat(&CppToken::Lt) {
@@ -434,7 +454,7 @@ impl CppParser {
         }
         let mut args = Vec::new();
         if *self.current() != CppToken::Gt {
-            args.push(match self.parse_type() {
+            args.push(match self.try_parse_one_template_arg() {
                 Ok(t) => t,
                 Err(_) => {
                     self.pos = save_pos;
@@ -442,7 +462,7 @@ impl CppParser {
                 }
             });
             while self.eat(&CppToken::Comma) {
-                args.push(match self.parse_type() {
+                args.push(match self.try_parse_one_template_arg() {
                     Ok(t) => t,
                     Err(_) => {
                         self.pos = save_pos;
@@ -1495,6 +1515,8 @@ impl CppParser {
         let params = self.parse_template_params()?;
         self.expect(&CppToken::Gt)?;
 
+        let is_full_specialization = params.is_empty();
+
         // Register template type parameter names so they are recognized as types
         for p in &params {
             match p {
@@ -1508,17 +1530,104 @@ impl CppParser {
             }
         }
 
+        // Template type alias: template<typename T> using Vec = vector<T>;
+        if *self.current() == CppToken::Using {
+            self.advance();
+            let new_name = self.expect_identifier()?;
+            self.type_names.insert(new_name.clone());
+            self.expect(&CppToken::Assign)?;
+            let original = self.parse_type()?;
+            self.expect(&CppToken::Semicolon)?;
+            return Ok(CppTopLevel::TypeAlias {
+                new_name,
+                original,
+                template_params: params,
+            });
+        }
+
         // What follows: class, struct, function
         if *self.current() == CppToken::Class || *self.current() == CppToken::Struct {
             if matches!(self.peek(), CppToken::Identifier(_)) {
+                let is_struct = *self.current() == CppToken::Struct;
+                // Peek ahead: is this a specialization? Name<args> { ... }
+                // For full specialization: template<> class Foo<int> { ... }
+                // For partial specialization: template<typename T> class Foo<T*> { ... }
+                if is_full_specialization || self.is_template_specialization_ahead() {
+                    return self.parse_template_class_specialization(params, is_struct);
+                }
                 return self.parse_class_def(params);
             }
         }
 
-        // Template function
+        // Template function (possibly specialization)
         let ret_type = self.parse_type()?;
         let name = self.expect_identifier()?;
+
+        // Check for function specialization: template<> int max<int>(...)
+        if is_full_specialization {
+            if let Ok(spec_args) = self.try_parse_template_args() {
+                // Full function specialization
+                self.expect(&CppToken::LParen)?;
+                let func_params = self.parse_param_list()?;
+                self.expect(&CppToken::RParen)?;
+                let body = self.parse_block_stmts()?;
+                return Ok(CppTopLevel::TemplateFuncSpecialization {
+                    name,
+                    specialized_args: spec_args,
+                    template_params: params,
+                    return_type: ret_type,
+                    params: func_params,
+                    body,
+                });
+            }
+        }
+
         self.parse_function_or_var(ret_type, name, params)
+    }
+
+    /// Check if the next tokens look like ClassName<Args> { (specialization pattern)
+    fn is_template_specialization_ahead(&self) -> bool {
+        // We're at class/struct, peek is Identifier
+        // Check if peek_at(2) is < (specialization args)
+        *self.peek_at(2) == CppToken::Lt
+    }
+
+    /// Parse template class specialization: template<> class Foo<int> { ... }
+    /// or partial: template<typename T> class Foo<T*> { ... }
+    fn parse_template_class_specialization(
+        &mut self,
+        template_params: Vec<CppTemplateParam>,
+        is_struct: bool,
+    ) -> Result<CppTopLevel, String> {
+        self.advance(); // skip class/struct
+        let name = self.expect_identifier()?;
+        self.type_names.insert(name.clone());
+
+        // Parse specialization args: <int> or <T*>
+        let spec_args = self.try_parse_template_args()
+            .unwrap_or_default();
+
+        // Parse optional base classes
+        if self.eat(&CppToken::Colon) {
+            // Skip base classes for specializations (simplified)
+            while *self.current() != CppToken::LBrace && *self.current() != CppToken::Eof {
+                self.advance();
+            }
+        }
+
+        // Parse class body
+        self.expect(&CppToken::LBrace)?;
+        let members = self.parse_class_members(is_struct)?;
+        self.expect(&CppToken::RBrace)?;
+        self.eat(&CppToken::Semicolon);
+
+        Ok(CppTopLevel::TemplateSpecialization {
+            name,
+            specialized_args: spec_args,
+            template_params,
+            members,
+            is_struct,
+        })
     }
 
     fn parse_template_params(&mut self) -> Result<Vec<CppTemplateParam>, String> {
@@ -1766,7 +1875,7 @@ impl CppParser {
     fn parse_if(&mut self) -> Result<CppStmt, String> {
         self.advance(); // skip if
                         // C++17 constexpr if
-        self.eat(&CppToken::Constexpr);
+        let is_constexpr = self.eat(&CppToken::Constexpr);
         self.expect(&CppToken::LParen)?;
         let condition = self.parse_expression()?;
         self.expect(&CppToken::RParen)?;
@@ -1781,6 +1890,7 @@ impl CppParser {
             condition,
             then_body,
             else_body,
+            is_constexpr,
         })
     }
 
@@ -2374,6 +2484,36 @@ impl CppParser {
     fn parse_postfix_on(&mut self, mut expr: CppExpr) -> Result<CppExpr, String> {
         loop {
             match self.current() {
+                // Template function call: func<Type>(args)
+                // Speculatively try template args when identifier is followed by <
+                CppToken::Lt => {
+                    if let CppExpr::Identifier(_) | CppExpr::ScopedIdentifier { .. } = &expr {
+                        let save_pos = self.pos;
+                        if let Ok(targs) = self.try_parse_template_args() {
+                            // Must be followed by ( to be a template call
+                            if *self.current() == CppToken::LParen {
+                                // Mangle the callee name with template args
+                                let callee_name = match &expr {
+                                    CppExpr::Identifier(n) => n.clone(),
+                                    CppExpr::ScopedIdentifier { scope, name } => {
+                                        format!("{}::{}", scope.join("::"), name)
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                let mangled = format!("{}<{}>", callee_name,
+                                    targs.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", "));
+                                expr = CppExpr::Identifier(mangled);
+                                // The ( will be consumed in the LParen arm below
+                                continue;
+                            }
+                        }
+                        // Not a template call — backtrack
+                        self.pos = save_pos;
+                        break;
+                    } else {
+                        break;
+                    }
+                }
                 CppToken::LBracket => {
                     self.advance();
                     let index = self.parse_expression()?;

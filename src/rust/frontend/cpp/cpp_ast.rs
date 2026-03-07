@@ -201,11 +201,16 @@ pub enum CppExpr {
     // Structured binding reference (C++17)
     StructuredBinding(Vec<String>),
 
-    // Fold expression placeholder (C++17)
+    // Fold expression (C++17): (args op ...)
     FoldExpr {
         op: CppBinOp,
         pack: Box<CppExpr>,
+        init: Option<Box<CppExpr>>,  // for binary fold: (init op ... op pack)
+        is_right: bool,              // right fold vs left fold
     },
+
+    // Pack expansion: expr...
+    PackExpansion(Box<CppExpr>),
 
     // Co_await / co_yield (C++20)
     CoAwait(Box<CppExpr>),
@@ -300,6 +305,7 @@ pub enum CppStmt {
         condition: CppExpr,
         then_body: Box<CppStmt>,
         else_body: Option<Box<CppStmt>>,
+        is_constexpr: bool,         // C++17 if constexpr
     },
     While {
         condition: CppExpr,
@@ -448,6 +454,25 @@ pub enum CppTopLevel {
     // Template explicit instantiation
     TemplateInstantiation {
         type_name: CppType,
+    },
+
+    // Template full specialization: template<> class Foo<int> { ... }
+    TemplateSpecialization {
+        name: String,
+        specialized_args: Vec<CppType>,        // <int>, <T*>, etc.
+        template_params: Vec<CppTemplateParam>, // empty for full, non-empty for partial
+        members: Vec<CppClassMember>,
+        is_struct: bool,
+    },
+
+    // Template function specialization: template<> int max<int>(int a, int b) { ... }
+    TemplateFuncSpecialization {
+        name: String,
+        specialized_args: Vec<CppType>,
+        template_params: Vec<CppTemplateParam>,
+        return_type: CppType,
+        params: Vec<CppParam>,
+        body: Vec<CppStmt>,
     },
 
     // Static assert (C++11)

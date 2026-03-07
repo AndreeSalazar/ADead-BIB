@@ -54,7 +54,8 @@ pub fn get_cpp_header(name: &str) -> Option<&'static str> {
         "algorithm" | "numeric" | "ranges" => Some(HEADER_EMPTY),
         "memory" | "functional" | "utility" | "tuple" => Some(HEADER_EMPTY),
         "optional" | "variant" | "any" => Some(HEADER_EMPTY),
-        "type_traits" | "limits" | "concepts" => Some(HEADER_EMPTY),
+        "type_traits" => Some(HEADER_TYPE_TRAITS),
+        "limits" | "concepts" => Some(HEADER_EMPTY),
         "chrono" | "thread" | "mutex" | "atomic" | "future" | "condition_variable" => {
             Some(HEADER_EMPTY)
         }
@@ -218,6 +219,116 @@ typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
 typedef unsigned long uint64_t;
+"#;
+
+/// <type_traits> — C++11/14/17/20 type traits
+/// ADead-BIB implements these as template structs with static constexpr value.
+/// The parser recognizes these as known template types.
+pub const HEADER_TYPE_TRAITS: &str = r#"
+/* ADead-BIB <type_traits> — C++11/14/17/20 */
+
+/* integral_constant */
+template<typename T, T v>
+struct integral_constant {
+    static constexpr T value = v;
+};
+
+typedef integral_constant<bool, true> true_type;
+typedef integral_constant<bool, false> false_type;
+
+/* Primary type categories */
+template<typename T> struct is_void : false_type {};
+template<> struct is_void<void> : true_type {};
+
+template<typename T> struct is_integral : false_type {};
+template<> struct is_integral<bool> : true_type {};
+template<> struct is_integral<char> : true_type {};
+template<> struct is_integral<short> : true_type {};
+template<> struct is_integral<int> : true_type {};
+template<> struct is_integral<long> : true_type {};
+
+template<typename T> struct is_floating_point : false_type {};
+template<> struct is_floating_point<float> : true_type {};
+template<> struct is_floating_point<double> : true_type {};
+
+template<typename T> struct is_pointer : false_type {};
+template<typename T> struct is_pointer<T*> : true_type {};
+
+template<typename T> struct is_reference : false_type {};
+template<typename T> struct is_reference<T&> : true_type {};
+template<typename T> struct is_reference<T&&> : true_type {};
+
+template<typename T> struct is_array : false_type {};
+
+template<typename T> struct is_const : false_type {};
+template<typename T> struct is_const<const T> : true_type {};
+
+/* Type relationships */
+template<typename T, typename U> struct is_same : false_type {};
+template<typename T> struct is_same<T, T> : true_type {};
+
+/* Type modifications */
+template<typename T> struct remove_const { typedef T type; };
+template<typename T> struct remove_const<const T> { typedef T type; };
+
+template<typename T> struct remove_volatile { typedef T type; };
+template<typename T> struct remove_volatile<volatile T> { typedef T type; };
+
+template<typename T> struct remove_cv { typedef T type; };
+template<typename T> struct remove_cv<const T> { typedef T type; };
+template<typename T> struct remove_cv<volatile T> { typedef T type; };
+template<typename T> struct remove_cv<const volatile T> { typedef T type; };
+
+template<typename T> struct remove_reference { typedef T type; };
+template<typename T> struct remove_reference<T&> { typedef T type; };
+template<typename T> struct remove_reference<T&&> { typedef T type; };
+
+template<typename T> struct remove_pointer { typedef T type; };
+template<typename T> struct remove_pointer<T*> { typedef T type; };
+
+template<typename T> struct add_pointer { typedef T* type; };
+template<typename T> struct add_const { typedef const T type; };
+template<typename T> struct add_lvalue_reference { typedef T& type; };
+template<typename T> struct add_rvalue_reference { typedef T&& type; };
+
+/* SFINAE helpers */
+template<bool B, typename T = void> struct enable_if {};
+template<typename T> struct enable_if<true, T> { typedef T type; };
+
+template<bool B, typename T, typename F> struct conditional { typedef T type; };
+template<typename T, typename F> struct conditional<false, T, F> { typedef F type; };
+
+/* C++14 _t aliases (template type aliases) */
+template<typename T> using remove_const_t = typename remove_const<T>::type;
+template<typename T> using remove_volatile_t = typename remove_volatile<T>::type;
+template<typename T> using remove_cv_t = typename remove_cv<T>::type;
+template<typename T> using remove_reference_t = typename remove_reference<T>::type;
+template<typename T> using remove_pointer_t = typename remove_pointer<T>::type;
+template<typename T> using add_pointer_t = typename add_pointer<T>::type;
+template<typename T> using add_const_t = typename add_const<T>::type;
+template<bool B, typename T = void> using enable_if_t = typename enable_if<B, T>::type;
+template<bool B, typename T, typename F> using conditional_t = typename conditional<B, T, F>::type;
+
+/* C++17 _v aliases (variable templates) */
+template<typename T, typename U> constexpr bool is_same_v = is_same<T, U>::value;
+template<typename T> constexpr bool is_integral_v = is_integral<T>::value;
+template<typename T> constexpr bool is_floating_point_v = is_floating_point<T>::value;
+template<typename T> constexpr bool is_pointer_v = is_pointer<T>::value;
+template<typename T> constexpr bool is_reference_v = is_reference<T>::value;
+template<typename T> constexpr bool is_void_v = is_void<T>::value;
+template<typename T> constexpr bool is_const_v = is_const<T>::value;
+template<typename T> constexpr bool is_array_v = is_array<T>::value;
+
+/* void_t (C++17 SFINAE helper) */
+template<typename...> using void_t = void;
+
+/* decay — strips references and cv-qualifiers */
+template<typename T> struct decay { typedef T type; };
+template<typename T> struct decay<T&> { typedef T type; };
+template<typename T> struct decay<T&&> { typedef T type; };
+template<typename T> struct decay<const T> { typedef T type; };
+template<typename T> struct decay<volatile T> { typedef T type; };
+template<typename T> using decay_t = typename decay<T>::type;
 "#;
 
 // ================================================================
