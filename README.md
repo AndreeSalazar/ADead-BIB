@@ -1,10 +1,12 @@
-# ADead-BIB v4.0 💀🦈
+# ADead-BIB v7.0 💀🦈
 
-**Compilador Nativo: C99 · C++98 → Machine Code Puro**
+**Compilador Nativo: C99 · C++17 → Machine Code Puro**
 
 > Zero Overhead · Zero Bloat · Zero Dead Code  
 > Sin NASM · Sin LLVM · Sin GCC · Sin Clang  
-> FASM-style: bytes directos al CPU
+> Sin libc externa · Sin linker · 100% Autosuficiente  
+> FASM-style: bytes directos al CPU  
+> `#include <header_main.h>` = TODO disponible
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -137,7 +139,10 @@ adeadc build examples/c/hello.c -o hello.exe
 adeadc build examples/cpp/cpp_oop.cpp -o oop.exe
 
 # Compilar y ejecutar
-adeadc run examples/c/test_counter.c
+adeadc run examples/c/hello.c
+
+# Ver ruta del ejecutable + instrucciones para PATH
+adeadc --version
 
 # GPU (SPIR-V directo)
 adeadc gpu
@@ -145,7 +150,32 @@ adeadc gpu
 
 ---
 
-## Frontends: C99 y C++98
+## v7.0 — Autosuficiencia Total
+
+ADead-BIB v7.0 es **100% autosuficiente**:
+
+- **Sin libc externa**: Toda la biblioteca estándar C/C++ está implementada internamente (`stdlib/c/`, `stdlib/cpp/`)
+- **Sin linker**: Unity build — todo se compila a un solo IR, un solo binario
+- **`#include <header_main.h>`**: Un solo include que da acceso a TODA la stdlib (C y C++)
+- **Tree shaking**: Solo las funciones que usas llegan al binario final
+- **fastos_*.h**: Headers individuales (`fastos_stdio.h`, `fastos_math.h`, etc.) para control granular
+
+```c
+// Un solo include. Todo disponible. Sin linker.
+#include <header_main.h>
+
+int main() {
+    printf("Hello from ADead-BIB v7.0!\n");
+    double s = sin(3.14);
+    void *p = malloc(1024);
+    free(p);
+    return 0;
+}
+```
+
+---
+
+## Frontends: C99 y C++17
 
 ### C99 Frontend — Canon de C
 
@@ -166,7 +196,7 @@ adeadc gpu
 
 **Pipeline:** `C source → CPreprocessor → CLexer → CParser → CAST → CToIR → Program → IsaCompiler → Encoder → x86-64 → PE/ELF`
 
-### C++98 Frontend — Canon de C++ (Zero Overhead)
+### C++17 Frontend — Canon de C++ (Zero Overhead)
 
 | Característica C++ | Estado | Cómo ADead-BIB lo compila |
 |---------------------|--------|---------------------------|
@@ -288,7 +318,7 @@ ADead-BIB/
 │   │   │   ├── c_stdlib.rs            # 75+ headers built-in
 │   │   │   └── c_compiler_extensions.rs
 │   │   │
-│   │   ├── cpp/                   # C++98 Frontend
+│   │   ├── cpp/                       # C++17 Frontend
 │   │   │   ├── cpp_lexer.rs           # Tokenizer C++
 │   │   │   ├── cpp_parser.rs          # Classes, templates, namespaces
 │   │   │   ├── cpp_ast.rs             # C++ AST types
@@ -346,8 +376,8 @@ ADead-BIB/
 │       └── ...
 │
 ├── examples/
-│   ├── c/                         # 46 archivos C99 — todos compilan ✅
-│   ├── cpp/                       # 33 archivos C++ — todos compilan ✅
+│   ├── c/                         # 34 archivos C99 — todos compilan ✅
+│   ├── cpp/                       # 22 archivos C++ — todos compilan ✅
 │   ├── boot/                      # Boot sectors, kernels
 │   └── gpu/                       # GPU compute shaders
 │
@@ -377,19 +407,29 @@ ADead-BIB/
 
 | Frontend | Archivos | Compilan | Tasa |
 |----------|----------|----------|------|
-| **C99** | 46 | 46 | **100%** ✅ |
-| **C++** | 33 | 33 | **100%** ✅ |
-| **Total** | **79** | **79** | **100%** ✅ |
+| **C99 examples** | 34 | 34 | **100%** ✅ |
+| **C++ examples** | 22 | 22 | **100%** ✅ |
+| **C99 Canon** | 18 | 18 | **100%** ✅ |
+| **C++98 Canon** | 15 | 15 | **100%** ✅ |
+| **Integration tests** | 18 | 18 | **100%** ✅ |
+| **Total Rust tests** | **520** | **520** | **100%** ✅ |
 
-### Runtime Verificado
+### Test-Canon Verificado
 
 ```
-test_counter.exe    → "After +1: total=1 pass=1" ✅
-test_recursion.exe  → "fib(10)=55, power(2,10)=1024" ✅
-test_bsort.exe      → "sorted=[1,2,3]" ✅
-test_gcd.exe        → "gcd(48,18) = 6" ✅
-test_prime.exe      → "prime(17)=1, prime(100)=0" ✅
-test_class_basic.exe → "after 3 inc: 0" ✅
+C99 Canon (18 tests): tipos, punteros, arrays, structs, unions,
+  enums, typedef, control, funciones, function pointers,
+  preprocesador, bitwise, casting, scope, strings, malloc,
+  sizeof, expresiones complejas — ALL PASS ✅
+
+C++98 Canon (15 tests): clases, herencia, virtual/polimorfismo,
+  templates función, templates clase, namespaces, operator overload,
+  referencias, const correctness, encapsulamiento, constructores,
+  static members, punteros objetos, enum class, STL — ALL PASS ✅
+
+Integration (18 tests): header_main.h C/C++, fastos_*.h,
+  symbol registries, no-linker verification, resolver content,
+  full E2E programs — ALL PASS ✅
 ```
 
 ---
@@ -466,15 +506,17 @@ eddi.salazar.dev@gmail.com
 
 ---
 
-**ADead-BIB v4.0: C99 · C++98 → Machine Code Puro 💀🦈**
+**ADead-BIB v7.0: C99 · C++17 → Machine Code Puro 💀🦈**
 
 **MSVC, GCC, LLVM = referencias técnicas estudiadas y respetadas**  
 **FASM = el modelo de encoding directo que ADead-BIB sigue**  
 **Rust = el guardián que garantiza que el compilador nunca falle**  
-**Resultado = Zero Overhead, Zero Bloat, Zero Dead Code**
+**Resultado = Zero Overhead, Zero Bloat, Zero Dead Code**  
+**v7.0 = 100% Autosuficiente — Sin libc, Sin linker, header_main.h = TODO**
 
 **"C = intención absoluta del programador  
 C++ = zero overhead principle  
 Rust = guardián de correctitud  
 FASM = bytes directos al CPU  
-ADead-BIB = todo unido, machine code puro"**
+header_main.h = un include, todo disponible  
+ADead-BIB = único en el mundo 💀🦈 🇵🇪"**

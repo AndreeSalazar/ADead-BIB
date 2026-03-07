@@ -16,5 +16,7 @@ pub mod cpp;
 
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod canon_tests;
 
 pub use header_main::HeaderMain;

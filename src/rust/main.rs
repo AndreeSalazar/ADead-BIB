@@ -1,6 +1,7 @@
 // ============================================================
-// ADead-BIB Compiler CLI v5.0
+// ADead-BIB Compiler CLI v7.0
 // C/C++ Native Compiler — Sin GCC, Sin LLVM, Sin Clang
+// 100% Self-Sufficient — Sin libc, Sin linker externo
 // ============================================================
 
 use adead_bib::backend::gpu::gpu_detect::GPUFeatures;
@@ -382,8 +383,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "version" | "-v" | "--version" => {
-            println!("ADead-BIB v5.0.0 — C/C++ Native Compiler");
+            println!("ADead-BIB v7.0.0 — C/C++ Native Compiler");
             println!("Sin GCC, Sin LLVM, Sin Clang — 100% ADead-BIB");
+            println!("Sin libc externa, Sin linker — Totalmente autosuficiente");
+            println!();
+            if let Ok(exe) = env::current_exe() {
+                println!("Executable: {}", exe.display());
+                if let Some(dir) = exe.parent() {
+                    println!("\n  To add to PATH (Windows PowerShell):");
+                    println!("  $env:Path += \";{}\"  ", dir.display());
+                    println!("\n  To add permanently (run as Admin):");
+                    println!("  [Environment]::SetEnvironmentVariable('Path', $env:Path + ';{}', 'User')", dir.display());
+                }
+            }
         }
 
         // ============================================================
@@ -764,8 +776,9 @@ fn get_output_filename(input: &str, args: &[String]) -> String {
 
 fn print_usage(_program: &str) {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║           🔥 ADead-BIB v5.0.0 — C/C++ Compiler 🔥           ║");
-    println!("║     Sin GCC, Sin LLVM, Sin Clang — 100% Native               ║");
+    println!("║         🔥 ADead-BIB v7.0.0 — C/C++ Compiler 🔥             ║");
+    println!("║    Sin GCC, Sin LLVM, Sin Clang — 100% Self-Sufficient       ║");
+    println!("║    Sin libc, Sin linker — header_main.h = TODO               ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
     println!("📋 COMPILAR C/C++:");
@@ -797,10 +810,15 @@ fn print_usage(_program: &str) {
     println!();
     println!("📝 SUPPORTED FEATURES:");
     println!("   C:   C99/C11, structs, pointers, arrays, printf, malloc");
-    println!("   C++: C++11/14/17/20, classes, templates, lambdas, STL");
+    println!("   C++: C++98/11/14/17, classes, templates, namespaces, STL");
+    println!("   header_main.h: Un solo #include — todo disponible");
     println!();
     println!("🎯 OUTPUT FORMATS:");
     println!("   Windows: PE executable (.exe)");
     println!("   Linux:   ELF executable");
+    println!("   FastOS:  Po executable (.po)");
+    println!();
+    println!("🔧 PATH SETUP:");
+    println!("   adB --version      Show path and setup instructions");
     println!();
 }
