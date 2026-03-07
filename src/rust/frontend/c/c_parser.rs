@@ -419,16 +419,8 @@ impl CParser {
         let init = if self.eat(&CToken::Assign) {
             if *self.current() == CToken::LBrace {
                 // Brace-enclosed initializer list: = { expr, expr, ... }
-                self.advance(); // skip {
-                let mut elements = Vec::new();
-                while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
-                    elements.push(self.parse_assign_expr()?);
-                    if !self.eat(&CToken::Comma) {
-                        break;
-                    }
-                }
-                self.expect(&CToken::RBrace)?;
-                Some(CExpr::InitList(elements))
+                // C11: supports designated initializers: .field = val, [idx] = val
+                Some(self.parse_brace_init()?)
             } else {
                 Some(self.parse_assign_expr()?)
             }
@@ -602,9 +594,66 @@ impl CParser {
     }
 
     /// Parse struct/union fields until RBrace
+    /// C11: supports anonymous struct/union members
     fn parse_struct_fields(&mut self) -> Result<Vec<CStructField>, String> {
         let mut fields = Vec::new();
         while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+            // C11: anonymous struct/union: struct { ... }; or union { ... };
+            if (*self.current() == CToken::Struct || *self.current() == CToken::Union)
+                && (*self.peek() == CToken::LBrace
+                    || (matches!(self.peek(), CToken::Identifier(_))
+                        && self.peek_n(2) == &CToken::LBrace
+                        && self.peek_n(3) != &CToken::Semicolon))
+            {
+                // Check if it's truly anonymous: struct { fields }; with no field name after }
+                let save = self.pos;
+                self.advance(); // skip struct/union
+                // Skip optional tag name
+                if let CToken::Identifier(_) = self.current() {
+                    if *self.peek() == CToken::LBrace {
+                        self.advance(); // skip tag name
+                    }
+                }
+                if *self.current() == CToken::LBrace {
+                    self.advance(); // skip {
+                    let inner_fields = self.parse_struct_fields()?;
+                    self.expect(&CToken::RBrace)?;
+                    // Check if next is ; (anonymous) or identifier (named field)
+                    if *self.current() == CToken::Semicolon {
+                        self.advance(); // skip ;
+                        // Flatten anonymous members into parent
+                        fields.extend(inner_fields);
+                        continue;
+                    } else if let CToken::Identifier(fname) = self.current().clone() {
+                        // Named field of struct/union type
+                        self.advance();
+                        // Handle array: struct X { ... } name[N];
+                        let ft = CType::Struct("__anon".to_string());
+                        let final_type = if *self.current() == CToken::LBracket {
+                            self.advance();
+                            let size = if let CToken::IntLiteral(n) = self.current().clone() {
+                                self.advance();
+                                Some(n as usize)
+                            } else {
+                                None
+                            };
+                            self.expect(&CToken::RBracket)?;
+                            CType::Array(Box::new(ft), size)
+                        } else {
+                            ft
+                        };
+                        self.expect(&CToken::Semicolon)?;
+                        fields.push(CStructField {
+                            field_type: final_type,
+                            name: fname,
+                        });
+                        continue;
+                    }
+                }
+                // Not anonymous — restore and fall through to normal parsing
+                self.pos = save;
+            }
+
             // Handle function pointer fields: type (*name)(params);
             if self.is_function_pointer_field() {
                 let ret_type = self.parse_type()?;
@@ -1467,8 +1516,29 @@ impl CParser {
             }
             CToken::LParen if self.is_cast() => {
                 self.advance(); // skip (
-                let ty = self.parse_type()?;
+                let mut ty = self.parse_type()?;
+                // Handle pointer modifiers in cast type
+                while self.eat(&CToken::Star) {
+                    ty = CType::Pointer(Box::new(ty));
+                }
+                // Handle array type: (int[]) or (int[5])
+                if *self.current() == CToken::LBracket {
+                    self.advance(); // skip [
+                    let size = if let CToken::IntLiteral(n) = self.current().clone() {
+                        self.advance();
+                        Some(n as usize)
+                    } else {
+                        None
+                    };
+                    self.expect(&CToken::RBracket)?;
+                    ty = CType::Array(Box::new(ty), size);
+                }
                 self.expect(&CToken::RParen)?;
+                // C11 compound literal: (type){ ... }
+                if *self.current() == CToken::LBrace {
+                    let init = self.parse_brace_init()?;
+                    return Ok(init);
+                }
                 let expr = self.parse_unary()?;
                 Ok(CExpr::Cast {
                     target_type: ty,
@@ -1595,6 +1665,37 @@ impl CParser {
         Ok(expr)
     }
 
+    /// Parse brace-enclosed initializer list: { expr, expr, ... }
+    /// C11: supports designated initializers: .field = val, [idx] = val
+    fn parse_brace_init(&mut self) -> Result<CExpr, String> {
+        self.advance(); // skip {
+        let mut elements = Vec::new();
+        while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+            // C11 designated initializer: .field = expr
+            if *self.current() == CToken::Dot {
+                self.advance(); // skip .
+                let _field = self.expect_identifier()?;
+                self.expect(&CToken::Assign)?;
+                elements.push(self.parse_assign_expr()?);
+            }
+            // C11 designated initializer: [idx] = expr
+            else if *self.current() == CToken::LBracket {
+                self.advance(); // skip [
+                let _idx = self.parse_expression()?;
+                self.expect(&CToken::RBracket)?;
+                self.expect(&CToken::Assign)?;
+                elements.push(self.parse_assign_expr()?);
+            } else {
+                elements.push(self.parse_assign_expr()?);
+            }
+            if !self.eat(&CToken::Comma) {
+                break;
+            }
+        }
+        self.expect(&CToken::RBrace)?;
+        Ok(CExpr::InitList(elements))
+    }
+
     fn parse_primary(&mut self) -> Result<CExpr, String> {
         match self.current().clone() {
             CToken::IntLiteral(n) => {
@@ -1628,7 +1729,31 @@ impl CParser {
                 Ok(CExpr::Identifier(name))
             }
             CToken::LParen => {
-                self.advance();
+                // Check for compound literal: (Type){...}
+                // or cast: (Type)expr
+                // or parenthesized expression: (expr)
+                let save = self.pos;
+                self.advance(); // skip (
+                if self.is_type_start() {
+                    let cast_type = self.parse_type()?;
+                    // Handle pointer/const modifiers
+                    while self.eat(&CToken::Star) {}
+                    self.expect(&CToken::RParen)?;
+                    // C11 compound literal: (Type){ ... }
+                    if *self.current() == CToken::LBrace {
+                        let init = self.parse_brace_init()?;
+                        return Ok(init);
+                    }
+                    // Cast expression: (Type)expr
+                    let inner = self.parse_unary()?;
+                    return Ok(CExpr::Cast {
+                        target_type: cast_type,
+                        expr: Box::new(inner),
+                    });
+                }
+                // Regular parenthesized expression
+                self.pos = save;
+                self.advance(); // skip (
                 let expr = self.parse_expression()?;
                 self.expect(&CToken::RParen)?;
                 Ok(expr)

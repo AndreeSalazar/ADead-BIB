@@ -36,7 +36,7 @@ UB DETECTION ANTES DEL OPTIMIZER
 ## Pipeline Completo v7.0
 
 ```
-C99/C++98/C++17 codigo fuente
+C99/C11/C++98/C++11/C++14/C++17/C++20 codigo fuente
         │
         ▼
 [ PREPROCESSOR ]  ←── preprocessor/
@@ -885,11 +885,13 @@ Un comando          NO ❌    NO ❌        NO ❌    SÍ ✓
 Sin flags           NO ❌    NO ❌        NO ❌    SÍ ✓
 UB antes optimizer  NO ❌    NO ❌        NO ❌    SÍ ✓ ÚNICO
 C99 completo        SÍ ✓     SÍ ✓        parcial    SÍ ✓
+C11 features        SÍ ✓     SÍ ✓        parcial    SÍ ✓
 C++98 completo      SÍ ✓     SÍ ✓        SÍ ✓      SÍ ✓
-C++17               SÍ ✓     SÍ ✓        SÍ ✓      34 features ✓
+C++11/14/17         SÍ ✓     SÍ ✓        SÍ ✓      SÍ ✓
+C++20               SÍ ✓     SÍ ✓        SÍ ✓      parcial ✓
 Hello World size    50KB     40KB         60KB      2KB ✓
 Cross-platform      pain     pain         NO        SÍ ✓
-FastOS .po          NO ❌    NO ❌       NO ❌    SÍ ✓ ÚNICO
+FastOS .po          NO ❌    NO ❌       NO ❌     SÍ ✓ ÚNICO
 ─────────────────────────────────────────────────────────────────
 Filosofía:          ninguna  ninguna      negocio  Grace Hopper ✓
                                                    Dennis Ritchie ✓
@@ -897,5 +899,53 @@ Filosofía:          ninguna  ninguna      negocio  Grace Hopper ✓
 
 ---
 
+## Test-Canon — Verification Suite
+
+```
+Test-Canon/
+├── C99/              # 18 tests — C99 standard completo
+│   ├── 01_tipos_fundamentales.c
+│   ├── 02_punteros_autenticos.c
+│   ├── ... (18 archivos)
+│   └── 18_expresiones_complejas.c
+│
+├── C11/              # 4 tests — C11 features
+│   ├── 01_static_assert.c
+│   ├── 02_anonymous_structs.c
+│   ├── 03_designated_init.c
+│   └── 04_compound_literals.c
+│
+├── Cpp98/            # 16 tests — C++98 standard completo
+│   ├── 01_clases_basicas.cpp
+│   ├── ... (16 archivos)
+│   └── 15_stl_basico.cpp
+│
+├── Cpp11/            # 5 tests — C++11 features
+│   ├── 01_auto_nullptr_enum.cpp
+│   ├── 02_lambda.cpp
+│   ├── 03_move_semantics.cpp
+│   ├── 04_modern_classes.cpp
+│   └── 05_type_aliases_templates.cpp
+│
+├── Cpp14/            # 2 tests — C++14 features
+│   ├── 01_return_deduction_constexpr.cpp
+│   └── 02_variable_templates_generic_lambda.cpp
+│
+├── Cpp17/            # 2 tests — C++17 features
+│   ├── 01_specialization_constexpr.cpp
+│   └── 02_advanced_templates.cpp
+│
+├── Cpp20/            # 1 test — C++20 features (carpeta separada)
+│   └── 01_concepts_designators.cpp
+│
+├── CANON.md
+└── compile_canon.ps1
+```
+
+**Resultados:** 48 archivos de test, 47 compilan OK
+(1 falla intencional: C99/05_unions_memoria.c — UB Detector strict aliasing)
+
+---
+
 *ADead-BIB v7.0 — 2026*
-*"la máquina sirve al humano — sin linker — sin UB silencioso — para siempre"*
+*"la maquina sirve al humano — sin linker — sin UB silencioso — para siempre"*

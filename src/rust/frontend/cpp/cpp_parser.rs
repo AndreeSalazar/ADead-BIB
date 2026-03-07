@@ -2641,16 +2641,24 @@ impl CppParser {
                 Ok(CppExpr::Identifier(name))
             }
             CppToken::LBrace => {
-                // Initializer list
+                // Initializer list (C++11/C++20 designated initializers)
                 self.advance();
                 let mut items = Vec::new();
                 if *self.current() != CppToken::RBrace {
-                    items.push(self.parse_assignment_expr()?);
-                    while self.eat(&CppToken::Comma) {
+                    loop {
+                        // C++20 designated initializer: .field = expr
+                        if *self.current() == CppToken::Dot {
+                            self.advance(); // skip .
+                            let _field = self.expect_identifier()?;
+                            self.expect(&CppToken::Assign)?;
+                        }
+                        items.push(self.parse_assignment_expr()?);
+                        if !self.eat(&CppToken::Comma) {
+                            break;
+                        }
                         if *self.current() == CppToken::RBrace {
                             break;
                         }
-                        items.push(self.parse_assignment_expr()?);
                     }
                 }
                 self.expect(&CppToken::RBrace)?;
