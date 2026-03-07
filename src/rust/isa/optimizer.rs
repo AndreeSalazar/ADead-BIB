@@ -61,6 +61,19 @@ impl IsaOptimizer {
         }
     }
 
+    /// Convert a 64-bit register to its 32-bit equivalent (for xor-zero optimization)
+    fn to_32bit(r: &Reg) -> Option<Reg> {
+        match r {
+            Reg::RAX => Some(Reg::EAX),
+            Reg::RBX => Some(Reg::EBX),
+            Reg::RCX => Some(Reg::ECX),
+            Reg::RDX => Some(Reg::EDX),
+            Reg::RSI => Some(Reg::ESI),
+            Reg::RDI => Some(Reg::EDI),
+            _ => None,
+        }
+    }
+
     /// Optimiza un buffer de instrucciones ADeadIR
     pub fn optimize(&mut self, ir: &ADeadIR) -> ADeadIR {
         let mut ops = ir.ops().to_vec();

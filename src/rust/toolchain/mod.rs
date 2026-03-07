@@ -18,8 +18,10 @@
 // ============================================================
 
 pub mod calling_conventions;
+pub mod clang_compat;
 pub mod cpp_name_mangler;
 pub mod gcc_builtins;
+pub mod gcc_compat;
 pub mod llvm_attrs;
 pub mod msvc_compat;
 

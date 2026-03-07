@@ -33,8 +33,8 @@ target/
 .DS_Store
 Thumbs.db
 
-# Output
-output/
+# Output (not src/rust/output/)
+/output/
 bin/
 dist/
 
