@@ -443,6 +443,20 @@ impl CLexer {
             // Identifiers and keywords
             Some(ch) if ch.is_alphabetic() || ch == '_' => {
                 let ident = self.read_identifier();
+                // Wide/Unicode string literal prefixes: L"", u"", U"", u8""
+                if (ident == "L" || ident == "u" || ident == "U" || ident == "u8")
+                    && self.current_char == Some('"')
+                {
+                    let s = self.read_string();
+                    return CToken::StringLiteral(s);
+                }
+                // Wide/Unicode char literal prefixes: L'x', u'x', U'x'
+                if (ident == "L" || ident == "u" || ident == "U")
+                    && self.current_char == Some('\'')
+                {
+                    let ch = self.read_char_literal();
+                    return CToken::CharLiteral(ch);
+                }
                 match ident.as_str() {
                     "auto" => CToken::Auto,
                     "break" => CToken::Break,

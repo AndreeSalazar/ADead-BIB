@@ -645,21 +645,30 @@ impl CppParser {
             return self.parse_typedef();
         }
 
-        // Extern "C"
+        // Extern "C" { ... } or extern "C" single-declaration
         if *self.current() == CppToken::Extern {
             if let CppToken::StringLiteral(ref s) = self.peek().clone() {
-                if s == "C" {
+                if s == "C" || s == "C++" {
                     self.advance(); // extern
-                    self.advance(); // "C"
-                    self.expect(&CppToken::LBrace)?;
-                    let mut decls = Vec::new();
-                    while *self.current() != CppToken::RBrace && *self.current() != CppToken::Eof {
-                        decls.push(self.parse_top_level()?);
+                    self.advance(); // "C" or "C++"
+                    if *self.current() == CppToken::LBrace {
+                        // extern "C" { ... }
+                        self.advance(); // {
+                        let mut decls = Vec::new();
+                        while *self.current() != CppToken::RBrace && *self.current() != CppToken::Eof {
+                            decls.push(self.parse_top_level()?);
+                        }
+                        self.expect(&CppToken::RBrace)?;
+                        return Ok(CppTopLevel::ExternC {
+                            declarations: decls,
+                        });
+                    } else {
+                        // extern "C" single-declaration;
+                        let decl = self.parse_top_level()?;
+                        return Ok(CppTopLevel::ExternC {
+                            declarations: vec![decl],
+                        });
                     }
-                    self.expect(&CppToken::RBrace)?;
-                    return Ok(CppTopLevel::ExternC {
-                        declarations: decls,
-                    });
                 }
             }
         }
@@ -698,9 +707,68 @@ impl CppParser {
             return self.parse_function_rest(ret_type, name, Vec::new());
         }
 
+        // Handle ClassName::method / ClassName::ClassName (out-of-class constructor)
+        // When ret_type is Named("ClassName") and current is ::
+        if *self.current() == CppToken::Scope {
+            if let CppType::Named(ref class_name) = ret_type {
+                let class_name = class_name.clone();
+                self.advance(); // skip ::
+                // Destructor: Class::~Class()
+                if *self.current() == CppToken::Tilde {
+                    self.advance();
+                    let _dtor_name = self.expect_identifier()?;
+                    self.expect(&CppToken::LParen)?;
+                    self.expect(&CppToken::RParen)?;
+                    let body = self.parse_block_stmts()?;
+                    return Ok(CppTopLevel::FunctionDef {
+                        return_type: CppType::Void,
+                        name: format!("{}::~{}", class_name, _dtor_name),
+                        template_params: Vec::new(),
+                        params: Vec::new(),
+                        qualifiers: CppFuncQualifiers::default(),
+                        body,
+                    });
+                }
+                // Operator: Class::operator+()
+                if *self.current() == CppToken::Operator {
+                    self.advance();
+                    let op_name = self.parse_operator_name()?;
+                    let full_name = format!("{}::operator{}", class_name, op_name);
+                    return self.parse_function_rest(CppType::Void, full_name, Vec::new());
+                }
+                let method_name = self.expect_identifier()?;
+                // Constructor: ClassName::ClassName(...)
+                if method_name == class_name {
+                    let full_name = format!("{}::{}", class_name, method_name);
+                    return self.parse_function_rest(CppType::Void, full_name, Vec::new());
+                }
+                // Regular method: ClassName::method(...)
+                let full_name = format!("{}::{}", class_name, method_name);
+                return self.parse_function_rest(ret_type, full_name, Vec::new());
+            }
+        }
+
+        // Handle case where parse_type consumed a scoped name like "Class::Method"
+        // and current token is ( — this is a function/constructor definition
+        if *self.current() == CppToken::LParen {
+            if let CppType::Named(ref scoped_name) = ret_type {
+                if scoped_name.contains("::") {
+                    let full_name = scoped_name.clone();
+                    // Check if constructor (Class::Class) or method with void return
+                    let parts: Vec<&str> = full_name.rsplitn(2, "::").collect();
+                    if parts.len() == 2 && parts[0] == parts[1] {
+                        // Constructor: Class::Class(...)
+                        return self.parse_function_rest(CppType::Void, full_name, Vec::new());
+                    }
+                    // Could be a method without explicit return type, treat as void
+                    return self.parse_function_rest(CppType::Void, full_name, Vec::new());
+                }
+            }
+        }
+
         let name = self.expect_identifier()?;
 
-        // Check for scope resolution: Class::method
+        // Check for scope resolution: RetType Class::method
         if *self.current() == CppToken::Scope {
             self.advance();
             // Destructor: Class::~Class()
@@ -810,6 +878,32 @@ impl CppParser {
         if *self.current() == CppToken::Arrow {
             self.advance();
             let _trailing_ret = self.parse_type()?;
+        }
+
+        // Member initializer list: Constructor(...) : base(x), member(y) { }
+        if *self.current() == CppToken::Colon {
+            self.advance(); // skip :
+            loop {
+                // Skip member/base name
+                if *self.current() == CppToken::Eof || *self.current() == CppToken::LBrace {
+                    break;
+                }
+                self.advance(); // member name or base name
+                if *self.current() == CppToken::LParen {
+                    self.advance();
+                    let mut depth = 1i32;
+                    while *self.current() != CppToken::Eof && depth > 0 {
+                        match self.current() {
+                            CppToken::LParen => { depth += 1; self.advance(); }
+                            CppToken::RParen => { depth -= 1; self.advance(); }
+                            _ => { self.advance(); }
+                        }
+                    }
+                }
+                if !self.eat(&CppToken::Comma) {
+                    break;
+                }
+            }
         }
 
         if *self.current() == CppToken::LBrace {
@@ -1003,7 +1097,13 @@ impl CppParser {
                 if self.eat(&CppToken::Virtual) {
                     is_virtual = true;
                 }
-                let base_name = self.expect_identifier()?;
+                let mut base_name = self.expect_identifier()?;
+                // Handle scoped base class: std::runtime_error, Microsoft::WRL::ComPtr
+                while *self.current() == CppToken::Scope {
+                    self.advance();
+                    let next = self.expect_identifier()?;
+                    base_name = format!("{}::{}", base_name, next);
+                }
                 let template_args = if *self.current() == CppToken::Lt {
                     self.try_parse_template_args().unwrap_or_default()
                 } else {
@@ -1137,6 +1237,42 @@ impl CppParser {
                 continue;
             }
 
+            // Nested template member function: template<typename U> RetType name(...)
+            if *self.current() == CppToken::Template {
+                self.advance(); // skip template
+                // Skip template parameters <...>
+                if *self.current() == CppToken::Lt {
+                    self.advance();
+                    let mut depth = 1i32;
+                    while *self.current() != CppToken::Eof && depth > 0 {
+                        match self.current() {
+                            CppToken::Lt => { depth += 1; self.advance(); }
+                            CppToken::Gt => { depth -= 1; self.advance(); }
+                            _ => { self.advance(); }
+                        }
+                    }
+                }
+                // Now skip the member declaration/definition until ; or after { }
+                let mut brace_depth = 0i32;
+                let mut found_brace = false;
+                while *self.current() != CppToken::Eof {
+                    match self.current() {
+                        CppToken::LBrace => { brace_depth += 1; found_brace = true; self.advance(); }
+                        CppToken::RBrace => {
+                            brace_depth -= 1;
+                            self.advance();
+                            if brace_depth <= 0 { break; }
+                        }
+                        CppToken::Semicolon if brace_depth == 0 => {
+                            self.advance();
+                            break;
+                        }
+                        _ => { self.advance(); }
+                    }
+                }
+                continue;
+            }
+
             // Gather qualifiers
             let mut quals = CppFuncQualifiers::default();
             let mut is_explicit = false;
@@ -1183,7 +1319,13 @@ impl CppParser {
                     let mut init_list = Vec::new();
                     if self.eat(&CppToken::Colon) {
                         loop {
-                            let member = self.expect_identifier()?;
+                            let mut member = self.expect_identifier()?;
+                            // Handle scoped names: std::runtime_error(...)
+                            while *self.current() == CppToken::Scope {
+                                self.advance();
+                                let next = self.expect_identifier()?;
+                                member = format!("{}::{}", member, next);
+                            }
                             self.expect(&CppToken::LParen)?;
                             // Parse arguments (may be multiple comma-separated)
                             let mut args = Vec::new();
@@ -1393,14 +1535,43 @@ impl CppParser {
                 } else {
                     None
                 };
-                self.expect(&CppToken::Semicolon)?;
                 members.push(CppClassMember::Field {
                     access: current_access,
-                    type_spec: field_type,
+                    type_spec: field_type.clone(),
                     name: member_name,
                     default_value,
                     is_static: quals.is_static,
                 });
+                // Comma-separated fields: float x, y, z;
+                while self.eat(&CppToken::Comma) {
+                    let mut ptr_type = field_type.clone();
+                    while self.eat(&CppToken::Star) {
+                        ptr_type = CppType::Pointer(Box::new(ptr_type.clone()));
+                    }
+                    let extra_name = self.expect_identifier()?;
+                    // Handle array dimensions
+                    let mut arr_type = ptr_type;
+                    while *self.current() == CppToken::LBracket {
+                        self.advance();
+                        let sz = if *self.current() != CppToken::RBracket {
+                            let e = self.parse_assignment_expr()?;
+                            match e { CppExpr::IntLiteral(n) => Some(n as usize), _ => None }
+                        } else { None };
+                        self.expect(&CppToken::RBracket)?;
+                        arr_type = CppType::Array(Box::new(arr_type), sz);
+                    }
+                    let extra_default = if self.eat(&CppToken::Assign) {
+                        Some(self.parse_expression()?)
+                    } else { None };
+                    members.push(CppClassMember::Field {
+                        access: current_access,
+                        type_spec: arr_type,
+                        name: extra_name,
+                        default_value: extra_default,
+                        is_static: quals.is_static,
+                    });
+                }
+                self.expect(&CppToken::Semicolon)?;
             }
         }
         Ok(members)
@@ -1485,6 +1656,24 @@ impl CppParser {
             return Ok(CppTopLevel::UsingNamespace(ns));
         }
         let name = self.expect_identifier()?;
+
+        // using A::B::C; — scoped using-declaration (imports a name)
+        if *self.current() == CppToken::Scope {
+            let mut full_name = name.clone();
+            while self.eat(&CppToken::Scope) {
+                full_name.push_str("::");
+                full_name.push_str(&self.expect_identifier()?);
+            }
+            // Register the last component as a known type name
+            if let Some(last) = full_name.rsplit("::").next() {
+                self.type_names.insert(last.to_string());
+            }
+            self.expect(&CppToken::Semicolon)?;
+            // Treat as a type alias where the short name maps to the full path
+            let short_name = full_name.rsplit("::").next().unwrap_or(&full_name).to_string();
+            return Ok(CppTopLevel::UsingNamespace(full_name));
+        }
+
         self.type_names.insert(name.clone());
         self.expect(&CppToken::Assign)?;
         let original = self.parse_type()?;

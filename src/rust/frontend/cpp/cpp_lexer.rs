@@ -448,7 +448,7 @@ impl CppLexer {
         ch
     }
 
-    fn keyword_or_ident(&self, word: &str) -> CppToken {
+    fn keyword_or_ident(&mut self, word: &str) -> CppToken {
         match word {
             // C keywords
             "auto" => CppToken::Auto,
@@ -539,6 +539,72 @@ impl CppLexer {
             "true" => CppToken::True,
             "false" => CppToken::False,
 
+            // __declspec(...) — skip entirely (MSVC extension)
+            "__declspec" => {
+                if self.pos < self.chars.len() && self.chars[self.pos] == '(' {
+                    self.advance(); // (
+                    let mut depth = 1i32;
+                    while self.pos < self.chars.len() && depth > 0 {
+                        match self.chars[self.pos] {
+                            '(' => { depth += 1; self.pos += 1; }
+                            ')' => { depth -= 1; self.pos += 1; }
+                            _ => { self.pos += 1; }
+                        }
+                    }
+                }
+                return self.next_token();
+            }
+
+            // __attribute__((...)) — skip entirely (GCC extension)
+            "__attribute__" => {
+                if self.pos < self.chars.len() && self.chars[self.pos] == '(' {
+                    self.advance(); // (
+                    let mut depth = 1i32;
+                    while self.pos < self.chars.len() && depth > 0 {
+                        match self.chars[self.pos] {
+                            '(' => { depth += 1; self.pos += 1; }
+                            ')' => { depth -= 1; self.pos += 1; }
+                            _ => { self.pos += 1; }
+                        }
+                    }
+                }
+                return self.next_token();
+            }
+
+            // SAL annotations — skip entirely (MSVC source annotations)
+            "_Use_decl_annotations_" | "_In_" | "_Out_" | "_Inout_"
+            | "_In_reads_" | "_In_reads_opt_" | "_In_reads_bytes_"
+            | "_Out_writes_" | "_Out_writes_opt_" | "_Out_writes_bytes_"
+            | "_Outptr_" | "_Outptr_result_maybenull_" | "_Outptr_result_nullonfailure_"
+            | "_Ret_maybenull_" | "_Check_return_"
+            | "_In_opt_" | "_Out_opt_" | "_Inout_opt_"
+            | "_Pre_" | "_Post_" | "_Deref_" | "_Null_terminated_"
+            | "_COM_Outptr_" | "_Field_size_" | "_Field_size_bytes_"
+            | "__in" | "__out" | "__inout" | "__in_opt" | "__out_opt" => {
+                // If followed by ( ), skip the parenthesized args too
+                if self.pos < self.chars.len() && self.chars[self.pos] == '(' {
+                    self.advance();
+                    let mut depth = 1i32;
+                    while self.pos < self.chars.len() && depth > 0 {
+                        match self.chars[self.pos] {
+                            '(' => { depth += 1; self.pos += 1; }
+                            ')' => { depth -= 1; self.pos += 1; }
+                            _ => { self.pos += 1; }
+                        }
+                    }
+                }
+                return self.next_token();
+            }
+
+            // _countof — treat as sizeof equivalent
+            "_countof" => CppToken::Sizeof,
+
+            // WINAPI, CALLBACK, APIENTRY — calling conventions, ignore
+            "WINAPI" | "CALLBACK" | "APIENTRY" | "STDCALL" | "__stdcall"
+            | "__cdecl" | "__fastcall" | "__thiscall" | "__vectorcall" => {
+                return self.next_token();
+            }
+
             // Identifier
             _ => CppToken::Identifier(word.to_string()),
         }
@@ -575,6 +641,26 @@ impl CppLexer {
         }
 
         let ch = self.peek();
+
+        // Wide/Unicode string literal prefixes: L"", u"", U"", u8""
+        if (ch == 'L' || ch == 'U') && self.peek_at(1) == '"' {
+            self.advance(); // skip prefix
+            return CppToken::StringLiteral(self.read_string());
+        }
+        if ch == 'u' && self.peek_at(1) == '"' {
+            self.advance(); // skip u
+            return CppToken::StringLiteral(self.read_string());
+        }
+        if ch == 'u' && self.peek_at(1) == '8' && self.peek_at(2) == '"' {
+            self.advance(); // skip u
+            self.advance(); // skip 8
+            return CppToken::StringLiteral(self.read_string());
+        }
+        // Wide/Unicode char literal prefixes: L'x', u'x', U'x'
+        if (ch == 'L' || ch == 'U' || ch == 'u') && self.peek_at(1) == '\'' {
+            self.advance(); // skip prefix
+            return CppToken::CharLiteral(self.read_char_literal());
+        }
 
         // Identifiers and keywords
         if ch.is_ascii_alphabetic() || ch == '_' {
