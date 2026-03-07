@@ -1382,10 +1382,51 @@ impl CppParser {
                 }
             }
 
+            // Conversion operator: operator bool(), operator int(), etc.
+            if *self.current() == CppToken::Operator {
+                self.advance();
+                let op_name = self.parse_operator_name()?;
+                let name = format!("operator{}", op_name);
+                self.expect(&CppToken::LParen)?;
+                let params = self.parse_param_list()?;
+                self.expect(&CppToken::RParen)?;
+                loop {
+                    match self.current() {
+                        CppToken::Const => { quals.is_const = true; self.advance(); }
+                        CppToken::Noexcept => { quals.is_noexcept = true; self.advance(); }
+                        CppToken::Override => { quals.is_override = true; self.advance(); }
+                        _ => break,
+                    }
+                }
+                let body = if *self.current() == CppToken::LBrace {
+                    Some(self.parse_block_stmts()?)
+                } else {
+                    if self.eat(&CppToken::Assign) {
+                        match self.current() {
+                            CppToken::IntLiteral(0) => { quals.is_pure_virtual = true; self.advance(); }
+                            CppToken::Default => { quals.is_default = true; self.advance(); }
+                            _ => {}
+                        }
+                    }
+                    self.expect(&CppToken::Semicolon)?;
+                    None
+                };
+                members.push(CppClassMember::Method {
+                    access: current_access,
+                    return_type: CppType::Void,
+                    name,
+                    template_params: Vec::new(),
+                    params,
+                    qualifiers: quals,
+                    body,
+                });
+                continue;
+            }
+
             // Regular member: type name; or type name(...) { ... }
             let member_type = self.parse_type()?;
 
-            // Operator overload
+            // Operator overload (with return type, e.g. T* operator->())
             if *self.current() == CppToken::Operator {
                 self.advance();
                 let op_name = self.parse_operator_name()?;
@@ -1930,6 +1971,20 @@ impl CppParser {
                 return Ok("[]".to_string());
             }
             CppToken::Spaceship => "<=>",
+            // Conversion operators: operator bool(), operator int(), etc.
+            CppToken::Bool => { self.advance(); return Ok("bool".to_string()); }
+            CppToken::Int => { self.advance(); return Ok("int".to_string()); }
+            CppToken::Long => { self.advance(); return Ok("long".to_string()); }
+            CppToken::Short => { self.advance(); return Ok("short".to_string()); }
+            CppToken::Char => { self.advance(); return Ok("char".to_string()); }
+            CppToken::Float => { self.advance(); return Ok("float".to_string()); }
+            CppToken::Double => { self.advance(); return Ok("double".to_string()); }
+            CppToken::Void => { self.advance(); return Ok("void*".to_string()); }
+            CppToken::Identifier(ref name) => {
+                let n = name.clone();
+                self.advance();
+                return Ok(n);
+            }
             _ => return Err(format!("Unknown operator {:?}", self.current())),
         };
         let s = name.to_string();

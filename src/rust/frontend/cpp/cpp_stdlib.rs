@@ -98,6 +98,14 @@ pub fn get_cpp_header(name: &str) -> Option<&'static str> {
         "fastos_math.h" => Some(HEADER_CMATH),
         "fastos_types.h" => Some(HEADER_CLIMITS),
 
+        // ==========================================
+        // DirectX 12 fastos headers
+        // ==========================================
+        "fastos_windows.h" => Some(HEADER_FASTOS_WINDOWS),
+        "fastos_wrl.h" => Some(HEADER_FASTOS_WRL),
+        "fastos_d3d12.h" => Some(HEADER_FASTOS_D3D12),
+        "fastos_dxgi.h" => Some(HEADER_FASTOS_DXGI),
+
         _ => None,
     }
 }
@@ -413,4 +421,345 @@ double atan2(double y, double x);
 
 /* TREE SHAKING: ADead-BIB includes only what you use. */
 /* std::cout << "Hello" → only cout implementation in binary. */
+
+/* === DirectX 12 Headers (fastos) === */
+#include <fastos_windows.h>
+#include <fastos_wrl.h>
+#include <fastos_d3d12.h>
+#include <fastos_dxgi.h>
+"#;
+
+// ================================================================
+// fastos_windows.h — Windows API types and macros
+// ================================================================
+const HEADER_FASTOS_WINDOWS: &str = r#"
+typedef unsigned char BYTE;
+typedef unsigned short WORD;
+typedef unsigned int UINT;
+typedef unsigned long DWORD;
+typedef unsigned long long UINT64;
+typedef unsigned long long ULONG_PTR;
+typedef unsigned long long SIZE_T;
+typedef unsigned long long ULONGLONG;
+typedef unsigned char UINT8;
+typedef unsigned short UINT16;
+typedef unsigned int UINT32;
+typedef int INT;
+typedef long LONG;
+typedef long long LONGLONG;
+typedef long long INT64;
+typedef long HRESULT;
+typedef int BOOL;
+typedef void* HANDLE;
+typedef void* HWND;
+typedef void* HINSTANCE;
+typedef void* HMODULE;
+typedef void* HDC;
+typedef void* HICON;
+typedef void* HCURSOR;
+typedef void* HBRUSH;
+typedef void* HMENU;
+typedef void* HMONITOR;
+typedef void* LPVOID;
+typedef const void* LPCVOID;
+typedef char* LPSTR;
+typedef const char* LPCSTR;
+typedef wchar_t* LPWSTR;
+typedef const wchar_t* LPCWSTR;
+typedef wchar_t WCHAR;
+typedef float FLOAT;
+
+struct GUID {
+    DWORD Data1;
+    WORD Data2;
+    WORD Data3;
+    BYTE Data4[8];
+};
+typedef GUID IID;
+typedef const GUID* REFGUID;
+typedef const IID* REFIID;
+
+struct LARGE_INTEGER {
+    LONGLONG QuadPart;
+};
+
+struct RECT {
+    LONG left;
+    LONG top;
+    LONG right;
+    LONG bottom;
+};
+
+struct POINT {
+    LONG x;
+    LONG y;
+};
+
+struct MSG {
+    HWND hwnd;
+    UINT message;
+    ULONG_PTR wParam;
+    LONG lParam;
+    DWORD time;
+    POINT pt;
+};
+
+struct SECURITY_ATTRIBUTES {
+    DWORD nLength;
+    LPVOID lpSecurityDescriptor;
+    BOOL bInheritHandle;
+};
+
+struct IUnknown {
+    virtual UINT AddRef() = 0;
+    virtual UINT Release() = 0;
+    virtual HRESULT QueryInterface(REFIID riid, void** ppvObject) = 0;
+};
+
+inline LONG HIWORD(ULONG_PTR l) { return (LONG)((l >> 16) & 0xFFFF); }
+inline LONG LOWORD(ULONG_PTR l) { return (LONG)(l & 0xFFFF); }
+
+int SUCCEEDED(HRESULT hr) { return hr >= 0; }
+int FAILED(HRESULT hr) { return hr < 0; }
+"#;
+
+// ================================================================
+// fastos_wrl.h — ComPtr<T>
+// ================================================================
+const HEADER_FASTOS_WRL: &str = r#"
+namespace Microsoft {
+namespace WRL {
+template<typename T>
+class ComPtr {
+public:
+    T* ptr;
+    ComPtr() : ptr(0) {}
+    ~ComPtr() { if (ptr) { ptr->Release(); ptr = 0; } }
+    T* Get() const { return ptr; }
+    T** GetAddressOf() { return &ptr; }
+    T* operator->() const { return ptr; }
+    T** operator&() { return &ptr; }
+    void Reset() { if (ptr) { ptr->Release(); ptr = 0; } }
+    T* Detach() { T* tmp = ptr; ptr = 0; return tmp; }
+    operator bool() const { return ptr != 0; }
+};
+}
+}
+using Microsoft::WRL::ComPtr;
+"#;
+
+// ================================================================
+// fastos_d3d12.h — D3D12 interfaces (minimal for HelloTriangle)
+// ================================================================
+const HEADER_FASTOS_D3D12: &str = r#"
+struct D3D12_COMMAND_QUEUE_DESC {
+    UINT Type;
+    INT Priority;
+    UINT Flags;
+    UINT NodeMask;
+};
+
+struct D3D12_DESCRIPTOR_HEAP_DESC {
+    UINT Type;
+    UINT NumDescriptors;
+    UINT Flags;
+    UINT NodeMask;
+};
+
+struct D3D12_CPU_DESCRIPTOR_HANDLE {
+    UINT64 ptr;
+};
+
+struct D3D12_GPU_DESCRIPTOR_HANDLE {
+    UINT64 ptr;
+};
+
+struct D3D12_VERTEX_BUFFER_VIEW {
+    UINT64 BufferLocation;
+    UINT SizeInBytes;
+    UINT StrideInBytes;
+};
+
+struct D3D12_INPUT_ELEMENT_DESC {
+    LPCSTR SemanticName;
+    UINT SemanticIndex;
+    UINT Format;
+    UINT InputSlot;
+    UINT AlignedByteOffset;
+    UINT InputSlotClass;
+    UINT InstanceDataStepRate;
+};
+
+struct D3D12_VIEWPORT {
+    FLOAT TopLeftX;
+    FLOAT TopLeftY;
+    FLOAT Width;
+    FLOAT Height;
+    FLOAT MinDepth;
+    FLOAT MaxDepth;
+};
+
+struct D3D12_RECT {
+    LONG left;
+    LONG top;
+    LONG right;
+    LONG bottom;
+};
+
+struct D3D12_RESOURCE_BARRIER {
+    UINT Type;
+    UINT Flags;
+};
+
+struct D3D12_HEAP_PROPERTIES {
+    UINT Type;
+    UINT CPUPageProperty;
+    UINT MemoryPoolPreference;
+    UINT CreationNodeMask;
+    UINT VisibleNodeMask;
+};
+
+struct D3D12_RESOURCE_DESC {
+    UINT Dimension;
+    UINT64 Alignment;
+    UINT64 Width;
+    UINT Height;
+    UINT16 DepthOrArraySize;
+    UINT16 MipLevels;
+    UINT Format;
+    UINT SampleCount;
+    UINT SampleQuality;
+    UINT Layout;
+    UINT Flags;
+};
+
+struct ID3D12Object : public IUnknown {
+    virtual HRESULT SetName(LPCWSTR Name) = 0;
+};
+struct ID3D12DeviceChild : public ID3D12Object {};
+struct ID3D12Pageable : public ID3D12DeviceChild {};
+
+struct ID3D12Resource : public ID3D12Pageable {
+    virtual HRESULT Map(UINT Subresource, const void* pReadRange, void** ppData) = 0;
+    virtual void Unmap(UINT Subresource, const void* pWrittenRange) = 0;
+    virtual UINT64 GetGPUVirtualAddress() = 0;
+};
+
+struct ID3D12CommandAllocator : public ID3D12Pageable {
+    virtual HRESULT Reset() = 0;
+};
+
+struct ID3D12Fence : public ID3D12Pageable {
+    virtual UINT64 GetCompletedValue() = 0;
+    virtual HRESULT SetEventOnCompletion(UINT64 Value, HANDLE hEvent) = 0;
+    virtual HRESULT Signal(UINT64 Value) = 0;
+};
+
+struct ID3D12DescriptorHeap : public ID3D12Pageable {
+    virtual D3D12_CPU_DESCRIPTOR_HANDLE GetCPUDescriptorHandleForHeapStart() = 0;
+};
+
+struct ID3D12RootSignature : public ID3D12DeviceChild {};
+struct ID3D12PipelineState : public ID3D12Pageable {};
+struct ID3D12CommandList : public ID3D12DeviceChild {};
+
+struct ID3D12GraphicsCommandList : public ID3D12CommandList {
+    virtual HRESULT Close() = 0;
+    virtual HRESULT Reset(ID3D12CommandAllocator* pAllocator, ID3D12PipelineState* pInitialState) = 0;
+    virtual void RSSetViewports(UINT NumViewports, const D3D12_VIEWPORT* pViewports) = 0;
+    virtual void RSSetScissorRects(UINT NumRects, const D3D12_RECT* pRects) = 0;
+    virtual void DrawInstanced(UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation) = 0;
+};
+
+struct ID3D12CommandQueue : public ID3D12Pageable {
+    virtual void ExecuteCommandLists(UINT NumCommandLists, ID3D12CommandList* const* ppCommandLists) = 0;
+    virtual HRESULT Signal(ID3D12Fence* pFence, UINT64 Value) = 0;
+};
+
+struct ID3D12Device : public ID3D12Object {
+    virtual HRESULT CreateCommandQueue(const D3D12_COMMAND_QUEUE_DESC* pDesc, REFIID riid, void** ppCommandQueue) = 0;
+    virtual HRESULT CreateCommandAllocator(UINT type, REFIID riid, void** ppCommandAllocator) = 0;
+    virtual HRESULT CreateFence(UINT64 InitialValue, UINT Flags, REFIID riid, void** ppFence) = 0;
+    virtual HRESULT CreateDescriptorHeap(const D3D12_DESCRIPTOR_HEAP_DESC* pDesc, REFIID riid, void** ppvHeap) = 0;
+    virtual UINT GetDescriptorHandleIncrementSize(UINT DescriptorHeapType) = 0;
+    virtual HRESULT CreateRenderTargetView(ID3D12Resource* pResource, const void* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor) = 0;
+};
+
+namespace DirectX {
+    struct XMFLOAT2 {
+        float x, y;
+        XMFLOAT2() : x(0), y(0) {}
+        XMFLOAT2(float _x, float _y) : x(_x), y(_y) {}
+    };
+    struct XMFLOAT3 {
+        float x, y, z;
+        XMFLOAT3() : x(0), y(0), z(0) {}
+        XMFLOAT3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+    };
+    struct XMFLOAT4 {
+        float x, y, z, w;
+        XMFLOAT4() : x(0), y(0), z(0), w(0) {}
+        XMFLOAT4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
+    };
+}
+using namespace DirectX;
+"#;
+
+// ================================================================
+// fastos_dxgi.h — DXGI interfaces (minimal)
+// ================================================================
+const HEADER_FASTOS_DXGI: &str = r#"
+struct DXGI_SAMPLE_DESC {
+    UINT Count;
+    UINT Quality;
+};
+
+struct DXGI_SWAP_CHAIN_DESC1 {
+    UINT Width;
+    UINT Height;
+    UINT Format;
+    BOOL Stereo;
+    DXGI_SAMPLE_DESC SampleDesc;
+    UINT BufferUsage;
+    UINT BufferCount;
+    UINT Scaling;
+    UINT SwapEffect;
+    UINT AlphaMode;
+    UINT Flags;
+};
+
+struct DXGI_ADAPTER_DESC1 {
+    WCHAR Description[128];
+    UINT VendorId;
+    UINT DeviceId;
+    UINT SubSysId;
+    UINT Revision;
+    UINT64 DedicatedVideoMemory;
+    UINT64 DedicatedSystemMemory;
+    UINT64 SharedSystemMemory;
+    LARGE_INTEGER AdapterLuid;
+    UINT Flags;
+};
+
+struct IDXGIObject : public IUnknown {};
+struct IDXGIAdapter : public IDXGIObject {};
+struct IDXGIAdapter1 : public IDXGIAdapter {
+    virtual HRESULT GetDesc1(DXGI_ADAPTER_DESC1* pDesc) = 0;
+};
+struct IDXGIOutput : public IDXGIObject {};
+
+struct IDXGISwapChain : public IDXGIObject {
+    virtual HRESULT Present(UINT SyncInterval, UINT Flags) = 0;
+    virtual HRESULT GetBuffer(UINT Buffer, REFIID riid, void** ppSurface) = 0;
+};
+struct IDXGISwapChain1 : public IDXGISwapChain {};
+struct IDXGISwapChain3 : public IDXGISwapChain1 {
+    virtual UINT GetCurrentBackBufferIndex() = 0;
+};
+
+struct IDXGIFactory : public IDXGIObject {};
+struct IDXGIFactory1 : public IDXGIFactory {
+    virtual HRESULT EnumAdapters1(UINT Adapter, IDXGIAdapter1** ppAdapter) = 0;
+};
+struct IDXGIFactory4 : public IDXGIFactory1 {};
 "#;

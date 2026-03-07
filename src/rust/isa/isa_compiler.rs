@@ -15,6 +15,7 @@
 use super::encoder::Encoder;
 use super::reg_alloc::TempAllocator;
 use super::{ADeadIR, ADeadOp, CallTarget, Condition, Label, Operand, Reg};
+use crate::backend::cpu::iat_registry;
 use crate::frontend::ast::*;
 use std::collections::HashMap;
 
@@ -150,7 +151,14 @@ pub struct IsaCompiler {
 impl IsaCompiler {
     pub fn new(target: Target) -> Self {
         let (base, data_rva) = match target {
-            Target::Windows => (0x0000000140000000, 0x20A8),
+            Target::Windows => {
+                // Compute data_rva dynamically from IAT registry
+                // ISA assumes idata_rva=0x2000, PE builder patches to real value
+                let assumed_idata_rva: u64 = 0x2000;
+                let idata_result = iat_registry::build_idata(assumed_idata_rva as u32, &[]);
+                let drva = assumed_idata_rva + idata_result.program_strings_offset as u64;
+                (0x0000000140000000u64, drva)
+            }
             Target::Linux => (0x400000, 0x1000),
             Target::Raw => (0x0, 0x1000),
         };
@@ -2492,15 +2500,23 @@ impl IsaCompiler {
     }
 
     fn emit_call_printf(&mut self) {
-        // Shadow space (Windows x64 ABI)
+        self.emit_call_iat("printf");
+    }
+
+    /// Emit a call to an IAT-imported function by name.
+    /// Looks up the IAT slot RVA from the registry using assumed idata_rva=0x2000.
+    fn emit_call_iat(&mut self, func_name: &str) {
+        let assumed_idata_rva: u32 = 0x2000;
+        let idata_result = iat_registry::build_idata(assumed_idata_rva, &[]);
+        let slot = iat_registry::slot_for_function(func_name)
+            .unwrap_or_else(|| panic!("IAT function not found: {}", func_name));
+        let iat_rva = idata_result.slot_to_iat_rva[slot];
+
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Imm8(32),
         });
-        // call [rip+offset] — IAT printf at RVA 0x2040
-        // El encoder calcula el offset RIP-relative automáticamente
-        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2050 });
-        // Restaurar stack
+        self.ir.emit(ADeadOp::CallIAT { iat_rva });
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Imm8(32),
@@ -4304,51 +4320,23 @@ impl IsaCompiler {
             self.ir.emit(ADeadOp::Pop { dst });
         }
 
-        // Special handling for printf — call via IAT
-        if name == "printf" || name == "std::printf" {
-            self.emit_call_printf();
-            return;
-        }
-
-        // Special handling for scanf — call via IAT
-        if name == "scanf" || name == "std::scanf" {
-            self.ir.emit(ADeadOp::Sub {
-                dst: Operand::Reg(Reg::RSP),
-                src: Operand::Imm8(32),
-            });
-            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2058 });
-            self.ir.emit(ADeadOp::Add {
-                dst: Operand::Reg(Reg::RSP),
-                src: Operand::Imm8(32),
-            });
-            return;
-        }
-
-        // Special handling for malloc — call via IAT
-        if name == "malloc" {
-            self.ir.emit(ADeadOp::Sub {
-                dst: Operand::Reg(Reg::RSP),
-                src: Operand::Imm8(32),
-            });
-            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2060 });
-            self.ir.emit(ADeadOp::Add {
-                dst: Operand::Reg(Reg::RSP),
-                src: Operand::Imm8(32),
-            });
-            return;
-        }
-
-        // Special handling for free — call via IAT
-        if name == "free" {
-            self.ir.emit(ADeadOp::Sub {
-                dst: Operand::Reg(Reg::RSP),
-                src: Operand::Imm8(32),
-            });
-            self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2068 });
-            self.ir.emit(ADeadOp::Add {
-                dst: Operand::Reg(Reg::RSP),
-                src: Operand::Imm8(32),
-            });
+        // Check if this is an IAT-imported function (printf, scanf, malloc, free, Win32, DX12...)
+        let iat_name = match name {
+            "printf" | "std::printf" => Some("printf"),
+            "scanf" | "std::scanf" => Some("scanf"),
+            "malloc" => Some("malloc"),
+            "free" => Some("free"),
+            _ => {
+                // Check IAT registry for Win32/DX12 functions
+                if iat_registry::slot_for_function(name).is_some() {
+                    Some(name)
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(iat_func) = iat_name {
+            self.emit_call_iat(iat_func);
             return;
         }
 

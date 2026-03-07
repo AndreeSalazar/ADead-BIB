@@ -49,7 +49,9 @@ impl CppPreprocessor {
 
                     // Look up C++ header declarations
                     if let Some(declarations) = cpp_stdlib::get_cpp_header(&header_name) {
-                        output.push_str(declarations);
+                        // Recursively process the header content for nested #includes
+                        let expanded = self.process(declarations);
+                        output.push_str(&expanded);
                         output.push('\n');
                     } else {
                         // Unknown header — skip silently

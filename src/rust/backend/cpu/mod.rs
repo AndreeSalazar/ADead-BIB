@@ -36,6 +36,7 @@
 pub mod elf;
 pub mod fastos_format;
 pub mod flat_binary;
+pub mod iat_registry;
 pub mod pe;
 pub mod pe_tiny;
 

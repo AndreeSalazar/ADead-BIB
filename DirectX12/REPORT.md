@@ -215,22 +215,71 @@ Para compilar: `cd dx12_test && adb run`
 
 ---
 
-## 9. Resumen
+## 9. Implementación Completa (Sesión 2)
 
-| Métrica | Valor |
-|---------|-------|
-| Archivos DirectX 12 analizados | 9 (.cpp/.h) + 1 .hlsl |
-| Líneas de código analizadas | ~1,063 |
-| Tests individuales creados | 10 |
-| Tests que pasan | **10/10** |
-| Fixes implementados | **3** (L"", nested templates, scoped using) |
-| Features C++ soportadas | **20+** |
-| Features C++ pendientes | **7** |
-| Unit tests ADead-BIB | **539/539 passed** |
+### Parser Fixes Implementados
 
-**Conclusión:** ADead-BIB ya soporta ~75% de las features C++ que DirectX 12 HelloTriangle necesita. Los 3 fixes implementados hoy resuelven problemas reales encontrados por `adb step`. Los items pendientes más críticos son `extern "C"`, headers de Windows (`windows.h`, `d3d12.h`), y exception handling.
+| Fix | Descripción | Archivo |
+| --- | --- | --- |
+| extern "C" { } | Braced + single-statement forms | cpp_parser.rs |
+| SAL annotations | _In_, _Out_, _Use_decl_annotations_ skipped | cpp_lexer.rs |
+| __declspec | dllexport/dllimport silently consumed | cpp_lexer.rs |
+| #pragma once | Already no-op (lexer skips #lines) | cpp_lexer.rs |
+| Comma fields | float x, y, z; in structs | cpp_parser.rs |
+| Scoped base classes | class A : public std::runtime_error | cpp_parser.rs |
+| Out-of-class ctors | D3D12HelloTriangle::D3D12HelloTriangle() | cpp_parser.rs |
+| Member init lists | : DXSample(w,h,n), m_val(0) | cpp_parser.rs |
+| Scoped init names | : std::runtime_error("msg") | cpp_parser.rs |
+| Conversion operators | operator bool(), operator int() | cpp_parser.rs |
+| Recursive includes | Nested #include in preprocessor | cpp_preprocessor.rs |
+
+### Headers Creados (fastos)
+
+| Header | Contenido | Ubicación |
+| --- | --- | --- |
+| fastos_windows.h | UINT, DWORD, HWND, HRESULT, IUnknown, GUID, RECT, MSG | cpp_stdlib.rs + DirectX12/dx12_test/include/ |
+| fastos_wrl.h | Microsoft::WRL::ComPtr\<T\> template | cpp_stdlib.rs + DirectX12/dx12_test/include/ |
+| fastos_d3d12.h | ID3D12Device, ID3D12CommandQueue, structs, DirectXMath | cpp_stdlib.rs + DirectX12/dx12_test/include/ |
+| fastos_dxgi.h | IDXGISwapChain3, IDXGIFactory4, DXGI structs | cpp_stdlib.rs + DirectX12/dx12_test/include/ |
+
+### dx12_test Project — Full Pipeline
+
+```text
+adb step src/main.cpp
+  32 functions, 51 structs/classes
+  3902 bytes of machine code
+  110 bytes of data section
+  3 IAT entries, 67 string relocations
+  Data: "POSITION", "COLOR", "ADead-BIB DirectX 12 HelloTriangle\n"
+```
+
+### dx12_features_test.cpp — Full Pipeline
+
+```text
+adb step DirectX12/dx12_features_test.cpp
+  41 functions, 28 structs/classes
+  3827 bytes of machine code
+  43 bytes of data section
+```
 
 ---
 
-*ADead-BIB v7.0 — DirectX 12 Analysis*
+## 10. Resumen Final
+
+| Métrica | Valor |
+| --- | --- |
+| Archivos DirectX 12 analizados | 9 (.cpp/.h) + 1 .hlsl |
+| Líneas de código analizadas | ~1,063 |
+| Parser fixes implementados | **11** |
+| fastos headers creados | **4** (windows, wrl, d3d12, dxgi) |
+| dx12_features_test.cpp | **PASSES** (41 funcs, 28 structs) |
+| dx12_test main.cpp | **PASSES** (32 funcs, 51 structs) |
+| Unit tests ADead-BIB | **539/539 passed** |
+| Pendiente | IAT imports para d3d12.dll, dxgi.dll, user32.dll |
+
+**Conclusión:** ADead-BIB compila DirectX 12 HelloTriangle de principio a fin: lexer, parser, IR, UB detection, codegen x86-64. Los 4 fastos headers (windows, wrl, d3d12, dxgi) proporcionan tipos COM e interfaces DX12 sin dependencia de SDK externo. Solo falta conectar las entradas IAT para enlazar contra las DLLs reales de Windows.
+
+---
+
+*ADead-BIB v7.0 — DirectX 12 Compilation Complete*
 *"paso a paso, cada feature se agrega — sin atajos"*
