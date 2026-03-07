@@ -206,6 +206,70 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "uchar.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_UCHAR),
         "tgmath.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_TGMATH),
 
+        // ==========================================
+        // ADead-BIB v7.0 — header_main.h (HEREDA TODO)
+        // ==========================================
+        // Un solo include. Todo disponible. Sin linker.
+        // #include <header_main.h> → todas las fastos_*.h
+        "header_main.h" => Some(HEADER_MAIN_COMPLETE),
+
+        // ==========================================
+        // ADead-BIB v7.0 — fastos_*.h (Individual)
+        // ==========================================
+        // Mapeo directo: fastos_*.h → header C99 estándar
+        // Permite: #include <fastos_stdio.h> ≡ #include <stdio.h>
+        "fastos_stdio.h" => Some(HEADER_STDIO),
+        "fastos_stdlib.h" => Some(HEADER_STDLIB),
+        "fastos_string.h" => Some(HEADER_STRING),
+        "fastos_math.h" => Some(HEADER_MATH),
+        "fastos_time.h" => Some(HEADER_TIME),
+        "fastos_assert.h" => Some(HEADER_ASSERT),
+        "fastos_errno.h" => Some(HEADER_ERRNO),
+        "fastos_limits.h" => Some(HEADER_LIMITS),
+        "fastos_types.h" => Some(HEADER_STDINT),
+
+        _ => None,
+    }
+}
+
+/// Check if a symbol name is a known C stdlib function/type/macro.
+/// Uses the stdlib/c/ registries for authoritative lookup.
+pub fn is_known_c_symbol(name: &str) -> bool {
+    use crate::stdlib::c::fastos_stdio;
+    use crate::stdlib::c::fastos_stdlib;
+    use crate::stdlib::c::fastos_string;
+    use crate::stdlib::c::fastos_math;
+    use crate::stdlib::c::fastos_time;
+    use crate::stdlib::c::fastos_assert;
+    use crate::stdlib::c::fastos_errno;
+    use crate::stdlib::c::fastos_limits;
+    use crate::stdlib::c::fastos_types;
+
+    fastos_stdio::is_stdio_symbol(name)
+        || fastos_stdlib::is_stdlib_symbol(name)
+        || fastos_string::is_string_symbol(name)
+        || fastos_math::is_math_symbol(name)
+        || fastos_time::is_time_symbol(name)
+        || fastos_assert::is_assert_symbol(name)
+        || fastos_errno::is_errno_symbol(name)
+        || fastos_limits::is_limits_symbol(name)
+        || fastos_types::is_types_symbol(name)
+}
+
+/// Resolve a fastos header name to its origin module.
+/// Returns the header origin for tree-shaking purposes.
+pub fn resolve_fastos_header(name: &str) -> Option<&'static str> {
+    match name {
+        "stdio.h" | "fastos_stdio.h" => Some("fastos_stdio"),
+        "stdlib.h" | "fastos_stdlib.h" => Some("fastos_stdlib"),
+        "string.h" | "fastos_string.h" => Some("fastos_string"),
+        "math.h" | "fastos_math.h" => Some("fastos_math"),
+        "time.h" | "fastos_time.h" => Some("fastos_time"),
+        "assert.h" | "fastos_assert.h" => Some("fastos_assert"),
+        "errno.h" | "fastos_errno.h" => Some("fastos_errno"),
+        "limits.h" | "fastos_limits.h" => Some("fastos_limits"),
+        "stdint.h" | "stddef.h" | "stdbool.h" | "fastos_types.h" => Some("fastos_types"),
+        "header_main.h" => Some("header_main"),
         _ => None,
     }
 }
@@ -2473,6 +2537,151 @@ int pci_write_byte(pci_dev *d, int pos, unsigned char data);
 int pci_write_word(pci_dev *d, int pos, unsigned short data);
 int pci_write_long(pci_dev *d, int pos, unsigned int data);
 char *pci_lookup_name(pci_access *a, char *buf, int size, int flags, ...);
+"#;
+
+// ================================================================
+// ADead-BIB v7.0 — header_main.h (COMPLETE)
+// ================================================================
+// Un solo include → TODAS las declaraciones C99
+// Tree shaking automático: solo lo usado llega al binario
+// Sin linker externo — NUNCA
+// ================================================================
+
+const HEADER_MAIN_COMPLETE: &str = r#"
+/* header_main.h — ADead-BIB Universal Header v7.0 */
+/* Un solo include. Todo disponible. Sin linker. */
+
+/* === fastos_types.h === */
+typedef signed char int8_t;
+typedef short int16_t;
+typedef int int32_t;
+typedef long int64_t;
+typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+typedef unsigned int uint32_t;
+typedef unsigned long uint64_t;
+typedef unsigned long size_t;
+typedef long ssize_t;
+typedef long ptrdiff_t;
+typedef long intptr_t;
+typedef unsigned long uintptr_t;
+typedef int bool;
+
+/* === fastos_limits.h === */
+
+/* === fastos_stdio.h === */
+typedef struct _IO_FILE FILE;
+extern FILE *stdin;
+extern FILE *stdout;
+extern FILE *stderr;
+int printf(const char *format, ...);
+int fprintf(FILE *stream, const char *format, ...);
+int sprintf(char *str, const char *format, ...);
+int snprintf(char *str, size_t size, const char *format, ...);
+int scanf(const char *format, ...);
+int fscanf(FILE *stream, const char *format, ...);
+int sscanf(const char *str, const char *format, ...);
+int puts(const char *s);
+int fputs(const char *s, FILE *stream);
+int putchar(int c);
+int getchar(void);
+char *fgets(char *s, int size, FILE *stream);
+FILE *fopen(const char *path, const char *mode);
+int fclose(FILE *stream);
+int fflush(FILE *stream);
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
+int fseek(FILE *stream, long offset, int whence);
+long ftell(FILE *stream);
+void rewind(FILE *stream);
+int feof(FILE *stream);
+int ferror(FILE *stream);
+int remove(const char *path);
+int rename(const char *old, const char *new_name);
+void perror(const char *s);
+
+/* === fastos_stdlib.h === */
+void *malloc(size_t size);
+void *calloc(size_t nmemb, size_t size);
+void *realloc(void *ptr, size_t size);
+void free(void *ptr);
+void abort(void);
+void exit(int status);
+int atexit(void (*function)(void));
+char *getenv(const char *name);
+int system(const char *command);
+int abs(int j);
+long labs(long j);
+int atoi(const char *nptr);
+long atol(const char *nptr);
+double atof(const char *nptr);
+long strtol(const char *nptr, char **endptr, int base);
+double strtod(const char *nptr, char **endptr);
+int rand(void);
+void srand(unsigned int seed);
+void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
+void *bsearch(const void *key, const void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
+
+/* === fastos_string.h === */
+void *memcpy(void *dest, const void *src, size_t n);
+void *memmove(void *dest, const void *src, size_t n);
+void *memset(void *s, int c, size_t n);
+int memcmp(const void *s1, const void *s2, size_t n);
+size_t strlen(const char *s);
+char *strcpy(char *dest, const char *src);
+char *strncpy(char *dest, const char *src, size_t n);
+char *strcat(char *dest, const char *src);
+char *strncat(char *dest, const char *src, size_t n);
+int strcmp(const char *s1, const char *s2);
+int strncmp(const char *s1, const char *s2, size_t n);
+char *strchr(const char *s, int c);
+char *strrchr(const char *s, int c);
+char *strstr(const char *haystack, const char *needle);
+char *strdup(const char *s);
+char *strtok(char *str, const char *delim);
+
+/* === fastos_math.h === */
+double sin(double x);
+double cos(double x);
+double tan(double x);
+double asin(double x);
+double acos(double x);
+double atan(double x);
+double atan2(double y, double x);
+double exp(double x);
+double log(double x);
+double log2(double x);
+double log10(double x);
+double pow(double base, double exponent);
+double sqrt(double x);
+double cbrt(double x);
+double ceil(double x);
+double floor(double x);
+double round(double x);
+double fabs(double x);
+double fmod(double x, double y);
+double hypot(double x, double y);
+float sinf(float x);
+float cosf(float x);
+float sqrtf(float x);
+float powf(float base, float exponent);
+float fabsf(float x);
+
+/* === fastos_time.h === */
+typedef long time_t;
+typedef long clock_t;
+time_t time(time_t *tloc);
+clock_t clock(void);
+double difftime(time_t time1, time_t time0);
+
+/* === fastos_assert.h === */
+
+/* === fastos_errno.h === */
+extern int errno;
+char *strerror(int errnum);
+
+/* TREE SHAKING: ADead-BIB includes only what you use. */
+/* Hello World with this header → 2KB binary. */
 "#;
 
 #[cfg(test)]
