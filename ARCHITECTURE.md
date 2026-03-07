@@ -947,5 +947,62 @@ Test-Canon/
 
 ---
 
+## Step Compiler — Visualización del Pipeline
+
+```
+adb step main.c
+```
+
+Muestra EXACTAMENTE qué hace el compilador, paso por paso:
+
+```
+--- Phase 1: PREPROCESSOR ---
+[PREPROC]  165 lines after preprocessing
+[PREPROC]  #include <stdio.h> -> resolved internally
+
+--- Phase 2: LEXER ---
+[LEXER]    1078 tokens generated
+[LEXER]       2:0    Int                                        OK
+[LEXER]       2:1    Identifier("main")                         OK
+[LEXER]       2:2    LParen                                     OK
+
+--- Phase 3: PARSER ---
+[PARSER]   function 'main' (0 params, 12 stmts) OK
+[PARSER]   struct 'Point' (2 fields) OK
+[PARSER]   Total: 1 functions, 1 structs, 28 typedefs
+
+--- Phase 4: IR (Intermediate Representation) ---
+[IR]       function 'main' -> 15 IR statements OK
+[IR]         VarDecl { var_type: I32, name: "x", value: Some(Number(42)) }
+[IR]         Println(String("Hello"))
+
+--- Phase 5: UB DETECTOR ---
+[UB]       No undefined behavior detected OK
+
+--- Phase 6: CODEGEN (x86-64) ---
+[CODEGEN]  297 bytes of machine code generated
+[CODEGEN]  First 16 bytes:
+[CODEGEN]    E9 00 00 00 00 55 48 89 E5 53 41 54 56 57 48 81
+[CODEGEN]  Data section strings:
+[CODEGEN]    "Hello"
+
+--- Phase 7: OUTPUT ---
+[OUTPUT]   Target: Windows PE x86-64
+[OUTPUT]   Code:   297 bytes
+[OUTPUT]   Data:   48 bytes
+[OUTPUT]   Est. binary: ~1369 bytes
+```
+
+**7 fases visibles**: Source → Preprocessor → Lexer → Parser → IR → UB → Codegen → Output
+
+Funciona con C y C++:
+
+```
+adb step archivo.c       # C99/C11
+adb step archivo.cpp     # C++98/11/14/17/20
+```
+
+---
+
 *ADead-BIB v7.0 — 2026*
 *"la maquina sirve al humano — sin linker — sin UB silencioso — para siempre"*

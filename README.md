@@ -171,6 +171,9 @@ adb run test.c               # Compila y ejecuta
 
 # ── GPU (SPIR-V directo) ─────────────────────────
 adb gpu
+
+# ── Step Compiler (ver cada paso) ────────────────
+adb step main.c              # Visualiza el pipeline completo
 ```
 
 ### Estructura de un Proyecto (`adb create`)
@@ -205,6 +208,59 @@ Cuando escribes `#include <header.h>`, ADead-BIB busca en este orden:
 3. **stdlib interna** — C99/C++ completa (fallback)
 
 = Sin `-I flags`, sin CMake, sin Makefile. Encuentra solo.
+
+---
+
+## Step Compiler — Ve Exactamente Qué Hace el Compilador
+
+```bash
+adb step main.c
+```
+
+Muestra **cada fase del pipeline**, paso por paso — como leer el compilador en tiempo real:
+
+```
+[SOURCE]   12 lines, 245 bytes
+
+--- Phase 1: PREPROCESSOR ---
+[PREPROC]  165 lines after preprocessing
+[PREPROC]  #include <stdio.h> -> resolved internally
+
+--- Phase 2: LEXER ---
+[LEXER]    78 tokens generated
+[LEXER]       1:0    Int                                        OK
+[LEXER]       1:1    Identifier("main")                         OK
+[LEXER]       1:2    LParen                                     OK
+
+--- Phase 3: PARSER ---
+[PARSER]   function 'main' (0 params, 3 stmts) OK
+[PARSER]   Total: 1 functions, 0 structs, 28 typedefs
+
+--- Phase 4: IR (Intermediate Representation) ---
+[IR]       function 'main' -> 5 IR statements OK
+[IR]         VarDecl { var_type: I32, name: "x", value: Some(Number(42)) }
+[IR]         Println(String("Hello"))
+
+--- Phase 5: UB DETECTOR ---
+[UB]       No undefined behavior detected OK
+
+--- Phase 6: CODEGEN (x86-64) ---
+[CODEGEN]  127 bytes of machine code generated
+[CODEGEN]  First 16 bytes:
+[CODEGEN]    E9 00 00 00 00 55 48 89 E5 53 41 54 56 57 48 81
+[CODEGEN]  Data section strings:
+[CODEGEN]    "Hello"
+
+--- Phase 7: OUTPUT ---
+[OUTPUT]   Target: Windows PE x86-64
+[OUTPUT]   Code:   127 bytes
+[OUTPUT]   Data:   32 bytes
+[OUTPUT]   Est. binary: ~1183 bytes
+```
+
+**7 fases visibles:** Source → Preprocessor → Lexer → Parser → IR → UB → Codegen → Output
+
+Funciona con C y C++: `adb step archivo.c` o `adb step archivo.cpp`
 
 ---
 

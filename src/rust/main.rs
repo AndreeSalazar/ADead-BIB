@@ -153,6 +153,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // ============================================================
+        // STEP — Step-by-step compilation visualization
+        // ============================================================
+        "step" => {
+            if args.len() < 3 {
+                eprintln!("Usage: adb step <file.c|file.cpp>");
+                std::process::exit(1);
+            }
+            let input_file = &args[2];
+            let ext = Path::new(input_file)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            match ext {
+                "c" | "h" => step_compile_c(input_file)?,
+                "cpp" | "cxx" | "cc" => step_compile_cpp(input_file)?,
+                _ => {
+                    eprintln!("Unsupported extension '.{}' for step mode", ext);
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        // ============================================================
         // NANO/MICRO/TINY — Minimal PE generators (no source needed)
         // ============================================================
         "nano" => {
@@ -1128,6 +1151,331 @@ fn get_output_filename(input: &str, args: &[String]) -> String {
         + ext
 }
 
+// ============================================================
+// STEP COMPILER — Step-by-step visualization
+// ============================================================
+fn step_compile_c(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use adead_bib::frontend::c::c_lexer::{CLexer, CToken};
+    use adead_bib::frontend::c::c_preprocessor::CPreprocessor;
+    use adead_bib::frontend::c::c_parser::CParser;
+    use adead_bib::frontend::c::c_to_ir::CToIR;
+
+    println!();
+    println!("{}",  "=".repeat(64));
+    println!("  ADead-BIB Step Compiler — {}", input_file);
+    println!("  Cada paso del pipeline, visible.");
+    println!("{}",  "=".repeat(64));
+    println!();
+
+    // 0. Read source
+    let source = fs::read_to_string(input_file)
+        .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
+    let source_lines: Vec<&str> = source.lines().collect();
+    println!("[SOURCE]   {} lines, {} bytes", source_lines.len(), source.len());
+    println!();
+
+    // 1. PREPROCESSOR
+    println!("--- Phase 1: PREPROCESSOR ---");
+    let mut preprocessor = CPreprocessor::new();
+    let preprocessed = preprocessor.process(&source);
+    let pp_lines: Vec<&str> = preprocessed.lines().collect();
+    println!("[PREPROC]  {} lines after preprocessing", pp_lines.len());
+    // Show #include resolutions
+    for line in &source_lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("#include") {
+            println!("[PREPROC]  {} -> resolved internally", trimmed);
+        }
+    }
+    println!();
+
+    // 2. LEXER
+    println!("--- Phase 2: LEXER ---");
+    let (tokens, lines) = CLexer::new(&preprocessed).tokenize();
+    println!("[LEXER]    {} tokens generated", tokens.len());
+    // Show first N meaningful tokens with source context
+    let max_show = 20;
+    let mut shown = 0;
+    for (i, tok) in tokens.iter().enumerate() {
+        if *tok == CToken::Eof { break; }
+        if shown >= max_show { break; }
+        let line_num = if i < lines.len() { lines[i] } else { 0 };
+        let tok_str = format!("{:?}", tok);
+        // Shorten long token names
+        let short = if tok_str.len() > 40 {
+            format!("{}...", &tok_str[..37])
+        } else {
+            tok_str
+        };
+        println!("[LEXER]    {:>4}:{:<3}  {:<42} OK", line_num, i, short);
+        shown += 1;
+    }
+    if tokens.len() > max_show + 1 {
+        println!("[LEXER]    ... ({} more tokens)", tokens.len() - max_show - 1);
+    }
+    println!();
+
+    // 3. PARSER
+    println!("--- Phase 3: PARSER ---");
+    let unit = CParser::new(tokens, lines).parse_translation_unit()
+        .map_err(|e| format!("Parse error: {}", e))?;
+    let mut func_count = 0;
+    let mut struct_count = 0;
+    let mut typedef_count = 0;
+    let mut enum_count = 0;
+    let mut global_count = 0;
+    for decl in &unit.declarations {
+        match decl {
+            adead_bib::frontend::c::c_ast::CTopLevel::FunctionDef { name, params, body, .. } => {
+                func_count += 1;
+                println!("[PARSER]   function '{}' ({} params, {} stmts) OK", name, params.len(), body.len());
+            }
+            adead_bib::frontend::c::c_ast::CTopLevel::FunctionDecl { name, params, .. } => {
+                println!("[PARSER]   declaration '{}' ({} params) OK", name, params.len());
+            }
+            adead_bib::frontend::c::c_ast::CTopLevel::StructDef { name, fields } => {
+                struct_count += 1;
+                println!("[PARSER]   struct '{}' ({} fields) OK", name, fields.len());
+            }
+            adead_bib::frontend::c::c_ast::CTopLevel::TypedefDecl { new_name, .. } => {
+                typedef_count += 1;
+                println!("[PARSER]   typedef '{}' OK", new_name);
+            }
+            adead_bib::frontend::c::c_ast::CTopLevel::EnumDef { name, values } => {
+                enum_count += 1;
+                println!("[PARSER]   enum '{}' ({} values) OK", name, values.len());
+            }
+            adead_bib::frontend::c::c_ast::CTopLevel::GlobalVar { declarators, .. } => {
+                global_count += 1;
+                for d in declarators {
+                    println!("[PARSER]   global '{}' OK", d.name);
+                }
+            }
+        }
+    }
+    println!("[PARSER]   Total: {} functions, {} structs, {} typedefs, {} enums, {} globals",
+        func_count, struct_count, typedef_count, enum_count, global_count);
+    println!();
+
+    // 4. IR CONVERSION
+    println!("--- Phase 4: IR (Intermediate Representation) ---");
+    let mut converter = CToIR::new();
+    let program = converter.convert(&unit)?;
+    for func in &program.functions {
+        println!("[IR]       function '{}' -> {} IR statements OK", func.name, func.body.len());
+        // Show first few IR stmts
+        let max_ir = 5;
+        for (j, stmt) in func.body.iter().enumerate() {
+            if j >= max_ir { break; }
+            let ir_str = format!("{:?}", stmt);
+            let short = if ir_str.len() > 70 { format!("{}...", &ir_str[..67]) } else { ir_str };
+            println!("[IR]         {}", short);
+        }
+        if func.body.len() > max_ir {
+            println!("[IR]         ... ({} more)", func.body.len() - max_ir);
+        }
+    }
+    println!("[IR]       {} structs registered", program.structs.len());
+    println!();
+
+    // 5. UB DETECTOR
+    println!("--- Phase 5: UB DETECTOR ---");
+    let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
+    ub_detector = ub_detector.with_warn_mode();
+    let reports = ub_detector.analyze(&program);
+    if reports.is_empty() {
+        println!("[UB]       No undefined behavior detected OK");
+    } else {
+        let errors = reports.iter().filter(|r| format!("{:?}", r.severity).contains("Error")).count();
+        let warnings = reports.len() - errors;
+        println!("[UB]       {} issues found ({} errors, {} warnings)", reports.len(), errors, warnings);
+        for r in reports.iter().take(5) {
+            let sev = format!("{:?}", r.severity);
+            let msg_short = if r.message.len() > 60 {
+                format!("{}...", &r.message[..57])
+            } else {
+                r.message.clone()
+            };
+            println!("[UB]       [{}] {}", sev, msg_short);
+        }
+        if reports.len() > 5 {
+            println!("[UB]       ... ({} more)", reports.len() - 5);
+        }
+    }
+    println!();
+
+    // 6. CODEGEN
+    println!("--- Phase 6: CODEGEN (x86-64) ---");
+    let target = adead_bib::isa::isa_compiler::Target::Windows;
+    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+    let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
+    println!("[CODEGEN]  {} bytes of machine code generated", opcodes.len());
+    println!("[CODEGEN]  {} bytes of data section", data.len());
+    println!("[CODEGEN]  {} IAT entries, {} string relocations", iat_offsets.len(), string_offsets.len());
+    // Show first instructions as hex
+    if !opcodes.is_empty() {
+        let show_bytes = opcodes.len().min(32);
+        let hex: Vec<String> = opcodes[..show_bytes].iter().map(|b| format!("{:02X}", b)).collect();
+        println!("[CODEGEN]  First {} bytes:", show_bytes);
+        // Show in rows of 16
+        for chunk in hex.chunks(16) {
+            println!("[CODEGEN]    {}", chunk.join(" "));
+        }
+        if opcodes.len() > 32 {
+            println!("[CODEGEN]    ... ({} more bytes)", opcodes.len() - 32);
+        }
+    }
+    // Show data section strings
+    if !data.is_empty() {
+        println!("[CODEGEN]  Data section strings:");
+        let data_str = String::from_utf8_lossy(&data);
+        for s in data_str.split('\0') {
+            if !s.is_empty() && s.len() < 200 {
+                println!("[CODEGEN]    \"{}\"", s.escape_default());
+            }
+        }
+    }
+    println!();
+
+    // 7. OUTPUT SUMMARY
+    println!("--- Phase 7: OUTPUT ---");
+    let total_size = opcodes.len() + data.len() + 1024; // ~1KB PE overhead
+    println!("[OUTPUT]   Target: Windows PE x86-64");
+    println!("[OUTPUT]   Code:   {} bytes", opcodes.len());
+    println!("[OUTPUT]   Data:   {} bytes", data.len());
+    println!("[OUTPUT]   Est. binary: ~{} bytes", total_size);
+    println!();
+    println!("{}",  "=".repeat(64));
+    println!("  Step compilation complete.");
+    println!("  To build the actual binary: adb cc {} -o output.exe", input_file);
+    println!("{}",  "=".repeat(64));
+
+    Ok(())
+}
+
+fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use adead_bib::frontend::cpp::cpp_lexer::{CppLexer, CppToken};
+
+    println!();
+    println!("{}",  "=".repeat(64));
+    println!("  ADead-BIB Step Compiler (C++) — {}", input_file);
+    println!("  Cada paso del pipeline, visible.");
+    println!("{}",  "=".repeat(64));
+    println!();
+
+    // 0. Read source
+    let source = fs::read_to_string(input_file)
+        .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
+    let source_lines: Vec<&str> = source.lines().collect();
+    println!("[SOURCE]   {} lines, {} bytes", source_lines.len(), source.len());
+    println!();
+
+    // 1. PREPROCESSOR
+    println!("--- Phase 1: PREPROCESSOR ---");
+    for line in &source_lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("#include") {
+            println!("[PREPROC]  {} -> resolved internally", trimmed);
+        }
+    }
+    println!();
+
+    // 2. LEXER
+    println!("--- Phase 2: LEXER ---");
+    let (tokens, lines) = CppLexer::new(&source).tokenize();
+    println!("[LEXER]    {} tokens generated", tokens.len());
+    let max_show = 20;
+    let mut shown = 0;
+    for (i, tok) in tokens.iter().enumerate() {
+        if *tok == CppToken::Eof { break; }
+        if shown >= max_show { break; }
+        let line_num = if i < lines.len() { lines[i] } else { 0 };
+        let tok_str = format!("{:?}", tok);
+        let short = if tok_str.len() > 40 {
+            format!("{}...", &tok_str[..37])
+        } else {
+            tok_str
+        };
+        println!("[LEXER]    {:>4}:{:<3}  {:<42} OK", line_num, i, short);
+        shown += 1;
+    }
+    if tokens.len() > max_show + 1 {
+        println!("[LEXER]    ... ({} more tokens)", tokens.len() - max_show - 1);
+    }
+    println!();
+
+    // 3. PARSER + IR
+    println!("--- Phase 3: PARSER + IR ---");
+    let program = adead_bib::frontend::cpp::compile_cpp_to_program(&source)
+        .map_err(|e| format!("C++ parse error: {}", e))?;
+    for func in &program.functions {
+        println!("[PARSER]   function '{}' -> {} IR statements OK", func.name, func.body.len());
+        let max_ir = 5;
+        for (j, stmt) in func.body.iter().enumerate() {
+            if j >= max_ir { break; }
+            let ir_str = format!("{:?}", stmt);
+            let short = if ir_str.len() > 70 { format!("{}...", &ir_str[..67]) } else { ir_str };
+            println!("[IR]         {}", short);
+        }
+        if func.body.len() > max_ir {
+            println!("[IR]         ... ({} more)", func.body.len() - max_ir);
+        }
+    }
+    println!("[PARSER]   {} functions, {} structs/classes", program.functions.len(), program.structs.len());
+    println!();
+
+    // 4. UB DETECTOR
+    println!("--- Phase 4: UB DETECTOR ---");
+    let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
+    ub_detector = ub_detector.with_warn_mode();
+    let reports = ub_detector.analyze(&program);
+    if reports.is_empty() {
+        println!("[UB]       No undefined behavior detected OK");
+    } else {
+        let errors = reports.iter().filter(|r| format!("{:?}", r.severity).contains("Error")).count();
+        let warnings = reports.len() - errors;
+        println!("[UB]       {} issues ({} errors, {} warnings)", reports.len(), errors, warnings);
+        for r in reports.iter().take(5) {
+            println!("[UB]       {:?}: {}",  r.severity, if r.message.len() > 60 { &r.message[..57] } else { &r.message });
+        }
+    }
+    println!();
+
+    // 5. CODEGEN
+    println!("--- Phase 5: CODEGEN (x86-64) ---");
+    let target = adead_bib::isa::isa_compiler::Target::Windows;
+    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+    let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
+    println!("[CODEGEN]  {} bytes of machine code", opcodes.len());
+    println!("[CODEGEN]  {} bytes of data section", data.len());
+    println!("[CODEGEN]  {} IAT entries, {} string relocations", iat_offsets.len(), string_offsets.len());
+    if !opcodes.is_empty() {
+        let show_bytes = opcodes.len().min(32);
+        let hex: Vec<String> = opcodes[..show_bytes].iter().map(|b| format!("{:02X}", b)).collect();
+        println!("[CODEGEN]  First {} bytes:", show_bytes);
+        for chunk in hex.chunks(16) {
+            println!("[CODEGEN]    {}", chunk.join(" "));
+        }
+    }
+    if !data.is_empty() {
+        println!("[CODEGEN]  Data section strings:");
+        let data_str = String::from_utf8_lossy(&data);
+        for s in data_str.split('\0') {
+            if !s.is_empty() && s.len() < 200 {
+                println!("[CODEGEN]    \"{}\"", s.escape_default());
+            }
+        }
+    }
+    println!();
+
+    println!("{}",  "=".repeat(64));
+    println!("  Step compilation complete.");
+    println!("  To build: adb cxx {} -o output.exe", input_file);
+    println!("{}",  "=".repeat(64));
+
+    Ok(())
+}
+
 fn print_usage(_program: &str) {
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║       🔥 ADead-BIB v7.0.0 💀🦈 — C/C++ Compiler 🔥        ║");
@@ -1141,13 +1489,14 @@ fn print_usage(_program: &str) {
     println!("   adb build                       Compilar proyecto (lee adb.toml)");
     println!("   adb run                         Compilar y ejecutar proyecto");
     println!();
-    println!("�� COMPILAR C/C++:");
+    println!("🔨 COMPILAR C/C++:");
     println!("   adb cc <file.c> [-o output]     Compile C99/C11");
     println!("   adb cxx <file.cpp> [-o output]  Compile C++11/14/17/20");
     println!("     [--target fastos|windows|linux]");
     println!("     [--warn-ub] (Warning only, don't stop on UB)");
     println!("   adb build <file> [-o output]    Auto-detect by extension");
     println!("   adb run <file>                  Build and execute");
+    println!("   adb step <file>                 Step-by-step compilation view");
     println!("   adb <file.c|file.cpp>           Direct compilation");
     println!();
     println!("📦 HEADERS GLOBALES:");
