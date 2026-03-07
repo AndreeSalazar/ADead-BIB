@@ -1,15 +1,18 @@
 // ============================================================
 // UB_Detector — Undefined Behavior Detection
 // ============================================================
-// Analiza el IR antes de codegen para detectar:
-// - Use-after-free
-// - Null pointer dereference
-// - Array bounds violations
-// - Integer overflow
-// - Uninitialized variables
-// - Type confusion
-// - Stack overflow
-// - Data races (future)
+// 21 tipos de UB detectados:
+// - NullPointerDereference     - UseAfterFree
+// - DoubleFree                 - ArrayOutOfBounds
+// - IntegerOverflow            - IntegerUnderflow
+// - DivisionByZero             - UninitializedVariable
+// - TypeConfusion              - StackOverflow
+// - DataRace                   - InvalidCast
+// - DanglingPointer            - ShiftOverflow
+// - StrictAliasingViolation    - UnsequencedModification
+// - SignedOverflowPromotion    - ReturnLocalAddress
+// - FormatStringMismatch       - BufferOverflow
+// - AlignmentViolation
 // ============================================================
 
 pub mod analyzer;

@@ -174,6 +174,30 @@ impl UseAfterAnalyzer {
                 }
                 self.leave_scope();
             }
+            Stmt::Return(Some(expr)) => {
+                // Detect returning address of local variable
+                if let Expr::AddressOf(inner) = expr {
+                    if let Expr::Variable(var_name) = inner.as_ref() {
+                        // Check if the variable is local (declared in any scope of this function)
+                        let is_local = self.scope_vars.iter().any(|vars| vars.contains(var_name));
+                        if is_local {
+                            self.reports.push(
+                                UBReport::new(
+                                    UBSeverity::Error,
+                                    UBKind::ReturnLocalAddress,
+                                    format!(
+                                        "Returning address of local variable '{}' — pointer will dangle after function returns [C99 §6.2.4]",
+                                        var_name
+                                    ),
+                                )
+                                .with_location(self.func_name.clone(), self.current_line)
+                                .with_suggestion("Return by value or allocate on the heap with malloc".to_string()),
+                            );
+                        }
+                    }
+                }
+                self.check_expr_use(expr);
+            }
             _ => {}
         }
     }

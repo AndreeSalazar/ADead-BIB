@@ -145,7 +145,7 @@ fn check_expr_types(
                         reports.push(
                             UBReport::new(
                                 UBSeverity::Error,
-                                UBKind::TypeConfusion,
+                                UBKind::StrictAliasingViolation,
                                 format!("Strict Aliasing Violation: '{:?}' reinterpreted as '{:?}'", t_source, *t_target),
                             )
                             .with_location(func_name.to_string(), *current_line)

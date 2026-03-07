@@ -1,4 +1,4 @@
-# ADead-BIB Compiler Architecture v5.0
+# ADead-BIB Compiler Architecture v6.0
 
 > Grace Hopper: 'la maquina sirve al humano'
 > Dennis Ritchie: 'small is beautiful'
@@ -16,7 +16,7 @@ C99/C++98 codigo fuente
   header_main.h resolution
   fastos.bib cache (CACHE HIT = nanosegundos)
   symbol deduplication
-  C++11-C++17 → C++98 expansion
+  C++11/C++14/C++17 completo → C++98 canon (34 features)
         │
         ▼
 [ PARSER / AST ]  ←── frontend/c/ + frontend/cpp/
@@ -32,7 +32,7 @@ C99/C++98 codigo fuente
         ▼
 [ UB_DETECTOR ]  ←── middle/ub_detector/  (UNICO EN EL MUNDO)
   Analiza IR completo ANTES de codegen
-  13 tipos de UB detectados
+  21 tipos de UB detectados (UNICO EN EL MUNDO)
   Modo Estricto (default) → SE DETIENE
   --warn-ub → avisa y continua
         │
@@ -44,8 +44,9 @@ C99/C++98 codigo fuente
         │
         ▼
 [ REGISTER ALLOCATOR ]  ←── isa/reg_alloc.rs
-  IR variables → registros fisicos x86-64
-  Linear Scan (v1), Graph Coloring (v2 futuro)
+  IR variables → 13 registros fisicos x86-64 (R0-R15)
+  TempAllocator (fast) + LinearScanAllocator (liveness)
+  Spill automático con stack alignment 16-byte
         │
         ▼
 [ ISA COMPILER ]  ←── isa/
@@ -72,7 +73,7 @@ src/rust/
 │   ├── mod.rs
 │   ├── resolver.rs           # Header resolution automatica
 │   ├── dedup.rs              # Symbol Table deduplication
-│   └── expander.rs           # C++11-C++17 → C++98 canon
+│   └── expander.rs           # C++11/C++14/C++17 completo → C++98 canon (34 features)
 │
 ├── frontend/                 # C/C++ Parsing
 │   ├── mod.rs
@@ -105,18 +106,19 @@ src/rust/
 │   │   ├── value.rs
 │   │   └── builder.rs
 │   │
-│   ├── ub_detector/          # UB Detection (UNICO EN EL MUNDO)
-│   │   ├── mod.rs            # Orquesta todos los detectores
-│   │   ├── null_check.rs     # NullPointerDereference
-│   │   ├── bounds_check.rs   # ArrayOutOfBounds
-│   │   ├── overflow_check.rs # IntegerOverflow/Underflow/DivByZero
-│   │   ├── uninit_check.rs   # UninitializedVariable
-│   │   ├── useafter_check.rs # UseAfterFree, DanglingPointer
-│   │   ├── type_check.rs     # TypeConfusion, InvalidCast
-│   │   ├── race_check.rs     # DataRace, StackOverflow
-│   │   ├── lifetime.rs       # Lifetime analysis
-│   │   ├── report.rs         # UBReport, UBKind (14 tipos)
-│   │   ├── cache.rs          # UB results para fastos.bib
+│   ├── ub_detector/          # UB Detection — 21 tipos (UNICO EN EL MUNDO)
+│   │   ├── mod.rs            # Orquesta 10 sub-analizadores
+│   │   ├── null_check.rs     # NullPtr + malloc/calloc/realloc tracking
+│   │   ├── bounds_check.rs   # ArrayOutOfBounds + negative index
+│   │   ├── overflow_check.rs # Overflow/Underflow/DivByZero/ShiftOverflow
+│   │   ├── uninit_check.rs   # UninitializedVariable (flow-sensitive)
+│   │   ├── useafter_check.rs # UseAfterFree + DanglingPtr + ReturnLocalAddr
+│   │   ├── type_check.rs     # TypeConfusion + StrictAliasing + InvalidCast
+│   │   ├── race_check.rs     # StackOverflow (recursion sin base case)
+│   │   ├── unsequenced_check.rs # UnsequencedModification (i=i++)
+│   │   ├── lifetime.rs       # DoubleFree + lifetime analysis
+│   │   ├── report.rs         # UBReport, UBKind (21 tipos)
+│   │   ├── cache.rs          # UB results cacheados en fastos.bib
 │   │   └── analyzer.rs       # Coordinator general
 │   │
 │   ├── analysis/             # CFG, Dominators, Loops
@@ -142,14 +144,14 @@ src/rust/
 │   ├── isa_compiler.rs       # Main ISA compiler
 │   ├── encoder.rs            # ADeadOp → bytes x86-64
 │   ├── decoder.rs            # bytes → ADeadOp
-│   ├── reg_alloc.rs          # Register Allocator
+│   ├── reg_alloc.rs          # TempAllocator + LinearScanAllocator (13 regs)
 │   ├── optimizer.rs          # ISA-level peephole opts
 │   └── compiler/             # Modular compilation stages
 │
 ├── cache/                    # fastos.bib System
 │   ├── mod.rs                # ADeadCache struct
-│   ├── serializer.rs         # Cache → bytes
-│   ├── deserializer.rs       # bytes → Cache
+│   ├── serializer.rs         # Cache → bytes (tipos + simbolos + UB completo)
+│   ├── deserializer.rs       # bytes → Cache (roundtrip completo v2)
 │   ├── hasher.rs             # FNV-1a header hashing
 │   └── validator.rs          # Cache hit/stale/miss/corrupt
 │
@@ -168,24 +170,40 @@ src/rust/
 └── toolchain/                # GCC/LLVM/MSVC compatibility
 ```
 
-## Los 14 Tipos de UB Detectados
+## Los 21 Tipos de UB Detectados (UNICO EN EL MUNDO)
 
 ```rust
 pub enum UBKind {
-    NullPointerDereference,   // ptr usado sin check NULL
-    UseAfterFree,             // ptr usado despues de free()
-    DoubleFree,               // free() llamado dos veces
-    DanglingPointer,          // ptr a stack variable fuera de scope
-    ArrayOutOfBounds,         // index >= size
-    IntegerOverflow,          // signed int overflow
-    IntegerUnderflow,         // signed int underflow
-    DivisionByZero,           // division por cero
-    ShiftOverflow,            // shift >= sizeof(tipo) * 8
-    UninitializedVariable,    // variable usada sin inicializar
-    TypeConfusion,            // cast invalido entre tipos
-    InvalidCast,              // downcast sin verificar
-    DataRace,                 // acceso concurrente sin sync
-    StackOverflow,            // recursion infinita
+    // ── Memoria ──
+    NullPointerDereference,     // ptr usado sin check NULL (+ malloc tracking)
+    UseAfterFree,               // ptr usado despues de free()
+    DoubleFree,                 // free() llamado dos veces
+    DanglingPointer,            // ptr a stack variable fuera de scope
+    ReturnLocalAddress,         // return &local_var (dangling on return)
+    BufferOverflow,             // write past buffer end (memcpy, strcpy)
+
+    // ── Aritmetica ──
+    ArrayOutOfBounds,           // index >= size (+ negative index)
+    IntegerOverflow,            // signed int overflow [C99 §6.5.5]
+    IntegerUnderflow,           // signed int underflow
+    DivisionByZero,             // division por cero [C99 §6.5.5]
+    ShiftOverflow,              // shift >= sizeof(tipo) * 8 [C99 §6.5.7]
+    SignedOverflowPromotion,    // char→int promotion causes overflow
+
+    // ── Tipos ──
+    UninitializedVariable,      // variable usada sin inicializar
+    TypeConfusion,              // cast invalido entre tipos
+    InvalidCast,                // downcast sin verificar
+    StrictAliasingViolation,    // type punning via pointer cast [C99 §6.5/7]
+    AlignmentViolation,         // misaligned pointer cast
+
+    // ── Concurrencia ──
+    DataRace,                   // acceso concurrente sin sync
+    UnsequencedModification,    // i = i++ (orden no definido) [C99 §6.5/2]
+    StackOverflow,              // recursion infinita
+
+    // ── Formato ──
+    FormatStringMismatch,       // printf("%d", float_var)
 }
 ```
 
@@ -203,4 +221,71 @@ IR → UB_Detector → Optimizer → Reg_Allocator → Encoder
    Si fuera DESPUES, el optimizer podria eliminar checks
    = exactamente lo que hace GCC ❌
    ADead-BIB: UB primero, optimizacion despues ✓
+```
+
+## C++11/C++14/C++17 → C++98 Canon (34 Features)
+
+```
+MacroExpander expande syntax moderno a C++98 internamente.
+El parser solo necesita entender C++98. Zero overhead.
+
+C++11 (12 features):
+  lambda, range-for, auto, nullptr, static_assert,
+  enum class, using alias, variadic templates,
+  constexpr functions, move semantics,
+  initializer_list, delegating constructors
+
+C++14 (6 features):
+  generic lambda, [[deprecated]], binary literals,
+  digit separators, return type deduction, make_unique
+
+C++17 (14 features):
+  structured bindings, if constexpr, std::optional,
+  std::variant, std::string_view, std::any,
+  fold expressions, [[nodiscard]], [[maybe_unused]],
+  [[fallthrough]], nested namespaces, inline variables,
+  constexpr if (scoped), type traits check
+
+Total: 34 features expandidas a C++98 canon puro
+```
+
+## Register Allocator — Dual Mode
+
+```
+1. TempAllocator (v1 — rapido)
+   - 13 registros: RBX,RCX,RDX,RSI,RDI,R8-R15
+   - 5 callee-saved: RBX,R12,R13,R14,R15
+   - Spill a stack cuando se agotan registros
+   - Windows x64 args: RCX,RDX,R8,R9
+   - Linux x64 args: RDI,RSI,RDX,RCX,R8,R9
+
+2. LinearScanAllocator (v2 — liveness)
+   - Intervalos de vida por variable
+   - Spill del intervalo que termina mas tarde
+   - Stack alignment 16 bytes automatico
+   - Metricas: spill_slots_used, spill_stack_size
+
+3. StackFrame calculator
+   - Calcula tamaño real de frame (no fijo 128)
+   - Alignment natural por tipo (1/2/4/8 bytes)
+   - Aligned total a 16 bytes (x64 ABI)
+```
+
+## Cache fastos.bib v2 — Serialización Completa
+
+```
+Header (28 bytes):
+  magic: "ADEAD.BI" (8 bytes)
+  version: u32 (4 bytes) — v2
+  timestamp: u64 (8 bytes)
+  hash: u64 (8 bytes) — FNV-1a del source
+
+Body:
+  AST data (length-prefixed blob)
+  TypeTable (count + entries con kind/size/alignment)
+  SymbolTable (count + entries con kind)
+  UB Reports (count + cached results)
+
+Validación: Hit/Stale/Miss/Corrupt
+Hash cambia → Stale → recompila → nuevo cache
 ```

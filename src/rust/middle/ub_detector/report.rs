@@ -27,6 +27,13 @@ pub enum UBKind {
     InvalidCast,
     DanglingPointer,
     ShiftOverflow,
+    StrictAliasingViolation,
+    UnsequencedModification,
+    SignedOverflowPromotion,
+    ReturnLocalAddress,
+    FormatStringMismatch,
+    BufferOverflow,
+    AlignmentViolation,
 }
 
 impl fmt::Display for UBKind {
@@ -46,6 +53,13 @@ impl fmt::Display for UBKind {
             UBKind::InvalidCast => write!(f, "Invalid Cast"),
             UBKind::DanglingPointer => write!(f, "Dangling Pointer"),
             UBKind::ShiftOverflow => write!(f, "Shift Overflow"),
+            UBKind::StrictAliasingViolation => write!(f, "Strict Aliasing Violation"),
+            UBKind::UnsequencedModification => write!(f, "Unsequenced Modification"),
+            UBKind::SignedOverflowPromotion => write!(f, "Signed Overflow Promotion"),
+            UBKind::ReturnLocalAddress => write!(f, "Return Local Address"),
+            UBKind::FormatStringMismatch => write!(f, "Format String Mismatch"),
+            UBKind::BufferOverflow => write!(f, "Buffer Overflow"),
+            UBKind::AlignmentViolation => write!(f, "Alignment Violation"),
         }
     }
 }

@@ -406,6 +406,74 @@ impl IsaOptimizer {
                 continue;
             }
 
+            // Pattern: mov reg, 0 → xor reg32, reg32 (ANY general-purpose register)
+            if let ADeadOp::Mov {
+                dst: Operand::Reg(r),
+                src: Operand::Imm64(0),
+            } = &ops[i]
+            {
+                if r.is_64bit() && !matches!(r, Reg::RSP | Reg::RBP) {
+                    let r32 = Self::to_32bit(r);
+                    if let Some(r32) = r32 {
+                        result.push(ADeadOp::Xor { dst: r32, src: r32 });
+                        self.stats.peephole_applied += 1;
+                        i += 1;
+                        continue;
+                    }
+                }
+            }
+
+            // Pattern: add reg, reg → shl reg, 1 (x + x = x * 2 = x << 1)
+            if let ADeadOp::Add {
+                dst: Operand::Reg(d),
+                src: Operand::Reg(s),
+            } = &ops[i]
+            {
+                if d == s {
+                    result.push(ADeadOp::Shl { dst: *d, amount: 1 });
+                    self.stats.peephole_applied += 1;
+                    i += 1;
+                    continue;
+                }
+            }
+
+            // Pattern: cmp reg, 0 → test reg, reg (shorter encoding)
+            if let ADeadOp::Cmp {
+                left: Operand::Reg(r),
+                right: Operand::Imm32(0),
+            } = &ops[i]
+            {
+                result.push(ADeadOp::Test {
+                    left: *r,
+                    right: *r,
+                });
+                self.stats.peephole_applied += 1;
+                i += 1;
+                continue;
+            }
+
+            // Pattern: mov rax, imm; push rax → push imm (if imm fits in imm32)
+            if i + 1 < ops.len() {
+                if let (
+                    ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Imm32(v),
+                    },
+                    ADeadOp::Push {
+                        src: Operand::Reg(Reg::RAX),
+                    },
+                ) = (&ops[i], &ops[i + 1])
+                {
+                    result.push(ADeadOp::Push {
+                        src: Operand::Imm32(*v),
+                    });
+                    self.stats.peephole_applied += 1;
+                    self.stats.instructions_fused += 1;
+                    i += 2;
+                    continue;
+                }
+            }
+
             // No pattern matched, keep instruction
             result.push(ops[i].clone());
             i += 1;

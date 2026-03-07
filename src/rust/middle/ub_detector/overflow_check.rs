@@ -178,6 +178,36 @@ fn check_expr_overflow(
             check_expr_overflow(left, func_name, reports, current_line, env);
             check_expr_overflow(right, func_name, reports, current_line, env);
         }
+        Expr::Cast { target_type: _, expr: inner } => {
+            // Detect signed promotion overflow: e.g., char c = 200; int x = (int)(c * 256);
+            // When a small signed type value is promoted and multiplied, it can overflow
+            if let Expr::BinaryOp { op: BinOp::Mul, left, right } = inner.as_ref() {
+                if let (Some(l), Some(r)) = (eval_expr(left, env), eval_expr(right, env)) {
+                    let product = l.wrapping_mul(r);
+                    // Check if the values suggest narrow-type promotion overflow
+                    // (values that fit in char/short but overflow when multiplied in int)
+                    let fits_in_char = (-128..=127).contains(&l) || (0..=255).contains(&l);
+                    let fits_in_short = (-32768..=32767).contains(&l) || (0..=65535).contains(&l);
+                    if (fits_in_char || fits_in_short)
+                        && (product > i32::MAX as i64 || product < i32::MIN as i64)
+                    {
+                        reports.push(
+                            UBReport::new(
+                                UBSeverity::Warning,
+                                UBKind::SignedOverflowPromotion,
+                                format!(
+                                    "Signed promotion overflow: {} * {} = {} overflows after implicit promotion [C99 §6.3.1.1]",
+                                    l, r, product
+                                ),
+                            )
+                            .with_location(func_name.to_string(), *current_line)
+                            .with_suggestion("Cast to wider type before arithmetic to avoid promotion overflow".to_string()),
+                        );
+                    }
+                }
+            }
+            check_expr_overflow(inner, func_name, reports, current_line, env);
+        }
         Expr::BitwiseOp { op, left, right } => {
             if let (Some(l), Some(r)) = (eval_expr(left, env), eval_expr(right, env)) {
                 if matches!(op, crate::ast::BitwiseOp::LeftShift | crate::ast::BitwiseOp::RightShift) {

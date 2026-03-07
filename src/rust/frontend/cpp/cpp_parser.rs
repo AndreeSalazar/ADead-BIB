@@ -1424,17 +1424,32 @@ impl CppParser {
 
     fn parse_namespace(&mut self) -> Result<CppTopLevel, String> {
         self.advance(); // skip namespace
-        let name = self.expect_identifier()?;
+
+        // C++17 nested namespace: namespace A::B::C { ... }
+        let mut names = vec![self.expect_identifier()?];
+        while self.eat(&CppToken::Scope) {
+            names.push(self.expect_identifier()?);
+        }
+
         self.expect(&CppToken::LBrace)?;
         let mut decls = Vec::new();
         while *self.current() != CppToken::RBrace && *self.current() != CppToken::Eof {
             decls.push(self.parse_top_level()?);
         }
         self.expect(&CppToken::RBrace)?;
-        Ok(CppTopLevel::Namespace {
-            name,
+
+        // Build nested namespaces from inside out
+        let mut result = CppTopLevel::Namespace {
+            name: names.last().unwrap().clone(),
             declarations: decls,
-        })
+        };
+        for name in names.iter().rev().skip(1) {
+            result = CppTopLevel::Namespace {
+                name: name.clone(),
+                declarations: vec![result],
+            };
+        }
+        Ok(result)
     }
 
     fn parse_using_decl(&mut self) -> Result<CppTopLevel, String> {

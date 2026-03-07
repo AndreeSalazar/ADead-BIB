@@ -17,7 +17,7 @@ use super::Reg;
 
 /// Registers available for temporary allocation
 /// Excludes: RAX (accumulator), RSP (stack), RBP (frame)
-const TEMP_REGS: [Reg; 10] = [
+const TEMP_REGS: [Reg; 13] = [
     Reg::RBX, // Callee-saved
     Reg::RCX, // Caller-saved (arg 4 Windows, arg 1 Linux)
     Reg::RDX, // Caller-saved (arg 3 Windows, arg 2 Linux)
@@ -28,10 +28,13 @@ const TEMP_REGS: [Reg; 10] = [
     Reg::R10, // Caller-saved (scratch)
     Reg::R11, // Caller-saved (scratch)
     Reg::R12, // Callee-saved
+    Reg::R13, // Callee-saved
+    Reg::R14, // Callee-saved
+    Reg::R15, // Callee-saved
 ];
 
 /// Callee-saved registers that must be preserved across calls
-const CALLEE_SAVED: [Reg; 4] = [Reg::RBX, Reg::R12, Reg::R13, Reg::R14];
+const CALLEE_SAVED: [Reg; 5] = [Reg::RBX, Reg::R12, Reg::R13, Reg::R14, Reg::R15];
 
 /// Basic register allocator for temporary values
 #[derive(Debug, Clone)]
@@ -217,6 +220,137 @@ impl Default for StackFrame {
     }
 }
 
+/// Liveness interval for a variable
+#[derive(Debug, Clone)]
+pub struct LiveInterval {
+    pub var_name: String,
+    pub start: usize,
+    pub end: usize,
+    pub assigned_reg: Option<Reg>,
+    pub spill_slot: Option<i32>,
+}
+
+/// Linear-scan register allocator with liveness analysis
+#[derive(Debug)]
+pub struct LinearScanAllocator {
+    intervals: Vec<LiveInterval>,
+    active: Vec<usize>,
+    free_regs: Vec<Reg>,
+    spill_offset: i32,
+    max_spill_slots: usize,
+}
+
+impl LinearScanAllocator {
+    pub fn new() -> Self {
+        Self {
+            intervals: Vec::new(),
+            active: Vec::new(),
+            free_regs: TEMP_REGS.to_vec(),
+            spill_offset: 0,
+            max_spill_slots: 0,
+        }
+    }
+
+    /// Add a liveness interval for a variable
+    pub fn add_interval(&mut self, var_name: String, start: usize, end: usize) {
+        self.intervals.push(LiveInterval {
+            var_name,
+            start,
+            end,
+            assigned_reg: None,
+            spill_slot: None,
+        });
+    }
+
+    /// Run linear-scan allocation
+    pub fn allocate(&mut self) {
+        // Sort intervals by start point
+        self.intervals.sort_by_key(|i| i.start);
+
+        for i in 0..self.intervals.len() {
+            // Expire old intervals
+            self.expire_old_intervals(self.intervals[i].start);
+
+            if let Some(reg) = self.free_regs.pop() {
+                self.intervals[i].assigned_reg = Some(reg);
+                self.active.push(i);
+                // Keep active sorted by end point
+                self.active.sort_by_key(|&idx| self.intervals[idx].end);
+            } else {
+                // Spill: pick the interval that ends last
+                self.spill_at_interval(i);
+            }
+        }
+    }
+
+    fn expire_old_intervals(&mut self, current_point: usize) {
+        let mut to_remove = Vec::new();
+        for (pos, &idx) in self.active.iter().enumerate() {
+            if self.intervals[idx].end <= current_point {
+                to_remove.push(pos);
+                if let Some(reg) = self.intervals[idx].assigned_reg {
+                    self.free_regs.push(reg);
+                }
+            }
+        }
+        for pos in to_remove.into_iter().rev() {
+            self.active.remove(pos);
+        }
+    }
+
+    fn spill_at_interval(&mut self, i: usize) {
+        if let Some(&last_active) = self.active.last() {
+            if self.intervals[last_active].end > self.intervals[i].end {
+                // Spill the active interval that ends latest
+                self.intervals[i].assigned_reg = self.intervals[last_active].assigned_reg;
+                self.spill_offset -= 8;
+                self.intervals[last_active].assigned_reg = None;
+                self.intervals[last_active].spill_slot = Some(self.spill_offset);
+                self.max_spill_slots += 1;
+                self.active.pop();
+                self.active.push(i);
+                self.active.sort_by_key(|&idx| self.intervals[idx].end);
+            } else {
+                // Spill current interval
+                self.spill_offset -= 8;
+                self.intervals[i].spill_slot = Some(self.spill_offset);
+                self.max_spill_slots += 1;
+            }
+        } else {
+            self.spill_offset -= 8;
+            self.intervals[i].spill_slot = Some(self.spill_offset);
+            self.max_spill_slots += 1;
+        }
+    }
+
+    /// Get the allocation result for a variable
+    pub fn get_allocation(&self, var_name: &str) -> Option<&LiveInterval> {
+        self.intervals.iter().find(|i| i.var_name == var_name)
+    }
+
+    /// Get all intervals
+    pub fn intervals(&self) -> &[LiveInterval] {
+        &self.intervals
+    }
+
+    /// Get number of spill slots used
+    pub fn spill_slots_used(&self) -> usize {
+        self.max_spill_slots
+    }
+
+    /// Get total extra stack space needed for spills (aligned to 16)
+    pub fn spill_stack_size(&self) -> i32 {
+        let raw = -self.spill_offset;
+        ((raw + 15) / 16) * 16
+    }
+}
+
+impl Default for LinearScanAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,5 +405,31 @@ mod tests {
         assert_eq!(frame.get_local("x"), Some(-8));
         assert!(frame.total_size() >= 13); // At least 8+4+1
         assert_eq!(frame.total_size() % 16, 0); // Aligned to 16
+    }
+
+    #[test]
+    fn test_linear_scan_basic() {
+        let mut alloc = LinearScanAllocator::new();
+        alloc.add_interval("x".to_string(), 0, 10);
+        alloc.add_interval("y".to_string(), 2, 8);
+        alloc.add_interval("z".to_string(), 5, 15);
+        alloc.allocate();
+
+        assert!(alloc.get_allocation("x").unwrap().assigned_reg.is_some());
+        assert!(alloc.get_allocation("y").unwrap().assigned_reg.is_some());
+        assert!(alloc.get_allocation("z").unwrap().assigned_reg.is_some());
+        assert_eq!(alloc.spill_slots_used(), 0);
+    }
+
+    #[test]
+    fn test_linear_scan_spill() {
+        let mut alloc = LinearScanAllocator::new();
+        // Create more intervals than available registers
+        for i in 0..15 {
+            alloc.add_interval(format!("v{}", i), 0, 20);
+        }
+        alloc.allocate();
+        // 13 regs available, 15 intervals → 2 spills
+        assert_eq!(alloc.spill_slots_used(), 2);
     }
 }

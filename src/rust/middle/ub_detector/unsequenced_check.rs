@@ -136,7 +136,7 @@ fn report_ub(var: &str, func_name: &str, line: usize, reports: &mut Vec<UBReport
     reports.push(
         UBReport::new(
             UBSeverity::Error,
-            UBKind::DataRace, // Reusing DataRace for Unsequenced for simplicity or we can add a new one
+            UBKind::UnsequencedModification,
             format!("Unsequenced modifications / unsequenced read and write of variable '{}'", var),
         )
         .with_location(func_name.to_string(), line)

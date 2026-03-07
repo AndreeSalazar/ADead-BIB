@@ -63,9 +63,14 @@ fn check_stmt_null(
         }
         Stmt::DerefAssign { pointer, .. } => {
             if is_potentially_null(pointer, null_vars) {
+                let severity = if is_definitely_null(pointer, null_vars) {
+                    UBSeverity::Error
+                } else {
+                    UBSeverity::Warning
+                };
                 reports.push(
                     UBReport::new(
-                        UBSeverity::Warning,
+                        severity,
                         UBKind::NullPointerDereference,
                         format!("Dereferencing potentially null pointer"),
                     )
@@ -76,9 +81,14 @@ fn check_stmt_null(
         }
         Stmt::ArrowAssign { pointer, .. } => {
             if is_potentially_null(pointer, null_vars) {
+                let severity = if is_definitely_null(pointer, null_vars) {
+                    UBSeverity::Error
+                } else {
+                    UBSeverity::Warning
+                };
                 reports.push(
                     UBReport::new(
-                        UBSeverity::Warning,
+                        severity,
                         UBKind::NullPointerDereference,
                         format!("Arrow access on potentially null pointer"),
                     )
@@ -186,9 +196,14 @@ fn check_expr_null(
     match expr {
         Expr::Deref(inner) => {
             if is_potentially_null(inner, null_vars) {
+                let severity = if is_definitely_null(inner, null_vars) {
+                    UBSeverity::Error
+                } else {
+                    UBSeverity::Warning
+                };
                 reports.push(
                     UBReport::new(
-                        UBSeverity::Warning,
+                        severity,
                         UBKind::NullPointerDereference,
                         format!("Dereferencing potentially null expression"),
                     )
@@ -198,9 +213,14 @@ fn check_expr_null(
         }
         Expr::ArrowAccess { pointer, .. } => {
             if is_potentially_null(pointer, null_vars) {
+                let severity = if is_definitely_null(pointer, null_vars) {
+                    UBSeverity::Error
+                } else {
+                    UBSeverity::Warning
+                };
                 reports.push(
                     UBReport::new(
-                        UBSeverity::Warning,
+                        severity,
                         UBKind::NullPointerDereference,
                         format!("Arrow access on potentially null pointer"),
                     )
@@ -212,11 +232,24 @@ fn check_expr_null(
     }
 }
 
+fn is_definitely_null(expr: &Expr, null_vars: &HashMap<String, bool>) -> bool {
+    match expr {
+        Expr::Nullptr | Expr::Number(0) | Expr::Null => true,
+        Expr::Variable(name) => {
+            // A variable is definitely null if it was assigned a null literal
+            // and never had a null check (tracked as true in null_vars)
+            *null_vars.get(name).unwrap_or(&false)
+        }
+        _ => false,
+    }
+}
+
 fn is_potentially_null(expr: &Expr, null_vars: &HashMap<String, bool>) -> bool {
     match expr {
-        Expr::Nullptr | Expr::Number(0) => true,
+        Expr::Nullptr | Expr::Number(0) | Expr::Null => true,
         Expr::Variable(name) => *null_vars.get(name).unwrap_or(&false),
         Expr::Cast { expr: inner, .. } => is_potentially_null(inner, null_vars),
+        Expr::Call { name, .. } if name == "malloc" || name == "calloc" || name == "realloc" => true,
         _ => false,
     }
 }

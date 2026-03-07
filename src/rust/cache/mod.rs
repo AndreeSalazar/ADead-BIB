@@ -17,7 +17,7 @@ use std::collections::HashMap;
 pub const CACHE_MAGIC: [u8; 8] = *b"ADEAD.BI";
 
 /// Version del formato de cache
-pub const CACHE_VERSION: u32 = 1;
+pub const CACHE_VERSION: u32 = 2;
 
 /// Estructura principal del cache — fastos.bib
 #[derive(Debug, Clone)]

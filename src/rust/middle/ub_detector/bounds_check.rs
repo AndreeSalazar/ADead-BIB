@@ -93,6 +93,9 @@ fn check_stmt_bounds(
         Stmt::Expr(expr) | Stmt::Print(expr) | Stmt::Println(expr) | Stmt::PrintNum(expr) => {
             check_expr_bounds(expr, func_name, reports, arrays, current_line);
         }
+        Stmt::Return(Some(expr)) => {
+            check_expr_bounds(expr, func_name, reports, arrays, current_line);
+        }
         _ => {}
     }
 }
@@ -124,7 +127,28 @@ fn check_expr_bounds(
             check_expr_bounds(object, func_name, reports, arrays, current_line);
             check_expr_bounds(index, func_name, reports, arrays, current_line);
         }
-        Expr::BinaryOp { left, right, .. } => {
+        Expr::BinaryOp { op, left, right } => {
+            // Detect negative pointer arithmetic: ptr + (-n) or ptr - n
+            if matches!(op, crate::ast::BinOp::Add | crate::ast::BinOp::Sub) {
+                if let Some(idx) = get_constant_index(right) {
+                    if (matches!(op, crate::ast::BinOp::Add) && idx < 0)
+                        || (matches!(op, crate::ast::BinOp::Sub) && idx > 0)
+                    {
+                        reports.push(
+                            UBReport::new(
+                                UBSeverity::Warning,
+                                UBKind::ArrayOutOfBounds,
+                                format!(
+                                    "Negative pointer arithmetic detected (offset {}), may access out-of-bounds memory",
+                                    if matches!(op, crate::ast::BinOp::Sub) { -idx } else { idx }
+                                ),
+                            )
+                            .with_location(func_name.to_string(), *current_line)
+                            .with_suggestion("Ensure pointer arithmetic does not go before buffer start".to_string()),
+                        );
+                    }
+                }
+            }
             check_expr_bounds(left, func_name, reports, arrays, current_line);
             check_expr_bounds(right, func_name, reports, arrays, current_line);
         }
