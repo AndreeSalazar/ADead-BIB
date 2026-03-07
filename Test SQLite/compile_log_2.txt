@@ -1,0 +1,11 @@
+­ƒö¿ ADead-BIB C Compiler
+   Source: sqlite3_pp.c
+   Target: sqlite3.exe
+   Step 1: Parsing C99...
+adb.exe : Error: "C parse error: Expected identifier, got LParen"
+En línea: 1 Carácter: 6
++ $r = & ..\target\release\adb.exe cc sqlite3_pp.c -o sqlite3.exe 2>&1
++      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error: "C parse...er, got LParen":String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

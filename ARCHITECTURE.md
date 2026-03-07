@@ -13,11 +13,11 @@
 
 ```
 SIN LINKER EXTERNO — NUNCA
-  ld     ❌ eliminado
-  lld    ❌ eliminado
+  ld       ❌ eliminado
+  lld      ❌ eliminado
   link.exe ❌ eliminado
-  gold   ❌ eliminado
-  mold   ❌ eliminado
+  gold     ❌ eliminado
+  mold     ❌ eliminado
 
 EL HEADER ES SUFICIENTE
   header_main.h → hereda TODO
