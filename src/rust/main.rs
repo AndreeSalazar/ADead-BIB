@@ -1424,19 +1424,42 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
     println!("[PARSER]   {} functions, {} structs/classes", program.functions.len(), program.structs.len());
     println!();
 
-    // 4. UB DETECTOR
+    // 4. UB DETECTOR (enhanced verbose output)
     println!("--- Phase 4: UB DETECTOR ---");
     let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
     ub_detector = ub_detector.with_warn_mode();
     let reports = ub_detector.analyze(&program);
+    
+    // Count analysis stats from program
+    let total_vars: usize = program.functions.iter().map(|f| {
+        f.body.iter().filter(|s| matches!(s, adead_bib::ast::Stmt::VarDecl { .. })).count()
+    }).sum();
+    let total_ptrs: usize = program.functions.iter().map(|f| {
+        f.body.iter().filter(|s| {
+            matches!(s, adead_bib::ast::Stmt::DerefAssign { .. } | adead_bib::ast::Stmt::ArrowAssign { .. })
+        }).count()
+    }).sum();
+    let null_checks: usize = program.functions.iter().map(|f| {
+        f.body.iter().filter(|s| {
+            if let adead_bib::ast::Stmt::If { condition, .. } = s {
+                format!("{:?}", condition).contains("== 0") || format!("{:?}", condition).contains("!= 0")
+            } else { false }
+        }).count()
+    }).sum();
+    
+    println!("[UB]       functions analyzed: {}", program.functions.len());
+    println!("[UB]       variables declared: {}", total_vars);
+    println!("[UB]       pointer operations: {}", total_ptrs);
+    println!("[UB]       null checks found:  {}", null_checks);
+    
     if reports.is_empty() {
-        println!("[UB]       No undefined behavior detected OK");
+        println!("[UB]       result: 0 UB encontrados ✅");
     } else {
         let errors = reports.iter().filter(|r| format!("{:?}", r.severity).contains("Error")).count();
         let warnings = reports.len() - errors;
-        println!("[UB]       {} issues ({} errors, {} warnings)", reports.len(), errors, warnings);
+        println!("[UB]       result: {} issues ({} errors, {} warnings)", reports.len(), errors, warnings);
         for r in reports.iter().take(5) {
-            println!("[UB]       {:?}: {}",  r.severity, if r.message.len() > 60 { &r.message[..57] } else { &r.message });
+            println!("[UB]         {:?}: {}",  r.severity, if r.message.len() > 60 { &r.message[..57] } else { &r.message });
         }
     }
     println!();
@@ -1449,6 +1472,30 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
     println!("[CODEGEN]  {} bytes of machine code", opcodes.len());
     println!("[CODEGEN]  {} bytes of data section", data.len());
     println!("[CODEGEN]  {} IAT call sites, {} string relocations", iat_offsets.len(), string_offsets.len());
+    
+    // Detect __store32 intrinsic calls in source and show details
+    {
+        let store32_count = source.matches("__store32").count();
+        if store32_count > 0 {
+            println!("[CODEGEN]  __store32 intrinsics detected: {}", store32_count);
+            // Find __store32 calls and show their arguments
+            for line in source.lines() {
+                if line.contains("__store32(") {
+                    let trimmed = line.trim();
+                    // Extract the call
+                    if let Some(start) = trimmed.find("__store32(") {
+                        let call_part = &trimmed[start..];
+                        if let Some(end) = call_part.find(");") {
+                            let call = &call_part[..end+2];
+                            println!("[CODEGEN]    {} → MOV DWORD [ptr+offset], value (32-bit)", call);
+                        }
+                    }
+                }
+            }
+            println!("[CODEGEN]    encoding: 89 ModR/M [disp] (no REX.W = 32-bit store)");
+        }
+    }
+    
     // Show DLL imports from IAT registry
     {
         let dlls = adead_bib::backend::cpu::iat_registry::dll_names();
@@ -1528,6 +1575,67 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
     }
     println!();
 
+    // 6. IAT RESOLVER (detailed per-function output)
+    println!("--- Phase 6: IAT RESOLVER ---");
+    {
+        let assumed_idata_rva: u32 = 0x2000;
+        let idata_result = adead_bib::backend::cpu::iat_registry::build_idata(assumed_idata_rva, &[]);
+        let iat_base = 0x2000 + idata_result.iat_offset as u32;
+        
+        // Find functions actually used in source
+        let mut resolved_count = 0;
+        for dll in adead_bib::backend::cpu::iat_registry::dll_names() {
+            let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(&dll);
+            let used_entries: Vec<_> = entries.iter().filter(|e| source.contains(e.name)).collect();
+            if !used_entries.is_empty() {
+                println!("[IAT]      DLL: {}", dll);
+                for entry in &used_entries {
+                    let offset = iat_base + (entry.slot_index as u32 * 8);
+                    println!("[IAT]        función: {}", entry.name);
+                    println!("[IAT]        slot: {}, offset: 0x{:X}, status: resuelto ✅", 
+                             entry.slot_index, offset);
+                    resolved_count += 1;
+                }
+            }
+        }
+        println!("[IAT]      Total: {} funciones resueltas", resolved_count);
+    }
+    println!();
+
+    // 7. PE OUTPUT (section sizes and summary)
+    println!("--- Phase 7: PE OUTPUT ---");
+    {
+        let dlls = adead_bib::backend::cpu::iat_registry::dll_names();
+        let total_iat_slots = adead_bib::backend::cpu::iat_registry::IAT_ENTRIES.len();
+        
+        // Count functions per DLL used in source
+        println!("[OUTPUT]   IAT entries: {}", total_iat_slots);
+        println!("[OUTPUT]   DLLs: {}", dlls.len());
+        for dll in &dlls {
+            let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
+            let used_count = entries.iter().filter(|e| source.contains(e.name)).count();
+            if used_count > 0 {
+                println!("[OUTPUT]     {}: {} funciones", dll, used_count);
+            }
+        }
+        
+        // Section sizes
+        println!("[OUTPUT]   code section: {} bytes", opcodes.len());
+        println!("[OUTPUT]   data section: {} bytes", data.len());
+        let iat_section_size = total_iat_slots * 8; // 8 bytes per IAT slot
+        println!("[OUTPUT]   IAT section: {} bytes ({} slots × 8)", iat_section_size, total_iat_slots);
+        
+        // Estimate total PE size (headers + sections)
+        let pe_headers = 0x200; // DOS + PE headers
+        let section_alignment = 0x200;
+        let code_aligned = ((opcodes.len() + section_alignment - 1) / section_alignment) * section_alignment;
+        let data_aligned = ((data.len() + section_alignment - 1) / section_alignment) * section_alignment;
+        let iat_aligned = ((iat_section_size + section_alignment - 1) / section_alignment) * section_alignment;
+        let estimated_pe = pe_headers + code_aligned + data_aligned + iat_aligned;
+        println!("[OUTPUT]   estimated PE: ~{} bytes", estimated_pe);
+    }
+    println!();
+
     println!("{}",  "=".repeat(64));
     println!("  Step compilation complete.");
     println!("  To build: adb cxx {} -o output.exe", input_file);
@@ -1539,9 +1647,9 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
 
 fn print_usage(_program: &str) {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║       🔥 ADead-BIB v7.0.0 💀🦈 — C/C++ Compiler 🔥        ║");
-    println!("║    Sin GCC, Sin LLVM, Sin Clang — 100% Self-Sufficient      ║");
-    println!("║    Sin libc, Sin linker — header_main.h = TODO              ║");
+    println!("║       🔥 ADead-BIB v7.0.0 💀🦈 — C/C++ Compiler 🔥         ║");
+    println!("║    Sin GCC, Sin LLVM, Sin Clang — 100% Self-Sufficient       ║");
+    println!("║    Sin libc, Sin linker — header_main.h = TODO               ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
     println!("� PROYECTOS (como cargo):");

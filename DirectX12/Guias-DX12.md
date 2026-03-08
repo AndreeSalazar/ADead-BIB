@@ -1,8 +1,8 @@
-# Guía: Aplicaciones Gráficas con ADead-BIB
+# Guía: DX12 HelloTriangle con ADead-BIB (9 Pasos)
 
 ## Introducción
 
-ADead-BIB puede compilar programas C++ que crean ventanas Windows y dibujan gráficos usando las APIs Win32/GDI. El compilador genera ejecutables PE nativos (`.exe`) que corren directamente en Windows x64 sin dependencias externas.
+ADead-BIB compila programas C++ que crean ventanas Windows y dibujan gráficos usando Win32/GDI y DirectX 12. El compilador genera ejecutables PE nativos (`.exe`) que corren directamente en Windows x64 sin dependencias externas.
 
 ## Arquitectura
 
@@ -10,26 +10,43 @@ ADead-BIB puede compilar programas C++ que crean ventanas Windows y dibujan grá
 main.cpp → C++ Parser → IR → ISA Compiler → x86-64 → PE Builder → .exe
                 ↓
         #include <header_main.h>
-        (Win32 + GDI + DX12 tipos, constantes, helpers)
+        (Win32 + GDI + DX12 tipos, constantes, COM interfaces)
 ```
 
 ### Componentes Clave
 
-- **Header `fastos_windows.h`** — Integrado en el compilador (`cpp_stdlib.rs`), provee:
-  - Tipos: `HWND`, `HDC`, `HINSTANCE`, `HPEN`, `HBRUSH`, `COLORREF`, etc.
-  - Constantes (`#define`): `WS_OVERLAPPEDWINDOW`, `SW_SHOW`, `WM_*`, `PS_SOLID`, etc.
-  - Helpers inline: `RGB()`, `MessageLoop()`, `DrawLine()`, `AllocMSG()`
-  - Structs DX12: `GUID`, `ComPtr<T>`, `XMFLOAT2/3/4`, `DXGI_SWAP_CHAIN_DESC`
+- **Headers integrados** (`cpp_stdlib.rs`):
+  - `fastos_windows.h` — Tipos, constantes Win32, IUnknown, GUID
+  - `fastos_wrl.h` — ComPtr\<T\> template
+  - `fastos_d3d12.h` — ID3D12Device, CommandQueue, CommandList, Fence, RTV, PSO
+  - `fastos_dxgi.h` — IDXGIFactory4, SwapChain, CreateSwapChainForHwnd
 
-- **IAT Registry** (`iat_registry.rs`) — 42 slots, 6 DLLs:
-  - `msvcrt.dll`: printf, scanf, malloc, free, memset
-  - `kernel32.dll`: GetModuleHandleA/W, ExitProcess, CreateEventA
+- **IAT Registry** (`iat_registry.rs`) — **47 slots, 6 DLLs**:
+  - `msvcrt.dll`: printf, scanf, malloc, free, memset, memcpy
+  - `kernel32.dll`: GetModuleHandleA/W, ExitProcess, CreateEventA, WaitForSingleObject, CloseHandle, Sleep
   - `user32.dll`: CreateWindowExA/W, ShowWindow, GetDC, PeekMessageA, etc.
   - `gdi32.dll`: SetPixel, CreatePen, LineTo, MoveToEx, SelectObject, etc.
-  - `d3d12.dll`: D3D12CreateDevice, D3D12GetDebugInterface
+  - `d3d12.dll`: D3D12CreateDevice, D3D12GetDebugInterface, D3D12SerializeRootSignature
   - `dxgi.dll`: CreateDXGIFactory1, CreateDXGIFactory2
 
 - **Dead Code Elimination** — Solo compila funciones reachable desde `main()`.
+
+## Pipeline DX12 (9 Pasos)
+
+```
+Paso 0: Window         ✅ CreateWindowExA (12 args, main only)
+Paso 1: Device         ✅ D3D12CreateDevice (IAT direct call)
+Paso 2: Factory        ✅ CreateDXGIFactory1 (IAT direct call)
+Paso 3: Command Queue  ⚠️ device->CreateCommandQueue (COM vtable)
+Paso 4: RTV Heap       ⚠️ device->CreateDescriptorHeap (COM vtable)
+Paso 5: Command List   ⚠️ device->CreateCommandList (COM vtable)
+Paso 6: Root Signature ✅ D3D12SerializeRootSignature (IAT direct call)
+Paso 7: Pipeline State ⚠️ needs shader bytecode + COM vtable
+Paso 8: Vertex Buffer  ✅ malloc'd CPU buffer (84 bytes, 3 vertices)
+Paso 9: Render Loop    ⚠️ Present + fence sync (COM vtable)
+```
+
+**Leyenda:** ✅ = funciona via IAT | ⚠️ = necesita COM vtable dispatch
 
 ## Inicio Rápido
 
@@ -39,17 +56,20 @@ main.cpp → C++ Parser → IR → ISA Compiler → x86-64 → PE Builder → .e
 adb cxx DirectX12/dx12_test/src/main.cpp -o DirectX12/dx12_test/bin/dx12_hello.exe
 ```
 
-### 2. Diagnóstico paso a paso
+### 2. Step Mode (diagnóstico del pipeline)
 
 ```bash
 adb step DirectX12/dx12_test/src/main.cpp
 ```
 
-Muestra 7 fases: SOURCE → PREPROCESSOR → LEXER → PARSER+IR → UB DETECTOR → CODEGEN, incluyendo:
-- Funciones compiladas y IR statements
-- Bytes de código y data section
-- IAT call sites y DLLs usadas
-- Categorías de API detectadas (Win32, GDI, DX12, etc.)
+Muestra 7 fases del compilador + categorías de API:
+- **SOURCE** — líneas, bytes
+- **PREPROCESSOR** — #include resolution (header_main.h → fastos_*.h)
+- **LEXER** — tokens generados
+- **PARSER+IR** — funciones, structs, typedefs, IR statements
+- **UB DETECTOR** — undefined behavior checks
+- **CODEGEN** — bytes de código, data section, IAT calls
+- **OUTPUT** — DLLs usadas, categorías: Win32, GDI, DX12, DXGI
 
 ### 3. Ejecutar
 
@@ -57,163 +77,125 @@ Muestra 7 fases: SOURCE → PREPROCESSOR → LEXER → PARSER+IR → UB DETECTOR
 DirectX12\dx12_test\bin\dx12_hello.exe
 ```
 
-## Ejemplo: HelloTriangle (GDI)
-
-```cpp
-#include <header_main.h>
-
-HWND g_hwnd;
-
-int main() {
-    // 1. Crear ventana (CreateWindowExA — 12 args, directo en main)
-    HINSTANCE hInstance = GetModuleHandleA(0);
-    HCURSOR cur = LoadCursorW(0, 32512);
-    g_hwnd = CreateWindowExA(
-        0, "STATIC", "HelloTriangle",
-        0x00CF0000, 100, 100, 1280, 720,
-        0, 0, hInstance, 0
-    );
-    ShowWindow(g_hwnd, 5);
-
-    // 2. Dibujar triángulo gradiente (SetPixel scanline fill)
-    HDC hdc = GetDC(g_hwnd);
-    int y = 100;
-    while (y <= 550) {
-        int t = y - 100;
-        int lx = 640 - 300 * t / 450;
-        int rx = 640 + 300 * t / 450;
-        int r = 255 - t / 2;
-        int g = t / 3;
-        int b = t / 4;
-        if (r < 0) { r = 0; }
-        int c = r + g * 256 + b * 65536;
-        int x = lx;
-        while (x <= rx) {
-            SetPixel(hdc, x, y, c);
-            x = x + 1;
-        }
-        y = y + 2;
-    }
-
-    // 3. Outline blanco (CreatePen + LineTo)
-    HPEN pen = CreatePen(0, 3, 0x00FFFFFF);
-    SelectObject(hdc, pen);
-    MoveToEx(hdc, 640, 100, 0);
-    LineTo(hdc, 340, 550);
-    LineTo(hdc, 940, 550);
-    LineTo(hdc, 640, 100);
-    DeleteObject(pen);
-    ReleaseDC(g_hwnd, hdc);
-
-    // 4. Message loop
-    void* pmsg = malloc(64);
-    int running = 1;
-    while (running) {
-        if (PeekMessageA(pmsg, 0, 0, 0, 1)) {
-            TranslateMessage(pmsg);
-            DispatchMessageA(pmsg);
-        }
-    }
-    return 0;
-}
+**Output esperado (con GPU DX12):**
+```
+=== ADead-BIB DX12 HelloTriangle (9 Pasos) ===
+[PASO 0] Creando ventana...
+[PASO 0] hInstance=0000000140000000
+[PASO 0] OK hwnd=0x001A0B34
+[PASO 1] Creando D3D12 Device...
+[PASO 1] D3D12CreateDevice hr=0x00000000 device=0x...
+[PASO 1] OK Device created!
+[PASO 2] Creando DXGI Factory...
+[PASO 2] CreateDXGIFactory1 hr=0x00000000 factory=0x...
+[PASO 2] OK Factory created!
+[PASO 3] Creando Command Queue...
+[PASO 3] PENDING: Command Queue (needs COM vtable dispatch)
+...
+=== DX12 Pipeline Status ===
+[PASO 0] Window:          OK
+[PASO 1] Device:          OK
+[PASO 2] Factory:         OK
+[PASO 6] Root Signature:  OK
+[PASO 8] Vertex Buffer:   PREPARED (84 bytes)
+[FALLBACK] Drawing GDI triangle...
+[LOOP] Entering message loop...
 ```
 
-**Output confirmado:**
+**Output esperado (sin GPU DX12 — e.g. VM):**
 ```
-=== ADead-BIB HelloTriangle ===
-Ventana: 0x00040B54
-Triangulo dibujado!
-Loop (running indefinitely)
+[PASO 1] WARN: Device creation failed (hr=0x80004005)
+[PASO 1] Falling back to GDI triangle rendering...
+[PASO 1] GDI triangle drawn (fallback)
 ```
 
-## Constantes Disponibles (`#define`)
+## Constantes DX12/DXGI Disponibles (`#define`)
 
-### Window Styles
+| Constante | Valor | Uso |
+|---|---|---|
+| `D3D_FEATURE_LEVEL_11_0` | `0xB000` | Feature level mínimo |
+| `D3D_FEATURE_LEVEL_12_0` | `0xC000` | Feature level DX12 |
+| `D3D12_COMMAND_LIST_TYPE_DIRECT` | `0` | Command list tipo directo |
+| `D3D12_DESCRIPTOR_HEAP_TYPE_RTV` | `2` | Heap para render targets |
+| `D3D12_FENCE_FLAG_NONE` | `0` | Fence sin flags |
+| `D3D12_RESOURCE_STATE_PRESENT` | `0` | Estado present |
+| `D3D12_RESOURCE_STATE_RENDER_TARGET` | `4` | Estado render target |
+| `DXGI_FORMAT_R8G8B8A8_UNORM` | `28` | Formato RGBA 8-bit |
+| `DXGI_SWAP_EFFECT_FLIP_DISCARD` | `4` | Swap effect moderno |
+| `DXGI_USAGE_RENDER_TARGET_OUTPUT` | `0x20` | Usage render target |
+
+## Constantes Win32/GDI
+
 | Constante | Valor |
 |---|---|
 | `WS_OVERLAPPEDWINDOW` | `0x00CF0000` |
-| `WS_VISIBLE` | `0x10000000` |
-| `WS_CAPTION` | `0x00C00000` |
-| `WS_POPUP` | `0x80000000` |
-
-### ShowWindow
-| Constante | Valor |
-|---|---|
 | `SW_SHOW` | `5` |
-| `SW_HIDE` | `0` |
-| `SW_SHOWNORMAL` | `1` |
-
-### Window Messages
-| Constante | Valor |
-|---|---|
-| `WM_CLOSE` | `0x0010` |
-| `WM_DESTROY` | `0x0002` |
-| `WM_PAINT` | `0x000F` |
-| `WM_KEYDOWN` | `0x0100` |
-
-### GDI
-| Constante | Valor |
-|---|---|
+| `WM_CLOSE / WM_DESTROY / WM_PAINT` | `0x10 / 0x02 / 0x0F` |
 | `PS_SOLID` | `0` |
-| `PS_DASH` | `1` |
-| `NULL_BRUSH` | `5` |
-| `WHITE_PEN` | `6` |
-
-### Virtual Keys
-| Constante | Valor |
-|---|---|
 | `VK_ESCAPE` | `0x1B` |
-| `VK_RETURN` | `0x0D` |
-| `VK_SPACE` | `0x20` |
-| `VK_LEFT/UP/RIGHT/DOWN` | `0x25-0x28` |
 
-### DX12/DXGI
-| Constante | Valor |
-|---|---|
-| `D3D_FEATURE_LEVEL_12_0` | `0xC000` |
-| `DXGI_FORMAT_R8G8B8A8_UNORM` | `28` |
-| `DXGI_SWAP_EFFECT_FLIP_DISCARD` | `4` |
-| `D3D12_COMMAND_LIST_TYPE_DIRECT` | `0` |
+## COM Interfaces Disponibles
 
-## Helpers Inline Disponibles
+### ID3D12Device (fastos_d3d12.h)
+- `CreateCommandQueue`, `CreateCommandAllocator`, `CreateCommandList`
+- `CreateFence`, `CreateDescriptorHeap`, `CreateRenderTargetView`
+- `CreateCommittedResource`, `CreateRootSignature`, `CreateGraphicsPipelineState`
 
-| Helper | Uso | Notas |
-|---|---|---|
-| `RGB(r,g,b)` | Color COLORREF | 3 args, funciona en cualquier contexto |
-| `HIWORD(x)` | Bits altos | `(x >> 16) & 0xFFFF` |
-| `LOWORD(x)` | Bits bajos | `x & 0xFFFF` |
-| `SUCCEEDED(hr)` | Check HRESULT | `hr >= 0` |
-| `FAILED(hr)` | Check HRESULT | `hr < 0` |
-| `AllocMSG()` | Buffer MSG | `malloc(64)` — usa esto para PeekMessageA |
-| `DrawLine(hdc,x1,y1,x2,y2,color,width)` | Línea GDI | Crea pen, dibuja, limpia |
-| `MessageLoop()` | Loop de mensajes | PeekMessageA con Translate+Dispatch |
+### ID3D12GraphicsCommandList
+- `Close`, `Reset`, `RSSetViewports`, `RSSetScissorRects`
+- `ResourceBarrier`, `OMSetRenderTargets`, `ClearRenderTargetView`
+- `IASetPrimitiveTopology`, `IASetVertexBuffers`, `DrawInstanced`
+
+### IDXGIFactory4 (fastos_dxgi.h)
+- `CreateSwapChainForHwnd`, `EnumAdapters1`
+
+### IDXGISwapChain3
+- `Present`, `GetBuffer`, `GetCurrentBackBufferIndex`
 
 ## Limitaciones Conocidas
 
-1. **`CreateWindowExA` en `main()` solamente** — La llamada de 12 argumentos debe hacerse directamente en `main()`. El codegen no soporta >4 args stack correctamente desde funciones anidadas.
+1. **`CreateWindowExA` en `main()` solamente** — 12 argumentos requiere generación directa en main. No desde funciones anidadas.
 
-2. **MSG struct via `malloc(64)`** — No usar `MSG msg;` en stack. El codegen usa 8 bytes por campo, lo que no coincide con el layout real de MSG. Usar `malloc(64)` y pasar el puntero a `PeekMessageA`.
+2. **MSG struct via `malloc(64)`** — El codegen usa 8 bytes por campo. Usar `malloc(64)` como buffer para PeekMessageA.
 
-3. **Clase de ventana `"STATIC"`** — Usar la clase built-in `"STATIC"` en vez de `RegisterClassExA`. La struct `WNDCLASSEXA` tiene issues de ABI con el codegen.
+3. **Clase de ventana `"STATIC"`** — Usar la clase built-in. La struct `WNDCLASSEXA` tiene issues de ABI.
 
-4. **Dead Code Elimination activo** — Solo se compilan funciones alcanzables desde `main()`. Las funciones del header que no uses no generan código.
+4. **COM vtable calls** — Las llamadas a métodos COM (device->CreateCommandQueue, etc.) requieren dispatch indirecto: `load [obj+0] → vtable, load [vtable+idx*8] → method, call method(obj, args)`. El ISA compiler actualmente compila MethodCall como llamadas a funciones locales por label, no indirectas por vtable.
 
-## Pipeline DX12 (Futuro)
+5. **Struct ABI** — El codegen usa 8 bytes por campo. Las structs DX12 (DXGI_SWAP_CHAIN_DESC1, etc.) se preparan via `malloc + memset` con offsets manuales.
 
-El header incluye tipos y constantes DX12/DXGI para trabajo futuro:
-- `D3D12CreateDevice`, `CreateDXGIFactory1/2` registrados en IAT
-- `ComPtr<T>` template con Get(), GetAddressOf(), Reset()
-- `XMFLOAT2/3/4` structs para vértices
-- `DXGI_SWAP_CHAIN_DESC` struct
+6. **Shader bytecode** — HLSL → DXBC/DXIL requiere compilación separada. Futuro: ADead-BIB HLSL frontend o bytecode pre-compilado.
 
-Para un pipeline DX12 completo se necesita:
-1. Soporte COM (interfaces virtuales, QueryInterface)
-2. Struct ABI compliant (actualmente 8-byte fields)
-3. Buffer upload heap + vertex buffer
-4. Shader compilation (HLSL → DXBC/DXIL)
+## Roadmap: COM Vtable Dispatch
+
+Para completar los pasos ⚠️, el ISA compiler necesita:
+
+```
+1. Emit: mov rax, [rcx]        ; load vtable ptr from this
+2. Emit: call [rax + idx*8]    ; indirect call through vtable
+3. With: this in RCX (MSVC x64 thiscall)
+```
+
+**Prioridad:**
+1. **Paso 3** — CreateCommandQueue (vtable[4]) → habilita GPU commands
+2. **Paso 4** — CreateDescriptorHeap → habilita render targets
+3. **Paso 5** — CreateCommandAllocator + CreateCommandList → habilita recording
+4. **Paso 9** — ExecuteCommandLists + Present + Signal → habilita rendering
+
+## Helpers Inline
+
+| Helper | Uso |
+|---|---|
+| `RGB(r,g,b)` | Color COLORREF |
+| `HIWORD(x)` / `LOWORD(x)` | Bits altos/bajos |
+| `SUCCEEDED(hr)` / `FAILED(hr)` | Check HRESULT |
+| `AllocMSG()` | Buffer MSG heap |
+| `DrawLine(hdc,x1,y1,x2,y2,color,width)` | Línea GDI |
+| `MessageLoop()` | Loop de mensajes |
 
 ## Estadísticas
 
-- **539/539** unit tests passing
-- **PE output**: ~5KB ejecutable, 42 IAT slots, 6 DLLs
-- **Triángulo GDI**: Gradient fill + outline, ventana 1280x720
+- **47 IAT slots**, 6 DLLs (msvcrt, kernel32, user32, gdi32, d3d12, dxgi)
+- **PE output**: ~6-8KB ejecutable
+- **GDI fallback**: Gradient fill + white outline, ventana 1280x720
+- **DX12 pasos completados**: 4/9 via IAT (Pasos 0,1,2,6), 1 preparado (Paso 8)

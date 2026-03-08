@@ -206,6 +206,7 @@ impl Encoder {
     pub fn encode_op(&mut self, op: &ADeadOp) {
         match op {
             ADeadOp::Mov { dst, src } => self.encode_mov(dst, src),
+            ADeadOp::Store32 { base, disp, src } => self.encode_store32(base, *disp, src),
             ADeadOp::MovZx { dst, src } => self.encode_movzx(dst, src),
             ADeadOp::Lea { dst, src } => self.encode_lea(dst, src),
             ADeadOp::Add { dst, src } => self.encode_add(dst, src),
@@ -745,6 +746,40 @@ impl Encoder {
             // [base+disp32] — mod=10
             let modrm = self.modrm(2, reg_idx, base_idx);
             self.emit(&[rex, opcode, modrm]);
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Store32: mov DWORD [base+disp], reg — 32-bit store (no REX.W)
+    /// Encodes: [optional REX] 89 ModR/M [disp]
+    /// Used for writing 4-byte fields (GUID Data1/Data2/Data3, D3D12 struct fields)
+    fn encode_store32(&mut self, base: &Reg, disp: i32, src: &Reg) {
+        let (reg_idx, reg_ext) = reg_index(src);
+        let (base_idx, base_ext) = reg_index(base);
+        // REX.W = false → 32-bit operand size
+        let rex = self.rex_wrxb(false, reg_ext, base_ext);
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        if disp == 0 && base_idx != 5 {
+            let modrm = self.modrm(0, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[rex, 0x89, modrm]);
+            } else {
+                self.emit(&[0x89, modrm]); // no REX needed
+            }
+        } else if fits_i8 {
+            let modrm = self.modrm(1, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[rex, 0x89, modrm, disp as u8]);
+            } else {
+                self.emit(&[0x89, modrm, disp as u8]);
+            }
+        } else {
+            let modrm = self.modrm(2, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[rex, 0x89, modrm]);
+            } else {
+                self.emit(&[0x89, modrm]);
+            }
             self.emit_i32(disp);
         }
     }

@@ -718,9 +718,18 @@ HMODULE GetModuleHandleA(LPCSTR lpModuleName);
 HMODULE GetModuleHandleW(LPCWSTR lpModuleName);
 void ExitProcess(UINT uExitCode);
 HANDLE CreateEventA(void* lpSecurity, BOOL bManualReset, BOOL bInitialState, LPCSTR lpName);
+DWORD WaitForSingleObject(HANDLE hHandle, DWORD dwMilliseconds);
+BOOL CloseHandle(HANDLE hObject);
+void Sleep(DWORD dwMilliseconds);
 
 // ===================== MSVCRT ====================================
 void* memset(void* dest, int c, int count);
+void* memcpy(void* dest, const void* src, int count);
+
+// ===================== INTRINSICS ================================
+// __store32(ptr, byte_offset, value) — writes 4 bytes at ptr+offset
+// Used for GUID construction and 4-byte struct field writes
+void __store32(void* ptr, int offset, int value);
 
 // ===================== USER32 (ANSI) =============================
 UINT RegisterClassExA(const WNDCLASSEXA* lpwcx);
@@ -762,6 +771,7 @@ BOOL Polygon(HDC hdc, const void* apt, int cpt);
 // ===================== D3D12 =====================================
 HRESULT D3D12CreateDevice(void* pAdapter, int MinimumFeatureLevel, void* riid, void** ppDevice);
 HRESULT D3D12GetDebugInterface(void* riid, void** ppvDebug);
+HRESULT D3D12SerializeRootSignature(const void* pRootSignature, UINT Version, void** ppBlob, void** ppErrorBlob);
 
 // ===================== DXGI ======================================
 HRESULT CreateDXGIFactory1(void* riid, void** ppFactory);

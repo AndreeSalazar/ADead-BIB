@@ -4425,6 +4425,35 @@ impl IsaCompiler {
     }
 
     fn emit_call(&mut self, name: &str, args: &[Expr]) {
+        // ========== INTRINSIC: __store32(ptr, offset, value) ==========
+        // Emits a 32-bit store: mov DWORD [ptr + offset], value
+        // Used for GUID construction and 4-byte struct field writes
+        if name == "__store32" && args.len() == 3 {
+            // Evaluate value (arg 2) → push
+            self.emit_expression(&args[2]);
+            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+            // Evaluate ptr (arg 0) → RAX
+            self.emit_expression(&args[0]);
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RBX),
+                src: Operand::Reg(Reg::RAX),
+            });
+            // Pop value into RAX
+            self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+            // Get offset as constant
+            let offset = match &args[1] {
+                Expr::Number(n) => *n as i32,
+                _ => 0,
+            };
+            // Emit Store32: mov DWORD [RBX + offset], EAX
+            self.ir.emit(ADeadOp::Store32 {
+                base: Reg::RBX,
+                disp: offset,
+                src: Reg::RAX,
+            });
+            return;
+        }
+
         // Windows x64 ABI: first 4 args in RCX, RDX, R8, R9
         // Args 5+ go on the stack at [rsp+32], [rsp+40], etc. (after shadow space)
         let total_args = args.len();
