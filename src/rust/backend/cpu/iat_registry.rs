@@ -17,36 +17,60 @@ pub struct IatEntry {
 }
 
 /// The canonical IAT table — order matters! slot_index = position in IAT.
+/// Inspired by Rust windows-rs: use ANSI (A) variants to avoid wide strings.
 pub const IAT_ENTRIES: &[IatEntry] = &[
-    // msvcrt.dll (slots 0-3)
+    // msvcrt.dll (slots 0-4)
     IatEntry { dll: "msvcrt.dll",   name: "printf",               slot_index: 0  },
     IatEntry { dll: "msvcrt.dll",   name: "scanf",                slot_index: 1  },
     IatEntry { dll: "msvcrt.dll",   name: "malloc",               slot_index: 2  },
     IatEntry { dll: "msvcrt.dll",   name: "free",                 slot_index: 3  },
-    // kernel32.dll (slots 4-5)
-    IatEntry { dll: "kernel32.dll", name: "GetModuleHandleW",     slot_index: 4  },
-    IatEntry { dll: "kernel32.dll", name: "ExitProcess",          slot_index: 5  },
-    // user32.dll (slots 6-16)
-    IatEntry { dll: "user32.dll",   name: "RegisterClassExW",     slot_index: 6  },
-    IatEntry { dll: "user32.dll",   name: "CreateWindowExW",      slot_index: 7  },
-    IatEntry { dll: "user32.dll",   name: "ShowWindow",           slot_index: 8  },
-    IatEntry { dll: "user32.dll",   name: "UpdateWindow",         slot_index: 9  },
-    IatEntry { dll: "user32.dll",   name: "GetMessageW",          slot_index: 10 },
-    IatEntry { dll: "user32.dll",   name: "TranslateMessage",     slot_index: 11 },
-    IatEntry { dll: "user32.dll",   name: "DispatchMessageW",     slot_index: 12 },
-    IatEntry { dll: "user32.dll",   name: "PostQuitMessage",      slot_index: 13 },
-    IatEntry { dll: "user32.dll",   name: "DefWindowProcW",       slot_index: 14 },
-    IatEntry { dll: "user32.dll",   name: "LoadCursorW",          slot_index: 15 },
-    IatEntry { dll: "user32.dll",   name: "AdjustWindowRect",     slot_index: 16 },
-    // d3d12.dll (slots 17-18)
-    IatEntry { dll: "d3d12.dll",    name: "D3D12CreateDevice",       slot_index: 17 },
-    IatEntry { dll: "d3d12.dll",    name: "D3D12GetDebugInterface",  slot_index: 18 },
-    // dxgi.dll (slots 19-20)
-    IatEntry { dll: "dxgi.dll",     name: "CreateDXGIFactory1",   slot_index: 19 },
-    IatEntry { dll: "dxgi.dll",     name: "CreateDXGIFactory2",   slot_index: 20 },
+    IatEntry { dll: "msvcrt.dll",   name: "memset",               slot_index: 4  },
+    // kernel32.dll (slots 5-8)
+    IatEntry { dll: "kernel32.dll", name: "GetModuleHandleA",     slot_index: 5  },
+    IatEntry { dll: "kernel32.dll", name: "GetModuleHandleW",     slot_index: 6  },
+    IatEntry { dll: "kernel32.dll", name: "ExitProcess",          slot_index: 7  },
+    IatEntry { dll: "kernel32.dll", name: "CreateEventA",         slot_index: 8  },
+    // user32.dll (slots 9-23) — both A and W variants
+    IatEntry { dll: "user32.dll",   name: "RegisterClassExA",     slot_index: 9  },
+    IatEntry { dll: "user32.dll",   name: "RegisterClassExW",     slot_index: 10 },
+    IatEntry { dll: "user32.dll",   name: "CreateWindowExA",      slot_index: 11 },
+    IatEntry { dll: "user32.dll",   name: "CreateWindowExW",      slot_index: 12 },
+    IatEntry { dll: "user32.dll",   name: "ShowWindow",           slot_index: 13 },
+    IatEntry { dll: "user32.dll",   name: "UpdateWindow",         slot_index: 14 },
+    IatEntry { dll: "user32.dll",   name: "PeekMessageA",         slot_index: 15 },
+    IatEntry { dll: "user32.dll",   name: "GetMessageW",          slot_index: 16 },
+    IatEntry { dll: "user32.dll",   name: "TranslateMessage",     slot_index: 17 },
+    IatEntry { dll: "user32.dll",   name: "DispatchMessageA",     slot_index: 18 },
+    IatEntry { dll: "user32.dll",   name: "DispatchMessageW",     slot_index: 19 },
+    IatEntry { dll: "user32.dll",   name: "PostQuitMessage",      slot_index: 20 },
+    IatEntry { dll: "user32.dll",   name: "DefWindowProcA",       slot_index: 21 },
+    IatEntry { dll: "user32.dll",   name: "DefWindowProcW",       slot_index: 22 },
+    IatEntry { dll: "user32.dll",   name: "LoadCursorW",          slot_index: 23 },
+    IatEntry { dll: "user32.dll",   name: "AdjustWindowRect",     slot_index: 24 },
+    // gdi32.dll (slots 25-33) — GDI rendering functions
+    IatEntry { dll: "gdi32.dll",    name: "SetPixel",                slot_index: 25 },
+    IatEntry { dll: "gdi32.dll",    name: "CreateSolidBrush",       slot_index: 26 },
+    IatEntry { dll: "gdi32.dll",    name: "DeleteObject",           slot_index: 27 },
+    IatEntry { dll: "gdi32.dll",    name: "SelectObject",           slot_index: 28 },
+    IatEntry { dll: "gdi32.dll",    name: "Rectangle",              slot_index: 29 },
+    IatEntry { dll: "gdi32.dll",    name: "CreatePen",              slot_index: 30 },
+    IatEntry { dll: "gdi32.dll",    name: "MoveToEx",               slot_index: 31 },
+    IatEntry { dll: "gdi32.dll",    name: "LineTo",                 slot_index: 32 },
+    IatEntry { dll: "gdi32.dll",    name: "Polygon",                slot_index: 33 },
+    // user32.dll extras (slots 34-36) — DC + painting
+    IatEntry { dll: "user32.dll",   name: "GetDC",                  slot_index: 34 },
+    IatEntry { dll: "user32.dll",   name: "ReleaseDC",              slot_index: 35 },
+    IatEntry { dll: "user32.dll",   name: "InvalidateRect",         slot_index: 36 },
+    IatEntry { dll: "user32.dll",   name: "FillRect",               slot_index: 37 },
+    // d3d12.dll (slots 38-39)
+    IatEntry { dll: "d3d12.dll",    name: "D3D12CreateDevice",       slot_index: 38 },
+    IatEntry { dll: "d3d12.dll",    name: "D3D12GetDebugInterface",  slot_index: 39 },
+    // dxgi.dll (slots 40-41)
+    IatEntry { dll: "dxgi.dll",     name: "CreateDXGIFactory1",   slot_index: 40 },
+    IatEntry { dll: "dxgi.dll",     name: "CreateDXGIFactory2",   slot_index: 41 },
 ];
 
-pub const IAT_SLOT_COUNT: usize = 21;
+pub const IAT_SLOT_COUNT: usize = 42;
 
 /// Get the unique DLL names in order of first appearance
 pub fn dll_names() -> Vec<&'static str> {

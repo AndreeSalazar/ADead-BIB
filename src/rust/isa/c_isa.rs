@@ -47,6 +47,18 @@ pub fn c99_sizeof(ty: &Type) -> i32 {
             "double" => 8,
             "long double" => 8, // Simplified: treat as double
             "size_t" | "ptrdiff_t" | "intptr_t" | "uintptr_t" => 8,
+            // Windows typedefs — 1 byte
+            "BYTE" | "UINT8" => 1,
+            // Windows typedefs — 2 bytes
+            "WORD" | "UINT16" | "WCHAR" => 2,
+            // Windows typedefs — 4 bytes
+            "UINT" | "UINT32" | "DWORD" | "INT" | "LONG" | "HRESULT" | "BOOL" | "FLOAT" => 4,
+            // Windows typedefs — 8 bytes (pointers and 64-bit integers)
+            "UINT64" | "ULONG_PTR" | "SIZE_T" | "ULONGLONG" | "LONGLONG" | "INT64"
+            | "WPARAM" | "LPARAM" | "LRESULT"
+            | "HANDLE" | "HWND" | "HINSTANCE" | "HMODULE" | "HDC" | "HICON" | "HCURSOR"
+            | "HBRUSH" | "HMENU" | "HMONITOR" | "LPVOID" | "LPCVOID"
+            | "LPSTR" | "LPCSTR" | "LPWSTR" | "LPCWSTR" | "WNDPROC" => 8,
             "void" => 0,
             _ => 8, // Unknown named type → pointer-sized default
         },

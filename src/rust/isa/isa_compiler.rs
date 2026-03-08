@@ -1386,16 +1386,8 @@ impl IsaCompiler {
                     dst: Operand::Reg(Reg::RCX),
                     src: Operand::Reg(Reg::RAX),
                 });
-                // Shadow space + call free via IAT
-                self.ir.emit(ADeadOp::Sub {
-                    dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm8(32),
-                });
-                self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2068 });
-                self.ir.emit(ADeadOp::Add {
-                    dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm8(32),
-                });
+                // Call free via dynamic IAT lookup
+                self.emit_call_iat("free");
             }
 
             // OOP field assignment: self.field = value or obj.field = value (GCC/LLVM ABI)
@@ -1558,8 +1550,14 @@ impl IsaCompiler {
 
                 // Determine variable category and allocation
                 let is_array = matches!(var_type, Type::Array(_, _));
-                let is_struct =
-                    matches!(var_type, Type::Struct(_) | Type::Named(_) | Type::Class(_));
+                // Only treat as struct if we have an actual layout for it
+                // Typedefs like HINSTANCE (void*), HRESULT (long) are Named but are scalars
+                let is_struct = match var_type {
+                    Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                        self.class_layouts.contains_key(n)
+                    }
+                    _ => false,
+                };
 
                 if is_array {
                     // If this array var was already registered as a struct field (e.g., c.data),
@@ -4198,16 +4196,8 @@ impl IsaCompiler {
                     dst: Operand::Reg(Reg::RCX),
                     src: Operand::Reg(Reg::RAX),
                 });
-                // Shadow space + call malloc via IAT
-                self.ir.emit(ADeadOp::Sub {
-                    dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm8(32),
-                });
-                self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2060 });
-                self.ir.emit(ADeadOp::Add {
-                    dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm8(32),
-                });
+                // Call malloc via dynamic IAT lookup
+                self.emit_call_iat("malloc");
                 // Result (pointer) is in RAX
             }
             // ========== REALLOC ==========
@@ -4218,15 +4208,8 @@ impl IsaCompiler {
                     dst: Operand::Reg(Reg::RCX),
                     src: Operand::Reg(Reg::RAX),
                 });
-                self.ir.emit(ADeadOp::Sub {
-                    dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm8(32),
-                });
-                self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2060 });
-                self.ir.emit(ADeadOp::Add {
-                    dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm8(32),
-                });
+                // Call malloc via dynamic IAT lookup
+                self.emit_call_iat("malloc");
                 let _ = ptr; // TODO: proper realloc with ptr as first arg
             }
             // ========== CAST ==========
@@ -4277,20 +4260,40 @@ impl IsaCompiler {
         }
     }
 
-    fn emit_call(&mut self, name: &str, args: &[Expr]) {
-        // Evaluate all arguments first, pushing results to stack.
-        // This prevents arg register clobbering when evaluating later args
-        // (temp allocator uses RCX/RDX/R8/R9 which are also arg registers).
-        let arg_count = args.len().min(4);
+    /// Check if a Named type has a real struct layout (vs being a typedef like HINSTANCE)
+    fn is_real_struct_type(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Struct(n) | Type::Class(n) => self.class_layouts.contains_key(n),
+            Type::Named(n) => self.class_layouts.contains_key(n),
+            _ => false,
+        }
+    }
 
-        // Phase 1: Evaluate each arg, push result to stack
-        // For struct arguments, pass address (LEA) instead of value (MSVC x64 ABI)
-        for arg in args.iter().take(4) {
-            // Check if argument is a struct variable - pass by reference
+    fn emit_call(&mut self, name: &str, args: &[Expr]) {
+        // Windows x64 ABI: first 4 args in RCX, RDX, R8, R9
+        // Args 5+ go on the stack at [rsp+32], [rsp+40], etc. (after shadow space)
+        let total_args = args.len();
+        let reg_args = total_args.min(4);
+        let stack_args = if total_args > 4 { total_args - 4 } else { 0 };
+
+        // Phase 1: Push stack args (5+) in REVERSE order onto stack
+        // These will sit above the shadow space after we allocate it
+        if stack_args > 0 {
+            for i in (4..total_args).rev() {
+                self.emit_expression(&args[i]);
+                self.ir.emit(ADeadOp::Push {
+                    src: Operand::Reg(Reg::RAX),
+                });
+            }
+        }
+
+        // Phase 2: Evaluate register args (1-4), push to stack temporarily
+        for i in 0..reg_args {
+            let arg = &args[i];
+            // Check if argument is a struct variable with real layout - pass by reference
             if let Expr::Variable(var_name) = arg {
-                if let Some(ty) = self.variable_types.get(var_name) {
-                    if matches!(ty, Type::Struct(_) | Type::Named(_) | Type::Class(_)) {
-                        // Struct: pass address instead of value
+                if let Some(ty) = self.variable_types.get(var_name).cloned() {
+                    if self.is_real_struct_type(&ty) {
                         if let Some(&offset) = self.variables.get(var_name) {
                             self.ir.emit(ADeadOp::Lea {
                                 dst: Reg::RAX,
@@ -4314,8 +4317,8 @@ impl IsaCompiler {
             });
         }
 
-        // Phase 2: Pop results into arg registers (reverse order)
-        for i in (0..arg_count).rev() {
+        // Phase 3: Pop register args into arg registers (reverse order)
+        for i in (0..reg_args).rev() {
             let dst = self.arg_register(i);
             self.ir.emit(ADeadOp::Pop { dst });
         }
@@ -4327,7 +4330,6 @@ impl IsaCompiler {
             "malloc" => Some("malloc"),
             "free" => Some("free"),
             _ => {
-                // Check IAT registry for Win32/DX12 functions
                 if iat_registry::slot_for_function(name).is_some() {
                     Some(name)
                 } else {
@@ -4336,7 +4338,30 @@ impl IsaCompiler {
             }
         };
         if let Some(iat_func) = iat_name {
-            self.emit_call_iat(iat_func);
+            // For IAT calls with >4 args, we need custom shadow space handling
+            // because the stack args are already above RSP
+            if stack_args > 0 {
+                // Allocate shadow space (32 bytes) below the stack args
+                self.ir.emit(ADeadOp::Sub {
+                    dst: Operand::Reg(Reg::RSP),
+                    src: Operand::Imm8(32),
+                });
+                // Emit the call directly (not through emit_call_iat which adds its own shadow)
+                let assumed_idata_rva: u32 = 0x2000;
+                let idata_result = iat_registry::build_idata(assumed_idata_rva, &[]);
+                let slot = iat_registry::slot_for_function(iat_func)
+                    .unwrap_or_else(|| panic!("IAT function not found: {}", iat_func));
+                let iat_rva = idata_result.slot_to_iat_rva[slot];
+                self.ir.emit(ADeadOp::CallIAT { iat_rva });
+                // Clean up: shadow space + stack args
+                let cleanup = 32 + (stack_args as i32 * 8);
+                self.ir.emit(ADeadOp::Add {
+                    dst: Operand::Reg(Reg::RSP),
+                    src: Operand::Imm32(cleanup),
+                });
+            } else {
+                self.emit_call_iat(iat_func);
+            }
             return;
         }
 
@@ -4408,16 +4433,8 @@ impl IsaCompiler {
             },
         });
 
-        // call scanf via IAT (scanf @ 0x2048)
-        self.ir.emit(ADeadOp::Sub {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
-        });
-        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2058 });
-        self.ir.emit(ADeadOp::Add {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
-        });
+        // Call scanf via dynamic IAT lookup
+        self.emit_call_iat("scanf");
 
         self.ir.emit(ADeadOp::Mov {
             dst: Operand::Reg(Reg::RAX),

@@ -471,9 +471,9 @@ typedef float FLOAT;
 
 struct GUID {
     DWORD Data1;
-    WORD Data2;
-    WORD Data3;
-    BYTE Data4[8];
+    DWORD Data2_3;
+    DWORD Data4_lo;
+    DWORD Data4_hi;
 };
 typedef GUID IID;
 typedef const GUID* REFGUID;
@@ -516,11 +516,105 @@ struct IUnknown {
     virtual HRESULT QueryInterface(REFIID riid, void** ppvObject) = 0;
 };
 
+typedef ULONG_PTR WPARAM;
+typedef LONG LPARAM;
+typedef LONG LRESULT;
+typedef void* WNDPROC;
+
+// ANSI window class (same layout as Rust windows-rs WNDCLASSEXA)
+// Total size = 80 bytes on x64 (MSVC ABI)
+struct WNDCLASSEXA {
+    UINT cbSize;
+    UINT style;
+    WNDPROC lpfnWndProc;
+    int cbClsExtra;
+    int cbWndExtra;
+    HINSTANCE hInstance;
+    HICON hIcon;
+    HCURSOR hCursor;
+    HBRUSH hbrBackground;
+    LPCSTR lpszMenuName;
+    LPCSTR lpszClassName;
+    HICON hIconSm;
+};
+
+struct WNDCLASSEXW {
+    UINT cbSize;
+    UINT style;
+    WNDPROC lpfnWndProc;
+    int cbClsExtra;
+    int cbWndExtra;
+    HINSTANCE hInstance;
+    HICON hIcon;
+    HCURSOR hCursor;
+    HBRUSH hbrBackground;
+    LPCWSTR lpszMenuName;
+    LPCWSTR lpszClassName;
+    HICON hIconSm;
+};
+
+typedef const char* PCSTR;
+typedef const wchar_t* PCWSTR;
+
 inline LONG HIWORD(ULONG_PTR l) { return (LONG)((l >> 16) & 0xFFFF); }
 inline LONG LOWORD(ULONG_PTR l) { return (LONG)(l & 0xFFFF); }
 
 int SUCCEEDED(HRESULT hr) { return hr >= 0; }
 int FAILED(HRESULT hr) { return hr < 0; }
+
+// Win32 API function declarations — ANSI (A) + Wide (W) variants
+// Inspired by Rust windows-rs: prefer A variants for simple string handling
+extern "C" {
+// kernel32.dll
+HMODULE GetModuleHandleA(LPCSTR lpModuleName);
+HMODULE GetModuleHandleW(LPCWSTR lpModuleName);
+void ExitProcess(UINT uExitCode);
+HANDLE CreateEventA(void* lpSecurity, BOOL bManualReset, BOOL bInitialState, LPCSTR lpName);
+// msvcrt.dll
+void* memset(void* dest, int c, int count);
+// user32.dll — ANSI
+UINT RegisterClassExA(const WNDCLASSEXA* lpwcx);
+HWND CreateWindowExA(DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
+LRESULT DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+BOOL PeekMessageA(MSG* lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+LRESULT DispatchMessageA(const MSG* lpMsg);
+// user32.dll — Wide
+UINT RegisterClassExW(const WNDCLASSEXW* lpwcx);
+HWND CreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
+LRESULT DefWindowProcW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+BOOL GetMessageW(MSG* lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+LRESULT DispatchMessageW(const MSG* lpMsg);
+// user32.dll — shared
+BOOL ShowWindow(HWND hWnd, int nCmdShow);
+BOOL UpdateWindow(HWND hWnd);
+BOOL TranslateMessage(const MSG* lpMsg);
+void PostQuitMessage(int nExitCode);
+HCURSOR LoadCursorW(HINSTANCE hInstance, int lpCursorName);
+BOOL AdjustWindowRect(RECT* lpRect, DWORD dwStyle, BOOL bMenu);
+HDC GetDC(HWND hWnd);
+int ReleaseDC(HWND hWnd, HDC hDC);
+BOOL InvalidateRect(HWND hWnd, const RECT* lpRect, BOOL bErase);
+int FillRect(HDC hDC, const RECT* lprc, HBRUSH hbr);
+// gdi32.dll — GDI rendering
+typedef void* HPEN;
+typedef void* HGDIOBJ;
+typedef unsigned int COLORREF;
+COLORREF SetPixel(HDC hdc, int x, int y, COLORREF color);
+HBRUSH CreateSolidBrush(COLORREF color);
+BOOL DeleteObject(HGDIOBJ ho);
+HGDIOBJ SelectObject(HDC hdc, HGDIOBJ h);
+BOOL Rectangle(HDC hdc, int left, int top, int right, int bottom);
+HPEN CreatePen(int iStyle, int cWidth, COLORREF color);
+BOOL MoveToEx(HDC hdc, int x, int y, POINT* lppt);
+BOOL LineTo(HDC hdc, int x, int y);
+BOOL Polygon(HDC hdc, const POINT* apt, int cpt);
+// d3d12.dll
+HRESULT D3D12CreateDevice(void* pAdapter, int MinimumFeatureLevel, void* riid, void** ppDevice);
+HRESULT D3D12GetDebugInterface(void* riid, void** ppvDebug);
+// dxgi.dll
+HRESULT CreateDXGIFactory1(void* riid, void** ppFactory);
+HRESULT CreateDXGIFactory2(UINT Flags, void* riid, void** ppFactory);
+}
 "#;
 
 // ================================================================

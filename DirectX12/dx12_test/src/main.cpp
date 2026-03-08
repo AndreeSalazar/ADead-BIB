@@ -1,171 +1,80 @@
-// DirectX 12 HelloTriangle — ADead-BIB Test Project
-// Compiled with: adb step src/main.cpp or adb run
+// ADead-BIB HelloTriangle — GDI Rendering
 #include <header_main.h>
 
-// ============================================================
-// Vertex structure
-// ============================================================
-struct Vertex {
-    XMFLOAT3 position;
-    XMFLOAT4 color;
-};
+HWND g_hwnd;
 
-// ============================================================
-// DXSample base class
-// ============================================================
-class DXSample {
-public:
-    UINT m_width;
-    UINT m_height;
-    float m_aspectRatio;
-    LPCWSTR m_title;
+int main() {
+    printf("Step 1\n");
+    HINSTANCE hInstance = GetModuleHandleA(0);
+    printf("hInstance=%p\n", hInstance);
 
-    DXSample(UINT width, UINT height, LPCWSTR title) :
-        m_width(width),
-        m_height(height),
-        m_title(title)
-    {
-        m_aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+    // Test: does LoadCursorW (2 args) work?
+    printf("Step 1b\n");
+    HCURSOR cur = LoadCursorW(0, 32512);
+    printf("cur=%p\n", cur);
+
+    // Test: does ShowWindow (2 args) work with null hwnd? (will fail but shouldn't crash)
+    printf("Step 2\n");
+    g_hwnd = CreateWindowExA(
+        0, "STATIC", "ADead-BIB HelloTriangle",
+        0x00CF0000, 100, 100, 1280, 720,
+        0, 0, hInstance, 0
+    );
+    printf("hwnd=%p\n", g_hwnd);
+
+    if (g_hwnd == 0) {
+        printf("No window\n");
+        return 1;
     }
 
-    virtual ~DXSample() {}
-    virtual void OnInit() = 0;
-    virtual void OnUpdate() = 0;
-    virtual void OnRender() = 0;
-    virtual void OnDestroy() = 0;
+    ShowWindow(g_hwnd, 5);
+    printf("Window shown\n");
 
-    UINT GetWidth() const { return m_width; }
-    UINT GetHeight() const { return m_height; }
-};
+    HDC hdc = GetDC(g_hwnd);
+    printf("hdc=%p\n", hdc);
 
-// ============================================================
-// D3D12HelloTriangle class
-// ============================================================
-class D3D12HelloTriangle : public DXSample {
-public:
-    D3D12HelloTriangle(UINT width, UINT height, LPCWSTR title);
+    // Draw gradient triangle with SetPixel
+    int y = 100;
+    while (y <= 550) {
+        int t = y - 100;
+        int lx = 640 - 300 * t / 450;
+        int rx = 640 + 300 * t / 450;
+        int r = 255 - t / 2;
+        int g = t / 3;
+        int b = t / 4;
+        if (r < 0) { r = 0; }
+        int c = r + g * 256 + b * 65536;
+        int x = lx;
+        while (x <= rx) {
+            SetPixel(hdc, x, y, c);
+            x = x + 1;
+        }
+        y = y + 2;
+    }
 
-    virtual void OnInit();
-    virtual void OnUpdate();
-    virtual void OnRender();
-    virtual void OnDestroy();
+    // White outline
+    HPEN pen = CreatePen(0, 3, 0x00FFFFFF);
+    SelectObject(hdc, pen);
+    MoveToEx(hdc, 640, 100, 0);
+    LineTo(hdc, 340, 550);
+    LineTo(hdc, 940, 550);
+    LineTo(hdc, 640, 100);
+    DeleteObject(pen);
 
-private:
-    static const UINT FrameCount = 2;
+    printf("Triangle drawn\n");
+    ReleaseDC(g_hwnd, hdc);
 
-    // Pipeline objects
-    D3D12_VIEWPORT m_viewport;
-    D3D12_RECT m_scissorRect;
-    ComPtr<IDXGISwapChain3> m_swapChain;
-    ComPtr<ID3D12Device> m_device;
-    ComPtr<ID3D12Resource> m_renderTargets[2];
-    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
-    ComPtr<ID3D12CommandQueue> m_commandQueue;
-    ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-    ComPtr<ID3D12PipelineState> m_pipelineState;
-    ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    UINT m_rtvDescriptorSize;
+    // Message loop — use malloc'd MSG buffer for correct ABI
+    printf("Loop\n");
+    void* pmsg = malloc(64);
+    int running = 1;
+    while (running) {
+        if (PeekMessageA(pmsg, 0, 0, 0, 1)) {
+            TranslateMessage(pmsg);
+            DispatchMessageA(pmsg);
+        }
+    }
 
-    // App resources
-    ComPtr<ID3D12Resource> m_vertexBuffer;
-    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-
-    // Synchronization
-    UINT m_frameIndex;
-    HANDLE m_fenceEvent;
-    ComPtr<ID3D12Fence> m_fence;
-    UINT64 m_fenceValue;
-
-    void LoadPipeline();
-    void LoadAssets();
-    void WaitForPreviousFrame();
-};
-
-// ============================================================
-// Implementation
-// ============================================================
-D3D12HelloTriangle::D3D12HelloTriangle(UINT width, UINT height, LPCWSTR title) :
-    DXSample(width, height, title),
-    m_frameIndex(0),
-    m_rtvDescriptorSize(0),
-    m_fenceValue(0),
-    m_fenceEvent(NULL)
-{
-}
-
-void D3D12HelloTriangle::OnInit() {
-    LoadPipeline();
-    LoadAssets();
-}
-
-void D3D12HelloTriangle::LoadPipeline() {
-    D3D12_COMMAND_QUEUE_DESC queueDesc;
-    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    queueDesc.NodeMask = 0;
-    queueDesc.Priority = 0;
-
-    m_viewport.TopLeftX = 0.0f;
-    m_viewport.TopLeftY = 0.0f;
-    m_viewport.Width = static_cast<float>(m_width);
-    m_viewport.Height = static_cast<float>(m_height);
-    m_viewport.MinDepth = 0.0f;
-    m_viewport.MaxDepth = 1.0f;
-
-    m_scissorRect.left = 0;
-    m_scissorRect.top = 0;
-    m_scissorRect.right = static_cast<LONG>(m_width);
-    m_scissorRect.bottom = static_cast<LONG>(m_height);
-}
-
-void D3D12HelloTriangle::LoadAssets() {
-    Vertex triangleVertices[] = {
-        { XMFLOAT3(0.0f, 0.25f, 0.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
-        { XMFLOAT3(0.25f, -0.25f, 0.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
-        { XMFLOAT3(-0.25f, -0.25f, 0.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) }
-    };
-
-    const UINT vertexBufferSize = sizeof(triangleVertices);
-
-    D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-    };
-}
-
-void D3D12HelloTriangle::WaitForPreviousFrame() {
-    m_fenceValue = m_fenceValue + 1;
-}
-
-void D3D12HelloTriangle::OnUpdate() {}
-
-void D3D12HelloTriangle::OnRender() {
-    WaitForPreviousFrame();
-}
-
-void D3D12HelloTriangle::OnDestroy() {
-    WaitForPreviousFrame();
-    m_swapChain.Reset();
-    m_device.Reset();
-    m_commandAllocator.Reset();
-    m_commandQueue.Reset();
-}
-
-// ============================================================
-// Entry point
-// ============================================================
-int main() {
-    D3D12HelloTriangle sample(1280, 720, L"D3D12 Hello Triangle - ADead-BIB");
-
-    printf("ADead-BIB DirectX 12 HelloTriangle\n");
-    printf("Window: %dx%d\n", sample.GetWidth(), sample.GetHeight());
-
-    sample.OnInit();
-    sample.OnUpdate();
-    sample.OnRender();
-    sample.OnDestroy();
-
-    printf("DirectX 12 pipeline complete.\n");
+    printf("Done\n");
     return 0;
 }

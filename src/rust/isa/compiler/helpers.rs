@@ -306,15 +306,8 @@ impl IsaCompiler {
             },
         });
 
-        self.ir.emit(ADeadOp::Sub {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
-        });
-        self.ir.emit(ADeadOp::CallIAT { iat_rva: 0x2058 });
-        self.ir.emit(ADeadOp::Add {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
-        });
+        // Call scanf via dynamic IAT lookup
+        self.emit_call_iat("scanf");
 
         self.ir.emit(ADeadOp::Mov {
             dst: Operand::Reg(Reg::RAX),

@@ -1448,7 +1448,17 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
     let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
     println!("[CODEGEN]  {} bytes of machine code", opcodes.len());
     println!("[CODEGEN]  {} bytes of data section", data.len());
-    println!("[CODEGEN]  {} IAT entries, {} string relocations", iat_offsets.len(), string_offsets.len());
+    println!("[CODEGEN]  {} IAT call sites, {} string relocations", iat_offsets.len(), string_offsets.len());
+    // Show DLL imports from IAT registry
+    {
+        let dlls = adead_bib::backend::cpu::iat_registry::dll_names();
+        println!("[CODEGEN]  IAT imports ({} DLLs):", dlls.len());
+        for dll in &dlls {
+            let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
+            let names: Vec<&str> = entries.iter().map(|e| e.name).collect();
+            println!("[CODEGEN]    {} ✅ ({})", dll, names.join(", "));
+        }
+    }
     if !opcodes.is_empty() {
         let show_bytes = opcodes.len().min(32);
         let hex: Vec<String> = opcodes[..show_bytes].iter().map(|b| format!("{:02X}", b)).collect();
