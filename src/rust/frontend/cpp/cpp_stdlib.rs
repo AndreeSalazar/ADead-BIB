@@ -433,6 +433,21 @@ double atan2(double y, double x);
 // fastos_windows.h — Windows API types and macros
 // ================================================================
 const HEADER_FASTOS_WINDOWS: &str = r#"
+// ================================================================
+// fastos_windows.h — ADead-BIB Windows/GDI/DX12 Master Header
+// ================================================================
+// Este header le da a ADead-BIB TODO el conocimiento de Windows:
+//   - Tipos primitivos (BYTE, WORD, DWORD, UINT, HANDLE, etc.)
+//   - Constantes Win32 (WS_*, WM_*, SW_*, CS_*, IDC_*, COLOR_*, etc.)
+//   - Constantes GDI (PS_*, RGB macro, COLORREF)
+//   - Tipos DX12/DXGI (D3D_FEATURE_LEVEL, DXGI_FORMAT, etc.)
+//   - Structs ABI (MSG, RECT, POINT, WNDCLASSEXA, GUID, etc.)
+//   - Funciones: kernel32, user32, gdi32, d3d12, dxgi
+//   - Helpers: CreateWindowSimple, MessageLoop, RGB, DrawLine, etc.
+// Inspirado por Rust windows-rs: usar A (ANSI) para strings simples.
+// ================================================================
+
+// ===================== TIPOS PRIMITIVOS ==========================
 typedef unsigned char BYTE;
 typedef unsigned short WORD;
 typedef unsigned int UINT;
@@ -460,6 +475,11 @@ typedef void* HCURSOR;
 typedef void* HBRUSH;
 typedef void* HMENU;
 typedef void* HMONITOR;
+typedef void* HPEN;
+typedef void* HGDIOBJ;
+typedef void* HFONT;
+typedef void* HBITMAP;
+typedef void* HRGN;
 typedef void* LPVOID;
 typedef const void* LPCVOID;
 typedef char* LPSTR;
@@ -468,7 +488,145 @@ typedef wchar_t* LPWSTR;
 typedef const wchar_t* LPCWSTR;
 typedef wchar_t WCHAR;
 typedef float FLOAT;
+typedef const char* PCSTR;
+typedef const wchar_t* PCWSTR;
+typedef unsigned int COLORREF;
+typedef ULONG_PTR WPARAM;
+typedef LONG LPARAM;
+typedef LONG LRESULT;
+typedef void* WNDPROC;
 
+// ===================== CONSTANTES WIN32 ==========================
+// Todas como #define para evitar generar datos en la data section
+// Window Styles (WS_*)
+#define WS_OVERLAPPED       0x00000000
+#define WS_POPUP            0x80000000
+#define WS_CHILD            0x40000000
+#define WS_VISIBLE          0x10000000
+#define WS_CAPTION          0x00C00000
+#define WS_SYSMENU          0x00080000
+#define WS_THICKFRAME       0x00040000
+#define WS_MINIMIZEBOX      0x00020000
+#define WS_MAXIMIZEBOX      0x00010000
+#define WS_OVERLAPPEDWINDOW 0x00CF0000
+
+// ShowWindow Commands (SW_*)
+#define SW_HIDE            0
+#define SW_SHOWNORMAL      1
+#define SW_SHOW            5
+#define SW_SHOWDEFAULT     10
+
+// Window Messages (WM_*)
+#define WM_NULL           0x0000
+#define WM_CREATE         0x0001
+#define WM_DESTROY        0x0002
+#define WM_MOVE           0x0003
+#define WM_SIZE           0x0005
+#define WM_CLOSE          0x0010
+#define WM_QUIT           0x0012
+#define WM_PAINT          0x000F
+#define WM_KEYDOWN        0x0100
+#define WM_KEYUP          0x0101
+#define WM_CHAR           0x0102
+#define WM_COMMAND        0x0111
+#define WM_TIMER          0x0113
+#define WM_MOUSEMOVE      0x0200
+#define WM_LBUTTONDOWN    0x0201
+#define WM_LBUTTONUP      0x0202
+#define WM_RBUTTONDOWN    0x0204
+#define WM_RBUTTONUP      0x0205
+
+// PeekMessage flags
+#define PM_NOREMOVE 0x0000
+#define PM_REMOVE   0x0001
+
+// Class Styles (CS_*)
+#define CS_HREDRAW        0x0002
+#define CS_VREDRAW        0x0001
+#define CS_OWNDC          0x0020
+
+// System Cursors (IDC_*)
+#define IDC_ARROW          32512
+#define IDC_IBEAM          32513
+#define IDC_WAIT           32514
+#define IDC_CROSS          32515
+#define IDC_HAND           32649
+
+// System Colors (COLOR_*)
+#define COLOR_WINDOW       5
+#define COLOR_BTNFACE      15
+#define COLOR_BACKGROUND   1
+
+// Virtual Key Codes (VK_*)
+#define VK_ESCAPE          0x1B
+#define VK_RETURN          0x0D
+#define VK_SPACE           0x20
+#define VK_LEFT            0x25
+#define VK_UP              0x26
+#define VK_RIGHT           0x27
+#define VK_DOWN            0x28
+
+// HRESULT values
+#define S_OK           0
+#define S_FALSE        1
+#define E_FAIL         (-1)
+#define E_NOINTERFACE  (-2147467262)
+#define E_INVALIDARG   (-2147024809)
+
+// ===================== CONSTANTES GDI ============================
+// Pen Styles (PS_*)
+#define PS_SOLID           0
+#define PS_DASH            1
+#define PS_DOT             2
+#define PS_DASHDOT         3
+#define PS_NULL            5
+
+// Stock Objects
+#define NULL_BRUSH         5
+#define WHITE_BRUSH        0
+#define BLACK_BRUSH        4
+#define WHITE_PEN          6
+#define BLACK_PEN          7
+
+// ===================== CONSTANTES DX12/DXGI ======================
+// D3D_FEATURE_LEVEL
+#define D3D_FEATURE_LEVEL_11_0 0xB000
+#define D3D_FEATURE_LEVEL_11_1 0xB100
+#define D3D_FEATURE_LEVEL_12_0 0xC000
+#define D3D_FEATURE_LEVEL_12_1 0xC100
+
+// DXGI_FORMAT (most common)
+#define DXGI_FORMAT_R8G8B8A8_UNORM 28
+#define DXGI_FORMAT_B8G8R8A8_UNORM 87
+#define DXGI_FORMAT_D32_FLOAT      40
+#define DXGI_FORMAT_R32_FLOAT      41
+
+// DXGI_USAGE
+#define DXGI_USAGE_RENDER_TARGET_OUTPUT 32
+
+// DXGI_SWAP_EFFECT
+#define DXGI_SWAP_EFFECT_FLIP_DISCARD 4
+
+// D3D12 command list types
+#define D3D12_COMMAND_LIST_TYPE_DIRECT  0
+#define D3D12_COMMAND_LIST_TYPE_BUNDLE  1
+#define D3D12_COMMAND_LIST_TYPE_COMPUTE 2
+#define D3D12_COMMAND_LIST_TYPE_COPY    3
+
+// D3D12 descriptor heap types
+#define D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV 0
+#define D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER     1
+#define D3D12_DESCRIPTOR_HEAP_TYPE_RTV         2
+#define D3D12_DESCRIPTOR_HEAP_TYPE_DSV         3
+
+// D3D12 resource states
+#define D3D12_RESOURCE_STATE_PRESENT       0
+#define D3D12_RESOURCE_STATE_RENDER_TARGET 4
+
+// D3D12 fence flags
+#define D3D12_FENCE_FLAG_NONE 0
+
+// ===================== STRUCTS ===================================
 struct GUID {
     DWORD Data1;
     DWORD Data2_3;
@@ -516,13 +674,7 @@ struct IUnknown {
     virtual HRESULT QueryInterface(REFIID riid, void** ppvObject) = 0;
 };
 
-typedef ULONG_PTR WPARAM;
-typedef LONG LPARAM;
-typedef LONG LRESULT;
-typedef void* WNDPROC;
-
 // ANSI window class (same layout as Rust windows-rs WNDCLASSEXA)
-// Total size = 80 bytes on x64 (MSVC ABI)
 struct WNDCLASSEXA {
     UINT cbSize;
     UINT style;
@@ -553,41 +705,41 @@ struct WNDCLASSEXW {
     HICON hIconSm;
 };
 
-typedef const char* PCSTR;
-typedef const wchar_t* PCWSTR;
-
+// ===================== HELPER MACROS =============================
+inline COLORREF RGB(int r, int g, int b) { return r + g * 256 + b * 65536; }
 inline LONG HIWORD(ULONG_PTR l) { return (LONG)((l >> 16) & 0xFFFF); }
 inline LONG LOWORD(ULONG_PTR l) { return (LONG)(l & 0xFFFF); }
-
 int SUCCEEDED(HRESULT hr) { return hr >= 0; }
 int FAILED(HRESULT hr) { return hr < 0; }
 
-// Win32 API function declarations — ANSI (A) + Wide (W) variants
-// Inspired by Rust windows-rs: prefer A variants for simple string handling
+// ===================== WIN32 API (kernel32.dll) ==================
 extern "C" {
-// kernel32.dll
 HMODULE GetModuleHandleA(LPCSTR lpModuleName);
 HMODULE GetModuleHandleW(LPCWSTR lpModuleName);
 void ExitProcess(UINT uExitCode);
 HANDLE CreateEventA(void* lpSecurity, BOOL bManualReset, BOOL bInitialState, LPCSTR lpName);
-// msvcrt.dll
+
+// ===================== MSVCRT ====================================
 void* memset(void* dest, int c, int count);
-// user32.dll — ANSI
+
+// ===================== USER32 (ANSI) =============================
 UINT RegisterClassExA(const WNDCLASSEXA* lpwcx);
 HWND CreateWindowExA(DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
 LRESULT DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-BOOL PeekMessageA(MSG* lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-LRESULT DispatchMessageA(const MSG* lpMsg);
-// user32.dll — Wide
+BOOL PeekMessageA(void* lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+LRESULT DispatchMessageA(const void* lpMsg);
+
+// ===================== USER32 (Wide) =============================
 UINT RegisterClassExW(const WNDCLASSEXW* lpwcx);
 HWND CreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
 LRESULT DefWindowProcW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-BOOL GetMessageW(MSG* lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-LRESULT DispatchMessageW(const MSG* lpMsg);
-// user32.dll — shared
+BOOL GetMessageW(void* lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+LRESULT DispatchMessageW(const void* lpMsg);
+
+// ===================== USER32 (shared) ===========================
 BOOL ShowWindow(HWND hWnd, int nCmdShow);
 BOOL UpdateWindow(HWND hWnd);
-BOOL TranslateMessage(const MSG* lpMsg);
+BOOL TranslateMessage(const void* lpMsg);
 void PostQuitMessage(int nExitCode);
 HCURSOR LoadCursorW(HINSTANCE hInstance, int lpCursorName);
 BOOL AdjustWindowRect(RECT* lpRect, DWORD dwStyle, BOOL bMenu);
@@ -595,25 +747,98 @@ HDC GetDC(HWND hWnd);
 int ReleaseDC(HWND hWnd, HDC hDC);
 BOOL InvalidateRect(HWND hWnd, const RECT* lpRect, BOOL bErase);
 int FillRect(HDC hDC, const RECT* lprc, HBRUSH hbr);
-// gdi32.dll — GDI rendering
-typedef void* HPEN;
-typedef void* HGDIOBJ;
-typedef unsigned int COLORREF;
+
+// ===================== GDI32 =====================================
 COLORREF SetPixel(HDC hdc, int x, int y, COLORREF color);
 HBRUSH CreateSolidBrush(COLORREF color);
 BOOL DeleteObject(HGDIOBJ ho);
 HGDIOBJ SelectObject(HDC hdc, HGDIOBJ h);
 BOOL Rectangle(HDC hdc, int left, int top, int right, int bottom);
 HPEN CreatePen(int iStyle, int cWidth, COLORREF color);
-BOOL MoveToEx(HDC hdc, int x, int y, POINT* lppt);
+BOOL MoveToEx(HDC hdc, int x, int y, void* lppt);
 BOOL LineTo(HDC hdc, int x, int y);
-BOOL Polygon(HDC hdc, const POINT* apt, int cpt);
-// d3d12.dll
+BOOL Polygon(HDC hdc, const void* apt, int cpt);
+
+// ===================== D3D12 =====================================
 HRESULT D3D12CreateDevice(void* pAdapter, int MinimumFeatureLevel, void* riid, void** ppDevice);
 HRESULT D3D12GetDebugInterface(void* riid, void** ppvDebug);
-// dxgi.dll
+
+// ===================== DXGI ======================================
 HRESULT CreateDXGIFactory1(void* riid, void** ppFactory);
 HRESULT CreateDXGIFactory2(UINT Flags, void* riid, void** ppFactory);
+}
+
+// ===================== HELPER FUNCTIONS ==========================
+// ADead-BIB convenience wrappers — make Win32/GDI calls trivial
+// NOTA: Funciones con >4 args (CreateWindowExA) deben llamarse directo
+//       desde main() — no desde inline helpers (limitación del codegen).
+
+// Allocate a MSG buffer on the heap (avoids stack struct ABI issues)
+// Usage: void* msg = AllocMSG();
+inline void* AllocMSG() {
+    return malloc(64);
+}
+
+// Draw a line from (x1,y1) to (x2,y2) with given color and width
+// Usage: DrawLine(hdc, 0, 0, 100, 100, RGB(255,0,0), 2);
+inline void DrawLine(HDC hdc, int x1, int y1, int x2, int y2, COLORREF color, int width) {
+    HPEN pen = CreatePen(PS_SOLID, width, color);
+    HGDIOBJ old = SelectObject(hdc, pen);
+    MoveToEx(hdc, x1, y1, 0);
+    LineTo(hdc, x2, y2);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+// Fill a gradient triangle (red top -> green/blue bottom)
+// Scanline rasterizer using SetPixel. Step=2 for speed.
+// Usage: FillGradientTriangle(hdc, 640, 100, 340, 550, 940, 550);
+inline void FillGradientTriangle(HDC hdc, int tx, int ty, int lx, int ly, int rx, int ry) {
+    int height = ly - ty;
+    if (height <= 0) { return; }
+    int y = ty;
+    while (y <= ly) {
+        int t = y - ty;
+        int xl = tx + (lx - tx) * t / height;
+        int xr = tx + (rx - tx) * t / height;
+        int r = 255 - t * 200 / height;
+        int g = t * 200 / height;
+        int b = t * 100 / height;
+        if (r < 0) { r = 0; }
+        COLORREF c = RGB(r, g, b);
+        int x = xl;
+        while (x <= xr) {
+            SetPixel(hdc, x, y, c);
+            x = x + 2;
+        }
+        y = y + 2;
+    }
+}
+
+// Draw triangle outline with given color and pen width
+// Usage: DrawTriangleOutline(hdc, 640, 100, 340, 550, 940, 550, RGB(255,255,255), 3);
+inline void DrawTriangleOutline(HDC hdc, int tx, int ty, int lx, int ly, int rx, int ry, COLORREF color, int width) {
+    HPEN pen = CreatePen(PS_SOLID, width, color);
+    HGDIOBJ old = SelectObject(hdc, pen);
+    MoveToEx(hdc, tx, ty, 0);
+    LineTo(hdc, lx, ly);
+    LineTo(hdc, rx, ry);
+    LineTo(hdc, tx, ty);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+// Run the message loop (keeps window alive until user closes)
+// Usage: MessageLoop();
+inline void MessageLoop() {
+    void* pmsg = malloc(64);
+    int running = 1;
+    while (running) {
+        if (PeekMessageA(pmsg, 0, 0, 0, PM_REMOVE)) {
+            TranslateMessage(pmsg);
+            DispatchMessageA(pmsg);
+        }
+    }
 }
 "#;
 

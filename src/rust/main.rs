@@ -1459,6 +1459,56 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
             println!("[CODEGEN]    {} ✅ ({})", dll, names.join(", "));
         }
     }
+    // Detect API usage categories from function names in source
+    {
+        let src_lower = source.to_lowercase();
+        let mut apis_used: Vec<&str> = Vec::new();
+        if src_lower.contains("createwindow") || src_lower.contains("showwindow") {
+            apis_used.push("🪟 Win32 Window");
+        }
+        if src_lower.contains("setpixel") || src_lower.contains("lineto") || src_lower.contains("createpen")
+            || src_lower.contains("createsolidbrush") || src_lower.contains("moveto") {
+            apis_used.push("🎨 GDI Rendering");
+        }
+        if src_lower.contains("fillgradienttriangle") || src_lower.contains("filltriangle")
+            || src_lower.contains("drawtriangleoutline") {
+            apis_used.push("🔺 Triangle Drawing");
+        }
+        if src_lower.contains("drawline") {
+            apis_used.push("📏 Line Drawing");
+        }
+        if src_lower.contains("d3d12") || src_lower.contains("createdevice") {
+            apis_used.push("🎮 DirectX 12");
+        }
+        if src_lower.contains("dxgi") || src_lower.contains("createdxgifactory") {
+            apis_used.push("🖥️ DXGI");
+        }
+        if src_lower.contains("messageloop") || src_lower.contains("peekmessage") || src_lower.contains("getmessage") {
+            apis_used.push("🔄 Message Loop");
+        }
+        if src_lower.contains("rgb(") {
+            apis_used.push("🌈 RGB Colors");
+        }
+        if !apis_used.is_empty() {
+            println!("[CODEGEN]  API categories detected:");
+            for api in &apis_used {
+                println!("[CODEGEN]    {}", api);
+            }
+        }
+    }
+    // DLLs actually used by the program (check which IAT slots are referenced)
+    {
+        let used_dlls: Vec<&str> = adead_bib::backend::cpu::iat_registry::dll_names()
+            .into_iter()
+            .filter(|dll| {
+                let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
+                entries.iter().any(|e| source.contains(e.name))
+            })
+            .collect();
+        if !used_dlls.is_empty() {
+            println!("[CODEGEN]  DLLs actually used by program: {}", used_dlls.join(", "));
+        }
+    }
     if !opcodes.is_empty() {
         let show_bytes = opcodes.len().min(32);
         let hex: Vec<String> = opcodes[..show_bytes].iter().map(|b| format!("{:02X}", b)).collect();
@@ -1481,6 +1531,7 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
     println!("{}",  "=".repeat(64));
     println!("  Step compilation complete.");
     println!("  To build: adb cxx {} -o output.exe", input_file);
+    println!("  To run:   adb run  (from project directory)");
     println!("{}",  "=".repeat(64));
 
     Ok(())

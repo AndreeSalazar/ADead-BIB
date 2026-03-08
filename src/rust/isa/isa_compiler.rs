@@ -654,9 +654,12 @@ impl IsaCompiler {
             }
         }
 
-        // Fase 4: Compilar funciones auxiliares (todas excepto entry point)
+        // Fase 3.5: Dead code elimination — only compile functions reachable from entry
+        let reachable = Self::collect_reachable_functions(program, entry_name);
+
+        // Fase 4: Compilar funciones auxiliares (solo las alcanzables desde entry)
         for func in &program.functions {
-            if func.name != entry_name {
+            if func.name != entry_name && reachable.contains(&func.name) {
                 self.compile_function(func);
             }
         }
@@ -699,6 +702,158 @@ impl IsaCompiler {
             result.iat_call_offsets,
             result.string_imm64_offsets,
         )
+    }
+
+    // ========================================
+    // Dead Code Elimination — Reachability Analysis
+    // ========================================
+
+    /// Collect all function names transitively reachable from the entry point.
+    /// This prevents unused header inline functions from inflating the code section.
+    fn collect_reachable_functions(program: &Program, entry_name: &str) -> std::collections::HashSet<String> {
+        let mut reachable = std::collections::HashSet::new();
+        let mut worklist: Vec<String> = vec![entry_name.to_string()];
+
+        // Build a map: function_name -> &Function for quick lookup
+        let func_map: std::collections::HashMap<&str, &Function> = program.functions.iter()
+            .map(|f| (f.name.as_str(), f))
+            .collect();
+
+        while let Some(name) = worklist.pop() {
+            if reachable.contains(&name) {
+                continue;
+            }
+            reachable.insert(name.clone());
+            // Find the function body and collect all Call names
+            if let Some(func) = func_map.get(name.as_str()) {
+                let mut called = Vec::new();
+                Self::collect_calls_from_stmts(&func.body, &mut called);
+                for callee in called {
+                    if !reachable.contains(&callee) && func_map.contains_key(callee.as_str()) {
+                        worklist.push(callee);
+                    }
+                }
+            }
+        }
+        // Also include functions called from top-level statements
+        let mut top_calls = Vec::new();
+        Self::collect_calls_from_stmts(&program.statements, &mut top_calls);
+        for callee in top_calls {
+            if !reachable.contains(&callee) && func_map.contains_key(callee.as_str()) {
+                worklist.push(callee.clone());
+                reachable.insert(callee);
+            }
+        }
+        reachable
+    }
+
+    fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<String>) {
+        for stmt in stmts {
+            Self::collect_calls_from_stmt(stmt, calls);
+        }
+    }
+
+    fn collect_calls_from_stmt(stmt: &Stmt, calls: &mut Vec<String>) {
+        match stmt {
+            Stmt::Expr(e) => Self::collect_calls_from_expr_dce(e, calls),
+            Stmt::VarDecl { value: Some(e), .. } => Self::collect_calls_from_expr_dce(e, calls),
+            Stmt::Assign { value, .. } => Self::collect_calls_from_expr_dce(value, calls),
+            Stmt::Return(Some(e)) => Self::collect_calls_from_expr_dce(e, calls),
+            Stmt::If { condition, then_body, else_body } => {
+                Self::collect_calls_from_expr_dce(condition, calls);
+                Self::collect_calls_from_stmts(then_body, calls);
+                if let Some(eb) = else_body { Self::collect_calls_from_stmts(eb, calls); }
+            }
+            Stmt::While { condition, body } => {
+                Self::collect_calls_from_expr_dce(condition, calls);
+                Self::collect_calls_from_stmts(body, calls);
+            }
+            Stmt::For { start, end, body, .. } => {
+                Self::collect_calls_from_expr_dce(start, calls);
+                Self::collect_calls_from_expr_dce(end, calls);
+                Self::collect_calls_from_stmts(body, calls);
+            }
+            Stmt::DoWhile { body, condition } => {
+                Self::collect_calls_from_stmts(body, calls);
+                Self::collect_calls_from_expr_dce(condition, calls);
+            }
+            Stmt::Switch { expr, cases, default } => {
+                Self::collect_calls_from_expr_dce(expr, calls);
+                for case in cases {
+                    Self::collect_calls_from_stmts(&case.body, calls);
+                }
+                if let Some(d) = default { Self::collect_calls_from_stmts(d, calls); }
+            }
+            Stmt::CompoundAssign { value, .. } => Self::collect_calls_from_expr_dce(value, calls),
+            Stmt::DerefAssign { pointer, value } => {
+                Self::collect_calls_from_expr_dce(pointer, calls);
+                Self::collect_calls_from_expr_dce(value, calls);
+            }
+            Stmt::ArrowAssign { pointer, value, .. } => {
+                Self::collect_calls_from_expr_dce(pointer, calls);
+                Self::collect_calls_from_expr_dce(value, calls);
+            }
+            Stmt::IndexAssign { object, index, value } => {
+                Self::collect_calls_from_expr_dce(object, calls);
+                Self::collect_calls_from_expr_dce(index, calls);
+                Self::collect_calls_from_expr_dce(value, calls);
+            }
+            Stmt::FieldAssign { object, value, .. } => {
+                Self::collect_calls_from_expr_dce(object, calls);
+                Self::collect_calls_from_expr_dce(value, calls);
+            }
+            Stmt::Print(e) | Stmt::Println(e) | Stmt::PrintNum(e) | Stmt::Free(e) => {
+                Self::collect_calls_from_expr_dce(e, calls);
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_calls_from_expr_dce(expr: &Expr, calls: &mut Vec<String>) {
+        match expr {
+            Expr::Call { name, args } => {
+                calls.push(name.clone());
+                for a in args { Self::collect_calls_from_expr_dce(a, calls); }
+            }
+            Expr::MethodCall { object, args, .. } => {
+                Self::collect_calls_from_expr_dce(object, calls);
+                for a in args { Self::collect_calls_from_expr_dce(a, calls); }
+            }
+            Expr::BinaryOp { left, right, .. } | Expr::Comparison { left, right, .. }
+            | Expr::BitwiseOp { left, right, .. } | Expr::StringConcat { left, right } => {
+                Self::collect_calls_from_expr_dce(left, calls);
+                Self::collect_calls_from_expr_dce(right, calls);
+            }
+            Expr::UnaryOp { expr, .. } | Expr::Deref(expr) | Expr::AddressOf(expr)
+            | Expr::Cast { expr, .. } | Expr::IntCast(expr) | Expr::FloatCast(expr)
+            | Expr::PreIncrement(expr) | Expr::PreDecrement(expr)
+            | Expr::PostIncrement(expr) | Expr::PostDecrement(expr)
+            | Expr::BitwiseNot(expr) | Expr::Malloc(expr) => {
+                Self::collect_calls_from_expr_dce(expr, calls);
+            }
+            Expr::Index { object, index } => {
+                Self::collect_calls_from_expr_dce(object, calls);
+                Self::collect_calls_from_expr_dce(index, calls);
+            }
+            Expr::FieldAccess { object, .. } => Self::collect_calls_from_expr_dce(object, calls),
+            Expr::ArrowAccess { pointer, .. } => Self::collect_calls_from_expr_dce(pointer, calls),
+            Expr::Ternary { condition, then_expr, else_expr } => {
+                Self::collect_calls_from_expr_dce(condition, calls);
+                Self::collect_calls_from_expr_dce(then_expr, calls);
+                Self::collect_calls_from_expr_dce(else_expr, calls);
+            }
+            Expr::Array(elems) => {
+                for e in elems { Self::collect_calls_from_expr_dce(e, calls); }
+            }
+            Expr::Realloc { ptr, new_size } => {
+                Self::collect_calls_from_expr_dce(ptr, calls);
+                Self::collect_calls_from_expr_dce(new_size, calls);
+            }
+            Expr::New { args, .. } => {
+                for a in args { Self::collect_calls_from_expr_dce(a, calls); }
+            }
+            _ => {} // Leaf nodes: Number, Float, String, Variable, etc.
+        }
     }
 
     // ========================================
