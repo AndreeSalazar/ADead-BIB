@@ -1155,492 +1155,792 @@ fn get_output_filename(input: &str, args: &[String]) -> String {
 // STEP COMPILER — Step-by-step visualization
 // ============================================================
 fn step_compile_c(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use adead_bib::cli::term;
     use adead_bib::frontend::c::c_lexer::{CLexer, CToken};
     use adead_bib::frontend::c::c_preprocessor::CPreprocessor;
     use adead_bib::frontend::c::c_parser::CParser;
     use adead_bib::frontend::c::c_to_ir::CToIR;
+    use adead_bib::frontend::c::c_ast::CTopLevel;
+
+    term::enable_ansi();
 
     println!();
-    println!("{}",  "=".repeat(64));
-    println!("  ADead-BIB Step Compiler — {}", input_file);
-    println!("  Cada paso del pipeline, visible.");
-    println!("{}",  "=".repeat(64));
+    println!("{}", term::phase_header("╔══════════════════════════════════════════════════════════════╗"));
+    println!("{}", term::phase_header("║   ADead-BIB Step Compiler — Deep Analysis Mode 💀🦈         ║"));
+    println!("{}", term::phase_header("╚══════════════════════════════════════════════════════════════╝"));
+    println!("  {} {}", term::info("Source:"), input_file);
+    println!("  {} C99/C11", term::info("Language:"));
     println!();
 
-    // 0. Read source
-    let source = fs::read_to_string(input_file)
-        .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
+    // ── Phase 0: SOURCE ─────────────────────────────────────
+    println!("{}", term::phase_bar(0, "SOURCE", "C"));
+    let source = match fs::read_to_string(input_file) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("  {} {}", term::error_text("ERROR:"), format!("Cannot read '{}': {}", input_file, e));
+            return Err(format!("Cannot read '{}': {}", input_file, e).into());
+        }
+    };
     let source_lines: Vec<&str> = source.lines().collect();
-    println!("[SOURCE]   {} lines, {} bytes", source_lines.len(), source.len());
-    println!();
-
-    // 1. PREPROCESSOR
-    println!("--- Phase 1: PREPROCESSOR ---");
-    let mut preprocessor = CPreprocessor::new();
-    let preprocessed = preprocessor.process(&source);
-    let pp_lines: Vec<&str> = preprocessed.lines().collect();
-    println!("[PREPROC]  {} lines after preprocessing", pp_lines.len());
-    // Show #include resolutions
-    for line in &source_lines {
-        let trimmed = line.trim();
-        if trimmed.starts_with("#include") {
-            println!("[PREPROC]  {} -> resolved internally", trimmed);
+    println!("  {} {} lines, {} bytes", term::ok("✓"), source_lines.len(), source.len());
+    let blank_lines = source_lines.iter().filter(|l| l.trim().is_empty()).count();
+    let comment_lines = source_lines.iter().filter(|l| {
+        let t = l.trim();
+        t.starts_with("//") || t.starts_with("/*") || t.starts_with("*")
+    }).count();
+    let code_lines = source_lines.len() - blank_lines - comment_lines;
+    println!("  {} code: {}, comments: {}, blank: {}", term::dim("  metrics"), code_lines, comment_lines, blank_lines);
+    let includes: Vec<(usize, &str)> = source_lines.iter().enumerate()
+        .filter(|(_, l)| l.trim().starts_with("#include"))
+        .map(|(i, l)| (i + 1, l.trim()))
+        .collect();
+    if !includes.is_empty() {
+        println!("  {} {} #include directives:", term::dim("  deps"), includes.len());
+        for (line_num, inc) in &includes {
+            println!("    {} {}", term::loc(input_file, *line_num, 1), term::info(inc));
         }
     }
     println!();
 
-    // 2. LEXER
-    println!("--- Phase 2: LEXER ---");
+    // ── Phase 1: PREPROCESSOR ───────────────────────────────
+    println!("{}", term::phase_bar(1, "PREPROCESSOR", "C"));
+    let mut preprocessor = CPreprocessor::new();
+    let preprocessed = preprocessor.process(&source);
+    let pp_lines: Vec<&str> = preprocessed.lines().collect();
+    let expansion = if !source_lines.is_empty() {
+        ((pp_lines.len() as f64 / source_lines.len() as f64) * 100.0) as usize
+    } else { 0 };
+    println!("  {} {} → {} lines ({}% expansion)", term::ok("✓"), source_lines.len(), pp_lines.len(), expansion);
+    for (line_num, inc) in &includes {
+        println!("    {} {} → {}", term::loc(input_file, *line_num, 1), inc, term::ok("resolved internally"));
+    }
+    let macro_defs: Vec<(usize, &str)> = source_lines.iter().enumerate()
+        .filter(|(_, l)| l.trim().starts_with("#define"))
+        .map(|(i, l)| (i + 1, l.trim()))
+        .collect();
+    if !macro_defs.is_empty() {
+        println!("  {} {} macros defined:", term::dim("  macros"), macro_defs.len());
+        for (line_num, mac) in &macro_defs {
+            println!("    {} {}", term::loc(input_file, *line_num, 1), term::token_fmt(mac));
+        }
+    }
+    println!();
+
+    // ── Phase 2: LEXER ──────────────────────────────────────
+    println!("{}", term::phase_bar(2, "LEXER", "C"));
     let (tokens, lines) = CLexer::new(&preprocessed).tokenize();
-    println!("[LEXER]    {} tokens generated", tokens.len());
-    // Show first N meaningful tokens with source context
-    let max_show = 20;
+    println!("  {} {} tokens generated", term::ok("✓"), tokens.len());
+
+    // Token distribution
+    let mut kw_count = 0usize;
+    let mut ident_count = 0usize;
+    let mut int_lit_count = 0usize;
+    let mut float_lit_count = 0usize;
+    let mut str_lit_count = 0usize;
+    let mut char_lit_count = 0usize;
+    let mut op_count = 0usize;
+    let mut punct_count = 0usize;
+    let mut ident_freq: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for tok in &tokens {
+        match tok {
+            CToken::Auto | CToken::Break | CToken::Case | CToken::Char |
+            CToken::Const | CToken::Continue | CToken::Default | CToken::Do |
+            CToken::Double | CToken::Else | CToken::Enum | CToken::Extern |
+            CToken::Float | CToken::For | CToken::Goto | CToken::If |
+            CToken::Inline | CToken::Int | CToken::Long | CToken::Register |
+            CToken::Restrict | CToken::Return | CToken::Short | CToken::Signed |
+            CToken::Sizeof | CToken::Static | CToken::Struct | CToken::Switch |
+            CToken::Typedef | CToken::Union | CToken::Unsigned | CToken::Void |
+            CToken::Volatile | CToken::While | CToken::Bool => { kw_count += 1; }
+            CToken::Identifier(name) => { ident_count += 1; *ident_freq.entry(name.clone()).or_insert(0) += 1; }
+            CToken::IntLiteral(_) => { int_lit_count += 1; }
+            CToken::FloatLiteral(_) => { float_lit_count += 1; }
+            CToken::StringLiteral(_) => { str_lit_count += 1; }
+            CToken::CharLiteral(_) => { char_lit_count += 1; }
+            CToken::LParen | CToken::RParen | CToken::LBrace | CToken::RBrace |
+            CToken::LBracket | CToken::RBracket | CToken::Semicolon | CToken::Comma |
+            CToken::Colon | CToken::Ellipsis => { punct_count += 1; }
+            CToken::Eof => {}
+            _ => { op_count += 1; }
+        }
+    }
+    println!("  {} distribution:", term::dim("  tokens"));
+    println!("    {} keywords={}, {} identifiers={}, {} int_literals={}",
+        term::token_fmt("KW"), kw_count, term::token_fmt("ID"), ident_count, term::token_fmt("INT"), int_lit_count);
+    println!("    {} float_literals={}, {} strings={}, {} chars={}",
+        term::token_fmt("FLT"), float_lit_count, term::token_fmt("STR"), str_lit_count, term::token_fmt("CHR"), char_lit_count);
+    println!("    {} operators={}, {} punctuation={}",
+        term::token_fmt("OP"), op_count, term::token_fmt("PUNCT"), punct_count);
+    if !ident_freq.is_empty() {
+        let mut sorted: Vec<_> = ident_freq.iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(a.1));
+        let top: Vec<String> = sorted.iter().take(8).map(|(k, v)| format!("{}({})", k, v)).collect();
+        println!("  {} {}", term::dim("  top IDs"), top.join(", "));
+    }
+    println!("  {} first tokens:", term::dim("  preview"));
+    let max_show = 12;
     let mut shown = 0;
     for (i, tok) in tokens.iter().enumerate() {
         if *tok == CToken::Eof { break; }
         if shown >= max_show { break; }
         let line_num = if i < lines.len() { lines[i] } else { 0 };
         let tok_str = format!("{:?}", tok);
-        // Shorten long token names
-        let short = if tok_str.len() > 40 {
-            format!("{}...", &tok_str[..37])
-        } else {
-            tok_str
-        };
-        println!("[LEXER]    {:>4}:{:<3}  {:<42} OK", line_num, i, short);
+        let short = if tok_str.len() > 40 { format!("{}...", &tok_str[..37]) } else { tok_str };
+        println!("    {} {:<42} {}", term::loc(input_file, line_num, i % 80), term::token_fmt(&short), term::ok("OK"));
         shown += 1;
     }
     if tokens.len() > max_show + 1 {
-        println!("[LEXER]    ... ({} more tokens)", tokens.len() - max_show - 1);
+        println!("    {} ({} more tokens)", term::dim("..."), tokens.len() - max_show - 1);
     }
     println!();
 
-    // 3. PARSER
-    println!("--- Phase 3: PARSER ---");
-    let unit = CParser::new(tokens, lines).parse_translation_unit()
-        .map_err(|e| format!("Parse error: {}", e))?;
-    let mut func_count = 0;
-    let mut struct_count = 0;
-    let mut typedef_count = 0;
-    let mut enum_count = 0;
-    let mut global_count = 0;
+    // ── Phase 3: PARSER (Syntax Analysis) ───────────────────
+    println!("{}", term::phase_bar(3, "PARSER — Syntax Analysis", "C"));
+    let parse_result = CParser::new(tokens.clone(), lines.clone()).parse_translation_unit();
+    let unit = match parse_result {
+        Ok(u) => { println!("  {} Parse successful", term::ok("✓")); u }
+        Err(e) => {
+            println!("  {} Parse failed!", term::error_text("✗"));
+            let err_msg = format!("{}", e);
+            println!("  {} {}", term::error_text("ERROR:"), err_msg);
+            if let Some(pos_start) = err_msg.find("position ") {
+                if let Some(pos_val) = err_msg[pos_start + 9..].split(|c: char| !c.is_numeric()).next() {
+                    if let Ok(pos) = pos_val.parse::<usize>() {
+                        let err_line = if pos < lines.len() { lines[pos] } else { 0 };
+                        if err_line > 0 && err_line <= source_lines.len() {
+                            println!();
+                            println!("  {}", term::source_context(&source, err_line, 1, &err_msg, "error"));
+                            println!("  {} {}", term::info("location:"), term::loc(input_file, err_line, 1));
+                        }
+                    }
+                }
+            }
+            for (_line_num, inc) in &includes {
+                println!("  {} Check that {} resolves all required symbols", term::warn("hint:"), inc);
+            }
+            println!("  {} Compilation stopped at Phase 3.", term::error_text("STOPPED"));
+            return Err(format!("Parse error: {}", e).into());
+        }
+    };
+    let mut func_count = 0usize;
+    let mut struct_count = 0usize;
+    let mut typedef_count = 0usize;
+    let mut enum_count = 0usize;
+    let mut global_count = 0usize;
+    let mut total_stmts = 0usize;
+    let mut max_params = 0usize;
     for decl in &unit.declarations {
         match decl {
-            adead_bib::frontend::c::c_ast::CTopLevel::FunctionDef { name, params, body, .. } => {
+            CTopLevel::FunctionDef { name, params, body, return_type, .. } => {
                 func_count += 1;
-                println!("[PARSER]   function '{}' ({} params, {} stmts) OK", name, params.len(), body.len());
+                total_stmts += body.len();
+                if params.len() > max_params { max_params = params.len(); }
+                let ret = format!("{:?}", return_type);
+                let ret_short = if ret.len() > 20 { format!("{}...", &ret[..17]) } else { ret };
+                println!("    {} {} {}({} params) → {} [{} stmts]",
+                    term::ok("✓"), term::type_fmt("fn"), term::token_fmt(name), params.len(), term::type_fmt(&ret_short), body.len());
             }
-            adead_bib::frontend::c::c_ast::CTopLevel::FunctionDecl { name, params, .. } => {
-                println!("[PARSER]   declaration '{}' ({} params) OK", name, params.len());
+            CTopLevel::FunctionDecl { name, params, .. } => {
+                println!("    {} {} {}({} params) {}", term::dim("→"), term::type_fmt("decl"), term::token_fmt(name), params.len(), term::dim("(forward declaration)"));
             }
-            adead_bib::frontend::c::c_ast::CTopLevel::StructDef { name, fields } => {
+            CTopLevel::StructDef { name, fields } => {
                 struct_count += 1;
-                println!("[PARSER]   struct '{}' ({} fields) OK", name, fields.len());
+                println!("    {} {} {} [{} fields]", term::ok("✓"), term::type_fmt("struct"), term::token_fmt(name), fields.len());
             }
-            adead_bib::frontend::c::c_ast::CTopLevel::TypedefDecl { new_name, .. } => {
+            CTopLevel::TypedefDecl { new_name, .. } => {
                 typedef_count += 1;
-                println!("[PARSER]   typedef '{}' OK", new_name);
+                println!("    {} {} {}", term::ok("✓"), term::type_fmt("typedef"), term::token_fmt(new_name));
             }
-            adead_bib::frontend::c::c_ast::CTopLevel::EnumDef { name, values } => {
+            CTopLevel::EnumDef { name, values } => {
                 enum_count += 1;
-                println!("[PARSER]   enum '{}' ({} values) OK", name, values.len());
+                println!("    {} {} {} [{} values]", term::ok("✓"), term::type_fmt("enum"), term::token_fmt(name), values.len());
             }
-            adead_bib::frontend::c::c_ast::CTopLevel::GlobalVar { declarators, .. } => {
+            CTopLevel::GlobalVar { declarators, .. } => {
                 global_count += 1;
                 for d in declarators {
-                    println!("[PARSER]   global '{}' OK", d.name);
+                    println!("    {} {} {}", term::ok("✓"), term::type_fmt("global"), term::token_fmt(&d.name));
                 }
             }
         }
     }
-    println!("[PARSER]   Total: {} functions, {} structs, {} typedefs, {} enums, {} globals",
-        func_count, struct_count, typedef_count, enum_count, global_count);
+    println!("  {} {}", term::dim("  summary"), term::info(&format!(
+        "{} functions, {} structs, {} typedefs, {} enums, {} globals",
+        func_count, struct_count, typedef_count, enum_count, global_count)));
+    if func_count > 0 {
+        println!("  {} avg stmts/fn: {}, max params: {}",
+            term::dim("  complexity"), total_stmts / func_count, max_params);
+    }
     println!();
 
-    // 4. IR CONVERSION
-    println!("--- Phase 4: IR (Intermediate Representation) ---");
+    // ── Phase 4: IR (Intermediate Representation) ───────────
+    println!("{}", term::phase_bar(4, "IR — Intermediate Representation", "C"));
     let mut converter = CToIR::new();
-    let program = converter.convert(&unit)?;
+    let program = match converter.convert(&unit) {
+        Ok(p) => { println!("  {} IR generation successful", term::ok("✓")); p }
+        Err(e) => {
+            println!("  {} IR conversion failed!", term::error_text("✗"));
+            println!("  {} {}", term::error_text("ERROR:"), e);
+            println!("  {} Compilation stopped at Phase 4.", term::error_text("STOPPED"));
+            return Err(format!("IR error: {}", e).into());
+        }
+    };
+    let mut total_ir_stmts = 0usize;
+    let mut branch_count = 0usize;
+    let mut loop_count = 0usize;
+    let mut call_count = 0usize;
+    let mut vardecl_count = 0usize;
+    let mut ptr_ops = 0usize;
     for func in &program.functions {
-        println!("[IR]       function '{}' -> {} IR statements OK", func.name, func.body.len());
-        // Show first few IR stmts
-        let max_ir = 5;
+        total_ir_stmts += func.body.len();
+        for stmt in &func.body {
+            let s = format!("{:?}", stmt);
+            if s.starts_with("If") { branch_count += 1; }
+            if s.starts_with("While") || s.starts_with("For") || s.starts_with("DoWhile") { loop_count += 1; }
+            if s.starts_with("ExprStmt") && s.contains("FunctionCall") { call_count += 1; }
+            if s.starts_with("VarDecl") { vardecl_count += 1; }
+            if s.contains("Deref") || s.contains("AddressOf") || s.contains("Arrow") { ptr_ops += 1; }
+        }
+        println!("    {} {} → {} IR statements", term::ok("✓"), term::token_fmt(&func.name), func.body.len());
+        let max_ir = 4;
         for (j, stmt) in func.body.iter().enumerate() {
             if j >= max_ir { break; }
             let ir_str = format!("{:?}", stmt);
-            let short = if ir_str.len() > 70 { format!("{}...", &ir_str[..67]) } else { ir_str };
-            println!("[IR]         {}", short);
+            let short = if ir_str.len() > 65 { format!("{}...", &ir_str[..62]) } else { ir_str };
+            println!("      {} {}", term::dim("│"), term::dim(&short));
         }
         if func.body.len() > max_ir {
-            println!("[IR]         ... ({} more)", func.body.len() - max_ir);
+            println!("      {} ({} more)", term::dim("└"), func.body.len() - max_ir);
         }
     }
-    println!("[IR]       {} structs registered", program.structs.len());
+    println!("  {} {} total IR stmts", term::dim("  total"), total_ir_stmts);
+    println!("  {} branches={}, loops={}, calls={}, vars={}, ptrs={}",
+        term::dim("  analysis"), branch_count, loop_count, call_count, vardecl_count, ptr_ops);
+    if !program.structs.is_empty() {
+        println!("  {} {} structs registered in IR", term::dim("  types"), program.structs.len());
+    }
     println!();
 
-    // 5. UB DETECTOR
-    println!("--- Phase 5: UB DETECTOR ---");
+    // ── Phase 5: UB DETECTOR ────────────────────────────────
+    println!("{}", term::phase_bar(5, "UB DETECTOR — Undefined Behavior Analysis", "C"));
     let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
     ub_detector = ub_detector.with_warn_mode();
     let reports = ub_detector.analyze(&program);
+    println!("  {} functions: {}, variables: {}, pointer ops: {}",
+        term::dim("  scope"), program.functions.len(), vardecl_count, ptr_ops);
     if reports.is_empty() {
-        println!("[UB]       No undefined behavior detected OK");
+        println!("  {} No undefined behavior detected", term::ok("✓ CLEAN"));
     } else {
         let errors = reports.iter().filter(|r| format!("{:?}", r.severity).contains("Error")).count();
         let warnings = reports.len() - errors;
-        println!("[UB]       {} issues found ({} errors, {} warnings)", reports.len(), errors, warnings);
-        for r in reports.iter().take(5) {
-            let sev = format!("{:?}", r.severity);
-            let msg_short = if r.message.len() > 60 {
-                format!("{}...", &r.message[..57])
-            } else {
-                r.message.clone()
-            };
-            println!("[UB]       [{}] {}", sev, msg_short);
+        if errors > 0 {
+            println!("  {} {} errors, {} warnings", term::error_text("✗"), errors, warnings);
+        } else {
+            println!("  {} {} warnings (no errors)", term::warn("⚠"), warnings);
         }
-        if reports.len() > 5 {
-            println!("[UB]       ... ({} more)", reports.len() - 5);
+        for (i, r) in reports.iter().enumerate().take(8) {
+            let sev = format!("{:?}", r.severity);
+            let sev_colored = if sev.contains("Error") { term::error_text(&sev) } else { term::warn(&sev) };
+            let msg_short = if r.message.len() > 55 { format!("{}...", &r.message[..52]) } else { r.message.clone() };
+            println!("    {} [{}] {}", term::dim(&format!("{:>2}.", i + 1)), sev_colored, msg_short);
+            if let Some(line) = r.line {
+                println!("       {}", term::loc(input_file, line, 1));
+                if line > 0 && line <= source_lines.len() {
+                    println!("       {} {}", term::dim("|"), source_lines[line - 1].trim());
+                }
+            }
+        }
+        if reports.len() > 8 {
+            println!("    {} ({} more)", term::dim("..."), reports.len() - 8);
         }
     }
     println!();
 
-    // 6. CODEGEN
-    println!("--- Phase 6: CODEGEN (x86-64) ---");
+    // ── Phase 6: CODEGEN ────────────────────────────────────
+    println!("{}", term::phase_bar(6, "CODEGEN — x86-64 Machine Code", "C"));
     let target = adead_bib::isa::isa_compiler::Target::Windows;
     let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
     let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
-    println!("[CODEGEN]  {} bytes of machine code generated", opcodes.len());
-    println!("[CODEGEN]  {} bytes of data section", data.len());
-    println!("[CODEGEN]  {} IAT entries, {} string relocations", iat_offsets.len(), string_offsets.len());
-    // Show first instructions as hex
+    println!("  {} {} bytes of machine code", term::ok("✓"), opcodes.len());
+    println!("  {} {} bytes of data section", term::ok("✓"), data.len());
+    println!("  {} {} IAT call sites, {} string relocations",
+        term::dim("  links"), iat_offsets.len(), string_offsets.len());
+    {
+        let dlls = adead_bib::backend::cpu::iat_registry::dll_names();
+        if !dlls.is_empty() {
+            println!("  {} imports ({} DLLs):", term::dim("  IAT"), dlls.len());
+            for dll in &dlls {
+                let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
+                let used: Vec<&str> = entries.iter().filter(|e| source.contains(e.name)).map(|e| e.name).collect();
+                if !used.is_empty() {
+                    println!("    {} {} → {}", term::ok("✓"), term::token_fmt(dll), used.join(", "));
+                }
+            }
+        }
+    }
     if !opcodes.is_empty() {
         let show_bytes = opcodes.len().min(32);
         let hex: Vec<String> = opcodes[..show_bytes].iter().map(|b| format!("{:02X}", b)).collect();
-        println!("[CODEGEN]  First {} bytes:", show_bytes);
-        // Show in rows of 16
+        println!("  {} first {} bytes:", term::dim("  hex"), show_bytes);
         for chunk in hex.chunks(16) {
-            println!("[CODEGEN]    {}", chunk.join(" "));
-        }
-        if opcodes.len() > 32 {
-            println!("[CODEGEN]    ... ({} more bytes)", opcodes.len() - 32);
+            println!("    {}", term::dim(&chunk.join(" ")));
         }
     }
-    // Show data section strings
     if !data.is_empty() {
-        println!("[CODEGEN]  Data section strings:");
+        println!("  {} data strings:", term::dim("  data"));
         let data_str = String::from_utf8_lossy(&data);
         for s in data_str.split('\0') {
             if !s.is_empty() && s.len() < 200 {
-                println!("[CODEGEN]    \"{}\"", s.escape_default());
+                println!("    {}", term::info(&format!("\"{}\"", s.escape_default())));
             }
         }
     }
     println!();
 
-    // 7. OUTPUT SUMMARY
-    println!("--- Phase 7: OUTPUT ---");
-    let total_size = opcodes.len() + data.len() + 1024; // ~1KB PE overhead
-    println!("[OUTPUT]   Target: Windows PE x86-64");
-    println!("[OUTPUT]   Code:   {} bytes", opcodes.len());
-    println!("[OUTPUT]   Data:   {} bytes", data.len());
-    println!("[OUTPUT]   Est. binary: ~{} bytes", total_size);
+    // ── Phase 7: OUTPUT SUMMARY ─────────────────────────────
+    println!("{}", term::phase_bar(7, "OUTPUT — PE Generation Summary", "C"));
+    let pe_headers = 0x200usize;
+    let section_alignment = 0x200usize;
+    let code_aligned = ((opcodes.len() + section_alignment - 1) / section_alignment) * section_alignment;
+    let data_aligned = ((data.len() + section_alignment - 1) / section_alignment) * section_alignment;
+    let iat_section_size = adead_bib::backend::cpu::iat_registry::IAT_ENTRIES.len() * 8;
+    let iat_aligned = ((iat_section_size + section_alignment - 1) / section_alignment) * section_alignment;
+    let estimated_pe = pe_headers + code_aligned + data_aligned + iat_aligned;
+    println!("  {} Windows PE x86-64", term::info("target:"));
+    println!("  {} {} bytes (.text)", term::dim("  code"), opcodes.len());
+    println!("  {} {} bytes (.data)", term::dim("  data"), data.len());
+    println!("  {} {} bytes (.idata)", term::dim("   iat"), iat_section_size);
+    println!("  {} ~{} bytes", term::ok("  estimated PE:"), estimated_pe);
     println!();
-    println!("{}",  "=".repeat(64));
-    println!("  Step compilation complete.");
-    println!("  To build the actual binary: adb cc {} -o output.exe", input_file);
-    println!("{}",  "=".repeat(64));
+
+    // ── FINAL SUMMARY ───────────────────────────────────────
+    println!("{}", term::phase_header("╔══════════════════════════════════════════════════════════════╗"));
+    println!("{}", term::phase_header("║   Step Compilation Complete ✅                               ║"));
+    println!("{}", term::phase_header("╚══════════════════════════════════════════════════════════════╝"));
+    println!("  {} 7/7 phases completed successfully", term::ok("✓ ALL PHASES PASSED"));
+    println!("  {} adb cc {} -o output.exe", term::info("  build:"), input_file);
+    println!("  {} adb run {}", term::info("  run:  "), input_file);
 
     Ok(())
 }
 
 fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use adead_bib::cli::term;
     use adead_bib::frontend::cpp::cpp_lexer::{CppLexer, CppToken};
 
+    term::enable_ansi();
+
     println!();
-    println!("{}",  "=".repeat(64));
-    println!("  ADead-BIB Step Compiler (C++) — {}", input_file);
-    println!("  Cada paso del pipeline, visible.");
-    println!("{}",  "=".repeat(64));
+    println!("{}", term::phase_header("â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—"));
+    println!("{}", term::phase_header("â•‘   ADead-BIB Step Compiler (C++) â€” Deep Analysis Mode ðŸ’€ðŸ¦ˆ   â•‘"));
+    println!("{}", term::phase_header("â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•"));
+    println!("  {} {}", term::info("Source:"), input_file);
+    println!("  {} C++11/14/17/20", term::info("Language:"));
     println!();
 
-    // 0. Read source
-    let source = fs::read_to_string(input_file)
-        .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
-    let source_lines: Vec<&str> = source.lines().collect();
-    println!("[SOURCE]   {} lines, {} bytes", source_lines.len(), source.len());
-    println!();
-
-    // 1. PREPROCESSOR
-    println!("--- Phase 1: PREPROCESSOR ---");
-    for line in &source_lines {
-        let trimmed = line.trim();
-        if trimmed.starts_with("#include") {
-            println!("[PREPROC]  {} -> resolved internally", trimmed);
+    // â”€â”€ Phase 0: SOURCE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(0, "SOURCE", "C++"));
+    let source = match fs::read_to_string(input_file) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("  {} {}", term::error_text("ERROR:"), format!("Cannot read '{}': {}", input_file, e));
+            return Err(format!("Cannot read '{}': {}", input_file, e).into());
         }
+    };
+    let source_lines: Vec<&str> = source.lines().collect();
+    println!("  {} {} lines, {} bytes", term::ok("âœ“"), source_lines.len(), source.len());
+    let blank_lines = source_lines.iter().filter(|l| l.trim().is_empty()).count();
+    let comment_lines = source_lines.iter().filter(|l| {
+        let t = l.trim();
+        t.starts_with("//") || t.starts_with("/*") || t.starts_with("*")
+    }).count();
+    let code_lines = source_lines.len() - blank_lines - comment_lines;
+    println!("  {} code: {}, comments: {}, blank: {}", term::dim("  metrics"), code_lines, comment_lines, blank_lines);
+    // Show includes
+    let includes: Vec<(usize, &str)> = source_lines.iter().enumerate()
+        .filter(|(_, l)| l.trim().starts_with("#include"))
+        .map(|(i, l)| (i + 1, l.trim()))
+        .collect();
+    if !includes.is_empty() {
+        println!("  {} {} #include directives:", term::dim("  deps"), includes.len());
+        for (line_num, inc) in &includes {
+            println!("    {} {}", term::loc(input_file, *line_num, 1), term::info(inc));
+        }
+    }
+    // Detect C++ features
+    let has_classes = source_lines.iter().any(|l| l.contains("class ") && !l.trim().starts_with("//"));
+    let has_templates = source_lines.iter().any(|l| l.contains("template"));
+    let has_namespaces = source_lines.iter().any(|l| l.contains("namespace "));
+    let has_lambda = source_lines.iter().any(|l| l.contains("[") && l.contains("]("));
+    let has_auto = source_lines.iter().any(|l| {
+        let t = l.trim();
+        t.starts_with("auto ") || t.contains(" auto ")
+    });
+    let has_smart_ptr = source_lines.iter().any(|l| l.contains("unique_ptr") || l.contains("shared_ptr"));
+    let mut cpp_features: Vec<&str> = Vec::new();
+    if has_classes { cpp_features.push("classes"); }
+    if has_templates { cpp_features.push("templates"); }
+    if has_namespaces { cpp_features.push("namespaces"); }
+    if has_lambda { cpp_features.push("lambdas"); }
+    if has_auto { cpp_features.push("auto"); }
+    if has_smart_ptr { cpp_features.push("smart_ptr"); }
+    if !cpp_features.is_empty() {
+        println!("  {} {}", term::dim("  C++ features"), term::type_fmt(&cpp_features.join(", ")));
     }
     println!();
 
-    // 2. LEXER
-    println!("--- Phase 2: LEXER ---");
+    // â”€â”€ Phase 1: PREPROCESSOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(1, "PREPROCESSOR", "C++"));
+    for (line_num, inc) in &includes {
+        println!("    {} {} â†’ {}", term::loc(input_file, *line_num, 1), inc, term::ok("resolved internally"));
+    }
+    let macro_defs: Vec<(usize, &str)> = source_lines.iter().enumerate()
+        .filter(|(_, l)| l.trim().starts_with("#define"))
+        .map(|(i, l)| (i + 1, l.trim()))
+        .collect();
+    if !macro_defs.is_empty() {
+        println!("  {} {} macros defined:", term::dim("  macros"), macro_defs.len());
+        for (line_num, mac) in &macro_defs {
+            println!("    {} {}", term::loc(input_file, *line_num, 1), term::token_fmt(mac));
+        }
+    }
+    println!("  {} Preprocessor complete", term::ok("âœ“"));
+    println!();
+
+    // â”€â”€ Phase 2: LEXER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(2, "LEXER", "C++"));
     let (tokens, lines) = CppLexer::new(&source).tokenize();
-    println!("[LEXER]    {} tokens generated", tokens.len());
-    let max_show = 20;
+    println!("  {} {} tokens generated", term::ok("âœ“"), tokens.len());
+
+    // Token distribution analysis
+    let mut kw_count = 0usize;
+    let mut cpp_kw_count = 0usize;
+    let mut ident_count = 0usize;
+    let mut int_lit_count = 0usize;
+    let mut float_lit_count = 0usize;
+    let mut str_lit_count = 0usize;
+    let mut op_count = 0usize;
+    let mut punct_count = 0usize;
+    let mut ident_freq: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+    for tok in &tokens {
+        match tok {
+            // C shared keywords
+            CppToken::Auto | CppToken::Break | CppToken::Case | CppToken::Char |
+            CppToken::Const | CppToken::Continue | CppToken::Default | CppToken::Do |
+            CppToken::Double | CppToken::Else | CppToken::Enum | CppToken::Extern |
+            CppToken::Float | CppToken::For | CppToken::Goto | CppToken::If |
+            CppToken::Int | CppToken::Long | CppToken::Register | CppToken::Return |
+            CppToken::Short | CppToken::Signed | CppToken::Sizeof | CppToken::Static |
+            CppToken::Struct | CppToken::Switch | CppToken::Typedef | CppToken::Union |
+            CppToken::Unsigned | CppToken::Void | CppToken::Volatile | CppToken::While |
+            CppToken::Bool | CppToken::Inline => { kw_count += 1; }
+            // C++ specific keywords
+            CppToken::Class | CppToken::Namespace | CppToken::Using | CppToken::New |
+            CppToken::Delete | CppToken::This | CppToken::Virtual | CppToken::Override |
+            CppToken::Final | CppToken::Public | CppToken::Private | CppToken::Protected |
+            CppToken::Friend | CppToken::Operator | CppToken::Template | CppToken::Typename |
+            CppToken::Try | CppToken::Catch | CppToken::Throw | CppToken::Noexcept |
+            CppToken::Nullptr | CppToken::Constexpr | CppToken::Explicit |
+            CppToken::Mutable | CppToken::True | CppToken::False |
+            CppToken::StaticCast | CppToken::DynamicCast | CppToken::ConstCast |
+            CppToken::ReinterpretCast => { cpp_kw_count += 1; }
+            CppToken::Identifier(name) => {
+                ident_count += 1;
+                *ident_freq.entry(name.clone()).or_insert(0) += 1;
+            }
+            CppToken::IntLiteral(_) | CppToken::UIntLiteral(_) => { int_lit_count += 1; }
+            CppToken::FloatLiteral(_) => { float_lit_count += 1; }
+            CppToken::StringLiteral(_) => { str_lit_count += 1; }
+            CppToken::CharLiteral(_) => { str_lit_count += 1; }
+            CppToken::LParen | CppToken::RParen | CppToken::LBrace | CppToken::RBrace |
+            CppToken::LBracket | CppToken::RBracket | CppToken::Semicolon | CppToken::Comma => { punct_count += 1; }
+            CppToken::Eof => {}
+            _ => { op_count += 1; }
+        }
+    }
+
+    println!("  {} distribution:", term::dim("  tokens"));
+    println!("    {} C_keywords={}, {} C++_keywords={}, {} identifiers={}",
+        term::token_fmt("KW"), kw_count,
+        term::token_fmt("C++"), cpp_kw_count,
+        term::token_fmt("ID"), ident_count);
+    println!("    {} int_literals={}, {} float_literals={}, {} strings={}",
+        term::token_fmt("INT"), int_lit_count,
+        term::token_fmt("FLT"), float_lit_count,
+        term::token_fmt("STR"), str_lit_count);
+    println!("    {} operators={}, {} punctuation={}",
+        term::token_fmt("OP"), op_count,
+        term::token_fmt("PUNCT"), punct_count);
+
+    // Top identifiers
+    if !ident_freq.is_empty() {
+        let mut sorted: Vec<_> = ident_freq.iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(a.1));
+        let top: Vec<String> = sorted.iter().take(8).map(|(k, v)| format!("{}({})", k, v)).collect();
+        println!("  {} {}", term::dim("  top IDs"), top.join(", "));
+    }
+
+    // Token preview
+    println!("  {} first tokens:", term::dim("  preview"));
+    let max_show = 12;
     let mut shown = 0;
     for (i, tok) in tokens.iter().enumerate() {
         if *tok == CppToken::Eof { break; }
         if shown >= max_show { break; }
         let line_num = if i < lines.len() { lines[i] } else { 0 };
         let tok_str = format!("{:?}", tok);
-        let short = if tok_str.len() > 40 {
-            format!("{}...", &tok_str[..37])
-        } else {
-            tok_str
-        };
-        println!("[LEXER]    {:>4}:{:<3}  {:<42} OK", line_num, i, short);
+        let short = if tok_str.len() > 40 { format!("{}...", &tok_str[..37]) } else { tok_str };
+        println!("    {} {:<42} {}", term::loc(input_file, line_num, i % 80), term::token_fmt(&short), term::ok("OK"));
         shown += 1;
     }
     if tokens.len() > max_show + 1 {
-        println!("[LEXER]    ... ({} more tokens)", tokens.len() - max_show - 1);
+        println!("    {} ({} more tokens)", term::dim("..."), tokens.len() - max_show - 1);
     }
     println!();
 
-    // 3. PARSER + IR
-    println!("--- Phase 3: PARSER + IR ---");
-    let program = adead_bib::frontend::cpp::compile_cpp_to_program(&source)
-        .map_err(|e| format!("C++ parse error: {}", e))?;
-    for func in &program.functions {
-        println!("[PARSER]   function '{}' -> {} IR statements OK", func.name, func.body.len());
-        let max_ir = 5;
-        for (j, stmt) in func.body.iter().enumerate() {
-            if j >= max_ir { break; }
-            let ir_str = format!("{:?}", stmt);
-            let short = if ir_str.len() > 70 { format!("{}...", &ir_str[..67]) } else { ir_str };
-            println!("[IR]         {}", short);
+    // â”€â”€ Phase 3: PARSER + IR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(3, "PARSER + IR â€” Syntax & Lowering", "C++"));
+    let program = match adead_bib::frontend::cpp::compile_cpp_to_program(&source) {
+        Ok(p) => {
+            println!("  {} Parse + IR generation successful", term::ok("âœ“"));
+            p
         }
-        if func.body.len() > max_ir {
-            println!("[IR]         ... ({} more)", func.body.len() - max_ir);
-        }
-    }
-    println!("[PARSER]   {} functions, {} structs/classes", program.functions.len(), program.structs.len());
-    println!();
+        Err(e) => {
+            println!("  {} Parse/IR failed!", term::error_text("âœ—"));
+            println!();
+            let err_msg = format!("{}", e);
+            println!("  {} {}", term::error_text("ERROR:"), err_msg);
 
-    // 4. UB DETECTOR (enhanced verbose output)
-    println!("--- Phase 4: UB DETECTOR ---");
-    let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
-    ub_detector = ub_detector.with_warn_mode();
-    let reports = ub_detector.analyze(&program);
-    
-    // Count analysis stats from program
-    let total_vars: usize = program.functions.iter().map(|f| {
-        f.body.iter().filter(|s| matches!(s, adead_bib::ast::Stmt::VarDecl { .. })).count()
-    }).sum();
-    let total_ptrs: usize = program.functions.iter().map(|f| {
-        f.body.iter().filter(|s| {
-            matches!(s, adead_bib::ast::Stmt::DerefAssign { .. } | adead_bib::ast::Stmt::ArrowAssign { .. })
-        }).count()
-    }).sum();
-    let null_checks: usize = program.functions.iter().map(|f| {
-        f.body.iter().filter(|s| {
-            if let adead_bib::ast::Stmt::If { condition, .. } = s {
-                format!("{:?}", condition).contains("== 0") || format!("{:?}", condition).contains("!= 0")
-            } else { false }
-        }).count()
-    }).sum();
-    
-    println!("[UB]       functions analyzed: {}", program.functions.len());
-    println!("[UB]       variables declared: {}", total_vars);
-    println!("[UB]       pointer operations: {}", total_ptrs);
-    println!("[UB]       null checks found:  {}", null_checks);
-    
-    if reports.is_empty() {
-        println!("[UB]       result: 0 UB encontrados ✅");
-    } else {
-        let errors = reports.iter().filter(|r| format!("{:?}", r.severity).contains("Error")).count();
-        let warnings = reports.len() - errors;
-        println!("[UB]       result: {} issues ({} errors, {} warnings)", reports.len(), errors, warnings);
-        for r in reports.iter().take(5) {
-            println!("[UB]         {:?}: {}",  r.severity, if r.message.len() > 60 { &r.message[..57] } else { &r.message });
-        }
-    }
-    println!();
-
-    // 5. CODEGEN
-    println!("--- Phase 5: CODEGEN (x86-64) ---");
-    let target = adead_bib::isa::isa_compiler::Target::Windows;
-    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
-    let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
-    println!("[CODEGEN]  {} bytes of machine code", opcodes.len());
-    println!("[CODEGEN]  {} bytes of data section", data.len());
-    println!("[CODEGEN]  {} IAT call sites, {} string relocations", iat_offsets.len(), string_offsets.len());
-    
-    // Detect __store32 intrinsic calls in source and show details
-    {
-        let store32_count = source.matches("__store32").count();
-        if store32_count > 0 {
-            println!("[CODEGEN]  __store32 intrinsics detected: {}", store32_count);
-            // Find __store32 calls and show their arguments
-            for line in source.lines() {
-                if line.contains("__store32(") {
-                    let trimmed = line.trim();
-                    // Extract the call
-                    if let Some(start) = trimmed.find("__store32(") {
-                        let call_part = &trimmed[start..];
-                        if let Some(end) = call_part.find(");") {
-                            let call = &call_part[..end+2];
-                            println!("[CODEGEN]    {} → MOV DWORD [ptr+offset], value (32-bit)", call);
+            // Try to extract position info
+            if let Some(pos_start) = err_msg.find("position ") {
+                if let Some(pos_val) = err_msg[pos_start + 9..].split(|c: char| !c.is_numeric()).next() {
+                    if let Ok(pos) = pos_val.parse::<usize>() {
+                        let err_line = if pos < lines.len() { lines[pos] } else { 0 };
+                        if err_line > 0 && err_line <= source_lines.len() {
+                            println!();
+                            println!("  {}", term::source_context(&source, err_line, 1, &err_msg, "error"));
+                            println!();
+                            println!("  {} {}", term::info("location:"), term::loc(input_file, err_line, 1));
                         }
                     }
                 }
             }
-            println!("[CODEGEN]    encoding: 89 ModR/M [disp] (no REX.W = 32-bit store)");
+
+            // Error chain: check for common C++ issues
+            if err_msg.to_lowercase().contains("template") {
+                println!("  {} Template parsing issue â€” check template syntax", term::warn("hint:"));
+            }
+            if err_msg.to_lowercase().contains("class") || err_msg.to_lowercase().contains("struct") {
+                println!("  {} Class/struct definition issue â€” check braces and semicolons", term::warn("hint:"));
+            }
+            if err_msg.to_lowercase().contains("namespace") {
+                println!("  {} Namespace issue â€” check namespace blocks", term::warn("hint:"));
+            }
+            for (_line_num, inc) in &includes {
+                if err_msg.to_lowercase().contains("unexpected") || err_msg.to_lowercase().contains("expected") {
+                    println!("  {} Check that {} resolves all C++ symbols",
+                        term::warn("hint:"), inc);
+                }
+            }
+            println!();
+            println!("  {} Compilation stopped at Phase 3.", term::error_text("STOPPED"));
+            println!("  {} Fix the error above, then run {} again.",
+                term::info("action:"), term::info(&format!("adb step {}", input_file)));
+            return Err(format!("C++ parse error: {}", e).into());
+        }
+    };
+
+    // Parse/IR metrics
+    let mut total_ir_stmts = 0usize;
+    let mut branch_count = 0usize;
+    let mut loop_count = 0usize;
+    let mut call_count = 0usize;
+    let mut vardecl_count = 0usize;
+    let mut ptr_ops = 0usize;
+
+    for func in &program.functions {
+        total_ir_stmts += func.body.len();
+        println!("    {} {} â†’ {} IR statements",
+            term::ok("âœ“"), term::token_fmt(&func.name), func.body.len());
+        let max_ir = 4;
+        for (j, stmt) in func.body.iter().enumerate() {
+            if j >= max_ir { break; }
+            let ir_str = format!("{:?}", stmt);
+            let short = if ir_str.len() > 65 { format!("{}...", &ir_str[..62]) } else { ir_str };
+            println!("      {} {}", term::dim("â”‚"), term::dim(&short));
+        }
+        if func.body.len() > max_ir {
+            println!("      {} ({} more)", term::dim("â””"), func.body.len() - max_ir);
+        }
+
+        for stmt in &func.body {
+            let s = format!("{:?}", stmt);
+            if s.starts_with("If") { branch_count += 1; }
+            if s.starts_with("While") || s.starts_with("For") || s.starts_with("DoWhile") { loop_count += 1; }
+            if s.starts_with("ExprStmt") && s.contains("FunctionCall") { call_count += 1; }
+            if s.starts_with("VarDecl") { vardecl_count += 1; }
+            if s.contains("Deref") || s.contains("AddressOf") || s.contains("Arrow") { ptr_ops += 1; }
         }
     }
-    
-    // Show DLL imports from IAT registry
+
+    // Classes & structs
+    if !program.classes.is_empty() {
+        println!();
+        println!("  {} classes:", term::dim("  C++"));
+        for class in &program.classes {
+            println!("    {} {} {} [{} methods, {} fields]",
+                term::ok("âœ“"), term::type_fmt("class"),
+                term::token_fmt(&class.name), class.methods.len(), class.fields.len());
+        }
+    }
+    if !program.structs.is_empty() {
+        println!("  {} {} structs registered", term::dim("  types"), program.structs.len());
+    }
+    println!();
+    println!("  {} {} total IR stmts", term::dim("  total"), total_ir_stmts);
+    println!("  {} branches={}, loops={}, calls={}, vars={}, ptrs={}",
+        term::dim("  analysis"),
+        branch_count, loop_count, call_count, vardecl_count, ptr_ops);
+    println!();
+
+    // â”€â”€ Phase 4: UB DETECTOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(4, "UB DETECTOR â€” Undefined Behavior Analysis", "C++"));
+    let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
+    ub_detector = ub_detector.with_warn_mode();
+    let reports = ub_detector.analyze(&program);
+
+    println!("  {} functions: {}, classes: {}", term::dim("  scope"),
+        program.functions.len(), program.classes.len());
+
+    if reports.is_empty() {
+        println!("  {} No undefined behavior detected", term::ok("âœ“ CLEAN"));
+    } else {
+        let errors = reports.iter().filter(|r| format!("{:?}", r.severity).contains("Error")).count();
+        let warnings = reports.len() - errors;
+        if errors > 0 {
+            println!("  {} {} errors, {} warnings", term::error_text("âœ—"), errors, warnings);
+        } else {
+            println!("  {} {} warnings (no errors)", term::warn("âš "), warnings);
+        }
+        for (i, r) in reports.iter().enumerate().take(8) {
+            let sev = format!("{:?}", r.severity);
+            let sev_colored = if sev.contains("Error") { term::error_text(&sev) } else { term::warn(&sev) };
+            let msg_short = if r.message.len() > 55 { format!("{}...", &r.message[..52]) } else { r.message.clone() };
+            println!("    {} [{}] {}", term::dim(&format!("{:>2}.", i + 1)), sev_colored, msg_short);
+            if let Some(line) = r.line {
+                println!("       {}", term::loc(input_file, line, 1));
+                if line > 0 && line <= source_lines.len() {
+                    println!("       {} {}", term::dim("|"), source_lines[line - 1].trim());
+                }
+            }
+        }
+        if reports.len() > 8 {
+            println!("    {} ({} more)", term::dim("..."), reports.len() - 8);
+        }
+    }
+    println!();
+
+    // â”€â”€ Phase 5: CODEGEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(5, "CODEGEN â€” x86-64 Machine Code", "C++"));
+    let target = adead_bib::isa::isa_compiler::Target::Windows;
+    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+    let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
+
+    println!("  {} {} bytes of machine code", term::ok("âœ“"), opcodes.len());
+    println!("  {} {} bytes of data section", term::ok("âœ“"), data.len());
+    println!("  {} {} IAT call sites, {} string relocations",
+        term::dim("  links"), iat_offsets.len(), string_offsets.len());
+
+    // IAT imports
     {
         let dlls = adead_bib::backend::cpu::iat_registry::dll_names();
-        println!("[CODEGEN]  IAT imports ({} DLLs):", dlls.len());
-        for dll in &dlls {
-            let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
-            let names: Vec<&str> = entries.iter().map(|e| e.name).collect();
-            println!("[CODEGEN]    {} ✅ ({})", dll, names.join(", "));
-        }
-    }
-    // Detect API usage categories from function names in source
-    {
-        let src_lower = source.to_lowercase();
-        let mut apis_used: Vec<&str> = Vec::new();
-        if src_lower.contains("createwindow") || src_lower.contains("showwindow") {
-            apis_used.push("🪟 Win32 Window");
-        }
-        if src_lower.contains("setpixel") || src_lower.contains("lineto") || src_lower.contains("createpen")
-            || src_lower.contains("createsolidbrush") || src_lower.contains("moveto") {
-            apis_used.push("🎨 GDI Rendering");
-        }
-        if src_lower.contains("fillgradienttriangle") || src_lower.contains("filltriangle")
-            || src_lower.contains("drawtriangleoutline") {
-            apis_used.push("🔺 Triangle Drawing");
-        }
-        if src_lower.contains("drawline") {
-            apis_used.push("📏 Line Drawing");
-        }
-        if src_lower.contains("d3d12") || src_lower.contains("createdevice") {
-            apis_used.push("🎮 DirectX 12");
-        }
-        if src_lower.contains("dxgi") || src_lower.contains("createdxgifactory") {
-            apis_used.push("🖥️ DXGI");
-        }
-        if src_lower.contains("messageloop") || src_lower.contains("peekmessage") || src_lower.contains("getmessage") {
-            apis_used.push("🔄 Message Loop");
-        }
-        if src_lower.contains("rgb(") {
-            apis_used.push("🌈 RGB Colors");
-        }
-        if !apis_used.is_empty() {
-            println!("[CODEGEN]  API categories detected:");
-            for api in &apis_used {
-                println!("[CODEGEN]    {}", api);
+        if !dlls.is_empty() {
+            println!("  {} imports ({} DLLs):", term::dim("  IAT"), dlls.len());
+            for dll in &dlls {
+                let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
+                let used: Vec<&str> = entries.iter().filter(|e| source.contains(e.name)).map(|e| e.name).collect();
+                if !used.is_empty() {
+                    println!("    {} {} â†’ {}", term::ok("âœ“"), term::token_fmt(dll), used.join(", "));
+                }
             }
         }
     }
-    // DLLs actually used by the program (check which IAT slots are referenced)
-    {
-        let used_dlls: Vec<&str> = adead_bib::backend::cpu::iat_registry::dll_names()
-            .into_iter()
-            .filter(|dll| {
-                let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
-                entries.iter().any(|e| source.contains(e.name))
-            })
-            .collect();
-        if !used_dlls.is_empty() {
-            println!("[CODEGEN]  DLLs actually used by program: {}", used_dlls.join(", "));
-        }
-    }
+
+    // Machine code hex preview
     if !opcodes.is_empty() {
         let show_bytes = opcodes.len().min(32);
         let hex: Vec<String> = opcodes[..show_bytes].iter().map(|b| format!("{:02X}", b)).collect();
-        println!("[CODEGEN]  First {} bytes:", show_bytes);
+        println!("  {} first {} bytes:", term::dim("  hex"), show_bytes);
         for chunk in hex.chunks(16) {
-            println!("[CODEGEN]    {}", chunk.join(" "));
+            println!("    {}", term::dim(&chunk.join(" ")));
         }
     }
+
+    // Data section strings
     if !data.is_empty() {
-        println!("[CODEGEN]  Data section strings:");
+        println!("  {} data strings:", term::dim("  data"));
         let data_str = String::from_utf8_lossy(&data);
         for s in data_str.split('\0') {
             if !s.is_empty() && s.len() < 200 {
-                println!("[CODEGEN]    \"{}\"", s.escape_default());
+                println!("    {}", term::info(&format!("\"{}\"", s.escape_default())));
             }
         }
     }
     println!();
 
-    // 6. IAT RESOLVER (detailed per-function output)
-    println!("--- Phase 6: IAT RESOLVER ---");
+    // â”€â”€ Phase 6: IAT RESOLVER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(6, "IAT RESOLVER â€” Import Address Table", "C++"));
     {
         let assumed_idata_rva: u32 = 0x2000;
         let idata_result = adead_bib::backend::cpu::iat_registry::build_idata(assumed_idata_rva, &[]);
         let iat_base = 0x2000 + idata_result.iat_offset as u32;
-        
-        // Find functions actually used in source
+
         let mut resolved_count = 0;
         for dll in adead_bib::backend::cpu::iat_registry::dll_names() {
             let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(&dll);
             let used_entries: Vec<_> = entries.iter().filter(|e| source.contains(e.name)).collect();
             if !used_entries.is_empty() {
-                println!("[IAT]      DLL: {}", dll);
+                println!("  {} {}", term::token_fmt(&dll), term::dim("DLL"));
                 for entry in &used_entries {
                     let offset = iat_base + (entry.slot_index as u32 * 8);
-                    println!("[IAT]        función: {}", entry.name);
-                    println!("[IAT]        slot: {}, offset: 0x{:X}, status: resuelto ✅", 
-                             entry.slot_index, offset);
+                    println!("    {} slot:{}, offset:{} {}",
+                        term::token_fmt(entry.name), entry.slot_index,
+                        term::info(&format!("0x{:X}", offset)), term::ok("âœ“ resolved"));
                     resolved_count += 1;
                 }
             }
         }
-        println!("[IAT]      Total: {} funciones resueltas", resolved_count);
+        println!("  {} {} functions resolved", term::dim("  total"), resolved_count);
     }
     println!();
 
-    // 7. PE OUTPUT (section sizes and summary)
-    println!("--- Phase 7: PE OUTPUT ---");
-    {
-        let dlls = adead_bib::backend::cpu::iat_registry::dll_names();
-        let total_iat_slots = adead_bib::backend::cpu::iat_registry::IAT_ENTRIES.len();
-        
-        // Count functions per DLL used in source
-        println!("[OUTPUT]   IAT entries: {}", total_iat_slots);
-        println!("[OUTPUT]   DLLs: {}", dlls.len());
-        for dll in &dlls {
-            let entries = adead_bib::backend::cpu::iat_registry::entries_for_dll(dll);
-            let used_count = entries.iter().filter(|e| source.contains(e.name)).count();
-            if used_count > 0 {
-                println!("[OUTPUT]     {}: {} funciones", dll, used_count);
-            }
-        }
-        
-        // Section sizes
-        println!("[OUTPUT]   code section: {} bytes", opcodes.len());
-        println!("[OUTPUT]   data section: {} bytes", data.len());
-        let iat_section_size = total_iat_slots * 8; // 8 bytes per IAT slot
-        println!("[OUTPUT]   IAT section: {} bytes ({} slots × 8)", iat_section_size, total_iat_slots);
-        
-        // Estimate total PE size (headers + sections)
-        let pe_headers = 0x200; // DOS + PE headers
-        let section_alignment = 0x200;
-        let code_aligned = ((opcodes.len() + section_alignment - 1) / section_alignment) * section_alignment;
-        let data_aligned = ((data.len() + section_alignment - 1) / section_alignment) * section_alignment;
-        let iat_aligned = ((iat_section_size + section_alignment - 1) / section_alignment) * section_alignment;
-        let estimated_pe = pe_headers + code_aligned + data_aligned + iat_aligned;
-        println!("[OUTPUT]   estimated PE: ~{} bytes", estimated_pe);
-    }
+    // â”€â”€ Phase 7: PE OUTPUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_bar(7, "OUTPUT â€” PE Generation Summary", "C++"));
+    let pe_headers = 0x200usize;
+    let section_alignment = 0x200usize;
+    let code_aligned = ((opcodes.len() + section_alignment - 1) / section_alignment) * section_alignment;
+    let data_aligned = ((data.len() + section_alignment - 1) / section_alignment) * section_alignment;
+    let iat_section_size = adead_bib::backend::cpu::iat_registry::IAT_ENTRIES.len() * 8;
+    let iat_aligned = ((iat_section_size + section_alignment - 1) / section_alignment) * section_alignment;
+    let estimated_pe = pe_headers + code_aligned + data_aligned + iat_aligned;
+
+    println!("  {} Windows PE x86-64", term::info("target:"));
+    println!("  {} {} bytes (.text)", term::dim("  code"), opcodes.len());
+    println!("  {} {} bytes (.data)", term::dim("  data"), data.len());
+    println!("  {} {} bytes (.idata)", term::dim("   iat"), iat_section_size);
+    println!("  {} ~{} bytes", term::ok("  estimated PE:"), estimated_pe);
     println!();
 
-    println!("{}",  "=".repeat(64));
-    println!("  Step compilation complete.");
-    println!("  To build: adb cxx {} -o output.exe", input_file);
-    println!("  To run:   adb run  (from project directory)");
-    println!("{}",  "=".repeat(64));
+    // â”€â”€ FINAL SUMMARY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    println!("{}", term::phase_header("â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—"));
+    println!("{}", term::phase_header("â•‘   Step Compilation Complete (C++) âœ…                         â•‘"));
+    println!("{}", term::phase_header("â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•"));
+    println!();
+    println!("  {} 7/7 phases completed successfully", term::ok("âœ“ ALL PHASES PASSED"));
+    println!();
+    println!("  {} adb cxx {} -o output.exe", term::info("  build:"), input_file);
+    println!("  {} adb run {}", term::info("  run:  "), input_file);
+    println!();
 
     Ok(())
 }

@@ -21,6 +21,7 @@ pub mod backend;
 pub mod bg;
 pub mod builder;
 pub mod cache;
+pub mod cli;
 pub mod frontend;
 pub mod isa;
 pub mod optimizer;
