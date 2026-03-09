@@ -11,21 +11,6 @@ Ya eres capaz de construir aplicaciones, cualquier aplicaciones generales o vide
 > FASM-style: bytes directos al CPU  
 > `#include <header_main.h>` = TODO disponible
 
-```mermaid
-graph TD
-    A[Tu Código .c/.cpp] --> B[ADead-BIB Compiler (adb)]
-    B --> C[CPreprocessor/C++Preprocessor]
-    C --> D[CLexer/CppLexer]
-    D --> E[CParser/CppParser]
-    E --> F[CAST/CppAST]
-    F --> G[CToIR/CppToIR]
-    G --> H[Program (IR)]
-    H --> I[IsaCompiler]
-    I --> J[ADeadOp stream]
-    J --> K[Machine Code]
-    K --> L[Archivo ejecutable]
-```
-
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Tu Código (.c / .cpp)                                               │
 │                    ↓                                                 │
