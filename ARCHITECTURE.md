@@ -120,162 +120,259 @@ C99/C11/C++98/C++11/C++14/C++17/C++20 codigo fuente
 ```
 src/rust/
 ├── lib.rs                        # Exports públicos + re-exports
-├── main.rs                       # CLI: adeadc cc/cxx/build/run
+├── main.rs                       # CLI: adb cc/cxx/build/run/step/gpu/...
 ├── builder.rs                    # Orquestador del pipeline completo
+├── errors.json                   # Error messages catalog
+│
+├── cli/                          # Terminal UI para Step Compiler
+│   ├── mod.rs                    # Module entry
+│   └── term.rs                   # ANSI colors, formatting, phase bars
 │
 ├── preprocessor/                 # SIN CMake, SIN Linker — NUNCA
-│   ├── mod.rs                    # Entry point del preprocessor
+│   ├── mod.rs
 │   ├── resolver.rs               # Header resolution + LINKER ELIMINATOR
-│   │                             #   resolve_symbol(name) → InternalDef
-│   │                             #   unity_build(files) → single IR
-│   │                             #   eliminate_external_deps() → void
-│   │                             #   mark_used_symbols(ast) → SymbolSet
 │   ├── dedup.rs                  # Symbol Table deduplication global
-│   │                             #   dedup_symbols(table) → UniqueTable
-│   │                             #   detect_conflicts(a, b) → Option<Conflict>
 │   └── expander.rs               # C++11/C++14/C++17 → C++98 canon
-│                                 #   expand_lambda(node) → C++98Closure
-│                                 #   expand_range_for(node) → C++98Loop
-│                                 #   expand_auto(node) → ExplicitType
-│                                 #   expand_nullptr(node) → NullLiteral
-│                                 #   expand_structured_binding(node) → C++98
-│                                 #   expand_if_constexpr(node) → C++98Branch
-│                                 #   expand_fold_expression(node) → C++98
-│                                 #   (34 funciones totales — ver sección)
 │
 ├── stdlib/                       # Standard Library PROPIA — Sin libc externa
-│   ├── mod.rs                    # Registry de todas las fastos headers
-│   ├── header_main.rs            # header_main.h — hereda TODO (ver sección)
+│   ├── mod.rs
+│   ├── header_main.rs            # header_main.h — hereda TODO
+│   ├── canon_tests.rs            # Canon test suite
+│   ├── fase_tests.rs             # FASE test suite
+│   ├── integration_tests.rs      # Integration test suite
 │   │
 │   ├── c/                        # C99 Standard Library
-│   │   ├── fastos_stdio.rs       # printf, scanf, fprintf, fopen, fclose
-│   │   ├── fastos_stdlib.rs      # malloc, free, NULL, exit, atoi, rand
-│   │   ├── fastos_string.rs      # strlen, strcpy, strcat, strcmp, memcpy
-│   │   ├── fastos_math.rs        # sin, cos, tan, sqrt, pow, log, PI
-│   │   ├── fastos_time.rs        # clock, time, sleep, gettimeofday
-│   │   ├── fastos_assert.rs      # assert, static_assert, NDEBUG
-│   │   ├── fastos_errno.rs       # errno, strerror, error codes
-│   │   ├── fastos_limits.rs      # INT_MAX, INT_MIN, CHAR_MAX, etc.
-│   │   └── fastos_types.rs       # stdint.h + stddef.h + stdbool.h
+│   │   ├── mod.rs
+│   │   ├── fastos_stdio.rs
+│   │   ├── fastos_stdlib.rs
+│   │   ├── fastos_string.rs
+│   │   ├── fastos_math.rs
+│   │   ├── fastos_time.rs
+│   │   ├── fastos_assert.rs
+│   │   ├── fastos_errno.rs
+│   │   ├── fastos_limits.rs
+│   │   └── fastos_types.rs
 │   │
 │   └── cpp/                      # C++ Standard Library
-│       ├── fastos_iostream.rs    # std::cout, std::cin, std::cerr, std::endl
-│       ├── fastos_vector.rs      # std::vector<T>
-│       ├── fastos_string_cpp.rs  # std::string
-│       ├── fastos_map.rs         # std::map<K,V>
-│       ├── fastos_memory.rs      # std::unique_ptr, std::shared_ptr
-│       ├── fastos_algorithm.rs   # std::sort, find, copy, transform
-│       ├── fastos_functional.rs  # std::function, std::bind
-│       ├── fastos_utility.rs     # std::pair, std::move, std::forward
-│       └── fastos_exceptions.rs  # try/catch/throw C++98
+│       ├── mod.rs
+│       ├── fastos_iostream.rs
+│       ├── fastos_vector.rs
+│       ├── fastos_string_cpp.rs
+│       ├── fastos_map.rs
+│       ├── fastos_memory.rs
+│       ├── fastos_algorithm.rs
+│       ├── fastos_functional.rs
+│       ├── fastos_utility.rs
+│       └── fastos_exceptions.rs
 │
 ├── frontend/                     # C/C++ Parsing
 │   ├── mod.rs
-│   ├── ast.rs                    # Unified AST
+│   ├── ast.rs                    # Unified AST (Program, Function, Stmt, Expr)
 │   ├── types.rs                  # Type system completo
 │   ├── type_checker.rs           # Static analysis
+│   ├── lexer.rs                  # Shared lexer utilities
+│   ├── parser.rs                 # Shared parser utilities
 │   │
 │   ├── c/                        # C99 Frontend COMPLETO
-│   │   ├── c_lexer.rs            # Tokenizer C99
-│   │   ├── c_parser.rs           # Parser C99 completo
-│   │   ├── c_ast.rs              # AST nodes C99
-│   │   ├── c_preprocessor.rs     # #define, #include, #ifdef, #pragma
-│   │   ├── c_stdlib.rs           # Mapping #include → fastos_*.rs
-│   │   └── c_to_ir.rs            # C99 AST → ADeadOp IR
+│   │   ├── mod.rs
+│   │   ├── c_lexer.rs
+│   │   ├── c_parser.rs
+│   │   ├── c_ast.rs
+│   │   ├── c_preprocessor.rs
+│   │   ├── c_stdlib.rs
+│   │   ├── c_to_ir.rs
+│   │   └── c_compiler_extensions.rs
 │   │
 │   └── cpp/                      # C++98 Frontend COMPLETO
-│       ├── cpp_lexer.rs          # Tokenizer C++98
-│       ├── cpp_parser.rs         # Parser C++98 CANON completo
-│       ├── cpp_ast.rs            # AST nodes C++98
-│       ├── cpp_preprocessor.rs   # Preprocessor C++ (hereda de C + C++ extras)
-│       ├── cpp_stdlib.rs         # Mapping #include C++ → fastos_*.rs
-│       └── cpp_to_ir.rs          # C++98 AST → ADeadOp IR
+│       ├── mod.rs
+│       ├── cpp_lexer.rs
+│       ├── cpp_parser.rs
+│       ├── cpp_ast.rs
+│       ├── cpp_preprocessor.rs
+│       ├── cpp_stdlib.rs
+│       ├── cpp_to_ir.rs
+│       └── cpp_compiler_extensions.rs
 │
 ├── middle/                       # IR + UB Detection + Analysis
 │   ├── mod.rs
 │   ├── ir/                       # ADeadOp IR (SSA-form)
-│   │   ├── module.rs             # IRModule { functions, globals, types }
-│   │   ├── function.rs           # IRFunction { params, blocks, locals }
-│   │   ├── basicblock.rs         # BasicBlock { instrs, terminator }
-│   │   ├── instruction.rs        # ADeadOp instructions completas
-│   │   ├── types.rs              # IR Type system
-│   │   ├── value.rs              # IRValue: Const | Reg | Global | Undef
-│   │   └── builder.rs            # IRBuilder para construcción del IR
+│   │   ├── mod.rs
+│   │   ├── module.rs
+│   │   ├── function.rs
+│   │   ├── basicblock.rs
+│   │   ├── instruction.rs
+│   │   ├── types.rs
+│   │   ├── value.rs
+│   │   ├── builder.rs
+│   │   └── pdp11_heritage.rs
 │   │
-│   ├── ub_detector/              # 21 UB Types — ÚNICO EN EL MUNDO
-│   │   ├── mod.rs                # Orquesta 10 sub-analizadores
-│   │   ├── null_check.rs         # NullPointerDereference
-│   │   ├── bounds_check.rs       # ArrayOutOfBounds
-│   │   ├── overflow_check.rs     # IntegerOverflow/Underflow/DivByZero/ShiftOverflow
-│   │   ├── uninit_check.rs       # UninitializedVariable (flow-sensitive)
-│   │   ├── useafter_check.rs     # UseAfterFree + DanglingPtr + ReturnLocalAddr
-│   │   ├── type_check.rs         # TypeConfusion + StrictAliasing + InvalidCast
-│   │   ├── race_check.rs         # StackOverflow (recursion sin base case)
-│   │   ├── unsequenced_check.rs  # UnsequencedModification (i=i++)
-│   │   ├── lifetime.rs           # DoubleFree + lifetime analysis
-│   │   ├── report.rs             # UBReport, UBKind (21 tipos)
-│   │   ├── cache.rs              # UB results cacheados en fastos.bib
-│   │   └── analyzer.rs           # Coordinator general
+│   ├── ub_detector/              # 21+ UB Types
+│   │   ├── mod.rs
+│   │   ├── analyzer.rs
+│   │   ├── null_check.rs
+│   │   ├── bounds_check.rs
+│   │   ├── overflow_check.rs
+│   │   ├── uninit_check.rs
+│   │   ├── useafter_check.rs
+│   │   ├── type_check.rs
+│   │   ├── race_check.rs
+│   │   ├── unsequenced_check.rs
+│   │   ├── lifetime.rs
+│   │   ├── format_check.rs       # FormatStringMismatch
+│   │   ├── report.rs
+│   │   └── cache.rs
 │   │
 │   ├── analysis/                 # CFG, Dominators, Loops
-│   │   ├── cfg.rs                # Control Flow Graph
-│   │   ├── dominators.rs         # Dominator tree
-│   │   └── loops.rs              # Loop detection
+│   │   ├── mod.rs
+│   │   ├── cfg.rs
+│   │   ├── domtree.rs
+│   │   └── loops.rs
 │   │
 │   ├── lowering/                 # AST → IR lowering
+│   │   ├── mod.rs
+│   │   ├── c_lower.rs
+│   │   └── cpp_lower.rs
+│   │
 │   └── passes/                   # Optimization passes (LLVM-style)
-│       ├── mem2reg.rs            # Stack → SSA registers
-│       ├── dce.rs                # Dead code elimination pass
-│       ├── instcombine.rs        # Instruction combining
-│       └── simplifycfg.rs        # CFG simplification
+│       ├── mod.rs
+│       ├── pass_manager.rs       # PassManager + OptLevel
+│       └── transform/            # Individual transforms
+│           ├── mod.rs
+│           ├── constfold.rs
+│           ├── dce.rs
+│           ├── gvn.rs            # Global Value Numbering
+│           ├── inline.rs
+│           ├── licm.rs           # Loop-Invariant Code Motion
+│           ├── merge_functions.rs
+│           ├── simplify_cfg.rs
+│           ├── unroll.rs         # Loop unrolling
+│           └── vectorize.rs      # Auto-vectorization
 │
-├── optimizer/                    # Multi-level optimizations
+├── optimizer/                    # AST-level optimizations
 │   ├── mod.rs
-│   ├── dead_code.rs              # Dead code elimination
-│   ├── const_fold.rs             # Constant folding
-│   ├── const_prop.rs             # Constant propagation
-│   ├── redundant.rs              # Redundant ops removal
-│   ├── inline_exp.rs             # Inline expansion
-│   ├── binary_optimizer.rs       # Binary-level size optimization
-│   ├── branch_detector.rs        # Branch pattern detection
-│   ├── branchless.rs             # Branchless transforms
-│   └── simd.rs                   # Auto-vectorization SIMD
+│   ├── dead_code.rs
+│   ├── const_fold.rs
+│   ├── const_prop.rs
+│   ├── redundant.rs
+│   ├── inline_exp.rs
+│   ├── binary_optimizer.rs
+│   ├── branch_detector.rs
+│   ├── branchless.rs
+│   └── simd.rs
 │
 ├── isa/                          # ISA Layer — x86-64 completo
 │   ├── mod.rs
-│   ├── c_isa.rs                  # C99: sizeof/alignment rules
-│   ├── cpp_isa.rs                # C++98: vtable/this/constructors
-│   ├── isa_compiler.rs           # Main ISA compiler
-│   ├── encoder.rs                # ADeadOp → bytes x86-64 directos
-│   ├── decoder.rs                # bytes → ADeadOp (disassembler)
-│   ├── reg_alloc.rs              # Dual register allocator
-│   ├── optimizer.rs              # ISA-level peephole opts
-│   └── compiler/                 # Modular compilation stages
+│   ├── c_isa.rs
+│   ├── cpp_isa.rs
+│   ├── isa_compiler.rs
+│   ├── encoder.rs
+│   ├── decoder.rs
+│   ├── reg_alloc.rs
+│   ├── optimizer.rs
+│   ├── codegen.rs
+│   ├── README.md
+│   └── compiler/                 # Modular ISA compilation
+│       ├── mod.rs
+│       ├── compile.rs
+│       ├── core.rs
+│       ├── expressions.rs
+│       ├── statements.rs
+│       ├── control_flow.rs
+│       ├── functions.rs
+│       ├── arrays.rs
+│       └── helpers.rs
 │
 ├── cache/                        # fastos.bib System v2
-│   ├── mod.rs                    # ADeadCache struct
-│   ├── serializer.rs             # Cache → bytes
-│   ├── deserializer.rs           # bytes → Cache (roundtrip completo v2)
-│   ├── hasher.rs                 # FNV-1a header hashing
-│   └── validator.rs              # Cache hit/stale/miss/corrupt
+│   ├── mod.rs
+│   ├── serializer.rs
+│   ├── deserializer.rs
+│   ├── hasher.rs
+│   └── validator.rs
 │
 ├── output/                       # Binary Output — SIN LINKER EXTERNO
-│   ├── mod.rs                    # OutputFormat enum
-│   ├── pe.rs                     # Windows PE (.exe) generator
-│   ├── elf.rs                    # Linux ELF generator
-│   └── po.rs                     # FastOS .po generator (nativo FastOS)
+│   ├── mod.rs
+│   ├── pe.rs
+│   ├── elf.rs
+│   └── po.rs
 │
-├── backend/                      # Low-level code generation
-│   ├── cpu/                      # x86-64 backends (PE, ELF, flat)
-│   └── gpu/                      # GPU backends (Vulkan, CUDA, HIP)
+├── backend/                      # Low-level backends (CPU + GPU)
+│   ├── mod.rs
+│   ├── cpu/                      # x86-64 CPU backends
+│   │   ├── mod.rs
+│   │   ├── pe.rs                 # Windows PE x64
+│   │   ├── elf.rs                # Linux ELF
+│   │   ├── flat_binary.rs        # Raw binary (bootloaders, kernels)
+│   │   ├── pe_tiny.rs            # PE mínimo (<500 bytes)
+│   │   ├── pe_compact.rs
+│   │   ├── pe_simple.rs
+│   │   ├── pe_minimal.rs
+│   │   ├── pe_ultra.rs
+│   │   ├── pe_valid.rs
+│   │   ├── pe_isa.rs
+│   │   ├── os_codegen.rs         # Real mode/Protected mode/Long mode
+│   │   ├── codegen.rs
+│   │   ├── codegen_v2.rs
+│   │   ├── binary_raw.rs
+│   │   ├── fastos_format.rs
+│   │   ├── iat_registry.rs       # Import Address Table registry
+│   │   ├── microvm.rs            # MicroVM bytecode (4-bit instructions)
+│   │   ├── syscalls.rs
+│   │   └── win32_resolver.rs
+│   │
+│   └── gpu/                      # GPU backends
+│       ├── mod.rs
+│       ├── gpu_detect.rs         # GPU detection
+│       ├── compute.rs            # GPU compute abstraction
+│       ├── memory.rs             # GPU memory management
+│       ├── metrics.rs            # GPU performance metrics
+│       ├── scheduler.rs          # GPU task scheduler
+│       ├── unified_pipeline.rs   # CPU↔GPU hybrid pipeline
+│       ├── vulkan_runtime.rs     # Vulkan runtime (ash)
+│       ├── vulkan/               # Vulkan backend
+│       │   └── mod.rs
+│       ├── spirv/                # SPIR-V bytecode generation
+│       │   ├── mod.rs
+│       │   └── bytecode.rs
+│       ├── cuda/                 # CUDA code generation
+│       │   ├── mod.rs
+│       │   └── runtime.rs
+│       ├── hip/                  # HIP (AMD ROCm) support
+│       │   ├── mod.rs
+│       │   ├── cuda_to_hip.rs
+│       │   ├── hip_cpu.rs
+│       │   └── hip_runtime.rs
+│       └── hex/                  # Binary GPU hex tools
+│           ├── mod.rs
+│           ├── binary_gpu.py
+│           ├── cuda_kernels.py
+│           ├── gpu_opcodes.py
+│           ├── matmul_1024.ahyb
+│           └── matmul_1024.hex
 │
-├── bg/                           # Binary Guardian (security)
+├── bg/                           # Binary Guardian (security module)
+│   ├── mod.rs
+│   ├── analyzer.rs               # BinaryGuardian main analysis
+│   ├── arch_map.rs               # Architecture capability map
+│   ├── binary_loader.rs          # Binary loader for analysis
+│   ├── capability.rs             # Capability definitions
+│   └── policy.rs                 # Security policy engine
+│
 ├── runtime/                      # CPU/GPU detection + dispatch
+│   ├── mod.rs
+│   ├── cpu_detect.rs             # CPU feature detection (SSE/AVX)
+│   ├── dispatcher.rs             # CPU compute dispatch
+│   ├── gpu_dispatcher.rs         # GPU compute dispatch
+│   └── gpu_misuse_detector.rs    # GPU misuse detection
+│
 └── toolchain/                    # GCC/LLVM/MSVC compatibility layer
     ├── mod.rs
-    ├── gcc_compat.rs             # Emula flags GCC comunes
-    ├── msvc_compat.rs            # Emula flags MSVC comunes
-    └── clang_compat.rs           # Emula flags Clang comunes
+    ├── calling_conventions.rs    # Win64 + SysV calling conventions
+    ├── gcc_builtins.rs           # __attribute__, __builtin_*
+    ├── gcc_compat.rs             # GCC flag emulation (-O2, -Wall, etc.)
+    ├── clang_compat.rs           # Clang flag emulation (-fsanitize, --target)
+    ├── llvm_attrs.rs             # LLVM attributes/intrinsics
+    ├── msvc_compat.rs            # __declspec, MSVC extensions
+    └── cpp_name_mangler.rs       # Itanium ABI name mangling
 ```
 
 ---

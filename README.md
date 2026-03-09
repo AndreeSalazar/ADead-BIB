@@ -435,76 +435,156 @@ El corazón de ADead-BIB es la capa ISA que convierte operaciones abstractas (`A
 ```
 ADead-BIB/
 ├── src/rust/
-│   ├── main.rs                    # CLI driver (adb)
-│   ├── lib.rs                     # Exports públicos
-│   ├── builder.rs                 # Orchestrator
+│   ├── main.rs                        # CLI driver (adb)
+│   ├── lib.rs                         # Exports públicos
+│   ├── builder.rs                     # Orchestrator del pipeline
+│   ├── errors.json                    # Catálogo de errores
+│   │
+│   ├── cli/                       # TERMINAL UI
+│   │   └── term.rs                    # ANSI colors, phase bars, formatting
 │   │
 │   ├── frontend/                  # FRONTENDS
-│   │   ├── c/                     # C99 Frontend
+│   │   ├── ast.rs                     # IR compartido (Program, Function, Stmt, Expr)
+│   │   ├── types.rs                   # Sistema de tipos
+│   │   ├── type_checker.rs            # Análisis estático
+│   │   ├── lexer.rs                   # Utilidades compartidas de lexer
+│   │   ├── parser.rs                  # Utilidades compartidas de parser
+│   │   │
+│   │   ├── c/                         # C99 Frontend
 │   │   │   ├── c_lexer.rs             # Tokenizer C99
 │   │   │   ├── c_parser.rs            # Recursive descent C99
 │   │   │   ├── c_ast.rs               # C AST types
 │   │   │   ├── c_to_ir.rs             # CAST → Program IR
 │   │   │   ├── c_preprocessor.rs      # #include/#define/#ifdef
 │   │   │   ├── c_stdlib.rs            # 75+ headers built-in
-│   │   │   └── c_compiler_extensions.rs
+│   │   │   └── c_compiler_extensions.rs # Extensiones de compilador C
 │   │   │
-│   │   ├── cpp/                       # C++17 Frontend
-│   │   │   ├── cpp_lexer.rs           # Tokenizer C++
-│   │   │   ├── cpp_parser.rs          # Classes, templates, namespaces
-│   │   │   ├── cpp_ast.rs             # C++ AST types
-│   │   │   ├── cpp_to_ir.rs           # CppAST → Program IR
-│   │   │   ├── cpp_preprocessor.rs    # C++ preprocessor
-│   │   │   ├── cpp_stdlib.rs          # STL stubs
-│   │   │   └── cpp_compiler_extensions.rs
-│   │   │
-│   │   ├── ast.rs                 # IR compartido (Program, Function, Stmt, Expr)
-│   │   ├── types.rs               # Sistema de tipos
-│   │   └── type_checker.rs        # Análisis estático
+│   │   └── cpp/                       # C++17 Frontend
+│   │       ├── cpp_lexer.rs           # Tokenizer C++
+│   │       ├── cpp_parser.rs          # Classes, templates, namespaces
+│   │       ├── cpp_ast.rs             # C++ AST types
+│   │       ├── cpp_to_ir.rs           # CppAST → Program IR
+│   │       ├── cpp_preprocessor.rs    # C++ preprocessor
+│   │       ├── cpp_stdlib.rs          # STL stubs
+│   │       └── cpp_compiler_extensions.rs # Extensiones de compilador C++
 │   │
-│   ├── isa/                       # ISA LAYER (el core)
-│   │   ├── mod.rs                     # ADeadOp enum, Reg, Operand
-│   │   ├── isa_compiler.rs            # Program IR → ADeadOp stream
-│   │   ├── encoder.rs                 # ADeadOp → x86-64 bytes (FASM-style)
-│   │   ├── decoder.rs                 # x86-64 bytes → ADeadOp (disassembly)
-│   │   ├── optimizer.rs               # Peephole, DCE sobre ADeadOp
-│   │   ├── reg_alloc.rs               # Register allocator
-│   │   └── codegen.rs                 # Codegen auxiliar
+│   ├── preprocessor/              # SIN CMAKE, SIN LINKER
+│   │   ├── resolver.rs                # Header resolution + linker eliminator
+│   │   ├── dedup.rs                   # Symbol deduplication global
+│   │   └── expander.rs                # C++17 → C++98 canon (34 features)
 │   │
-│   ├── backend/                   # BACKEND (binary output)
-│   │   ├── cpu/
-│   │   │   ├── pe.rs                  # Windows PE x64
-│   │   │   ├── elf.rs                 # Linux ELF
-│   │   │   ├── flat_binary.rs         # Raw binary (bootloaders, kernels)
-│   │   │   ├── pe_tiny.rs             # PE mínimo (<500 bytes)
-│   │   │   ├── os_codegen.rs          # Real mode/Protected mode/Long mode
-│   │   │   └── ...
-│   │   └── gpu/
-│   │       ├── vulkan.rs              # SPIR-V generation
-│   │       └── ...
-│   │
-│   ├── optimizer/                 # OPTIMIZADOR
-│   │   ├── const_fold.rs              # Constant folding
-│   │   ├── branch_detector.rs         # Branch optimization
-│   │   ├── branchless.rs              # Branchless transforms
-│   │   ├── binary_optimizer.rs        # Binary-level optimization
-│   │   └── simd.rs                    # Auto-vectorization
-│   │
-│   ├── toolchain/                 # REFERENCIA MSVC/GCC/LLVM
-│   │   ├── calling_conventions.rs     # Win64 + SysV calling conventions
-│   │   ├── gcc_builtins.rs            # __attribute__, __builtin_*
-│   │   ├── llvm_attrs.rs              # LLVM attributes/intrinsics
-│   │   ├── msvc_compat.rs             # __declspec, MSVC extensions
-│   │   └── cpp_name_mangler.rs        # Itanium ABI name mangling
+│   ├── stdlib/                    # STANDARD LIBRARY PROPIA
+│   │   ├── header_main.rs             # header_main.h — hereda TODO
+│   │   ├── canon_tests.rs             # Canon test suite
+│   │   ├── fase_tests.rs              # FASE test suite
+│   │   ├── integration_tests.rs       # Integration test suite
+│   │   ├── c/                         # C99: stdio, stdlib, string, math...
+│   │   └── cpp/                       # C++: iostream, vector, map, memory...
 │   │
 │   ├── middle/                    # MIDDLE-END (IR avanzado)
-│   │   ├── ir/                        # SSA IR (inspirado en LLVM IR)
-│   │   ├── analysis/                  # CFG, dominator tree, liveness
-│   │   ├── passes/                    # DCE, inline, mem2reg, GVN, LICM
-│   │   └── lowering/                  # AST → IR lowering
+│   │   ├── ir/                        # SSA IR (module, function, basicblock...)
+│   │   │   └── pdp11_heritage.rs      # PDP-11 heritage reference
+│   │   ├── ub_detector/               # 21+ tipos de UB detection
+│   │   │   ├── null_check.rs          # NullPointerDereference
+│   │   │   ├── bounds_check.rs        # ArrayOutOfBounds
+│   │   │   ├── overflow_check.rs      # IntegerOverflow/DivByZero/ShiftOverflow
+│   │   │   ├── uninit_check.rs        # UninitializedVariable
+│   │   │   ├── useafter_check.rs      # UseAfterFree/DanglingPtr
+│   │   │   ├── type_check.rs          # TypeConfusion/StrictAliasing
+│   │   │   ├── race_check.rs          # StackOverflow/DataRace
+│   │   │   ├── unsequenced_check.rs   # UnsequencedModification
+│   │   │   ├── lifetime.rs            # DoubleFree/lifetime analysis
+│   │   │   ├── format_check.rs        # FormatStringMismatch
+│   │   │   ├── cache.rs               # UB results cache
+│   │   │   └── report.rs              # UBReport, UBKind
+│   │   ├── analysis/                  # CFG, dominator tree, loops
+│   │   ├── lowering/                  # AST → IR (c_lower.rs, cpp_lower.rs)
+│   │   └── passes/                    # Transform passes (LLVM-style)
+│   │       └── transform/             # DCE, GVN, LICM, inline, vectorize...
 │   │
-│   └── runtime/                   # RUNTIME
-│       └── ...
+│   ├── optimizer/                 # AST-LEVEL OPTIMIZATIONS
+│   │   ├── const_fold.rs              # Constant folding
+│   │   ├── const_prop.rs              # Constant propagation
+│   │   ├── dead_code.rs               # Dead code elimination
+│   │   ├── branch_detector.rs         # Branch pattern detection
+│   │   ├── branchless.rs              # Branchless transforms
+│   │   ├── binary_optimizer.rs        # Binary-level size optimization
+│   │   ├── inline_exp.rs              # Inline expansion
+│   │   └── simd.rs                    # Auto-vectorization SIMD
+│   │
+│   ├── isa/                       # ISA LAYER (the core)
+│   │   ├── isa_compiler.rs            # Program IR → ADeadOp stream
+│   │   ├── c_isa.rs                   # C99 sizeof/alignment rules
+│   │   ├── cpp_isa.rs                 # C++98 vtable/this/constructors
+│   │   ├── encoder.rs                 # ADeadOp → x86-64 bytes (FASM-style)
+│   │   ├── decoder.rs                 # x86-64 bytes → ADeadOp (disassembly)
+│   │   ├── optimizer.rs               # Peephole optimization
+│   │   ├── reg_alloc.rs               # Register allocator (dual mode)
+│   │   ├── codegen.rs                 # Codegen auxiliar
+│   │   └── compiler/                  # Modular compilation stages
+│   │       ├── expressions.rs         # Expression compilation
+│   │       ├── statements.rs          # Statement compilation
+│   │       ├── control_flow.rs        # Control flow compilation
+│   │       ├── functions.rs           # Function compilation
+│   │       └── arrays.rs              # Array compilation
+│   │
+│   ├── output/                    # BINARY OUTPUT (sin linker)
+│   │   ├── pe.rs                      # Windows PE (.exe)
+│   │   ├── elf.rs                     # Linux ELF
+│   │   └── po.rs                      # FastOS .po (24-byte header)
+│   │
+│   ├── backend/                   # BACKEND (low-level)
+│   │   ├── cpu/                       # x86-64 backends
+│   │   │   ├── pe.rs / pe_tiny.rs / pe_compact.rs ...  # Multiple PE generators
+│   │   │   ├── elf.rs                 # Linux ELF
+│   │   │   ├── flat_binary.rs         # Raw binary (bootloaders, kernels)
+│   │   │   ├── os_codegen.rs          # Real/Protected/Long mode
+│   │   │   ├── iat_registry.rs        # Import Address Table
+│   │   │   ├── microvm.rs             # MicroVM bytecode (4-bit ops)
+│   │   │   ├── syscalls.rs            # System calls
+│   │   │   └── win32_resolver.rs      # Win32 API resolver
+│   │   │
+│   │   └── gpu/                       # GPU backends
+│   │       ├── vulkan/                # Vulkan backend (ash)
+│   │       ├── spirv/                 # SPIR-V bytecode generation
+│   │       ├── cuda/                  # CUDA code generation
+│   │       ├── hip/                   # HIP (AMD ROCm) support
+│   │       ├── hex/                   # Binary GPU hex tools
+│   │       ├── unified_pipeline.rs    # CPU↔GPU hybrid auto-dispatch
+│   │       ├── vulkan_runtime.rs      # Vulkan runtime
+│   │       ├── gpu_detect.rs          # GPU detection
+│   │       ├── compute.rs             # GPU compute abstraction
+│   │       ├── memory.rs              # GPU memory management
+│   │       ├── metrics.rs             # GPU performance metrics
+│   │       └── scheduler.rs           # GPU task scheduler
+│   │
+│   ├── bg/                        # BINARY GUARDIAN (security)
+│   │   ├── analyzer.rs                # ISA-level binary analysis
+│   │   ├── arch_map.rs                # Architecture capability map
+│   │   ├── binary_loader.rs           # Binary loader
+│   │   ├── capability.rs              # Capability definitions
+│   │   └── policy.rs                  # Security policy engine (APPROVE/DENY)
+│   │
+│   ├── cache/                     # FASTOS.BIB CACHE v2
+│   │   ├── serializer.rs              # Cache → bytes
+│   │   ├── deserializer.rs            # bytes → Cache
+│   │   ├── hasher.rs                  # FNV-1a hashing
+│   │   └── validator.rs               # Cache hit/stale/miss/corrupt
+│   │
+│   ├── runtime/                   # RUNTIME DETECTION
+│   │   ├── cpu_detect.rs              # CPU features (SSE/AVX)
+│   │   ├── dispatcher.rs              # CPU compute dispatch
+│   │   ├── gpu_dispatcher.rs          # GPU compute dispatch
+│   │   └── gpu_misuse_detector.rs     # GPU misuse detection
+│   │
+│   └── toolchain/                 # TOOLCHAIN COMPATIBILITY
+│       ├── calling_conventions.rs     # Win64 + SysV calling conventions
+│       ├── gcc_builtins.rs            # __attribute__, __builtin_*
+│       ├── gcc_compat.rs              # GCC flag emulation
+│       ├── clang_compat.rs            # Clang flag emulation
+│       ├── llvm_attrs.rs              # LLVM attributes/intrinsics
+│       ├── msvc_compat.rs             # __declspec, MSVC extensions
+│       └── cpp_name_mangler.rs        # Itanium ABI name mangling
 │
 ├── examples/
 │   ├── c/                         # 34 archivos C99 — todos compilan ✅
@@ -513,7 +593,20 @@ ADead-BIB/
 │   └── gpu/                       # GPU compute shaders
 │
 ├── docs/                          # Documentación técnica
+├── BG — Binary Guardian/          # Documentación BG
+├── DirectX12/                     # DX12 test projects
+├── FastOS/                        # FastOS related
+├── FFI GPU/                       # FFI GPU (Python ↔ Vulkan)
+├── Metal_Dead/                    # Metal (macOS) backend docs
+├── python/                        # Python FFI tools
+├── abi_translators/               # ABI translation layer
+├── EXTENSION/                     # VS Code extension
+├── Test-Canon/                    # Canon verification suite (48 tests)
+├── Test-UB-Global/                # Global UB test suite
+├── Test SQLite/                   # SQLite compilation tests
+├── ub_tests/                      # UB detection tests
 ├── Cargo.toml                     # 100% Rust, sin deps de C/C++
+├── ARCHITECTURE.md                # Arquitectura completa
 └── README.md                      # Este archivo
 ```
 
@@ -605,6 +698,27 @@ adb micro output.exe                  # PE32 < 256 bytes
 # ── GPU ───────────────────────────────────────────
 adb gpu                               # Detectar GPU + generar shader
 adb spirv matmul 1024                 # SPIR-V compute shader
+
+# ── Step Compiler ────────────────────────────────
+adb step program.c                    # Visualizar compilación paso a paso
+
+# ── MicroVM ──────────────────────────────────────
+adb vm program.c                      # Compilar a MicroVM bytecode (4-bit ops)
+
+# ── Vulkan Runtime ───────────────────────────────
+adb vulkan shader.comp                # Compilar + ejecutar con Vulkan runtime
+adb vk shader.comp                    # Alias de vulkan
+
+# ── CUDA ─────────────────────────────────────────
+adb cuda kernel.cu                    # CUDA code generation
+
+# ── CPU↔GPU Hybrid Pipeline ─────────────────────
+adb unified program.c                 # CPU↔GPU auto-dispatch pipeline
+adb uni program.c                     # Alias de unified
+
+# ── Auto-detect por extensión ────────────────────
+adb program.c                         # Detecta .c → compila C99
+adb program.cpp                       # Detecta .cpp → compila C++
 ```
 
 ---
