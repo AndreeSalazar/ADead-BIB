@@ -1,6 +1,6 @@
 # Reporte C99 stdlib — ADead-BIB v7.0
 
-## Estado: ✅ CASI COMPLETO (6/7 tests pasan limpio)
+## Estado: ✅ COMPLETO (7/7 tests pasan limpio)
 
 ### Headers Implementadas y Verificadas con `adb step`
 
@@ -24,14 +24,15 @@
 | `float.h` | `c_stdlib.rs` | FLT_MAX, DBL_EPSILON... | ✅ |
 | `locale.h` | `c_stdlib.rs` | setlocale, localeconv | ✅ |
 | `wchar.h` | `c_compiler_extensions.rs` | wcslen, wcscpy, wprintf... (18 funciones) | ✅ |
-| `complex.h` | `c_compiler_extensions.rs` | Declaraciones OK | ⚠️ |
+| `complex.h` | `c_compiler_extensions.rs` | creal, cimag, cabs, cexp, cpow... (16 funciones) | ✅ |
 | `wctype.h` | `c_compiler_extensions.rs` | iswalpha, towupper... | ✅ |
 | `tgmath.h` | `c_compiler_extensions.rs` | type-generic macros | ✅ |
 
-### ⚠️ Único problema: `_Complex` como tipo del parser
-- `<complex.h>` inyecta las declaraciones correctamente
-- Pero el parser C no reconoce `double _Complex` como tipo compuesto
-- **Solución**: Agregar `_Complex` como qualifier en el parser C (`c_parser.rs`)
+### ✅ `_Complex` — RESUELTO
+- `_Complex` agregado como keyword en `c_lexer.rs`
+- `Complex(Box<CType>)` agregado al AST en `c_ast.rs`
+- Parser reconoce `double _Complex`, `float _Complex` como tipos compuestos
+- `c_to_ir.rs` maneja `Complex(inner)` en la conversión a IR
 
 ### Headers de Terceros (75+ headers) — OK
 POSIX, network, GPU, audio, DB, etc. — todas declaradas en `c_stdlib.rs`

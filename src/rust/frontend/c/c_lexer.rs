@@ -43,6 +43,7 @@ pub enum CToken {
     Volatile,
     While,
     Bool, // _Bool / bool
+    Complex, // _Complex
 
     // Identifiers and literals
     Identifier(String),
@@ -493,6 +494,7 @@ impl CLexer {
                     "volatile" => CToken::Volatile,
                     "while" => CToken::While,
                     "_Bool" | "bool" => CToken::Bool,
+                    "_Complex" => CToken::Complex,
                     "NULL" | "nullptr" => CToken::Identifier("NULL".to_string()),
                     _ => CToken::Identifier(ident),
                 }

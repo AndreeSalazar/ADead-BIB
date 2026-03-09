@@ -27,6 +27,7 @@ pub enum CType {
     },
     Const(Box<CType>),    // const T
     Volatile(Box<CType>), // volatile T
+    Complex(Box<CType>),  // _Complex T (e.g., double _Complex)
 }
 
 /// C expression

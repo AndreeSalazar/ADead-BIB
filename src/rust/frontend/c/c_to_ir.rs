@@ -153,7 +153,7 @@ impl CToIR {
                 let args: Vec<Type> = params.iter().map(|p| self.convert_type(p)).collect();
                 Type::Function(args, Box::new(ret))
             }
-            CType::Const(inner) | CType::Volatile(inner) => self.convert_type(inner),
+            CType::Const(inner) | CType::Volatile(inner) | CType::Complex(inner) => self.convert_type(inner),
         }
     }
 

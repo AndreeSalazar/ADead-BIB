@@ -108,6 +108,7 @@ impl CParser {
             | CToken::Inline
             | CToken::Typedef
             | CToken::Bool
+            | CToken::Complex
             | CToken::Union => true,
             CToken::Identifier(name) => self.typedef_names.contains(name),
             _ => false,
@@ -129,6 +130,7 @@ impl CParser {
                 | CToken::Struct
                 | CToken::Enum
                 | CToken::Bool
+                | CToken::Complex
         )
     }
 
@@ -234,6 +236,14 @@ impl CParser {
                 CType::Typedef(name)
             }
             other => return Err(format!("Expected type, got {:?}", other)),
+        };
+
+        // _Complex qualifier: double _Complex → Complex(Double)
+        let ty = if self.current() == &CToken::Complex {
+            self.advance();
+            CType::Complex(Box::new(ty))
+        } else {
+            ty
         };
 
         Ok(ty)
@@ -1649,7 +1659,8 @@ impl CParser {
             | CToken::Enum
             | CToken::Const
             | CToken::Volatile
-            | CToken::Bool => true,
+            | CToken::Bool
+            | CToken::Complex => true,
             CToken::Identifier(name) => self.typedef_names.contains(name),
             _ => false,
         }
@@ -1673,6 +1684,7 @@ impl CParser {
             | CToken::Struct
             | CToken::Enum
             | CToken::Bool
+            | CToken::Complex
             | CToken::Const
             | CToken::Volatile => true,
             CToken::Identifier(name) => {
