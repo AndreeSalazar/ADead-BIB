@@ -41,7 +41,6 @@ Ya eres capaz de construir aplicaciones, cualquier aplicaciones generales o vide
 │             .exe / .elf / .bin                                       │
 │           (Machine Code Puro)                                        │
 └──────────────────────────────────────────────────────────────────────┘
-```
 
 ---
 
