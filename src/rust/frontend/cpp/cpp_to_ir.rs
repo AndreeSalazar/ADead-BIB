@@ -968,11 +968,45 @@ impl CppToIR {
             }
             CppType::Enum(_) => Type::I32,
             CppType::StdString => Type::Str,
-            CppType::StdVector(inner) => Type::Array(Box::new(self.convert_type(inner)), None),
+            CppType::StdStringView => Type::Str,
+            CppType::StdVector(inner)
+            | CppType::StdList(inner)
+            | CppType::StdForwardList(inner)
+            | CppType::StdDeque(inner)
+            | CppType::StdSet(inner)
+            | CppType::StdUnorderedSet(inner)
+            | CppType::StdStack(inner)
+            | CppType::StdQueue(inner)
+            | CppType::StdPriorityQueue(inner)
+            | CppType::StdSpan(inner)
+            | CppType::StdInitializerList(inner) => {
+                Type::Array(Box::new(self.convert_type(inner)), None)
+            }
+            CppType::StdArray(inner, size) => {
+                Type::Array(Box::new(self.convert_type(inner)), Some(*size))
+            }
+            CppType::StdMap(k, v) | CppType::StdUnorderedMap(k, v) => {
+                Type::Named(format!("map<{:?},{:?}>", k, v))
+            }
             CppType::UniquePtr(inner) | CppType::SharedPtr(inner) | CppType::WeakPtr(inner) => {
                 Type::Pointer(Box::new(self.convert_type(inner)))
             }
             CppType::StdOptional(inner) => self.convert_type(inner),
+            CppType::StdTuple(args) => {
+                Type::Named(format!("tuple<{}>", args.len()))
+            }
+            CppType::StdVariant(args) => {
+                Type::Named(format!("variant<{}>", args.len()))
+            }
+            CppType::StdAny => Type::Named("any".to_string()),
+            CppType::StdThread => Type::Named("thread".to_string()),
+            CppType::StdMutex => Type::Named("mutex".to_string()),
+            CppType::StdAtomic(inner) => self.convert_type(inner),
+            CppType::StdFuture(inner) | CppType::StdPromise(inner) => {
+                self.convert_type(inner)
+            }
+            CppType::StdRegex => Type::Named("regex".to_string()),
+            CppType::StdFilesystemPath => Type::Named("path".to_string()),
             CppType::SizeT => Type::U64,
             CppType::Nullptr => Type::Pointer(Box::new(Type::Void)),
             CppType::TemplateType { name, args } => {

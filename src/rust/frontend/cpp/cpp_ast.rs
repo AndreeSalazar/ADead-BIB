@@ -68,13 +68,36 @@ pub enum CppType {
 
     // STL containers (recognized)
     StdString,
+    StdStringView,
     StdVector(Box<CppType>),
     StdArray(Box<CppType>, usize),
     StdMap(Box<CppType>, Box<CppType>),
     StdUnorderedMap(Box<CppType>, Box<CppType>),
+    StdSet(Box<CppType>),
+    StdUnorderedSet(Box<CppType>),
+    StdList(Box<CppType>),
+    StdForwardList(Box<CppType>),
+    StdDeque(Box<CppType>),
+    StdStack(Box<CppType>),
+    StdQueue(Box<CppType>),
+    StdPriorityQueue(Box<CppType>),
     StdOptional(Box<CppType>),
     StdVariant(Vec<CppType>),
+    StdTuple(Vec<CppType>),
     StdSpan(Box<CppType>),
+    StdInitializerList(Box<CppType>),
+    StdAny,
+
+    // Concurrency types
+    StdThread,
+    StdMutex,
+    StdAtomic(Box<CppType>),
+    StdFuture(Box<CppType>),
+    StdPromise(Box<CppType>),
+
+    // Other STL types
+    StdRegex,
+    StdFilesystemPath,
 
     // Special
     Nullptr, // std::nullptr_t

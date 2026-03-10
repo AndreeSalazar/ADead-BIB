@@ -289,81 +289,50 @@ impl CppParser {
                 // Check for template arguments: Type<T>
                 if *self.current() == CppToken::Lt {
                     if let Ok(args) = self.try_parse_template_args() {
-                        // Recognize common STL types
-                        match name.as_str() {
-                            "string" | "std" => CppType::TemplateType { name, args },
-                            "vector" if args.len() == 1 => {
-                                CppType::StdVector(Box::new(args[0].clone()))
-                            }
-                            "array" if args.len() >= 1 => CppType::TemplateType { name, args },
-                            "map" if args.len() == 2 => CppType::StdMap(
-                                Box::new(args[0].clone()),
-                                Box::new(args[1].clone()),
-                            ),
-                            "unordered_map" if args.len() == 2 => CppType::StdUnorderedMap(
-                                Box::new(args[0].clone()),
-                                Box::new(args[1].clone()),
-                            ),
-                            "optional" if args.len() == 1 => {
-                                CppType::StdOptional(Box::new(args[0].clone()))
-                            }
-                            "unique_ptr" if args.len() == 1 => {
-                                CppType::UniquePtr(Box::new(args[0].clone()))
-                            }
-                            "shared_ptr" if args.len() == 1 => {
-                                CppType::SharedPtr(Box::new(args[0].clone()))
-                            }
-                            _ => CppType::TemplateType { name, args },
-                        }
+                        Self::classify_template_type(&name, args)
                     } else {
                         CppType::Named(name)
                     }
                 } else {
-                    // Check for scope: std::string
+                    // Check for scope: std::string, std::chrono::milliseconds, etc.
                     if *self.current() == CppToken::Scope {
                         self.advance();
                         let inner_name = self.expect_identifier()?;
                         let full = format!("{}::{}", name, inner_name);
-                        match full.as_str() {
-                            "std::string" => CppType::StdString,
-                            "std::size_t" | "size_t" => CppType::SizeT,
-                            _ => {
-                                // Check for template args after scope
+
+                        // Handle nested scopes: std::chrono::X, std::filesystem::X
+                        if *self.current() == CppToken::Scope {
+                            let save = self.pos;
+                            self.advance();
+                            if let Ok(deep_name) = self.expect_identifier() {
+                                let deep_full = format!("{}::{}", full, deep_name);
+                                // Check for template args
                                 if *self.current() == CppToken::Lt {
                                     if let Ok(args) = self.try_parse_template_args() {
-                                        match inner_name.as_str() {
-                                            "vector" if args.len() == 1 => {
-                                                CppType::StdVector(Box::new(args[0].clone()))
-                                            }
-                                            "map" if args.len() == 2 => CppType::StdMap(
-                                                Box::new(args[0].clone()),
-                                                Box::new(args[1].clone()),
-                                            ),
-                                            "unique_ptr" if args.len() == 1 => {
-                                                CppType::UniquePtr(Box::new(args[0].clone()))
-                                            }
-                                            "shared_ptr" if args.len() == 1 => {
-                                                CppType::SharedPtr(Box::new(args[0].clone()))
-                                            }
-                                            "optional" if args.len() == 1 => {
-                                                CppType::StdOptional(Box::new(args[0].clone()))
-                                            }
-                                            _ => CppType::TemplateType { name: full, args },
-                                        }
-                                    } else {
-                                        CppType::Named(full)
+                                        return Ok(Self::classify_template_type(&deep_name, args));
                                     }
-                                } else {
-                                    CppType::Named(full)
                                 }
+                                // Non-template nested: std::chrono::milliseconds, etc.
+                                return Ok(Self::classify_plain_type(&deep_name, &deep_full));
+                            } else {
+                                self.pos = save;
                             }
                         }
-                    } else {
-                        match name.as_str() {
-                            "string" => CppType::StdString,
-                            "size_t" => CppType::SizeT,
-                            _ => CppType::Named(name),
+
+                        // Check for template args after scope: std::vector<int>
+                        if *self.current() == CppToken::Lt {
+                            if let Ok(args) = self.try_parse_template_args() {
+                                Self::classify_template_type(&inner_name, args)
+                            } else {
+                                CppType::Named(full)
+                            }
+                        } else {
+                            // Non-template scoped: std::string, std::mutex, etc.
+                            Self::classify_plain_type(&inner_name, &full)
                         }
+                    } else {
+                        // Unscoped plain names: string, mutex, thread, etc.
+                        Self::classify_plain_type(&name, &name)
                     }
                 }
             }
@@ -420,6 +389,25 @@ impl CppParser {
                     // && token — rvalue reference
                     self.advance();
                     base = CppType::RValueRef(Box::new(base));
+                }
+                CppToken::LBracket => {
+                    // Array type: int[], int[10]
+                    self.advance();
+                    let size = if *self.current() != CppToken::RBracket {
+                        match self.current().clone() {
+                            CppToken::IntLiteral(n) => {
+                                self.advance();
+                                Some(n as usize)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if *self.current() == CppToken::RBracket {
+                        self.advance();
+                    }
+                    base = CppType::Array(Box::new(base), size);
                 }
                 _ => break,
             }
@@ -484,6 +472,130 @@ impl CppParser {
             }
         }
         Ok(args)
+    }
+
+    // ========== STL type classification helpers ==========
+
+    /// Classify a template type name with args into the appropriate CppType variant.
+    /// Used for both scoped (std::vector<int>) and unscoped (vector<int>) forms.
+    fn classify_template_type(name: &str, args: Vec<CppType>) -> CppType {
+        match name {
+            // 1-arg containers
+            "vector" if args.len() >= 1 => CppType::StdVector(Box::new(args[0].clone())),
+            "set" if args.len() >= 1 => CppType::StdSet(Box::new(args[0].clone())),
+            "multiset" if args.len() >= 1 => CppType::StdSet(Box::new(args[0].clone())),
+            "unordered_set" if args.len() >= 1 => CppType::StdUnorderedSet(Box::new(args[0].clone())),
+            "unordered_multiset" if args.len() >= 1 => CppType::StdUnorderedSet(Box::new(args[0].clone())),
+            "list" if args.len() >= 1 => CppType::StdList(Box::new(args[0].clone())),
+            "forward_list" if args.len() >= 1 => CppType::StdForwardList(Box::new(args[0].clone())),
+            "deque" if args.len() >= 1 => CppType::StdDeque(Box::new(args[0].clone())),
+            "stack" if args.len() >= 1 => CppType::StdStack(Box::new(args[0].clone())),
+            "queue" if args.len() >= 1 => CppType::StdQueue(Box::new(args[0].clone())),
+            "priority_queue" if args.len() >= 1 => CppType::StdPriorityQueue(Box::new(args[0].clone())),
+            "span" if args.len() >= 1 => CppType::StdSpan(Box::new(args[0].clone())),
+            "initializer_list" if args.len() >= 1 => CppType::StdInitializerList(Box::new(args[0].clone())),
+            "optional" if args.len() == 1 => CppType::StdOptional(Box::new(args[0].clone())),
+            // Smart pointers
+            "unique_ptr" if args.len() >= 1 => CppType::UniquePtr(Box::new(args[0].clone())),
+            "shared_ptr" if args.len() >= 1 => CppType::SharedPtr(Box::new(args[0].clone())),
+            "weak_ptr" if args.len() >= 1 => CppType::WeakPtr(Box::new(args[0].clone())),
+            // Concurrency
+            "atomic" if args.len() == 1 => CppType::StdAtomic(Box::new(args[0].clone())),
+            "future" if args.len() == 1 => CppType::StdFuture(Box::new(args[0].clone())),
+            "shared_future" if args.len() == 1 => CppType::StdFuture(Box::new(args[0].clone())),
+            "promise" if args.len() == 1 => CppType::StdPromise(Box::new(args[0].clone())),
+            "lock_guard" if args.len() >= 1 => CppType::TemplateType { name: name.to_string(), args },
+            "unique_lock" if args.len() >= 1 => CppType::TemplateType { name: name.to_string(), args },
+            "scoped_lock" => CppType::TemplateType { name: name.to_string(), args },
+            // 2-arg containers
+            "map" if args.len() == 2 => CppType::StdMap(Box::new(args[0].clone()), Box::new(args[1].clone())),
+            "multimap" if args.len() == 2 => CppType::StdMap(Box::new(args[0].clone()), Box::new(args[1].clone())),
+            "unordered_map" if args.len() == 2 => CppType::StdUnorderedMap(Box::new(args[0].clone()), Box::new(args[1].clone())),
+            "unordered_multimap" if args.len() == 2 => CppType::StdUnorderedMap(Box::new(args[0].clone()), Box::new(args[1].clone())),
+            // Variadic template types
+            "tuple" => CppType::StdTuple(args),
+            "variant" => CppType::StdVariant(args),
+            // Array with size: array<int, 5>
+            "array" if args.len() == 2 => {
+                if let CppType::Named(ref n) = args[1] {
+                    if let Ok(size) = n.parse::<usize>() {
+                        return CppType::StdArray(Box::new(args[0].clone()), size);
+                    }
+                }
+                CppType::TemplateType { name: name.to_string(), args }
+            }
+            "array" if args.len() == 1 => CppType::TemplateType { name: name.to_string(), args },
+            // Distributions and other templates — keep generic
+            "uniform_int_distribution" | "uniform_real_distribution"
+            | "normal_distribution" | "bernoulli_distribution"
+            | "poisson_distribution" | "exponential_distribution"
+            | "gamma_distribution" | "weibull_distribution"
+            | "chi_squared_distribution" | "cauchy_distribution"
+            | "discrete_distribution"
+            | "packaged_task"
+            | "duration" | "time_point"
+            | "basic_string" | "basic_string_view"
+            | "basic_regex" => CppType::TemplateType { name: name.to_string(), args },
+            // Fallback
+            "string" | "std" => CppType::TemplateType { name: name.to_string(), args },
+            _ => CppType::TemplateType { name: name.to_string(), args },
+        }
+    }
+
+    /// Classify a plain (non-template) type name into the appropriate CppType variant.
+    /// `short_name` is the unqualified name (e.g., "string"), `full_name` is the
+    /// fully-qualified version (e.g., "std::string").
+    fn classify_plain_type(short_name: &str, full_name: &str) -> CppType {
+        match short_name {
+            "string" => CppType::StdString,
+            "string_view" | "wstring_view" | "u8string_view" => CppType::StdStringView,
+            "size_t" => CppType::SizeT,
+            "any" => CppType::StdAny,
+            "thread" | "jthread" => CppType::StdThread,
+            "mutex" | "recursive_mutex" | "timed_mutex" | "recursive_timed_mutex" => CppType::StdMutex,
+            "regex" | "wregex" => CppType::StdRegex,
+            "path" => CppType::StdFilesystemPath,
+            "smatch" | "cmatch" | "wsmatch" | "wcmatch" => CppType::Named(full_name.to_string()),
+            "atomic_flag" => CppType::Named(full_name.to_string()),
+            "condition_variable" | "condition_variable_any" => CppType::Named(full_name.to_string()),
+            // Chrono plain types (typedefs)
+            "milliseconds" | "microseconds" | "nanoseconds"
+            | "seconds" | "minutes" | "hours" => CppType::Named(full_name.to_string()),
+            "high_resolution_clock" | "steady_clock" | "system_clock" => CppType::Named(full_name.to_string()),
+            // Random engines (non-template)
+            "mt19937" | "mt19937_64" | "default_random_engine" | "random_device" => CppType::Named(full_name.to_string()),
+            // Filesystem non-template types
+            "directory_iterator" | "recursive_directory_iterator"
+            | "directory_entry" | "file_status" | "filesystem_error" => CppType::Named(full_name.to_string()),
+            // Monostate, nullopt_t
+            "monostate" | "nullopt_t" => CppType::Named(full_name.to_string()),
+            // IO stream types
+            "ostream" | "istream" | "iostream"
+            | "ofstream" | "ifstream" | "fstream"
+            | "ostringstream" | "istringstream" | "stringstream" => CppType::Named(full_name.to_string()),
+            _ => CppType::Named(full_name.to_string()),
+        }
+    }
+
+    /// Parse a type that may include ::type or ::value member access after template.
+    /// e.g., std::remove_const<const int>::type
+    fn parse_type_with_member_access(&mut self) -> Result<CppType, String> {
+        let base = self.parse_type()?;
+        // Check for ::type or ::value after a template type
+        if *self.current() == CppToken::Scope {
+            let save = self.pos;
+            self.advance();
+            if let CppToken::Identifier(ref member) = self.current().clone() {
+                if member == "type" || member == "value" || member == "value_type" {
+                    self.advance();
+                    // For ::type, the result is a type alias — return as Named
+                    // For ::value, it's a value — but in typedef context, still treat as type
+                    return Ok(base);
+                }
+            }
+            self.pos = save;
+        }
+        Ok(base)
     }
 
     // ========== Translation unit ==========
@@ -573,35 +685,58 @@ impl CppParser {
                 }
             }
         }
-        // Common STL names
+        // Common STL names — ALL recognized container/utility/concurrency types
         for name in &[
-            "string",
-            "vector",
-            "map",
-            "unordered_map",
-            "set",
-            "list",
-            "deque",
-            "array",
-            "pair",
-            "tuple",
-            "optional",
-            "variant",
-            "unique_ptr",
-            "shared_ptr",
-            "weak_ptr",
+            // Strings
+            "string", "string_view", "wstring", "wstring_view",
+            "u8string_view", "u16string_view", "u32string_view",
+            // Containers
+            "vector", "array", "list", "forward_list", "deque",
+            "map", "multimap", "unordered_map", "unordered_multimap",
+            "set", "multiset", "unordered_set", "unordered_multiset",
+            "stack", "queue", "priority_queue",
+            // Utility
+            "pair", "tuple", "tuple_size", "tuple_element",
+            "optional", "variant", "any", "monostate",
+            "initializer_list",
+            // Smart pointers
+            "unique_ptr", "shared_ptr", "weak_ptr",
+            // Views
             "span",
-            "size_t",
-            "int8_t",
-            "int16_t",
-            "int32_t",
-            "int64_t",
-            "uint8_t",
-            "uint16_t",
-            "uint32_t",
-            "uint64_t",
-            "ptrdiff_t",
-            "nullptr_t",
+            // Concurrency
+            "thread", "jthread",
+            "mutex", "recursive_mutex", "timed_mutex", "recursive_timed_mutex",
+            "lock_guard", "unique_lock", "scoped_lock",
+            "atomic", "atomic_flag", "memory_order",
+            "future", "shared_future", "promise", "packaged_task",
+            "launch", "future_status",
+            "condition_variable", "condition_variable_any", "cv_status",
+            // Chrono
+            "chrono", "duration", "time_point",
+            "high_resolution_clock", "steady_clock", "system_clock",
+            "milliseconds", "microseconds", "nanoseconds", "seconds", "minutes", "hours",
+            // Regex
+            "regex", "wregex", "smatch", "cmatch", "regex_error",
+            // Random
+            "mt19937", "mt19937_64", "default_random_engine", "random_device",
+            "uniform_int_distribution", "uniform_real_distribution",
+            "normal_distribution", "bernoulli_distribution",
+            "seed_seq",
+            // Filesystem
+            "path", "directory_iterator", "recursive_directory_iterator",
+            "directory_entry", "file_status", "filesystem_error",
+            // Iterator
+            "iterator_traits", "reverse_iterator", "move_iterator",
+            "back_insert_iterator", "front_insert_iterator", "insert_iterator",
+            // IO streams (as types)
+            "ostream", "istream", "iostream",
+            "ofstream", "ifstream", "fstream",
+            "ostringstream", "istringstream", "stringstream",
+            // Numeric types
+            "size_t", "ptrdiff_t", "nullptr_t",
+            "int8_t", "int16_t", "int32_t", "int64_t",
+            "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+            "intptr_t", "uintptr_t",
         ] {
             self.type_names.insert(name.to_string());
         }
@@ -1728,7 +1863,7 @@ impl CppParser {
 
     fn parse_typedef(&mut self) -> Result<CppTopLevel, String> {
         self.advance(); // skip typedef
-        let original = self.parse_type()?;
+        let original = self.parse_type_with_member_access()?;
         let new_name = self.expect_identifier()?;
         self.type_names.insert(new_name.clone());
         self.expect(&CppToken::Semicolon)?;
@@ -2066,6 +2201,35 @@ impl CppParser {
                     self.expect(&CppToken::Semicolon)?;
                     Ok(CppStmt::CoReturn(Some(expr)))
                 }
+            }
+            // Local namespace alias: namespace fs = std::filesystem;
+            CppToken::Namespace => {
+                self.advance();
+                let alias = self.expect_identifier()?;
+                self.expect(&CppToken::Assign)?;
+                let mut target = self.expect_identifier()?;
+                while self.eat(&CppToken::Scope) {
+                    target.push_str("::");
+                    target.push_str(&self.expect_identifier()?);
+                }
+                // Register alias as a known type name
+                self.type_names.insert(alias.clone());
+                self.expect(&CppToken::Semicolon)?;
+                // Emit as a type alias statement
+                Ok(CppStmt::Expr(CppExpr::Identifier(format!("namespace_alias_{}_{}", alias, target))))
+            }
+            CppToken::Typedef => {
+                // Local typedef: typedef std::remove_const<const int>::type no_const;
+                self.advance();
+                // Parse the type (may include template + ::type)
+                let base_type = self.parse_type_with_member_access()?;
+                let name = self.expect_identifier()?;
+                self.type_names.insert(name.clone());
+                self.expect(&CppToken::Semicolon)?;
+                Ok(CppStmt::VarDecl {
+                    type_spec: base_type,
+                    declarators: vec![CppDeclarator { name, derived_type: Vec::new(), initializer: None }],
+                })
             }
             CppToken::Semicolon => {
                 self.advance();
@@ -2734,24 +2898,21 @@ impl CppParser {
                     if let CppExpr::Identifier(_) | CppExpr::ScopedIdentifier { .. } = &expr {
                         let save_pos = self.pos;
                         if let Ok(targs) = self.try_parse_template_args() {
-                            // Must be followed by ( to be a template call
-                            if *self.current() == CppToken::LParen {
-                                // Mangle the callee name with template args
-                                let callee_name = match &expr {
-                                    CppExpr::Identifier(n) => n.clone(),
-                                    CppExpr::ScopedIdentifier { scope, name } => {
-                                        format!("{}::{}", scope.join("::"), name)
-                                    }
-                                    _ => unreachable!(),
-                                };
-                                let mangled = format!("{}<{}>", callee_name,
-                                    targs.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", "));
-                                expr = CppExpr::Identifier(mangled);
-                                // The ( will be consumed in the LParen arm below
-                                continue;
-                            }
+                            // Template args parsed — accept if followed by ( or :: or ; or other valid tokens
+                            let callee_name = match &expr {
+                                CppExpr::Identifier(n) => n.clone(),
+                                CppExpr::ScopedIdentifier { scope, name } => {
+                                    format!("{}::{}", scope.join("::"), name)
+                                }
+                                _ => unreachable!(),
+                            };
+                            let mangled = format!("{}<{}>", callee_name,
+                                targs.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", "));
+                            expr = CppExpr::Identifier(mangled);
+                            // Continue to let LParen/Scope/etc. handle what follows
+                            continue;
                         }
-                        // Not a template call — backtrack
+                        // Not a template — backtrack
                         self.pos = save_pos;
                         break;
                     } else {
@@ -2817,17 +2978,28 @@ impl CppParser {
                 CppToken::Scope => {
                     self.advance();
                     let member = self.expect_identifier()?;
-                    // Turn into scoped identifier
-                    if let CppExpr::Identifier(ref scope_name) = expr {
-                        expr = CppExpr::ScopedIdentifier {
-                            scope: vec![scope_name.clone()],
-                            name: member,
-                        };
-                    } else {
-                        expr = CppExpr::MemberAccess {
-                            object: Box::new(expr),
-                            member,
-                        };
+                    // Turn into/extend scoped identifier
+                    match expr {
+                        CppExpr::Identifier(ref scope_name) => {
+                            expr = CppExpr::ScopedIdentifier {
+                                scope: vec![scope_name.clone()],
+                                name: member,
+                            };
+                        }
+                        CppExpr::ScopedIdentifier { ref scope, ref name } => {
+                            let mut new_scope = scope.clone();
+                            new_scope.push(name.clone());
+                            expr = CppExpr::ScopedIdentifier {
+                                scope: new_scope,
+                                name: member,
+                            };
+                        }
+                        _ => {
+                            expr = CppExpr::MemberAccess {
+                                object: Box::new(expr),
+                                member,
+                            };
+                        }
                     }
                 }
                 _ => break,
@@ -2911,6 +3083,24 @@ impl CppParser {
             CppToken::LBracket => {
                 // Lambda: [captures](params) { body }
                 self.parse_lambda()
+            }
+            // Type-constructor expressions: Type(args) e.g. int(42), double(1.5)
+            // Also handles decltype in expression context
+            CppToken::Decltype => {
+                self.advance();
+                self.expect(&CppToken::LParen)?;
+                let inner = self.parse_expression()?;
+                self.expect(&CppToken::RParen)?;
+                Ok(CppExpr::Identifier(format!("decltype(...)")))
+            }
+            CppToken::Int | CppToken::Double | CppToken::Float | CppToken::Char
+            | CppToken::Long | CppToken::Short | CppToken::Bool
+            | CppToken::Unsigned | CppToken::Signed
+            | CppToken::Void => {
+                // Type used as expression: type-constructor or sizeof context
+                let type_name = format!("{:?}", self.current());
+                self.advance();
+                Ok(CppExpr::Identifier(type_name))
             }
             other => Err(format!(
                 "Unexpected token in expression: {:?} at pos {}",
