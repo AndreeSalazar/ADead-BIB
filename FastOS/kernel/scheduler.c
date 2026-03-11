@@ -240,6 +240,15 @@ void scheduler_init(void) {
     kprintf("[SCHED] Scheduler ready. Max=%d processes.\n", MAX_PROCESSES);
 }
 
+/* Wrappers — kernel.h declares process_current() and process_yield() */
+process_t *process_current(void) {
+    return get_current_process();
+}
+
+void process_yield(void) {
+    yield();
+}
+
 /* Debug: listar todos los procesos */
 void scheduler_list(void) {
     kprintf("\n[SCHED] Process List:\n");

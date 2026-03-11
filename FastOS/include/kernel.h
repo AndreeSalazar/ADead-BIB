@@ -216,11 +216,15 @@ typedef enum {
 #define VGA_HEIGHT  25
 
 /* ============================================================
- * Alignment Utilities
+ * Alignment Utilities (ALIGN_UP/ALIGN_DOWN ya en types.h)
  * ============================================================ */
 
+#ifndef ALIGN_UP
 #define ALIGN_UP(x, a)    (((x) + ((a) - 1)) & ~((a) - 1))
+#endif
+#ifndef ALIGN_DOWN
 #define ALIGN_DOWN(x, a)  ((x) & ~((a) - 1))
+#endif
 
 /* ============================================================
  * VGA Output (implemented in kernel/main.c)

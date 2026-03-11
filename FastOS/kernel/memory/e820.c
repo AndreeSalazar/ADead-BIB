@@ -98,10 +98,10 @@ static void print_size(uint64_t bytes) {
 
 /* Read E820 map from bootloader-provided location */
 void e820_read_map(void) {
-    /* The bootloader should have stored the E820 map at 0x7E00 */
-    /* First byte is the count */
-    uint8_t *map_ptr = (uint8_t*)E820_MAP_ADDRESS;
-    e820_count = *map_ptr;
+    /* stage2.asm guarda el E820 en segmento 0x2000 = linear 0x20000 */
+    /* Primer word (2 bytes) es el conteo de entradas */
+    uint16_t *count_ptr = (uint16_t *)E820_MAP_ADDRESS;
+    e820_count = (int)*count_ptr;
     
     if (e820_count == 0 || e820_count > E820_MAX_ENTRIES) {
         /* No valid E820 map, create a default one */
@@ -126,8 +126,8 @@ void e820_read_map(void) {
         
         e820_count = 4;
     } else {
-        /* Copy from bootloader location */
-        e820_entry_t *src = (e820_entry_t*)(map_ptr + 4);
+        /* Copy from bootloader location (entries start after 2-byte count) */
+        e820_entry_t *src = (e820_entry_t *)((uint8_t *)E820_MAP_ADDRESS + 2);
         for (int i = 0; i < e820_count; i++) {
             e820_map[i] = src[i];
         }

@@ -147,4 +147,16 @@ static inline char* strcpy(char* dest, const char* src) {
 #define container_of(ptr, type, member) \
     ((type*)((char*)(ptr) - offsetof(type, member)))
 
+/* Cross-compatibility with types.h naming */
+#ifndef _FASTOS_TYPES_H
+typedef u8  uint8_t;
+typedef u16 uint16_t;
+typedef u32 uint32_t;
+typedef u64 uint64_t;
+typedef i8  int8_t;
+typedef i16 int16_t;
+typedef i32 int32_t;
+typedef i64 int64_t;
+#endif
+
 #endif /* _FASTOS_BOOT_TYPES_H */

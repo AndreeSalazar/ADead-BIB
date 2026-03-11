@@ -174,8 +174,4 @@ void kprintf(const char *fmt, ...) {
     __builtin_va_end(args);
 }
 
-/* kputs: string + newline */
-void kputs(const char *s) {
-    term_write(s);
-    term_putchar('\n');
-}
+/* kputs: definido en kernel/main.c (sin newline automatico) */

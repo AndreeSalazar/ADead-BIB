@@ -29,10 +29,10 @@
  * La funcion bg_fastos_can_execute() es declarada extern "C" en Rust.
  */
 
-#include <kernel.h>
-#include <types.h>
-#include <bg_guardian.h>
-#include <fastos.h>
+#include "../include/kernel.h"
+#include "../include/types.h"
+#include "../include/bg_guardian.h"
+#include "../include/fastos.h"
 
 /* ─── Declaraciones de funciones Rust (extern "C") ─── */
 /*

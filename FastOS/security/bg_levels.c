@@ -8,9 +8,10 @@
  * Nivel 4: Dead Man's Switch    → si el sistema es comprometido → se protege solo
  */
 
-#include <kernel.h>
-#include <types.h>
-#include <bg_guardian.h>
+#include "../include/kernel.h"
+#include "../include/types.h"
+#include "../include/bg_guardian.h"
+#include "../include/fastos.h"
 
 /* ─── Nivel 1: Re-build Automático ─── */
 /*

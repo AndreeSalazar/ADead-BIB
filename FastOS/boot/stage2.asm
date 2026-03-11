@@ -440,10 +440,12 @@ lm_start:
 .print_kj_done:
 
     ; ─── Verificar que el kernel existe en 0x100000 ──────
-    ; El build script coloca el kernel alli
+    ; Verificar primeros 4 bytes — si todos son 0x00 (NOP padding)
+    ; es un falso positivo. Un kernel C real empieza con push rbp (0x55)
+    ; o sub rsp (0x48) u otro prologo de funcion.
     mov  rax, KERNEL_ENTRY
-    mov  al, [rax]
-    test al, al
+    mov  eax, [rax]
+    test eax, eax
     jz   .no_kernel
 
     ; ─── LLAMAR AL KERNEL ─────────────────────────────────

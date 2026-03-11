@@ -7,19 +7,10 @@
  * Sin excepciones. Sin bypass. Sin "modo debug sin verificación".
  */
 
-#include <kernel.h>
-<parameter name="CodeContent">/*
- * security/bg_preexec.c — Binary Guardian Pre-Execution Hook
- * FastOS v2.0
- *
- * Cada binario .Po pasa por aquí ANTES de su primera instrucción.
- * Si la verificación falla → el proceso nunca empieza.
- * Sin excepciones. Sin bypass. Sin "modo debug sin verificación".
- */
-
-#include <kernel.h>
-#include <types.h>
-#include <bg_guardian.h>
+#include "../include/kernel.h"
+#include "../include/types.h"
+#include "../include/bg_guardian.h"
+#include "../include/fastos.h"
 
 /* ─── Registro de Binarios Verificados ─── */
 /* Hash tabla simple (FNV-1a key → resultado cacheado) */

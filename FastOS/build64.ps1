@@ -128,71 +128,127 @@ try {
 if (-not $compiled) {
     Write-Status "Creating placeholder kernel (ADead-BIB 64-bit pending)..."
     
-    # Minimal 64-bit kernel that prints and halts
-    # This is temporary until ADead-BIB generates proper 64-bit code
+    # Placeholder 64-bit kernel: clears VGA, prints 5-step boot banner, halts.
+    # Mirrors kernel_main() output so the user sees the real boot sequence.
+    # Replaced when ADead-BIB compiles the real kernel.
     $kernel = New-Object byte[] 32768
-    
-    # 64-bit code: clear screen, print message, halt
-    $code = @(
-        # Clear screen (write to 0xB8000)
-        0x48, 0xBF, 0x00, 0x80, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,  # mov rdi, 0xB8000
-        0x48, 0xB8, 0x20, 0x0A, 0x20, 0x0A, 0x20, 0x0A, 0x20, 0x0A,  # mov rax, 0x0A200A200A200A20
-        0xB9, 0xF4, 0x01, 0x00, 0x00,                                # mov ecx, 500
-        0xF3, 0x48, 0xAB,                                            # rep stosq
-        
-        # Print "FastOS 64-bit - C Kernel Ready" at row 10
-        0x48, 0xBF, 0x40, 0x86, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,  # mov rdi, 0xB8640 (row 10, col 20)
-        0x48, 0xBE,                                                  # mov rsi, msg
-        0x00, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00               # address of message (0x100100)
+
+    # --- Subroutine: print_str (RSI=string, RDI=VGA ptr, AH=color) ---
+    # Located at offset 0x00 so the main code can call it.
+    # Convention: RSI -> NUL-terminated string, RDI -> VGA position,
+    #             AH = attribute byte. Advances RDI past printed chars.
+    #             Returns to caller via RET.
+    $sub_print = @(
+        # print_str:
+        0xAC,                       # lodsb
+        0x84, 0xC0,                 # test al, al
+        0x74, 0x04,                 # jz .ret
+        0x66, 0xAB,                 # stosw
+        0xEB, 0xF7,                 # jmp print_str
+        # .ret:
+        0xC3                        # ret
     )
-    
-    # Print loop
+    # 10 bytes: offsets 0x00..0x09
+
+    # --- Main entry point at offset 0x10 ---
+    $main_code = @(
+        # ; -- Clear screen (green on black: attr 0x0A) --
+        0x48, 0xBF, 0x00, 0x80, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, # mov rdi, 0xB8000
+        0x48, 0xB8, 0x20, 0x1A, 0x20, 0x1A, 0x20, 0x1A, 0x20, 0x1A, # mov rax, 0x1A201A201A201A20 (blue bg)
+        0xB9, 0xD0, 0x07, 0x00, 0x00,                                # mov ecx, 2000 (80*25)
+        0xF3, 0x48, 0xAB,                                            # rep stosq
+
+        # ; -- Row 1: banner line 1 --
+        0x48, 0xBF, 0xA0, 0x80, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, # mov rdi, 0xB80A0 (row 1)
+        0x48, 0xBE,                                                  # mov rsi, <msg1>
+        0x00, 0x02, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,              # 0x100200
+        0xB4, 0x1B,                                                  # mov ah, 0x1B (cyan on blue)
+        0xE8                                                          # call print_str (rel32)
+    )
+
+    # Calculate call target: from end of CALL instruction (offset 0x10 + len + 5)
+    # print_str is at offset 0x00. call offset = 0x00 - (current_ip).
+    # Main starts at 0x10. The call byte is at 0x10 + <bytes before it>.
+    # Let's just build the raw image manually with known offsets.
+
+    # Too complex with relative calls — use inline print loop instead (simpler, same result)
+    $code = @(
+        # Clear screen: 80*25 = 2000 chars, attr 0x1A (green on blue)
+        0x48, 0xBF, 0x00, 0x80, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,  # mov rdi, 0xB8000
+        0x48, 0xB8, 0x20, 0x1A, 0x20, 0x1A, 0x20, 0x1A, 0x20, 0x1A,  # mov rax, attr|' ' x4
+        0xB9, 0xF4, 0x01, 0x00, 0x00,                                # mov ecx, 500 (500 qwords = 2000 words)
+        0xF3, 0x48, 0xAB,                                            # rep stosq
+
+        # Row 2: FastOS v2.0 banner
+        0x48, 0xBF, 0x40, 0x81, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,  # mov rdi, 0xB8140 (row 2)
+        0x48, 0xBE,                                                  # mov rsi, msg1
+        0x00, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00               # 0x100100
+    )
+
     $printLoop = @(
         # .loop:
         0xAC,                       # lodsb
         0x84, 0xC0,                 # test al, al
         0x74, 0x06,                 # jz .done
-        0xB4, 0x0A,                 # mov ah, 0x0A (green)
+        0xB4, 0x1F,                 # mov ah, 0x1F (white on blue)
         0x66, 0xAB,                 # stosw
         0xEB, 0xF5,                 # jmp .loop
         # .done:
-        
-        # Print "ADead-BIB Compiler" at row 12
-        0x48, 0xBF, 0xC0, 0x87, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,  # mov rdi, 0xB87C0 (row 12, col 20)
-        0x48, 0xBE,
-        0x20, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,              # address of msg2
-        0xAC, 0x84, 0xC0, 0x74, 0x06, 0xB4, 0x0E, 0x66, 0xAB, 0xEB, 0xF5,
-        
-        # Print "[BG] Binary Guardian: ACTIVE" at row 14
-        0x48, 0xBF, 0x40, 0x89, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,
+
+        # Row 4: "ADead-BIB Compiler"
+        0x48, 0xBF, 0x80, 0x82, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x48, 0xBE,
         0x40, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0xAC, 0x84, 0xC0, 0x74, 0x06, 0xB4, 0x0B, 0x66, 0xAB, 0xEB, 0xF5,
-        
+        0xAC, 0x84, 0xC0, 0x74, 0x06, 0xB4, 0x1E, 0x66, 0xAB, 0xEB, 0xF5,
+
+        # Row 6: "[1/5] memory_init()"
+        0x48, 0xBF, 0xC0, 0x83, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x48, 0xBE,
+        0x80, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0xAC, 0x84, 0xC0, 0x74, 0x06, 0xB4, 0x1A, 0x66, 0xAB, 0xEB, 0xF5,
+
+        # Row 8: "[BG] Binary Guardian: ACTIVE"
+        0x48, 0xBF, 0x00, 0x85, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x48, 0xBE,
+        0xC0, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0xAC, 0x84, 0xC0, 0x74, 0x06, 0xB4, 0x1B, 0x66, 0xAB, 0xEB, 0xF5,
+
+        # Row 10: "Placeholder — compile with ADead-BIB for full kernel"
+        0x48, 0xBF, 0x40, 0x86, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x48, 0xBE,
+        0x00, 0x02, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0xAC, 0x84, 0xC0, 0x74, 0x06, 0xB4, 0x1C, 0x66, 0xAB, 0xEB, 0xF5,
+
         # Halt
         0xFA,                       # cli
         0xF4,                       # hlt
-        0xEB, 0xFD                  # jmp $
+        0xEB, 0xFD                  # jmp $ (infinite halt loop)
     )
-    
+
     $offset = 0
     foreach ($b in $code) { $kernel[$offset++] = $b }
     foreach ($b in $printLoop) { $kernel[$offset++] = $b }
-    
-    # Messages at offset 0x100 (0x100100 when loaded at 0x100000)
-    $msg1 = [System.Text.Encoding]::ASCII.GetBytes("FastOS v2.0 - 64-bit Long Mode`0")
-    $msg2 = [System.Text.Encoding]::ASCII.GetBytes("Compiler: ADead-BIB`0")
-    $msg3 = [System.Text.Encoding]::ASCII.GetBytes("[BG] Binary Guardian: ACTIVE`0")
-    
+
+    # Messages at offsets (relative to 0x100000 load address)
+    $msg1 = [System.Text.Encoding]::ASCII.GetBytes("FastOS v2.0 - 64-bit Long Mode - ADead-BIB`0")
+    $msg2 = [System.Text.Encoding]::ASCII.GetBytes("Compiler: ADead-BIB (C is Master, Rust is Safety)`0")
+    $msg3 = [System.Text.Encoding]::ASCII.GetBytes("[1/5] memory_init [2/5] interrupts_init [3/5] scheduler_init`0")
+    $msg4 = [System.Text.Encoding]::ASCII.GetBytes("[BG] Binary Guardian: ACTIVE (4 niveles, matematica pura)`0")
+    $msg5 = [System.Text.Encoding]::ASCII.GetBytes("Placeholder kernel - compile with build64.ps1 (ADead-BIB)`0")
+
     $msgOffset = 0x100
     foreach ($b in $msg1) { $kernel[$msgOffset++] = $b }
-    $msgOffset = 0x120
-    foreach ($b in $msg2) { $kernel[$msgOffset++] = $b }
     $msgOffset = 0x140
+    foreach ($b in $msg2) { $kernel[$msgOffset++] = $b }
+    $msgOffset = 0x180
     foreach ($b in $msg3) { $kernel[$msgOffset++] = $b }
-    
+    $msgOffset = 0x1C0
+    foreach ($b in $msg4) { $kernel[$msgOffset++] = $b }
+    $msgOffset = 0x200
+    foreach ($b in $msg5) { $kernel[$msgOffset++] = $b }
+
     [System.IO.File]::WriteAllBytes($kernelBin, $kernel)
-    Write-Success "Kernel: $($kernel.Length) bytes (placeholder)"
+    Write-Success "Kernel: $($kernel.Length) bytes (placeholder - shows 5-step boot banner)"
 }
 
 # ============================================================
