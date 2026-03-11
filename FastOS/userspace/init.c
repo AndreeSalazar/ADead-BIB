@@ -76,10 +76,10 @@ static void init_loop(void) {
             init_signal = 0;
             init_handle_signal(sig);
         }
-        /* En produccion: fastos_wait() — sleep hasta proxima senal */
-        /* Aqui en boot inicial: si shell termino → reiniciar */
-        kprintf("[init] Shell exited — restarting...\n");
-        init_start_daemons();
+
+        /* Esperar interrupcion en vez de spinear — evita flood de VGA.
+         * El PIT tick o un evento de teclado despertaran al CPU. */
+        asm volatile("hlt");
     }
 }
 

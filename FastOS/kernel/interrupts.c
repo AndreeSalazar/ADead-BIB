@@ -138,6 +138,7 @@ void exception_handler(interrupt_frame_t *frame) {
 
 /* External handler declarations */
 extern void scheduler_tick(void);
+extern void keyboard_irq_handler(void);
 
 void irq_handler(interrupt_frame_t *frame) {
     uint64_t irq = frame->int_no - IRQ_BASE;
@@ -148,11 +149,10 @@ void irq_handler(interrupt_frame_t *frame) {
             break;
             
         case 1:  /* Keyboard */
-            {
-                uint8_t scancode = inb(0x60);
-                kprintf("[KB] Scancode: 0x%02X\n", scancode);
-            }
-            break;
+            /* Delegar a keyboard.c — NO leer 0x60 aqui,
+             * keyboard_irq_handler() lo hace y envia EOI */
+            keyboard_irq_handler();
+            return;  /* keyboard_irq_handler ya envio EOI */
             
         case 12: /* Mouse */
             /* TODO: Handle mouse */

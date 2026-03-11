@@ -106,6 +106,7 @@ void kputs(const char *s) {
 
 /* kernel/memory/e820.c  */ extern void memory_init(void);
 /* kernel/interrupts.c   */ extern void interrupts_init(void);
+/* kernel/keyboard.c     */ extern void keyboard_init(void);
 /* kernel/scheduler.c    */ extern void scheduler_init(void);
 /* kernel/hotplug.c      */ extern void hotplug_init(void);
 /* security/bg_core.c    */ extern void bg_init(void);
@@ -145,8 +146,9 @@ void kernel_main(void) {
 
     /* ─── 2. interrupts_init() — IDT, IRQ handlers ─── */
     term_write_color("[2/5] ", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
-    term_write("interrupts_init()  IDT, IRQ handlers\n");
+    term_write("interrupts_init()  IDT, IRQ handlers + keyboard\n");
     interrupts_init();
+    keyboard_init();
     term_write_color("      OK\n", VGA_COLOR(VGA_GREEN, VGA_BLUE));
 
     /* ─── 3. scheduler_init() — round-robin preemptivo ─── */

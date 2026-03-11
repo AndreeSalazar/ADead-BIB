@@ -135,8 +135,22 @@ Boot signature: 0x55AA ✅
 
 ---
 
+## Fix de Parpadeo (2026-03-11 v2)
+
+**3 bugs encontrados y corregidos:**
+
+| Bug | Causa | Fix |
+|-----|-------|-----|
+| **IRQ1 doble lectura** | `interrupts.c` leía puerto 0x60 Y lo imprimía con `kprintf("[KB] Scancode...")`, robando scancodes al driver real de `keyboard.c` | IRQ1 ahora delega a `keyboard_irq_handler()` — cero spam en VGA |
+| **Preemption sin context switch** | `scheduler_tick()` llamaba a `schedule()` que ejecuta `context_switch()` — pero esta es un esqueleto vacío, corrompe el estado del CPU | Preemption deshabilitada hasta que `asm/switch.asm` esté listo |
+| **init_loop flood** | `init_loop()` imprimía `"Shell exited — restarting..."` + relanzaba shell en loop sin esperar — floodeo de VGA | Reemplazado con `hlt` wait loop — CPU duerme entre interrupciones |
+
+**Cambios adicionales:**
+- `keyboard_init()` ahora se llama en `kernel_main()` después de `interrupts_init()`
+- Shell usa `keyboard_getchar()` del driver real con buffer circular PS/2
+
 ## Próximos Pasos
 
 1. **Ejecutar** — `cd FastOS; .\build64.ps1 -Run` (requiere QEMU)
-2. **Verificar visual** — QEMU debe mostrar el banner de FastOS v2.0 con los 5 pasos
-3. **Drivers** — Conectar hardware real → hotplug detecta y pregunta al usuario
+2. **Verificar visual** — QEMU debe mostrar el banner de FastOS v2.0 con los 5 pasos + prompt `fastos>`
+3. **Context switch ASM** — Implementar `asm/switch.asm` para habilitar preemption real

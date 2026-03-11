@@ -14,7 +14,6 @@
 
 /* ─── Declaraciones de subsistemas ─────────────────────── */
 extern char keyboard_getchar(void);
-extern void keyboard_init(void);
 
 /* ─── Constantes del shell ──────────────────────────────── */
 #define SHELL_LINE_MAX  256

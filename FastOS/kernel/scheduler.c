@@ -187,8 +187,12 @@ void scheduler_tick(void) {
     /* BG Nivel 4 — Dead Man's Switch: se debe llamar en cada tick */
     bg_level4_heartbeat();
 
-    /* Preempcion si se acabo el time-slice */
-    if (proc->time_slice == 0 && proc->pid != 0) schedule();
+    /* Preempcion deshabilitada: context_switch() es esqueleto (sin ASM real).
+     * Llamar a schedule() desde IRQ corrompe el estado del CPU.
+     * Se habilitara cuando asm/switch.asm este listo.
+     *
+     * if (proc->time_slice == 0 && proc->pid != 0) schedule();
+     */
 }
 
 /* Yield voluntario */
