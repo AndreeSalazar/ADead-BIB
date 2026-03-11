@@ -99,7 +99,21 @@ $kernelBin = "$BUILD\kernel64.bin"
 # Compile kernel with ADead-BIB --flat
 $compiled = $false
 try {
-    $result = & cargo run --manifest-path="$ADEAD_ROOT\Cargo.toml" --release -- cc "$kernelSrc" -o "$kernelBin" --flat --org=0x100000 --size=32768 2>&1
+    # Find all kernel source files, excluding shell, rust wrappers, and main.c (which we add manually at the start)
+    $kernelFiles = Get-ChildItem -Path $KERNEL, "$ROOT\lib", "$ROOT\security", "$ROOT\fs", "$ROOT\userspace" -Filter "*.c" -Recurse | Where-Object { 
+        $_.Name -ne "shell.c" -and 
+        $_.Name -ne "bg_fastos.c" -and 
+        $_.FullName -ne "$KERNEL\main.c" 
+    }
+    
+    $ccArgs = @("--manifest-path=$ADEAD_ROOT\Cargo.toml", "--release", "--", "cc")
+    $ccArgs += "$KERNEL\main.c"       # CRITICO: main.c TIENE que ser el primero (offset 0x0)
+    $ccArgs += $kernelFiles.FullName
+    $ccArgs += @("-o", "$kernelBin", "--flat", "--org=0x100000", "--size=32768")
+
+    Write-Status "Compiling $(@($kernelFiles).Count) kernel source files with ADead-BIB..."
+    $result = & cargo run @ccArgs 2>&1
+
     if (Test-Path $kernelBin) {
         $kernelSize = (Get-Item $kernelBin).Length
         if ($kernelSize -gt 0) {
