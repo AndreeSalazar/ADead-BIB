@@ -1,0 +1,27 @@
+[package]
+name = "bg-fastos"
+version = "2.0.0"
+edition = "2021"
+description = "BG — Binary Guardian integrado en FastOS v2.0"
+authors = ["Eddi Andreé Salazar Matos <eddi.salazar.dev@gmail.com>"]
+
+# BG es una biblioteca que FastOS usa para verificar binarios .Po
+# antes de ejecutarlos. Determinista, ISA-level, sin heurística.
+
+[lib]
+name     = "bg_fastos"
+path     = "bg/lib.rs"
+crate-type = ["staticlib"]   # Genera libfg_fastos.a para linkear desde C
+
+[dependencies]
+# ADead-BIB core — ISA types (ADeadOp, Decoder, Encoder)
+adead-bib = { path = "../.." }
+
+# PE/ELF binary parsing
+goblin = "0.7"
+
+[profile.release]
+opt-level = "z"          # Tamaño mínimo (filosoía FastOS: sin grasa)
+lto       = true         # Link-time optimization
+strip     = true         # Sin símbolos de debug en release
+panic     = "abort"      # Sin unwinding en el kernel

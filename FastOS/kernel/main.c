@@ -1,155 +1,108 @@
 /*
- * FastOS v2.0 — Kernel Main
- * ADead-BIB Native Operating System
- * 
- * Entry point for the 64-bit kernel.
- * Compiled with: adB cc kernel/main.c -o kernel.bin --flat --org=0x100000
+ * kernel/main.c — FastOS v2.0 Kernel Entry Point
+ *
+ * Compilar: adb cc kernel/main.c --target fastos --flat --org=0x100000
+ * Ver las 7 fases del pipeline ADead-BIB: adb step kernel/main.c
+ *
+ * El CPU llegó aquí GRADUALMENTE desde:
+ *   boot/mbr64.asm    (stage1 — 16-bit real mode)
+ *     -> boot/loader64.asm (stage2 — 16 -> 32 -> 64-bit)
+ *       -> kernel/main.c   (64-bit long mode, CPU completamente orientado)
+ *
+ * C solo dirige lo que ya existe.
+ * El CPU ya sabe donde esta.
+ *
+ * ARQUITECTURA (exacta segun README.md):
+ *
+ *   void kernel_main() {
+ *       memory_init();
+ *       interrupts_init();
+ *       scheduler_init();
+ *       hotplug_init();    // detecta hardware, descarga drivers
+ *       bg_init();         // Binary Guardian activo
+ *       init_main();       // PID 1 -> PID 2 (shell)
+ *   }
  */
 
 #include "../include/kernel.h"
 #include "../include/types.h"
+#include "../include/fastos.h"
 
-/* VGA text mode buffer */
-#define VGA_BUFFER ((volatile uint16_t*)0xB8000)
-#define VGA_WIDTH  80
-#define VGA_HEIGHT 25
+/* ═══════════════════════════════════════════════════════
+ * VGA Text Mode — 80x25 colores
+ * ═══════════════════════════════════════════════════════ */
 
-/* VGA colors */
-#define VGA_BLACK        0x0
-#define VGA_BLUE         0x1
-#define VGA_GREEN        0x2
-#define VGA_CYAN         0x3
-#define VGA_RED          0x4
-#define VGA_MAGENTA      0x5
-#define VGA_BROWN        0x6
-#define VGA_LIGHT_GREY   0x7
-#define VGA_DARK_GREY    0x8
-#define VGA_LIGHT_BLUE   0x9
-#define VGA_LIGHT_GREEN  0xA
-#define VGA_LIGHT_CYAN   0xB
-#define VGA_LIGHT_RED    0xC
+#define VGA_BUFFER    ((volatile uint16_t*)0xB8000)
+#define VGA_WIDTH     80
+#define VGA_HEIGHT    25
+
+/* VGA 4-bit color palette */
+#define VGA_BLACK         0x0
+#define VGA_BLUE          0x1
+#define VGA_GREEN         0x2
+#define VGA_CYAN          0x3
+#define VGA_RED           0x4
+#define VGA_MAGENTA       0x5
+#define VGA_BROWN         0x6
+#define VGA_LIGHT_GREY    0x7
+#define VGA_DARK_GREY     0x8
+#define VGA_LIGHT_BLUE    0x9
+#define VGA_LIGHT_GREEN   0xA
+#define VGA_LIGHT_CYAN    0xB
+#define VGA_LIGHT_RED     0xC
 #define VGA_LIGHT_MAGENTA 0xD
-#define VGA_YELLOW       0xE
-#define VGA_WHITE        0xF
+#define VGA_YELLOW        0xE
+#define VGA_WHITE         0xF
 
-#define VGA_COLOR(fg, bg) ((bg << 4) | fg)
-#define VGA_ENTRY(c, color) ((uint16_t)(c) | ((uint16_t)(color) << 8))
+#define VGA_COLOR(fg, bg)   ((uint8_t)((bg) << 4 | (fg)))
+#define VGA_ENTRY(ch, attr) ((uint16_t)((uint8_t)(ch)) | ((uint16_t)(attr) << 8))
 
-/* Terminal state */
-static int term_row = 0;
-static int term_col = 0;
-static uint8_t term_color = VGA_COLOR(VGA_WHITE, VGA_BLUE);
-
-/* Forward declarations */
-void term_init(void);
-void term_clear(void);
-void term_putchar(char c);
-void term_write(const char *str);
-void term_write_color(const char *str, uint8_t color);
-void term_set_cursor(int row, int col);
-
-/* ============================================================
- * Terminal Functions
- * ============================================================ */
+/* Terminal estado global */
+static int     term_row   = 0;
+static int     term_col   = 0;
+static uint8_t term_color = 0; /* inicializado en term_init */
 
 void term_init(void) {
-    term_row = 0;
-    term_col = 0;
     term_color = VGA_COLOR(VGA_WHITE, VGA_BLUE);
-    term_clear();
-}
-
-void term_clear(void) {
-    for (int y = 0; y < VGA_HEIGHT; y++) {
-        for (int x = 0; x < VGA_WIDTH; x++) {
+    term_row   = 0;
+    term_col   = 0;
+    /* Limpiar pantalla */
+    for (int y = 0; y < VGA_HEIGHT; y++)
+        for (int x = 0; x < VGA_WIDTH; x++)
             VGA_BUFFER[y * VGA_WIDTH + x] = VGA_ENTRY(' ', term_color);
-        }
-    }
-    term_row = 0;
-    term_col = 0;
 }
 
-void term_scroll(void) {
-    /* Move all lines up by one */
-    for (int y = 0; y < VGA_HEIGHT - 1; y++) {
-        for (int x = 0; x < VGA_WIDTH; x++) {
-            VGA_BUFFER[y * VGA_WIDTH + x] = VGA_BUFFER[(y + 1) * VGA_WIDTH + x];
-        }
-    }
-    /* Clear last line */
-    for (int x = 0; x < VGA_WIDTH; x++) {
-        VGA_BUFFER[(VGA_HEIGHT - 1) * VGA_WIDTH + x] = VGA_ENTRY(' ', term_color);
-    }
+static void term_scroll(void) {
+    for (int y = 0; y < VGA_HEIGHT - 1; y++)
+        for (int x = 0; x < VGA_WIDTH; x++)
+            VGA_BUFFER[y * VGA_WIDTH + x] = VGA_BUFFER[(y+1) * VGA_WIDTH + x];
+    uint8_t blank_color = VGA_COLOR(VGA_WHITE, VGA_BLUE);
+    for (int x = 0; x < VGA_WIDTH; x++)
+        VGA_BUFFER[(VGA_HEIGHT-1) * VGA_WIDTH + x] = VGA_ENTRY(' ', blank_color);
     term_row = VGA_HEIGHT - 1;
 }
 
 void term_putchar(char c) {
-    if (c == '\n') {
-        term_col = 0;
-        term_row++;
-    } else if (c == '\r') {
-        term_col = 0;
-    } else if (c == '\t') {
-        term_col = (term_col + 8) & ~7;
-    } else {
+    if (c == '\n') { term_col = 0; term_row++; }
+    else if (c == '\r') { term_col = 0; }
+    else if (c == '\t') { term_col = (term_col + 8) & ~7; }
+    else {
         VGA_BUFFER[term_row * VGA_WIDTH + term_col] = VGA_ENTRY(c, term_color);
         term_col++;
     }
-    
-    if (term_col >= VGA_WIDTH) {
-        term_col = 0;
-        term_row++;
-    }
-    
-    if (term_row >= VGA_HEIGHT) {
-        term_scroll();
-    }
+    if (term_col >= VGA_WIDTH)  { term_col = 0; term_row++; }
+    if (term_row >= VGA_HEIGHT) { term_scroll(); }
 }
 
 void term_write(const char *str) {
-    while (*str) {
-        term_putchar(*str++);
-    }
+    while (*str) term_putchar(*str++);
 }
 
 void term_write_color(const char *str, uint8_t color) {
-    uint8_t old_color = term_color;
+    uint8_t old = term_color;
     term_color = color;
     term_write(str);
-    term_color = old_color;
-}
-
-void term_set_cursor(int row, int col) {
-    term_row = row;
-    term_col = col;
-}
-
-/* ============================================================
- * Simple kprintf (integer only for now)
- * ============================================================ */
-
-void kprint_int(int64_t n) {
-    if (n < 0) {
-        term_putchar('-');
-        n = -n;
-    }
-    if (n >= 10) {
-        kprint_int(n / 10);
-    }
-    term_putchar('0' + (n % 10));
-}
-
-void kprint_hex(uint64_t n) {
-    const char *hex = "0123456789ABCDEF";
-    term_write("0x");
-    for (int i = 60; i >= 0; i -= 4) {
-        term_putchar(hex[(n >> i) & 0xF]);
-    }
-}
-
-void kprintf(const char *fmt, ...) {
-    /* Simple printf - just prints strings for now */
-    term_write(fmt);
+    term_color = old;
 }
 
 void kputs(const char *s) {
@@ -157,141 +110,94 @@ void kputs(const char *s) {
     term_putchar('\n');
 }
 
-/* ============================================================
- * Kernel Panic
- * ============================================================ */
+/* ═══════════════════════════════════════════════════════
+ * Subsystem Declarations
+ * Implementados en sus archivos correspondientes.
+ * kernel_main() orquesta — no implementa nada.
+ * ═══════════════════════════════════════════════════════ */
 
-void __noreturn kernel_panic(const char *msg) {
-    cli();
-    term_color = VGA_COLOR(VGA_WHITE, VGA_RED);
-    term_clear();
-    term_write("\n\n");
-    term_write("  *** KERNEL PANIC ***\n\n");
-    term_write("  ");
-    term_write(msg);
-    term_write("\n\n");
-    term_write("  System halted.\n");
-    
-    while (1) {
-        hlt();
-    }
-}
+/* kernel/memory/e820.c  */ extern void memory_init(void);
+/* kernel/interrupts.c   */ extern void interrupts_init(void);
+/* kernel/scheduler.c    */ extern void scheduler_init(void);
+/* kernel/hotplug.c      */ extern void hotplug_init(void);
+/* security/bg_core.c    */ extern void bg_init(void);
+/* userspace/init.c      */ extern void init_main(void);
 
-/* ============================================================
- * PCI Functions (for GPU detection)
- * ============================================================ */
-
-#define PCI_CONFIG_ADDRESS 0xCF8
-#define PCI_CONFIG_DATA    0xCFC
-
-uint32_t pci_read(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
-    uint32_t address = (1 << 31) | (bus << 16) | (slot << 11) | 
-                       (func << 8) | (offset & 0xFC);
-    outl(PCI_CONFIG_ADDRESS, address);
-    return inl(PCI_CONFIG_DATA);
-}
-
-void pci_scan_bus(void) {
-    term_write("\n[PCI] Scanning bus...\n");
-    
-    for (int bus = 0; bus < 256; bus++) {
-        for (int slot = 0; slot < 32; slot++) {
-            uint32_t vendor_device = pci_read(bus, slot, 0, 0);
-            uint16_t vendor = vendor_device & 0xFFFF;
-            uint16_t device = (vendor_device >> 16) & 0xFFFF;
-            
-            if (vendor != 0xFFFF) {
-                uint32_t class_code = pci_read(bus, slot, 0, 8);
-                uint8_t base_class = (class_code >> 24) & 0xFF;
-                uint8_t sub_class = (class_code >> 16) & 0xFF;
-                
-                /* Check for VGA controller (class 0x03) */
-                if (base_class == 0x03) {
-                    term_write("  [GPU] Found: ");
-                    
-                    /* NVIDIA vendor ID */
-                    if (vendor == 0x10DE) {
-                        term_write_color("NVIDIA", VGA_COLOR(VGA_GREEN, VGA_BLUE));
-                        term_write(" GPU (Nouveau compatible)\n");
-                    }
-                    /* AMD vendor ID */
-                    else if (vendor == 0x1002) {
-                        term_write_color("AMD", VGA_COLOR(VGA_RED, VGA_BLUE));
-                        term_write(" GPU\n");
-                    }
-                    /* Intel vendor ID */
-                    else if (vendor == 0x8086) {
-                        term_write_color("Intel", VGA_COLOR(VGA_CYAN, VGA_BLUE));
-                        term_write(" GPU\n");
-                    }
-                    else {
-                        term_write("Unknown GPU\n");
-                    }
-                }
-            }
-        }
-    }
-}
-
-/* ============================================================
- * Kernel Entry Point
- * ============================================================ */
-
+/* ═══════════════════════════════════════════════════════
+ * kernel_main() — Orquestador del Boot
+ *
+ * Llamado por boot/loader64.asm tras activar long mode.
+ * El CPU llega aqui DESPIERTO, sin estado fantasma,
+ * con GDT/paginacion ya configurados.
+ * ═══════════════════════════════════════════════════════ */
 void kernel_main(void) {
-    /* Initialize terminal */
+
+    /* VGA online — primer output visual */
     term_init();
-    
-    /* Display boot banner */
-    term_write_color("\n", VGA_COLOR(VGA_WHITE, VGA_BLUE));
-    term_write_color("  ╔══════════════════════════════════════════════════════════════════╗\n", 
-                     VGA_COLOR(VGA_CYAN, VGA_BLUE));
-    term_write_color("  ║", VGA_COLOR(VGA_CYAN, VGA_BLUE));
-    term_write_color("                      FastOS v2.0                                  ", 
-                     VGA_COLOR(VGA_WHITE, VGA_BLUE));
-    term_write_color("║\n", VGA_COLOR(VGA_CYAN, VGA_BLUE));
-    term_write_color("  ║", VGA_COLOR(VGA_CYAN, VGA_BLUE));
-    term_write_color("              ADead-BIB Native Operating System                    ", 
-                     VGA_COLOR(VGA_LIGHT_GREY, VGA_BLUE));
-    term_write_color("║\n", VGA_COLOR(VGA_CYAN, VGA_BLUE));
-    term_write_color("  ╚══════════════════════════════════════════════════════════════════╝\n\n", 
-                     VGA_COLOR(VGA_CYAN, VGA_BLUE));
-    
-    /* System info */
-    term_write("[BOOT] Kernel loaded at 0x100000\n");
-    term_write("[BOOT] Compiled with ADead-BIB C compiler\n");
-    term_write("[BOOT] Architecture: x86-64\n\n");
-    
-    /* CPU info */
-    uint32_t eax, ebx, ecx, edx;
-    cpuid(0, &eax, &ebx, &ecx, &edx);
-    
-    char vendor[13];
-    *((uint32_t*)&vendor[0]) = ebx;
-    *((uint32_t*)&vendor[4]) = edx;
-    *((uint32_t*)&vendor[8]) = ecx;
-    vendor[12] = '\0';
-    
-    term_write("[CPU] Vendor: ");
-    term_write(vendor);
-    term_write("\n");
-    
-    /* PCI scan for GPUs */
-    pci_scan_bus();
-    
-    /* Memory info */
-    term_write("\n[MEM] Initializing memory manager...\n");
-    term_write("[MEM] Heap starts at 0x200000\n");
-    
-    /* Ready */
-    term_write("\n");
-    term_write_color("[OK]", VGA_COLOR(VGA_GREEN, VGA_BLUE));
-    term_write(" FastOS kernel initialized successfully!\n\n");
-    
-    term_write("Type 'help' for available commands.\n");
-    term_write_color("fastos> ", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
-    
-    /* Halt - in real OS, would start scheduler */
+
+    /* Banner */
+    term_write_color("  +================================================================+\n", VGA_COLOR(VGA_LIGHT_CYAN, VGA_BLUE));
+    term_write_color("  |                         FastOS  v2.0                           |\n", VGA_COLOR(VGA_WHITE, VGA_BLUE));
+    term_write_color("  |        The Best of Windows (UX/Drivers) & Linux (Core)         |\n", VGA_COLOR(VGA_LIGHT_GREEN, VGA_BLUE));
+    term_write_color("  |              ADead-BIB Native OS   *   Made in Peru            |\n", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
+    term_write_color("  +================================================================+\n\n", VGA_COLOR(VGA_LIGHT_CYAN, VGA_BLUE));
+
+    term_write_color("[BOOT] ", VGA_COLOR(VGA_LIGHT_MAGENTA, VGA_BLUE));
+    term_write("16-bit real mode -> 32-bit protected -> 64-bit long mode\n");
+    term_write_color("[BOOT] ", VGA_COLOR(VGA_LIGHT_MAGENTA, VGA_BLUE));
+    term_write("CPU awakened gradually. No ghost state. No lost context.\n");
+    term_write_color("[BOOT] ", VGA_COLOR(VGA_LIGHT_MAGENTA, VGA_BLUE));
+    term_write("Kernel entry at 0x100000\n\n");
+
+    /* ─── 1. memory_init() — paginacion, heap ─── */
+    term_write_color("[1/5] ", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
+    term_write("memory_init()      paginacion, heap\n");
+    memory_init();
+    term_write_color("      OK\n", VGA_COLOR(VGA_GREEN, VGA_BLUE));
+
+    /* ─── 2. interrupts_init() — IDT, IRQ handlers ─── */
+    term_write_color("[2/5] ", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
+    term_write("interrupts_init()  IDT, IRQ handlers\n");
+    interrupts_init();
+    term_write_color("      OK\n", VGA_COLOR(VGA_GREEN, VGA_BLUE));
+
+    /* ─── 3. scheduler_init() — round-robin preemptivo ─── */
+    term_write_color("[3/5] ", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
+    term_write("scheduler_init()   round-robin preemptivo\n");
+    scheduler_init();
+    term_write_color("      OK\n", VGA_COLOR(VGA_GREEN, VGA_BLUE));
+
+    /* ─── 4. hotplug_init() — 0 drivers pre-instalados ─── */
+    term_write_color("[4/5] ", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
+    term_write("hotplug_init()     hardware detection, on-demand drivers\n");
+    hotplug_init();
+    term_write_color("      OK\n", VGA_COLOR(VGA_GREEN, VGA_BLUE));
+
+    /* ─── 5. bg_init() — Binary Guardian 4 niveles ─── */
+    term_write_color("[5/5] ", VGA_COLOR(VGA_YELLOW, VGA_BLUE));
+    term_write("bg_init()          Binary Guardian activo (4 niveles, mat. pura)\n");
+    bg_init();
+    term_write_color("      OK\n\n", VGA_COLOR(VGA_GREEN, VGA_BLUE));
+
+    /* Sistema listo */
+    term_write_color("[OK] FastOS kernel ready. ~150KB. 0 drivers. 0 muletas.\n\n",
+                     VGA_COLOR(VGA_GREEN, VGA_BLUE));
+
+    /*
+     * Lanzar init_main() — PID 1.
+     * init_main() lanza shell (PID 2) y no retorna jamas.
+     * El scheduler toma control desde aqui.
+     *
+     * Si init_main() retorna => kernel panic (PANIC_INIT_DIED).
+     * El sistema no puede existir sin PID 1.
+     */
+    init_main();
+
+    /* NUNCA deberia llegar aqui */
+    term_write_color(
+        "\n[PANIC] init_main() returned — PANIC_INIT_DIED — system halted.\n",
+        VGA_COLOR(VGA_WHITE, VGA_RED));
     while (1) {
-        hlt();
+        hlt();  /* CPU quieto, sin consumir ciclos */
     }
 }

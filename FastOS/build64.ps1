@@ -55,12 +55,12 @@ if (-not $FASM) {
 }
 
 # ============================================================
-# Step 1: Assemble MBR (mbr64.asm)
+# Step 1: Assemble Stage 1 (stage1.asm)
 # ============================================================
-Write-Status "Step 1: Assembling mbr64.asm (512 bytes MBR)..."
+Write-Status "Step 1: Assembling stage1.asm (512 bytes MBR)..."
 
-$mbrSrc = "$BOOT\mbr64.asm"
-$mbrBin = "$BUILD\mbr64.bin"
+$mbrSrc = "$BOOT\stage1.asm"
+$mbrBin = "$BUILD\stage1.bin"
 
 & $FASM $mbrSrc $mbrBin
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $mbrBin)) {
@@ -72,12 +72,12 @@ $mbrSize = (Get-Item $mbrBin).Length
 Write-Success "MBR: $mbrSize bytes"
 
 # ============================================================
-# Step 2: Assemble Loader (loader64.asm)
+# Step 2: Assemble Stage 2 (stage2.asm)
 # ============================================================
-Write-Status "Step 2: Assembling loader64.asm (64-bit transition)..."
+Write-Status "Step 2: Assembling stage2.asm (64-bit transition)..."
 
-$loaderSrc = "$BOOT\loader64.asm"
-$loaderBin = "$BUILD\loader64.bin"
+$loaderSrc = "$BOOT\stage2.asm"
+$loaderBin = "$BUILD\stage2.bin"
 
 & $FASM $loaderSrc $loaderBin
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $loaderBin)) {
@@ -89,11 +89,11 @@ $loaderSize = (Get-Item $loaderBin).Length
 Write-Success "Loader: $loaderSize bytes"
 
 # ============================================================
-# Step 3: Compile kernel64.c with ADead-BIB
+# Step 3: Compile main.c with ADead-BIB
 # ============================================================
-Write-Status "Step 3: Compiling kernel64.c with ADead-BIB..."
+Write-Status "Step 3: Compiling main.c with ADead-BIB..."
 
-$kernelSrc = "$KERNEL\kernel_simple.c"
+$kernelSrc = "$KERNEL\main.c"
 $kernelBin = "$BUILD\kernel64.bin"
 
 # Compile kernel with ADead-BIB --flat
@@ -186,7 +186,7 @@ if (-not $compiled) {
 # ============================================================
 Write-Status "Step 4: Creating disk image..."
 
-$imageSize = 1474560
+$imageSize = 10485760 # 10MB Raw Hard Disk
 $image = New-Object byte[] $imageSize
 
 # Copy MBR (sector 0)
@@ -195,19 +195,20 @@ for ($i = 0; $i -lt $mbrData.Length; $i++) {
     $image[$i] = $mbrData[$i]
 }
 
-# Inject kernel INTO loader at offset 8192 (0x2000)
-# This way MBR's single 32-sector read loads BOTH loader+kernel
+# Copy Loader (16KB)
 $loaderData = [System.IO.File]::ReadAllBytes($loaderBin)
-if (Test-Path $kernelBin) {
-    $kernelData = [System.IO.File]::ReadAllBytes($kernelBin)
-    $embedOffset = 4096  # 0x1000 inside loader (sector 8, definitely loaded)
-    $maxKernel = $loaderData.Length - $embedOffset
-    $copyLen = [Math]::Min($kernelData.Length, $maxKernel)
-    [Array]::Copy($kernelData, 0, $loaderData, $embedOffset, $copyLen)
-    Write-Success "Kernel embedded in loader at offset $embedOffset ($copyLen bytes)"
-}
 for ($i = 0; $i -lt $loaderData.Length; $i++) {
     $image[512 + $i] = $loaderData[$i]
+}
+
+# Append Kernel
+if (Test-Path $kernelBin) {
+    $kernelData = [System.IO.File]::ReadAllBytes($kernelBin)
+    $kernelOffset = 512 + $loaderData.Length
+    for ($i = 0; $i -lt $kernelData.Length; $i++) {
+        $image[$kernelOffset + $i] = $kernelData[$i]
+    }
+    Write-Success "Kernel appended after loader at offset $kernelOffset ($($kernelData.Length) bytes)"
 }
 
 $imagePath = "$BUILD\fastos64.img"
@@ -244,8 +245,8 @@ if ($Run) {
     
     if (Test-Path $qemu) {
         Write-Success "Running: $qemu"
-        # Boot from floppy - MBR loads loader+kernel
-        & $qemu -drive "file=$imagePath,format=raw,if=floppy" -m 128M -boot a -cpu qemu64
+        # Boot from raw hard disk
+        & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu qemu64
     } else {
         Write-Error "QEMU not found"
     }
