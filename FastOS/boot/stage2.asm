@@ -387,11 +387,11 @@ lm_start:
     mov  rsp, STACK_64
 
     ; ─── Mover el Kernel a 0x100000 ──────────────────────────
-    ; El script `build64.ps1` inyecta `kernel.bin` dentro de `stage2.bin`
-    ; en el offset 0x1000 (4KB). 
-    ; Como stage2 fue cargado en 0x10000, el kernel esta en 0x11000.
-    ; Movemos 32KB desde 0x11000 a 0x100000.
-    mov  rsi, 0x11000
+    ; El script `build64.ps1` concatena `kernel.bin` despues de `stage2.bin`.
+    ; Como stage2 ocupa 16KB (0x4000) y fue cargado en 0x10000, 
+    ; el kernel esta en 0x10000 + 0x4000 = 0x14000.
+    ; Movemos 32KB desde 0x14000 a 0x100000.
+    mov  rsi, 0x14000
     mov  rdi, KERNEL_ENTRY
     mov  rcx, 4096              ; 32768 bytes / 8 = 4096 QWORDs
     cld
@@ -441,15 +441,16 @@ lm_start:
 
     ; ─── Verificar que el kernel existe en 0x100000 ──────
     ; El build script coloca el kernel alli
-    mov  al, [KERNEL_ENTRY]
+    mov  rax, KERNEL_ENTRY
+    mov  al, [rax]
     test al, al
     jz   .no_kernel
 
     ; ─── LLAMAR AL KERNEL ─────────────────────────────────
     ; El CPU esta DESPIERTO — gradual, sin aturdir.
-    ; No hay "call rax" — llamamos directamente.
-    ; kernel_main() tiene la funcion como void() — no retorna.
-    call KERNEL_ENTRY
+    ; Llamamos a la direccion fisica absoluta a traves de RAX.
+    mov  rax, KERNEL_ENTRY
+    call rax
 
     ; Si kernel_main() retorna (nunca deberia):
     jmp  .kernel_returned
