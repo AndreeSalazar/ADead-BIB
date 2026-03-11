@@ -2,178 +2,141 @@
  * kernel/panic.c — Kernel Panic Handler
  * FastOS v2.0
  *
- * Cuando algo que NUNCA DEBERÍA fallar falla, FastOS muestra diagnóstico
- * completo y detiene el CPU limpiamente.
+ * Sin silencio. Sin reinicio misterioso.
+ * Si el kernel entra en panico → el usuario SABE por que.
  *
- * Sin silencio. Sin reinicio silencioso. Sin "mystery reboot at 3am".
- * Si el kernel entra en pánico → el usuario SABE por qué.
- *
- * Compilar:  adb cc kernel/panic.c --target fastos
- * Ver steps: adb step kernel/panic.c
+ * Compilar: adb cc kernel/panic.c --target fastos
  */
 
-#include <kernel.h>
-#include <types.h>
-#include <fastos.h>
+#include "../include/kernel.h"
+#include "../include/types.h"
+#include "../include/fastos.h"
 
-/* ─── Códigos de Pánico ─── */
+/* ─── Codigos de Panico ─── */
 typedef enum {
     PANIC_UNKNOWN           = 0,
-    PANIC_NULL_DEREF        = 1,  /* nullptr desreferenciado */
-    PANIC_STACK_OVERFLOW    = 2,  /* pila del kernel agotada */
-    PANIC_DOUBLE_FAULT      = 3,  /* double fault en IDT */
-    PANIC_PAGE_FAULT        = 4,  /* page fault no manejable */
-    PANIC_INIT_DIED         = 5,  /* PID 1 (init) terminó */
-    PANIC_BG_COMPROMISED    = 6,  /* Binary Guardian comprometido */
-    PANIC_MEMORY_CORRUPT    = 7,  /* heap corruption detectada */
-    PANIC_ASSERTION_FAILED  = 8,  /* assert() del kernel falló */
-    PANIC_INVALID_INTERRUPT = 9,  /* interrupción no registrada */
+    PANIC_NULL_DEREF        = 1,
+    PANIC_STACK_OVERFLOW    = 2,
+    PANIC_DOUBLE_FAULT      = 3,
+    PANIC_PAGE_FAULT        = 4,
+    PANIC_INIT_DIED         = 5,
+    PANIC_BG_COMPROMISED    = 6,
+    PANIC_MEMORY_CORRUPT    = 7,
+    PANIC_ASSERTION_FAILED  = 8,
+    PANIC_INVALID_INTERRUPT = 9,
 } panic_code_t;
 
 static const char *panic_names[] = {
-    [PANIC_UNKNOWN]           = "Unknown panic",
-    [PANIC_NULL_DEREF]        = "Null pointer dereference",
-    [PANIC_STACK_OVERFLOW]    = "Kernel stack overflow",
-    [PANIC_DOUBLE_FAULT]      = "CPU double fault",
-    [PANIC_PAGE_FAULT]        = "Unrecoverable page fault",
-    [PANIC_INIT_DIED]         = "Init process died (PID 1)",
-    [PANIC_BG_COMPROMISED]    = "Binary Guardian compromised",
-    [PANIC_MEMORY_CORRUPT]    = "Memory corruption detected",
-    [PANIC_ASSERTION_FAILED]  = "Kernel assertion failed",
-    [PANIC_INVALID_INTERRUPT] = "Invalid interrupt vector",
+    "Unknown panic",
+    "Null pointer dereference",
+    "Kernel stack overflow",
+    "CPU double fault",
+    "Unrecoverable page fault",
+    "Init process died (PID 1)",
+    "Binary Guardian compromised",
+    "Memory corruption detected",
+    "Kernel assertion failed",
+    "Invalid interrupt vector",
 };
 
-/* ─── Registro del pánico (para análisis post-mortem) ─── */
+/* ─── Registro del panico ─── */
 typedef struct {
     uint32_t    code;
     const char *message;
     const char *file;
     int         line;
-    uint64_t    rip;    /* Instruction pointer al momento del pánico */
-    uint64_t    rsp;    /* Stack pointer */
-    uint64_t    cr3;    /* Page table base */
-    uint64_t    timestamp;
 } panic_record_t;
 
 static panic_record_t last_panic;
-static int panic_active = 0;
+static volatile int   panic_active = 0;
 
-/* ─── Capturar registros del CPU ─── */
-static void panic_capture_registers(panic_record_t *rec) {
-    /* En producción: leer registros via inline ASM */
-    /* Aquí el ABI de ADead-BIB garantiza que podemos leer la pila */
-    rec->rip = 0; /* lea rip_val, [rip] — requiere ASM */
-    rec->rsp = 0; /* mov rsp_val, rsp */
-    rec->cr3 = 0; /* mov cr3_val, cr3 */
+/* ─── Detener CPU limpiamente ─── */
+static void __attribute__((noreturn)) panic_halt_cpu(void) {
+    cli();
+    while (1) {
+        asm volatile("hlt");  /* CPU duerme, sin consumir ciclos */
+    }
 }
 
-/* ─── Imprimir backfire de la pila ─── */
-static void panic_print_stack(void) {
-    printf("\n  Stack trace:\n");
-    printf("    [frame 0] kernel/panic.c → panic()\n");
-    printf("    [frame 1] (caller frame — %s)\n",
-           last_panic.file ? last_panic.file : "unknown");
-    /* En producción: unwinder de stack x86-64 via frame pointer chain */
-}
-
-/* ─── Pantalla de Kernel Panic ─── */
-/*
- * ╔══════════════════════════════════════════╗
- * ║  💀 FASTOS KERNEL PANIC 💀              ║
- * ║  [código] [mensaje]                      ║
- * ║  File: kernel/memory.c  Line: 42         ║
- * ║  RIP: 0xFFFF800000001234                 ║
- * ║  RSP: 0xFFFF800001FF0000                 ║
- * ║  CR3: 0x0000000000100000                 ║
- * ║                                          ║
- * ║  El CPU está detenido. No es seguro      ║
- * ║  encender/apagar el hardware bruscamente.║
- * ║  Reinicia con el botón de reset o        ║
- * ║  Ctrl+Alt+Del.                           ║
- * ╚══════════════════════════════════════════╝
- */
+/* ─── Pantalla de Panic en VGA ─── */
 static void panic_display(const panic_record_t *rec) {
-    printf("\n");
-    printf("╔══════════════════════════════════════════╗\n");
-    printf("║  \xf0\x9f\x92\x80 FASTOS KERNEL PANIC \xf0\x9f\x92\x80              ║\n");
-    printf("╠══════════════════════════════════════════╣\n");
+    /* Borde rojo para el panic — color 0x4F (blanco sobre rojo) */
+    uint8_t red = VGA_COLOR(VGA_WHITE, VGA_RED);
 
-    const char *name = (rec->code < 10)
-                       ? panic_names[rec->code]
-                       : "UNKNOWN";
-    printf("║  Code: %u — %s\n",  rec->code, name);
-    printf("║  Msg:  %s\n",  rec->message ? rec->message : "(none)");
+    term_write_color("\n", red);
+    term_write_color("╔══════════════════════════════════════════╗\n", red);
+    term_write_color("║  *** FASTOS KERNEL PANIC ***             ║\n", red);
+    term_write_color("╠══════════════════════════════════════════╣\n", red);
+
+    /* Determinar nombre del panico */
+    const char *name = (rec->code < 10) ? panic_names[rec->code] : "UNKNOWN";
+
+    /* Imprimir codigo y nombre */
+    term_write_color("║  Code: ", red);
+    /* Imprimir numero del codigo */
+    char num[8];
+    int n = (int)rec->code, i = 0;
+    if (n == 0) { num[i++] = '0'; }
+    else {
+        int tmp = n;
+        while (tmp > 0) { num[i++] = '0' + (tmp % 10); tmp /= 10; }
+        /* Invertir */
+        for (int a = 0, b = i-1; a < b; a++, b--) {
+            char t = num[a]; num[a] = num[b]; num[b] = t;
+        }
+    }
+    num[i] = '\0';
+    term_write_color(num, red);
+    term_write_color(" — ", red);
+    term_write_color(name, red);
+    term_write_color("\n║  Msg:  ", red);
+    term_write_color(rec->message ? rec->message : "(none)", red);
+    term_write_color("\n", red);
 
     if (rec->file) {
-        printf("║  File: %s  Line: %d\n", rec->file, rec->line);
+        term_write_color("║  File: ", red);
+        term_write_color(rec->file, red);
+        term_write_color("\n", red);
     }
-    printf("║\n");
-    printf("║  RIP: 0x%016llx\n", (unsigned long long)rec->rip);
-    printf("║  RSP: 0x%016llx\n", (unsigned long long)rec->rsp);
-    printf("║  CR3: 0x%016llx\n", (unsigned long long)rec->cr3);
-    printf("║\n");
 
-    panic_print_stack();
-
-    printf("╠══════════════════════════════════════════╣\n");
-    printf("║  CPU detenido. Reinicia con reset/Ctrl+  ║\n");
-    printf("║  Alt+Del. Reporta en issues.fastos.io    ║\n");
-    printf("╚══════════════════════════════════════════╝\n");
+    term_write_color("╠══════════════════════════════════════════╣\n", red);
+    term_write_color("║  CPU detenido. Reinicia con reset.       ║\n", red);
+    term_write_color("╚══════════════════════════════════════════╝\n", red);
 }
 
-/* ─── Detener el CPU definitivamente ─── */
-static void panic_halt_cpu(void) {
-    /* Deshabilitar interrupciones y detener el CPU */
-    /* cli; hlt en loop — nunca retorna */
-    /* En ADead-BIB via inline ASM o intrinsic */
-    while (1) {
-        /* hlt — el CPU no consume ciclos, espera interrupción NMI */
-        /* pero interrupciones están deshabilitadas → CPU queda quieto */
-    }
-}
+/* ─── API PUBLICA ─── */
 
-/* ─── API PÚBLICA ─── */
-
-/* kernel_panic() — punto de entrada desde cualquier lugar del kernel */
 void __attribute__((noreturn))
 kernel_panic(uint32_t code, const char *message,
              const char *file, int line) {
-    /* Prevenir pánico recursivo */
+    /* Prevenir panico recursivo */
     if (panic_active) {
-        /* Doble pánico → halt inmediato sin prints */
         panic_halt_cpu();
     }
     panic_active = 1;
 
-    /* Registrar */
     last_panic.code    = code;
     last_panic.message = message;
     last_panic.file    = file;
     last_panic.line    = line;
-    panic_capture_registers(&last_panic);
 
-    /* Mostrar diagnóstico */
     panic_display(&last_panic);
-
-    /* CPU se detiene aquí, para siempre */
     panic_halt_cpu();
 }
 
-/* Macro conveniente para usar en el kernel: */
-/* KERNEL_PANIC(PANIC_INIT_DIED, "init returned unexpectedly"); */
-
 /* ─── Kernel Assert ─── */
 void kernel_assert_fail(const char *expr, const char *file, int line) {
-    char msg[256];
-    /* Construir mensaje: "assert(" + expr + ") failed" */
-    int i = 0, j = 0;
-    const char prefix[] = "assert(";
-    while (prefix[j]) msg[i++] = prefix[j++];
-    j = 0;
-    while (expr[j] && i < 240) msg[i++] = expr[j++];
-    const char suffix[] = ") failed";
-    j = 0;
-    while (suffix[j]) msg[i++] = suffix[j++];
+    /* Construir mensaje: "assert(EXPR) failed" en stack */
+    char msg[128];
+    int i = 0;
+    const char *p;
+
+    p = "assert(";
+    while (*p && i < 120) msg[i++] = *p++;
+    p = expr;
+    while (*p && i < 120) msg[i++] = *p++;
+    p = ") failed";
+    while (*p && i < 120) msg[i++] = *p++;
     msg[i] = '\0';
 
     kernel_panic(PANIC_ASSERTION_FAILED, msg, file, line);

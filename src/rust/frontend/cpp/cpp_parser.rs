@@ -2280,12 +2280,63 @@ impl CppParser {
         })
     }
 
+    // Helper to parse if/while/switch conditions that may contain variable declarations (C++17 and C++98)
+    fn parse_condition(&mut self) -> Result<(Option<Box<CppStmt>>, CppExpr), String> {
+        let save_pos = self.pos;
+        if self.is_type_start() && !self.is_cast_expr() {
+            if let Ok(type_spec) = self.parse_type() {
+                if let Ok(name) = self.expect_identifier() {
+                    let mut declarators = Vec::new();
+                    if self.eat(&CppToken::Assign) {
+                        if let Ok(expr) = self.parse_assignment_expr() {
+                            declarators.push(CppDeclarator {
+                                name: name.clone(),
+                                derived_type: Vec::new(),
+                                initializer: Some(expr),
+                            });
+                        }
+                    } else if *self.current() == CppToken::LBrace {
+                        self.advance();
+                        if let Ok(expr) = self.parse_expression() {
+                            let _ = self.eat(&CppToken::RBrace);
+                            declarators.push(CppDeclarator {
+                                name: name.clone(),
+                                derived_type: Vec::new(),
+                                initializer: Some(expr),
+                            });
+                        }
+                    }
+                    if *self.current() == CppToken::Semicolon {
+                        self.advance();
+                        let init = Some(Box::new(CppStmt::VarDecl { type_spec, declarators }));
+                        let cond_expr = self.parse_expression()?;
+                        return Ok((init, cond_expr));
+                    } else {
+                        let init = Some(Box::new(CppStmt::VarDecl { type_spec, declarators }));
+                        let cond_expr = CppExpr::Identifier(name);
+                        return Ok((init, cond_expr));
+                    }
+                }
+            }
+        }
+        
+        self.pos = save_pos;
+        let expr = self.parse_expression()?;
+        if self.eat(&CppToken::Semicolon) {
+            let init = Some(Box::new(CppStmt::Expr(expr)));
+            let cond_expr = self.parse_expression()?;
+            Ok((init, cond_expr))
+        } else {
+            Ok((None, expr))
+        }
+    }
+
     fn parse_if(&mut self) -> Result<CppStmt, String> {
         self.advance(); // skip if
                         // C++17 constexpr if
         let is_constexpr = self.eat(&CppToken::Constexpr);
         self.expect(&CppToken::LParen)?;
-        let condition = self.parse_expression()?;
+        let (init, condition) = self.parse_condition()?;
         self.expect(&CppToken::RParen)?;
         let then_body = Box::new(self.parse_statement()?);
         let else_body = if self.eat(&CppToken::Else) {
@@ -2293,22 +2344,48 @@ impl CppParser {
         } else {
             None
         };
-        Ok(CppStmt::If {
+        let if_stmt = CppStmt::If {
             init: None,
             condition,
             then_body,
             else_body,
             is_constexpr,
-        })
+        };
+        if let Some(init_stmt) = init {
+            Ok(CppStmt::Block(vec![*init_stmt, if_stmt]))
+        } else {
+            Ok(if_stmt)
+        }
     }
 
     fn parse_while(&mut self) -> Result<CppStmt, String> {
         self.advance();
         self.expect(&CppToken::LParen)?;
-        let condition = self.parse_expression()?;
+        let (init, condition) = self.parse_condition()?;
         self.expect(&CppToken::RParen)?;
         let body = Box::new(self.parse_statement()?);
-        Ok(CppStmt::While { condition, body })
+        if let Some(init_stmt) = init {
+            let cond_check = CppStmt::If {
+                init: None,
+                condition: CppExpr::UnaryOp {
+                    op: crate::frontend::cpp::cpp_ast::CppUnaryOp::Not,
+                    expr: Box::new(condition),
+                    is_prefix: true,
+                },
+                then_body: Box::new(CppStmt::Break),
+                else_body: None,
+                is_constexpr: false,
+            };
+            let loop_body = CppStmt::Block(vec![*init_stmt, cond_check, *body]);
+            Ok(CppStmt::Block(vec![
+                CppStmt::While {
+                    condition: CppExpr::BoolLiteral(true),
+                    body: Box::new(loop_body),
+                }
+            ]))
+        } else {
+            Ok(CppStmt::While { condition, body })
+        }
     }
 
     fn parse_do_while(&mut self) -> Result<CppStmt, String> {
@@ -2387,7 +2464,7 @@ impl CppParser {
     fn parse_switch(&mut self) -> Result<CppStmt, String> {
         self.advance();
         self.expect(&CppToken::LParen)?;
-        let expr = self.parse_expression()?;
+        let (init, expr) = self.parse_condition()?;
         self.expect(&CppToken::RParen)?;
         self.expect(&CppToken::LBrace)?;
         let mut cases = Vec::new();
@@ -2422,11 +2499,16 @@ impl CppParser {
             }
         }
         self.expect(&CppToken::RBrace)?;
-        Ok(CppStmt::Switch {
+        let switch_stmt = CppStmt::Switch {
             expr,
             cases,
             default,
-        })
+        };
+        if let Some(init_stmt) = init {
+            Ok(CppStmt::Block(vec![*init_stmt, switch_stmt]))
+        } else {
+            Ok(switch_stmt)
+        }
     }
 
     fn parse_try(&mut self) -> Result<CppStmt, String> {

@@ -10,9 +10,7 @@
  *   adb step security/bg_core.c   ← ver pipeline completo
  */
 
-#include <kernel.h>
-#include <types.h>
-#include <bg_guardian.h>
+#include "../include/kernel.h"
 
 /* ─── FFI Rust ─── */
 extern int bg_rust_can_execute(const uint8_t *bytes, size_t len, int level);

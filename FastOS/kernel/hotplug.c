@@ -12,10 +12,9 @@
  * Ver steps: adb step kernel/hotplug.c
  */
 
-#include <kernel.h>
-#include <types.h>
-#include <pci.h>
-#include <fastos.h>
+#include "../include/kernel.h"
+#include "../include/types.h"
+#include "../include/fastos.h"
 
 /* ─── Base de datos mínima de vendors PCI ─── */
 typedef struct {
@@ -110,22 +109,22 @@ static int hotplug_dequeue(hotplug_event_t *out) {
  *   cargar driver → hardware funciona. listo.
  */
 static void hotplug_install_driver(const hotplug_device_db_t *dev) {
-    printf("\n[hotplug] Hardware detectado: %s\n", dev->name);
-    printf("[hotplug] ¿Instalar driver? [S/N]: ");
+    kprintf("\n[hotplug] Hardware detectado: %s\n", dev->name);
+    kprintf("[hotplug] ¿Instalar driver? [S/N]: ");
 
     /* En producción: leer carácter desde teclado */
     /* Demo: auto-responder S */
     char response = 'S';
-    printf("%c\n", response);
+    kprintf("%c\n", response);
 
     if (response == 'S' || response == 's') {
-        printf("[hotplug] Descargando driver desde: %s\n", dev->driver_url);
+        kprintf("[hotplug] Descargando driver desde: %s\n", dev->driver_url);
         /* network_download(dev->driver_url, "/drivers/cache/driver.po"); */
-        printf("[hotplug] Verificando con Binary Guardian...\n");
+        kprintf("[hotplug] Verificando con Binary Guardian...\n");
         /* bg_preexec_gate(driver_binary, driver_size, BG_CAP_DRIVER); */
-        printf("[hotplug] Driver instalado. Hardware listo. ✓\n\n");
+        kprintf("[hotplug] Driver instalado. Hardware listo. ✓\n\n");
     } else {
-        printf("[hotplug] Driver no instalado. Hardware ignorado.\n\n");
+        kprintf("[hotplug] Driver no instalado. Hardware ignorado.\n\n");
     }
 }
 
@@ -153,15 +152,15 @@ static void hotplug_process_events(void) {
             if (dev) {
                 hotplug_install_driver(dev);
             } else {
-                printf("[hotplug] Unknown device: %04X:%04X"
+                kprintf("[hotplug] Unknown device: %04X:%04X"
                        " (bus %02X, slot %02X, func %02X)\n",
                        ev.vendor_id, ev.device_id,
                        ev.bus, ev.slot, ev.function);
-                printf("[hotplug] No driver available. "
+                kprintf("[hotplug] No driver available. "
                        "Check drivers.fastos.io\n");
             }
         } else if (ev.type == HOTPLUG_EVENT_DISCONNECTED) {
-            printf("[hotplug] Device %04X:%04X disconnected.\n",
+            kprintf("[hotplug] Device %04X:%04X disconnected.\n",
                    ev.vendor_id, ev.device_id);
         }
     }
@@ -169,7 +168,7 @@ static void hotplug_process_events(void) {
 
 /* ─── Escaneo inicial PCI en boot ─── */
 static void hotplug_scan_pci(void) {
-    printf("[hotplug] Scanning PCI bus...\n");
+    kprintf("[hotplug] Scanning PCI bus...\n");
     /*
      * Iterar bus 0–255, device 0–31, function 0–7
      * Leer vendor/device ID desde config space (0xCF8/0xCFC)
@@ -177,7 +176,7 @@ static void hotplug_scan_pci(void) {
      */
     /* Demo: simular detección de un dispositivo */
     /* En producción: puerto I/O 0xCF8/0xCFC */
-    printf("[hotplug] PCI scan complete.\n");
+    kprintf("[hotplug] PCI scan complete.\n");
 }
 
 /* ─── Init del subsistema hotplug ─── */
@@ -185,10 +184,10 @@ void hotplug_init(void) {
     hotplug_queue_head = 0;
     hotplug_queue_tail = 0;
 
-    printf("[hotplug] Initializing hardware detection...\n");
+    kprintf("[hotplug] Initializing hardware detection...\n");
     hotplug_scan_pci();
     hotplug_process_events();
-    printf("[hotplug] Ready — plug hardware anytime.\n");
+    kprintf("[hotplug] Ready — plug hardware anytime.\n");
 }
 
 /* ─── Tick del scheduler (llamado periódicamente) ─── */

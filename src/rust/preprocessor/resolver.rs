@@ -2,6 +2,8 @@
 // Header Resolver — Automatic header resolution sin CMake
 // ============================================================
 // Busca header_main.h, resuelve includes automaticamente.
+// FastOS v7.1: kernel.h, fastos.h, types.h se sirven desde
+// las librerias internas fastos_kernel, fastos_io, fastos_asm.
 // Sin CMake. Sin Makefile. Sin flags raros.
 // ============================================================
 
@@ -41,13 +43,23 @@ impl HeaderResolver {
 
     /// Configura paths default: directorio del archivo fuente + include/ + ~/.adead/include/
     pub fn setup_default_paths(&mut self, source_file: &Path) {
-        // 1. Carpeta actual del proyecto
+        // 1. Carpeta actual del archivo fuente
         if let Some(parent) = source_file.parent() {
             self.add_search_path(parent.to_path_buf());
+            // 2. Subcarpetas comunes del proyecto (relativo al parent)
             self.add_search_path(parent.join("include"));
             self.add_search_path(parent.join("src"));
+            // 3. Subir un nivel para FastOS: kernel/../include/
+            if let Some(grandparent) = parent.parent() {
+                self.add_search_path(grandparent.join("include"));
+                self.add_search_path(grandparent.to_path_buf());
+                // Soporta FastOS/kernel/../include/ y FastOS/lib/../include/
+                if let Some(root) = grandparent.parent() {
+                    self.add_search_path(root.join("include"));
+                }
+            }
         }
-        // 2. ~/.adead/include/ (global headers)
+        // 4. ~/.adead/include/ (global headers)
         if let Some(home) = std::env::var_os("USERPROFILE")
             .or_else(|| std::env::var_os("HOME"))
         {
@@ -56,36 +68,107 @@ impl HeaderResolver {
         }
     }
 
-    /// Resuelve un #include "header.h" — busca en search_paths
+    /// Resuelve un #include — primero headers FastOS built-in, luego filesystem.
+    /// Soporta paths relativos: "../include/kernel.h" → extrae "kernel.h".
     pub fn resolve(&mut self, header_name: &str) -> Result<String, ResolverError> {
+        // Extraer solo el basename para headers relativos con '..':
+        //   "../include/kernel.h" → "kernel.h"
+        //   "./types.h"           → "types.h"
+        //   "kernel.h"            → "kernel.h"
+        let basename = Path::new(header_name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(header_name);
+
         // Skip si ya fue incluido (include guard automatico)
-        if self.included.contains_key(header_name) {
+        if self.included.contains_key(basename) || self.included.contains_key(header_name) {
             return Ok(String::new());
         }
 
         // header_main.h es especial — carga todo fastos
-        if header_name == "header_main.h" {
-            self.included.insert(header_name.to_string(), true);
+        if basename == "header_main.h" {
+            self.included.insert(basename.to_string(), true);
             return Ok(self.generate_header_main());
         }
 
-        // Buscar en cache
+        // ── FastOS Kernel built-in headers (v7.1) ──
+        // Se sirven desde las librerias internas en vez del filesystem.
+        // Esto elimina el mensaje "unknown header" para todo el kernel FastOS.
+        let fastos_builtin = match basename {
+            // API completa del kernel
+            "kernel.h" | "fastos.h" | "bg_guardian.h" | "bg_hash.h" => {
+                Some(crate::stdlib::c::fastos_kernel::generate_kernel_h())
+            }
+            // I/O de bajo nivel x86-64
+            "fastos_io.h" | "io.h" | "ports.h" => {
+                Some(crate::stdlib::c::fastos_io::generate_io_h())
+            }
+            // Compatibilidad de __builtin_* y __attribute__
+            "fastos_asm.h" | "asm_compat.h" | "compiler.h" => {
+                Some(crate::stdlib::c::fastos_asm::generate_asm_compat_h())
+            }
+            // Tipos basicos del kernel (sin redefinir los de stdint.h)
+            "types.h" if !self.included.contains_key("stdint.h") => {
+                // types.h del kernel = stdint.h + bool + NULL
+                Some(concat!(
+                    "/* types.h (FastOS) — ADead-BIB internal */\n",
+                    "typedef unsigned char      uint8_t;\n",
+                    "typedef unsigned short     uint16_t;\n",
+                    "typedef unsigned int       uint32_t;\n",
+                    "typedef unsigned long long uint64_t;\n",
+                    "typedef signed char        int8_t;\n",
+                    "typedef short              int16_t;\n",
+                    "typedef int                int32_t;\n",
+                    "typedef long long          int64_t;\n",
+                    "typedef unsigned long long size_t;\n",
+                    "typedef long long          ssize_t;\n",
+                    "typedef unsigned long long uintptr_t;\n",
+                    "typedef long long          intptr_t;\n",
+                    "#ifndef NULL\n#define NULL ((void*)0)\n#endif\n",
+                    "#ifndef bool\ntypedef _Bool bool;\n",
+                    "#define true  1\n#define false 0\n#endif\n"
+                ).to_string())
+            }
+            _ => None,
+        };
+
+        if let Some(content) = fastos_builtin {
+            self.included.insert(basename.to_string(), true);
+            self.included.insert(header_name.to_string(), true);
+            self.resolved_cache.insert(basename.to_string(), content.clone());
+            return Ok(content);
+        }
+
+        // Buscar en cache (por basename y por path completo)
+        if let Some(content) = self.resolved_cache.get(basename) {
+            return Ok(content.clone());
+        }
         if let Some(content) = self.resolved_cache.get(header_name) {
             return Ok(content.clone());
         }
 
-        // Buscar en search paths
-        for search_path in &self.search_paths {
-            let full_path = search_path.join(header_name);
-            if full_path.exists() {
-                match std::fs::read_to_string(&full_path) {
-                    Ok(content) => {
-                        self.included.insert(header_name.to_string(), true);
-                        self.resolved_cache
-                            .insert(header_name.to_string(), content.clone());
-                        return Ok(content);
+        // Buscar en filesystem — intenta el path relativo completo primero,
+        // luego solo el basename en cada search_path.
+        let search_names = if header_name != basename {
+            vec![header_name.to_string(), basename.to_string()]
+        } else {
+            vec![basename.to_string()]
+        };
+
+        for name_to_try in &search_names {
+            for search_path in &self.search_paths {
+                let full_path = search_path.join(name_to_try);
+                if full_path.exists() {
+                    match std::fs::read_to_string(&full_path) {
+                        Ok(content) => {
+                            self.included.insert(basename.to_string(), true);
+                            self.included.insert(header_name.to_string(), true);
+                            self.resolved_cache
+                                .insert(basename.to_string(), content.clone());
+                            return Ok(content);
+                        }
+                        Err(_) => continue,
                     }
-                    Err(_) => continue,
                 }
             }
         }

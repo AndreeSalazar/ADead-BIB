@@ -36,8 +36,10 @@ static uint64_t total_memory = 0;
 static uint64_t usable_memory = 0;
 static uint64_t reserved_memory = 0;
 
-/* Memory map location (set by bootloader) */
-#define E820_MAP_ADDRESS 0x7E00
+/* Memory map location:
+ * stage2.asm guarda el mapa E820 en segmento 0x2000, offset 0 = linear 0x20000
+ * (No 0x7E00 — ese es el EBDA, NO nuestro mapa) */
+#define E820_MAP_ADDRESS 0x20000
 
 /* Get type name */
 const char* e820_type_name(uint32_t type) {
@@ -218,7 +220,15 @@ int e820_is_usable(uint64_t addr) {
 
 /* Initialize memory map */
 void memory_map_init(void) {
-    kputs("[MEM] Reading memory map...\n");
+    kputs("[MEM] Reading memory map...");
     e820_read_map();
     e820_print_summary();
+}
+
+/* memory_init() — llamada por kernel_main() como primer subsistema.
+ * Secuencia completa: mapa E820 → resumen → heap listo.
+ * El adb step de main.c confirma que esta es la firma esperada. */
+void memory_init(void) {
+    memory_map_init();
+    kputs("[MEM] Heap ready (0x200000 base, 8MB).");
 }

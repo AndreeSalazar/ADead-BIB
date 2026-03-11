@@ -52,6 +52,10 @@ pub enum HeaderOrigin {
     FastosFunctional,
     FastosUtility,
     FastosExceptions,
+    // FastOS Kernel (v7.1) — sin GCC, sin libc
+    FastosKernel,    // kernel.h, fastos.h — toda la API del kernel
+    FastosKernelIo,  // fastos_io.h — I/O x86-64, puertos, registros CPU
+    FastosKernelAsm, // built-ins: __builtin_va_list, __attribute__, asm volatile
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,30 +101,45 @@ impl HeaderMain {
 
     /// Resolve #include to internal implementation
     pub fn resolve_include(&self, header: &str) -> Option<HeaderOrigin> {
-        match header {
-            "stdio.h" | "fastos_stdio.h" => Some(HeaderOrigin::FastosStdio),
+        // Normalizar: quitar path prefix ("../include/", "./", "/")
+        let name = header
+            .rsplit('/')
+            .next()
+            .unwrap_or(header);
+
+        match name {
+            // C99 standard
+            "stdio.h"  | "fastos_stdio.h"  => Some(HeaderOrigin::FastosStdio),
             "stdlib.h" | "fastos_stdlib.h" => Some(HeaderOrigin::FastosStdlib),
             "string.h" | "fastos_string.h" => Some(HeaderOrigin::FastosString),
-            "math.h" | "fastos_math.h" => Some(HeaderOrigin::FastosMath),
-            "time.h" | "fastos_time.h" => Some(HeaderOrigin::FastosTime),
+            "math.h"   | "fastos_math.h"   => Some(HeaderOrigin::FastosMath),
+            "time.h"   | "fastos_time.h"   => Some(HeaderOrigin::FastosTime),
             "assert.h" | "fastos_assert.h" => Some(HeaderOrigin::FastosAssert),
-            "errno.h" | "fastos_errno.h" => Some(HeaderOrigin::FastosErrno),
+            "errno.h"  | "fastos_errno.h"  => Some(HeaderOrigin::FastosErrno),
             "limits.h" | "fastos_limits.h" => Some(HeaderOrigin::FastosLimits),
-            "stdint.h" | "stddef.h" | "stdbool.h" | "fastos_types.h" => {
-                Some(HeaderOrigin::FastosTypes)
-            }
-            "iostream" | "fastos_iostream" => Some(HeaderOrigin::FastosIostream),
-            "vector" | "fastos_vector" => Some(HeaderOrigin::FastosVector),
-            "string" | "fastos_string_cpp" => Some(HeaderOrigin::FastosStringCpp),
-            "map" | "fastos_map" => Some(HeaderOrigin::FastosMap),
-            "memory" | "fastos_memory" => Some(HeaderOrigin::FastosMemory),
-            "algorithm" | "fastos_algorithm" => Some(HeaderOrigin::FastosAlgorithm),
-            "functional" | "fastos_functional" => Some(HeaderOrigin::FastosFunctional),
-            "utility" | "fastos_utility" => Some(HeaderOrigin::FastosUtility),
-            "exception" | "stdexcept" | "fastos_exception" => {
-                Some(HeaderOrigin::FastosExceptions)
-            }
-            "header_main.h" => Some(HeaderOrigin::FastosStdio), // includes everything
+            "stdint.h" | "stddef.h" | "stdbool.h" | "fastos_types.h" =>
+                Some(HeaderOrigin::FastosTypes),
+            // C++ standard
+            "iostream" | "fastos_iostream"  => Some(HeaderOrigin::FastosIostream),
+            "vector"   | "fastos_vector"    => Some(HeaderOrigin::FastosVector),
+            "string"   | "fastos_string_cpp"=> Some(HeaderOrigin::FastosStringCpp),
+            "map"      | "fastos_map"       => Some(HeaderOrigin::FastosMap),
+            "memory"   | "fastos_memory"    => Some(HeaderOrigin::FastosMemory),
+            "algorithm"| "fastos_algorithm" => Some(HeaderOrigin::FastosAlgorithm),
+            "functional"| "fastos_functional"=> Some(HeaderOrigin::FastosFunctional),
+            "utility"  | "fastos_utility"   => Some(HeaderOrigin::FastosUtility),
+            "exception"| "stdexcept" | "fastos_exception" =>
+                Some(HeaderOrigin::FastosExceptions),
+            "header_main.h" => Some(HeaderOrigin::FastosStdio),
+            // FastOS Kernel (v7.1) — sin GCC
+            "kernel.h" | "fastos.h" | "bg_guardian.h" | "bg_hash.h" =>
+                Some(HeaderOrigin::FastosKernel),
+            "types.h"  | "fastos_types_kernel.h" =>
+                Some(HeaderOrigin::FastosTypes),
+            "fastos_io.h" | "io.h" | "ports.h" =>
+                Some(HeaderOrigin::FastosKernelIo),
+            "pci.h"    | "acpi.h" | "usb.h" =>
+                Some(HeaderOrigin::FastosKernelIo),
             _ => None,
         }
     }
@@ -232,6 +251,120 @@ impl HeaderMain {
                 header: HeaderOrigin::FastosMath,
                 kind: SymbolKind::Function,
                 signature: sig.to_string(),
+            });
+        }
+        // ── FastOS Kernel symbols (v7.1) — toda la API del kernel sin GCC
+        use crate::stdlib::c::fastos_kernel;
+        for (name, sig) in fastos_kernel::KERNEL_OUTPUT_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_kernel::KERNEL_MEMORY_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_kernel::KERNEL_SCHEDULER_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_kernel::KERNEL_INTERRUPT_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_kernel::KERNEL_PANIC_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_kernel::KERNEL_BG_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_kernel::KERNEL_HOTPLUG_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_kernel::KERNEL_USERSPACE_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, desc) in fastos_kernel::KERNEL_MACROS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Macro, signature: desc.to_string(),
+            });
+        }
+        for (name, desc) in fastos_kernel::KERNEL_TYPES {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernel,
+                kind: SymbolKind::Type, signature: desc.to_string(),
+            });
+        }
+        // ── fastos_io: inb/outb, cli/sti, read_cr3...
+        use crate::stdlib::c::fastos_io;
+        for (name, sig) in fastos_io::IO_PORT_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelIo,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_io::CPU_CONTROL_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelIo,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_io::CPU_REGISTER_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelIo,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, sig) in fastos_io::CPU_DESCRIPTOR_FNS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelIo,
+                kind: SymbolKind::Function, signature: sig.to_string(),
+            });
+        }
+        for (name, desc) in fastos_io::HW_CONSTANTS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelIo,
+                kind: SymbolKind::Constant, signature: desc.to_string(),
+            });
+        }
+        // ── fastos_asm: __builtin_*, __attribute__, compat macros
+        use crate::stdlib::c::fastos_asm;
+        for (name, _, desc) in fastos_asm::BUILTINS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelAsm,
+                kind: SymbolKind::Macro, signature: desc.to_string(),
+            });
+        }
+        for (name, desc) in fastos_asm::COMPAT_MACROS {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelAsm,
+                kind: SymbolKind::Macro, signature: desc.to_string(),
+            });
+        }
+        for (name, ty) in fastos_asm::COMPILER_TYPES {
+            self.c_symbols.insert(name.to_string(), SymbolInfo {
+                name: name.to_string(), header: HeaderOrigin::FastosKernelAsm,
+                kind: SymbolKind::Type, signature: ty.to_string(),
             });
         }
     }

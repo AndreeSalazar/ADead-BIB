@@ -5,20 +5,19 @@
  * El primer proceso del userspace. Responsabilidades:
  *   - Montar filesystems (VFS)
  *   - Iniciar el shell (PID 2)
- *   - Gestionar señales de shutdown/reboot
+ *   - Gestionar senales de shutdown/reboot
  *   - Mantener el sistema vivo (no puede morir)
  *
  * Si init muere → kernel panic.
- * Si init existe → FastOS existe.
  *
- * Compilar:  adb cc userspace/init.c --target fastos -o init.po
- * Ver steps: adb step userspace/init.c
+ * Compilar: adb cc userspace/init.c --target fastos -o init.po
  */
 
-#include <header_main.h>
-#include <fastos.h>
+#include "../include/kernel.h"
+#include "../include/types.h"
+#include "../include/fastos.h"
 
-/* ─── Señales del sistema ─── */
+/* ─── Senales del sistema ─── */
 #define FASTOS_SIG_SHUTDOWN 1
 #define FASTOS_SIG_REBOOT   2
 #define FASTOS_SIG_HALT     3
@@ -27,48 +26,39 @@ static volatile int init_signal = 0;
 
 /* ─── Secuencia de arranque ─── */
 static void init_mount_filesystems(void) {
-    /*
-     * Montar el sistema de archivos raíz.
-     * FastOS detecta el tipo (FAT32 / EXT2) automáticamente.
-     * El dispositivo raíz viene del bootloader en stage2.
-     */
-    printf("[init] Mounting root filesystem...\n");
+    kprintf("[init] Mounting root filesystem...\n");
     /* vfs_mount("/", boot_device_root, FS_TYPE_FAT32); */
-    printf("[init] Root filesystem mounted OK\n");
+    kprintf("[init] Root filesystem mounted OK\n");
 }
 
 static void init_start_daemons(void) {
     /*
-     * En FastOS mínimo: solo el shell.
-     * En versiones extendidas: agregar servicios bajo demanda.
+     * FastOS minimo: solo el shell.
      * No hay systemd. No hay SysV. No hay 40 daemons al arrancar.
      */
-    printf("[init] Starting shell (PID 2)...\n");
+    kprintf("[init] Starting shell (PID 2)...\n");
     shell_start();
 }
 
 static void init_handle_signal(int sig) {
     switch (sig) {
     case FASTOS_SIG_SHUTDOWN:
-        printf("[init] Shutdown signal received\n");
-        printf("[init] Syncing filesystems...\n");
+        kprintf("[init] Shutdown signal received\n");
+        kprintf("[init] Syncing filesystems...\n");
         /* vfs_sync_all(); */
-        printf("[init] Halted. Safe to power off.\n");
+        kprintf("[init] Halted. Safe to power off.\n");
         break;
-
     case FASTOS_SIG_REBOOT:
-        printf("[init] Reboot signal received\n");
-        printf("[init] Syncing filesystems...\n");
+        kprintf("[init] Reboot signal received\n");
+        kprintf("[init] Syncing filesystems...\n");
         /* fastos_reboot(); */
         break;
-
     case FASTOS_SIG_HALT:
-        printf("[init] Halt signal received\n");
+        kprintf("[init] Halt signal received\n");
         /* cpu_halt(); */
         break;
-
     default:
-        printf("[init] Unknown signal: %d\n", sig);
+        kprintf("[init] Unknown signal: %d\n", sig);
         break;
     }
 }
@@ -76,8 +66,8 @@ static void init_handle_signal(int sig) {
 /* ─── Bucle principal de init (NUNCA TERMINA) ─── */
 static void init_loop(void) {
     /*
-     * Init espera señales del kernel.
-     * Si el shell termina (el usuario escribió 'exit'), init lo reinicia.
+     * Init espera senales del kernel.
+     * Si el shell termina (el usuario escribio 'exit'), init lo reinicia.
      * Init es inmortal — si muere, el sistema entra en kernel panic.
      */
     while (1) {
@@ -86,17 +76,16 @@ static void init_loop(void) {
             init_signal = 0;
             init_handle_signal(sig);
         }
-
-        /* En producción: fastos_wait() — sleep hasta próxima señal */
-        /* Aquí en demo: si shell terminó → reiniciar */
-        printf("[init] Shell exited — restarting...\n");
+        /* En produccion: fastos_wait() — sleep hasta proxima senal */
+        /* Aqui en boot inicial: si shell termino → reiniciar */
+        kprintf("[init] Shell exited — restarting...\n");
         init_start_daemons();
     }
 }
 
 /* ─── Entry Point: init_main() — llamado por kernel_main() ─── */
 void init_main(void) {
-    printf("[init] FastOS init v2.0 starting (PID 1)\n");
+    kprintf("[init] FastOS init v2.0 starting (PID 1)\n");
 
     /* Paso 1: Montar filesystems */
     init_mount_filesystems();
@@ -104,9 +93,9 @@ void init_main(void) {
     /* Paso 2: Iniciar servicios/shell */
     init_start_daemons();
 
-    /* Paso 3: Bucle eterno de espera de señales */
+    /* Paso 3: Bucle eterno — NUNCA debe retornar */
     init_loop();
 
-    /* Nunca debería llegar aquí */
-    /* Si llegamos aquí → kernel panic */
+    /* Si llegamos aqui → kernel panic (PANIC_INIT_DIED) */
+    KERNEL_PANIC(5, "init_main() returned unexpectedly");
 }

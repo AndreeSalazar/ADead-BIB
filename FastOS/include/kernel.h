@@ -183,7 +183,56 @@ static inline void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx,
  * Kernel Panic
  * ============================================================ */
 
-void __noreturn kernel_panic(const char *msg);
+/* kernel_panic: 4-arg version (aligned with panic.c + fastos.h) */
+__attribute__((noreturn))
+void kernel_panic(uint32_t code, const char *message,
+                  const char *file, int line);
+void kernel_assert_fail(const char *expr, const char *file, int line);
+
+#define KERNEL_PANIC(code, msg) \
+    kernel_panic((code), (msg), __FILE__, __LINE__)
+
+#define KERNEL_ASSERT(expr) \
+    ((expr) ? (void)0 : kernel_assert_fail(#expr, __FILE__, __LINE__))
+
+/* ============================================================
+ * VGA Colors
+ * ============================================================ */
+
+typedef enum {
+    VGA_BLACK   = 0,  VGA_BLUE      = 1,  VGA_GREEN  = 2,
+    VGA_CYAN    = 3,  VGA_RED       = 4,  VGA_MAGENTA = 5,
+    VGA_BROWN   = 6,  VGA_LGRAY     = 7,  VGA_DGRAY   = 8,
+    VGA_LBLUE   = 9,  VGA_LGREEN   = 10,  VGA_LCYAN  = 11,
+    VGA_LRED   = 12,  VGA_LMAGENTA = 13,  VGA_YELLOW = 14,
+    VGA_WHITE  = 15,
+} vga_color_t;
+
+/* VGA_COLOR(fg, bg): atributo 8-bit para VGA text mode */
+#define VGA_COLOR(fg, bg)  ((uint8_t)((uint8_t)(bg) << 4 | (uint8_t)(fg)))
+
+#define VGA_BUFFER  ((volatile uint16_t *)0xB8000)
+#define VGA_WIDTH   80
+#define VGA_HEIGHT  25
+
+/* ============================================================
+ * Alignment Utilities
+ * ============================================================ */
+
+#define ALIGN_UP(x, a)    (((x) + ((a) - 1)) & ~((a) - 1))
+#define ALIGN_DOWN(x, a)  ((x) & ~((a) - 1))
+
+/* ============================================================
+ * VGA Output (implemented in kernel/main.c)
+ * ============================================================ */
+
+void term_init(void);
+void term_putchar(char c);
+void term_write(const char *str);
+void term_write_color(const char *str, uint8_t color);
+
+/* vga_putchar: alias de term_putchar para módulos que lo usan directamente */
+static inline void vga_putchar(char c) { term_putchar(c); }
 
 /* ============================================================
  * Logging
@@ -292,6 +341,8 @@ void timer_sleep(uint32_t ms);
  * ============================================================ */
 
 #define MAX_PROCESSES 64
+#define KERNEL_STACK_SIZE 4096
+#define USER_STACK_SIZE   (64 * 1024)
 
 typedef enum {
     PROC_UNUSED = 0,
@@ -301,22 +352,48 @@ typedef enum {
     PROC_ZOMBIE
 } proc_state_t;
 
+/* Contexto CPU completo para context-switch */
 typedef struct {
-    uint32_t pid;
-    proc_state_t state;
-    uint64_t rsp;
-    uint64_t rip;
+    uint64_t rax, rbx, rcx, rdx;
+    uint64_t rsi, rdi, rbp, rsp;
+    uint64_t r8,  r9,  r10, r11;
+    uint64_t r12, r13, r14, r15;
+    uint64_t rip, rflags;
+    uint64_t cs, ss;
     uint64_t cr3;
-    char name[32];
-    uint32_t priority;
-    uint64_t cpu_time;
+} __packed cpu_context_t;
+
+/* Process Control Block (PCB) — definicion canonica unica.
+ * scheduler.c y kernel.h usan ESTA estructura. Sin redefiniciones. */
+typedef struct {
+    uint32_t      pid;
+    uint32_t      ppid;
+    proc_state_t  state;
+    uint8_t       priority;
+    uint8_t       security_level;  /* BG security level */
+
+    cpu_context_t context;         /* Registros CPU completos */
+
+    uint64_t      kernel_stack;    /* Pila del kernel de este proceso */
+    uint64_t      user_stack;      /* Pila del userspace */
+    uint64_t      page_table;      /* CR3 de este proceso */
+
+    uint64_t      time_slice;      /* Ticks restantes en este turno */
+    uint64_t      total_time;      /* Tiempo total de CPU */
+
+    char          name[32];
 } process_t;
 
+void interrupts_init(void);   /* idt_init() + interrupts_enable() */
 void scheduler_init(void);
-int process_create(const char *name, void (*entry)(void));
+int  process_create(const char *name, void (*entry)(void), uint8_t security_level);
 void process_exit(int code);
 void process_yield(void);
 process_t *process_current(void);
+void process_block(void);
+void process_unblock(uint32_t pid);
+void scheduler_tick(void);
+void scheduler_list(void);
 
 /* ============================================================
  * Syscall Interface (Hybrid Windows/Linux)

@@ -20,14 +20,10 @@ typedef struct {
     uint32_t reserved;
 } __packed idt_entry_t;
 
-typedef struct {
-    uint16_t limit;
-    uint64_t base;
-} __packed idtr_t;
-
+/* Usamos idt_ptr_t de kernel.h — misma estructura, nombre canonico */
 /* IDT with 256 entries */
 static idt_entry_t idt[256];
-static idtr_t idtr;
+static idt_ptr_t   idtr;
 
 /* ============================================================
  * IDT Entry Types
@@ -123,7 +119,7 @@ void exception_handler(interrupt_frame_t *frame) {
                 (frame->error_code & 4) ? "User" : "Kernel");
     }
     
-    kernel_panic("Unhandled exception");
+    KERNEL_PANIC(9, "Unhandled CPU exception");
 }
 
 /* ============================================================
@@ -265,10 +261,12 @@ static void pit_init(void) {
  * IDT Initialization
  * ============================================================ */
 
-/* Stub addresses (would be defined in assembly) */
-/* For now, use placeholder - real impl needs assembly stubs */
+/* Stub placeholder — los handlers reales estaran en asm/isr_stubs.asm
+ * Por ahora apuntan a dummy para que el IDT quede cargado y valido. */
 static void dummy_handler(void) {
-    /* This is a placeholder - real handlers need assembly */
+    /* hlt y spin — si se dispara un IRQ sin handler real, no crashea */
+    asm volatile("cli; hlt");
+    while (1) { asm volatile("hlt"); }
 }
 
 void idt_init(void) {
@@ -306,4 +304,16 @@ void interrupts_enable(void) {
 /* Disable interrupts */
 void interrupts_disable(void) {
     cli();
+}
+
+/* ============================================================
+ * interrupts_init() — Llamada por kernel_main()
+ * Wrapper que secuencia la inicializacion completa de interrupciones.
+ * El step de ADead-BIB confirma que kernel_main() espera esta firma
+ * exacta como forward declaration.
+ * ============================================================ */
+void interrupts_init(void) {
+    idt_init();
+    interrupts_enable();
+    kprintf("[IDT] Interrupt subsystem online\n");
 }
