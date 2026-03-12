@@ -1,5 +1,5 @@
 /*
- * include/fastos.h — FastOS Native API v2.0
+ * include/fastos.h — FastOS Native API v2.2
  *
  * El header nativo de FastOS. Un solo include da acceso
  * a toda la API del OS. Sin linker externo. Sin flags misteriosos.
@@ -187,13 +187,36 @@ void shell_start(void);
 void init_main(void);
 
 /* ══════════════════════════════════════════════════════
- * § 6. Filosofía FastOS — Compilado en el Header
+ * § 6. Compatibility Layer (v2.2)
+ *
+ * FastOS no hereda Windows ni Linux. TRADUCE sus llamadas.
+ * ADead-BIB actúa como intérprete automático.
+ *
+ * App Win32/POSIX → ADead-BIB traduce → FastOS nativo → CPU libre
+ *
+ * Archivos en compat/:
+ *   fastos_syscall.h  — syscalls nativas FastOS (todo se traduce a estas)
+ *   fastos_stdlib.h   — stdlib mínima propia (mem, str, I/O, math AVX2)
+ *   fastos_win32.h    — Win32 subset → macros que llaman fastos_syscall.h
+ *   fastos_posix.h    — POSIX subset → macros que llaman fastos_syscall.h
+ *   compat_test.c     — test suite de traducción
+ *
+ * Win32 traducido: CreateFile, ReadFile, WriteFile, CloseHandle,
+ *   VirtualAlloc, VirtualFree, GetSystemInfo, CreateThread, Sleep
+ * POSIX traducido: open, read, write, close, malloc, free, mmap,
+ *   pthread_create, gettimeofday, printf, exit
+ * IGNORADO: registry, COM, DCOM, WMI, systemd, dbus, X11, telemetría
+ * ══════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════
+ * § 7. Filosofía FastOS — Compilado en el Header
  * ══════════════════════════════════════════════════════ */
 
 /*
  * "Un OS es un OS. No una muleta."
  * "El CPU ya sabe todo — solo hay que dejarlo recordar gradualmente."
  * "Los drivers van en el disco, no en el OS."
+ * "No heredar, TRADUCIR."
  *
  * Si compilas con ADead-BIB:
  *   adb cc miapp.c --target fastos   → binario .Po 24-byte header
@@ -204,6 +227,7 @@ void init_main(void);
  *
  * SIN linker. SIN flags. SIN Stack Overflow obligatorio.
  * UN comando. UN binario. Cero dolor.
+ * Binary Is Binary.
  */
 
 #endif /* _FASTOS_H */

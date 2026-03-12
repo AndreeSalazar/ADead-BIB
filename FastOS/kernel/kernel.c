@@ -477,7 +477,18 @@ void kernel_main(void) {
                         __store16(p,32,0x0761);__store16(p,34,0x0772);
                         __store16(p,36,0x0764);__store16(p,38,0x0769);
                         __store16(p,40,0x0761);__store16(p,42,0x076E);
-                        srow = orow + 9;
+                        /* "compat  compat layer" */
+                        p=0xB8000+(orow+8)*160+4;
+                        __store16(p,0,0x0F63);__store16(p,2,0x0F6F);
+                        __store16(p,4,0x0F6D);__store16(p,6,0x0F70);
+                        __store16(p,8,0x0F61);__store16(p,10,0x0F74);
+                        __store16(p,14,0x0763);__store16(p,16,0x076F);
+                        __store16(p,18,0x076D);__store16(p,20,0x0770);
+                        __store16(p,22,0x0761);__store16(p,24,0x0774);
+                        __store16(p,26,0x1F20);__store16(p,28,0x076C);
+                        __store16(p,30,0x0761);__store16(p,32,0x0779);
+                        __store16(p,34,0x0765);__store16(p,36,0x0772);
+                        srow = orow + 10;
                     }}}}}
 
                     /* cpu */
@@ -771,6 +782,81 @@ void kernel_main(void) {
                         __store16(p,32,0x0A45);
                         srow = orow + 6;
                     }}}
+
+                    /* compat (Compatibility Layer status) */
+                    /* c=99 o=111 m=109 p=112 a=97 t=116 */
+                    if(c0==99){if(c1==111){if(c2==109){if(c3==112){if(c4==97){if(c5==116){
+                        /* Line 1: "Compat Layer v2.2" */
+                        p=0xB8000+orow*160;
+                        __store16(p,0,0x0E43);__store16(p,2,0x0E6F);
+                        __store16(p,4,0x0E6D);__store16(p,6,0x0E70);
+                        __store16(p,8,0x0E61);__store16(p,10,0x0E74);
+                        __store16(p,12,0x1020);
+                        __store16(p,14,0x0F4C);__store16(p,16,0x0F61);
+                        __store16(p,18,0x0F79);__store16(p,20,0x0F65);
+                        __store16(p,22,0x0F72);__store16(p,24,0x1020);
+                        __store16(p,26,0x0A76);__store16(p,28,0x0A32);
+                        __store16(p,30,0x0A2E);__store16(p,32,0x0A32);
+                        /* Line 2: " Win32: CreateFile ReadFile" */
+                        p=0xB8000+(orow+1)*160;
+                        __store16(p,0,0x0E57);__store16(p,2,0x0E69);
+                        __store16(p,4,0x0E6E);__store16(p,6,0x0E33);
+                        __store16(p,8,0x0E32);__store16(p,10,0x0E3A);
+                        __store16(p,12,0x1020);
+                        __store16(p,14,0x0A43);__store16(p,16,0x0A72);
+                        __store16(p,18,0x0A65);__store16(p,20,0x0A61);
+                        __store16(p,22,0x0A74);__store16(p,24,0x0A65);
+                        __store16(p,26,0x0A46);__store16(p,28,0x0A69);
+                        __store16(p,30,0x0A6C);__store16(p,32,0x0A65);
+                        __store16(p,34,0x1020);
+                        __store16(p,36,0x0A56);__store16(p,38,0x0A41);
+                        __store16(p,40,0x0A6C);__store16(p,42,0x0A6C);
+                        __store16(p,44,0x0A6F);__store16(p,46,0x0A63);
+                        /* Line 3: " POSIX: open malloc mmap" */
+                        p=0xB8000+(orow+2)*160;
+                        __store16(p,0,0x0E50);__store16(p,2,0x0E4F);
+                        __store16(p,4,0x0E53);__store16(p,6,0x0E49);
+                        __store16(p,8,0x0E58);__store16(p,10,0x0E3A);
+                        __store16(p,12,0x1020);
+                        __store16(p,14,0x0A6F);__store16(p,16,0x0A70);
+                        __store16(p,18,0x0A65);__store16(p,20,0x0A6E);
+                        __store16(p,22,0x1020);
+                        __store16(p,24,0x0A6D);__store16(p,26,0x0A61);
+                        __store16(p,28,0x0A6C);__store16(p,30,0x0A6C);
+                        __store16(p,32,0x0A6F);__store16(p,34,0x0A63);
+                        __store16(p,36,0x1020);
+                        __store16(p,38,0x0A6D);__store16(p,40,0x0A6D);
+                        __store16(p,42,0x0A61);__store16(p,44,0x0A70);
+                        /* Line 4: " Native: fs_open mem_alloc" */
+                        p=0xB8000+(orow+3)*160;
+                        __store16(p,0,0x0E4E);__store16(p,2,0x0E61);
+                        __store16(p,4,0x0E74);__store16(p,6,0x0E69);
+                        __store16(p,8,0x0E76);__store16(p,10,0x0E65);
+                        __store16(p,12,0x0E3A);__store16(p,14,0x1020);
+                        __store16(p,16,0x0B66);__store16(p,18,0x0B73);
+                        __store16(p,20,0x0B5F);__store16(p,22,0x0B6F);
+                        __store16(p,24,0x0B70);__store16(p,26,0x0B65);
+                        __store16(p,28,0x0B6E);__store16(p,30,0x1020);
+                        __store16(p,32,0x0B6D);__store16(p,34,0x0B65);
+                        __store16(p,36,0x0B6D);__store16(p,38,0x0B5F);
+                        __store16(p,40,0x0B61);__store16(p,42,0x0B6C);
+                        __store16(p,44,0x0B6C);__store16(p,46,0x0B6F);
+                        __store16(p,48,0x0B63);
+                        /* Line 5: " Status: TRADUCIR no heredar" */
+                        p=0xB8000+(orow+4)*160;
+                        __store16(p,0,0x0720);__store16(p,2,0x0A54);
+                        __store16(p,4,0x0A52);__store16(p,6,0x0A41);
+                        __store16(p,8,0x0A44);__store16(p,10,0x0A55);
+                        __store16(p,12,0x0A43);__store16(p,14,0x0A49);
+                        __store16(p,16,0x0A52);__store16(p,18,0x1020);
+                        __store16(p,20,0x0F6E);__store16(p,22,0x0F6F);
+                        __store16(p,24,0x1020);
+                        __store16(p,26,0x0F68);__store16(p,28,0x0F65);
+                        __store16(p,30,0x0F72);__store16(p,32,0x0F65);
+                        __store16(p,34,0x0F64);__store16(p,36,0x0F61);
+                        __store16(p,38,0x0F72);
+                        srow = orow + 6;
+                    }}}}}}
 
                     /* Scroll reset — clear shell window interior */
                     if (srow > 21) {
