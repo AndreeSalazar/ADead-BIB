@@ -605,6 +605,12 @@ pub enum ADeadOp {
     /// OUT imm8, AL / OUT DX, AL — Write byte to I/O port
     OutByte { port: Operand, src: Operand },
 
+    /// IN EAX, imm8 / IN EAX, DX — Read dword from I/O port
+    InDword { port: Operand },
+
+    /// OUT imm8, EAX / OUT DX, EAX — Write dword to I/O port
+    OutDword { port: Operand, src: Operand },
+
     /// SHR dst, amount — Shift right logical
     Shr { dst: Reg, amount: u8 },
 
@@ -697,6 +703,8 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::Invlpg { addr } => write!(f, "invlpg {}", addr),
             ADeadOp::InByte { port } => write!(f, "in al, {}", port),
             ADeadOp::OutByte { port, src } => write!(f, "out {}, {}", port, src),
+            ADeadOp::InDword { port } => write!(f, "in eax, {}", port),
+            ADeadOp::OutDword { port, src } => write!(f, "out {}, {}", port, src),
             ADeadOp::Shr { dst, amount } => write!(f, "shr {}, {}", dst, amount),
             ADeadOp::BitwiseNot { dst } => write!(f, "not {}", dst),
             ADeadOp::ShlCl { dst } => write!(f, "shl {}, cl", dst),

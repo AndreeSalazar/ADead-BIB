@@ -4598,6 +4598,60 @@ impl IsaCompiler {
             return;
         }
 
+        // ========== INTRINSIC: __inl(port) ==========
+        // Reads a dword from I/O port. Returns value in EAX.
+        // Used for PCI config space reading (port 0xCFC)
+        if name == "__inl" && args.len() == 1 {
+            match &args[0] {
+                Expr::Number(p) if *p >= 0 && *p <= 255 => {
+                    self.ir.emit(ADeadOp::InDword {
+                        port: Operand::Imm8(*p as i8),
+                    });
+                }
+                _ => {
+                    self.emit_expression(&args[0]);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RDX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::InDword {
+                        port: Operand::Reg(Reg::DX),
+                    });
+                }
+            }
+            return;
+        }
+
+        // ========== INTRINSIC: __outl(port, value) ==========
+        // Writes a dword to I/O port.
+        // Used for PCI config space address (port 0xCF8)
+        if name == "__outl" && args.len() == 2 {
+            self.emit_expression(&args[1]);
+            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+            match &args[0] {
+                Expr::Number(p) if *p >= 0 && *p <= 255 => {
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                    self.ir.emit(ADeadOp::OutDword {
+                        port: Operand::Imm8(*p as i8),
+                        src: Operand::Reg(Reg::EAX),
+                    });
+                }
+                _ => {
+                    self.emit_expression(&args[0]);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RDX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                    self.ir.emit(ADeadOp::OutDword {
+                        port: Operand::Reg(Reg::DX),
+                        src: Operand::Reg(Reg::EAX),
+                    });
+                }
+            }
+            return;
+        }
+
         // ========== INTRINSIC: __cpuid_eax/ebx/ecx/edx(leaf) ==========
         // Execute CPUID with EAX=leaf, return specified register
         if args.len() == 1 {

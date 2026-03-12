@@ -278,6 +278,8 @@ impl Encoder {
             ADeadOp::Invlpg { addr } => self.encode_invlpg(addr),
             ADeadOp::InByte { port } => self.encode_in_byte(port),
             ADeadOp::OutByte { port, src: _ } => self.encode_out_byte(port),
+            ADeadOp::InDword { port } => self.encode_in_dword(port),
+            ADeadOp::OutDword { port, src: _ } => self.encode_out_dword(port),
             ADeadOp::Shr { dst, amount } => self.encode_shr(dst, *amount),
             ADeadOp::BitwiseNot { dst } => self.encode_bitwise_not(dst),
             ADeadOp::ShlCl { dst } => self.encode_shl_cl(dst),
@@ -1039,6 +1041,38 @@ impl Encoder {
             Operand::Reg(Reg::DX) => {
                 // out dx, al
                 self.emit(&[0xEE]);
+            }
+            _ => self.emit(&[0x90]),
+        }
+    }
+
+    // ========================================
+    // OS-Level: IN / OUT (dword) — PCI config space
+    // ========================================
+
+    fn encode_in_dword(&mut self, port: &Operand) {
+        match port {
+            Operand::Imm8(p) => {
+                // in eax, imm8
+                self.emit(&[0xE5, *p as u8]);
+            }
+            Operand::Reg(Reg::DX) => {
+                // in eax, dx
+                self.emit(&[0xED]);
+            }
+            _ => self.emit(&[0x90]),
+        }
+    }
+
+    fn encode_out_dword(&mut self, port: &Operand) {
+        match port {
+            Operand::Imm8(p) => {
+                // out imm8, eax
+                self.emit(&[0xE7, *p as u8]);
+            }
+            Operand::Reg(Reg::DX) => {
+                // out dx, eax
+                self.emit(&[0xEF]);
             }
             _ => self.emit(&[0x90]),
         }
