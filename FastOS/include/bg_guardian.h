@@ -2,14 +2,24 @@
  * BG — Binary Guardian Interface for FastOS
  * ============================================================
  * C interface to the Rust Binary Guardian security system.
- * 
+ *
+ * This header mirrors types from the BG Rust crate:
+ *   BG — Binary Guardian/src/policy.rs    → SecurityLevel, Verdict
+ *   BG — Binary Guardian/src/arch_map.rs  → ArchitectureMap, Capabilities
+ *   BG — Binary Guardian/src/analyzer.rs  → BinaryGuardian::analyze()
+ *
  * BG provides:
- *   - ISA-level binary analysis
+ *   - ISA-level binary analysis (deterministic, O(n) build)
  *   - Capability mapping (what hardware a binary touches)
  *   - Policy enforcement (approve/deny execution)
- *   - Deterministic security (same binary = same result)
- * 
+ *   - Deterministic security (same binary + same policy = same verdict)
+ *
  * Integration: FastOS loader calls BG before executing any binary.
+ * FFI: security/bg/ Rust crate → libfg_fastos.a → linked into kernel.
+ *
+ * Compile with ADead-BIB:
+ *   adb cc security/bg_core.c --flat --org=0x100000
+ *   adb step security/bg_core.c   ← verify 7-phase pipeline
  * ============================================================ */
 
 #ifndef BG_GUARDIAN_H

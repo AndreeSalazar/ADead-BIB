@@ -33,14 +33,14 @@ La respuesta: **~150 KB.**
 
 ### 1. El CPU ya sabe todo — solo hay que dejarlo recordar
 
-El Ryzen 5 5600X ya tiene quemado en silicio:
-- Teclado, mouse, VGA, modos de memoria
+Cualquier CPU x86-64 moderno ya tiene quemado en silicio:
+- Modos 16/32/64-bit, SSE, AVX2
+- Controladores de teclado, VGA, PCI, interrupciones
 - Toda la historia x86 desde 1978 hasta hoy
-- Protocolos de hardware a nivel de microarquitectura
 
 El problema de todos los OS es que **reimplementan en software lo que el CPU ya tiene en hardware.**
 
-FastOS no reimplementa — **conversa con lo que ya existe.**
+FastOS no reimplementa — **conversa con lo que ya existe.** Detecta capabilities via CPUID en runtime y activa solo lo que el CPU soporta.
 
 ### 2. Boot gradual — el CPU se calienta, no se aturde
 
@@ -66,9 +66,9 @@ Linux kernel  → 24 millones de líneas de drivers
                drivers de arquitecturas que no usas
 
 FastOS kernel → 0 drivers incluidos
-               el CPU detecta hardware nuevo
-               FastOS pregunta "¿instalo el driver?"
-               se descarga de internet
+               el CPU detecta hardware via PCI scan
+               busca driver .Po en disco
+               BG verifica → APPROVED → ejecuta
                funciona. listo.
 ```
 
@@ -86,7 +86,7 @@ FastOS hereda lo mejor de Linux y Windows **sin sus capas de legacy:**
 | VFS design | DX12 support nativo | Bloatware |
 | | | Telemetría |
 
-Un driver NVIDIA compilado para Windows **corre en FastOS sin modificaciones** porque ADead-BIB ya habla Win32. El driver cree que está en Windows. FastOS no miente — solo habla el mismo idioma.
+Los drivers se compilan como binarios .Po con ADead-BIB y se verifican con BG antes de ejecutarse. Cada driver declara qué hardware necesita — BG verifica que el binario no excede lo declarado.
 
 ---
 
@@ -109,20 +109,25 @@ FastOS/
 │   ├── interrupts.c        # IDT, IRQ handlers
 │   ├── scheduler.c         # Round-robin preemptivo
 │   ├── syscall.c           # POSIX-like + extensiones FastOS
-│   ├── hotplug.c           # Detección hardware en tiempo real
-│   │                       # "hardware desconocido → pregunta → descarga → instala"
+│   ├── hotplug.c           # PCI scan → buscar driver .Po → BG verify → ejecutar
 │   └── panic.c             # Kernel panic handler
 │
-├── security/               # Binary Guardian
-│   ├── bg_core.c           # Verificación matemática pura
-│   │                       # Sin heurística — demuestra, no adivina
+├── security/               # Binary Guardian (hereda BG Rust crate via FFI)
+│   ├── bg_core.c           # Wrapper C → BG Rust FFI (bg_init, bg_verify)
+│   ├── bg_fastos.c         # Integración BG con kernel FastOS
 │   ├── bg_levels.c         # 4 niveles de seguridad
-│   └── bg_preexec.c        # Verificación pre-ejecución
+│   ├── bg_preexec.c        # Gate pre-ejecución con cache FNV-1a
+│   ├── bg/                 # Crate Rust: bg-fastos (staticlib)
+│   │   ├── lib.rs          # Re-exports: BinaryGuardian, PolicyEngine
+│   │   ├── analyzer.rs     # ISA analysis → ArchitectureMap
+│   │   ├── arch_map.rs     # Mapa completo de capabilities
+│   │   ├── capability.rs   # ISA instruction → capability mapping
+│   │   ├── policy.rs       # SecurityPolicy + PolicyEngine::evaluate()
+│   │   └── binary_loader.rs # Loader PE/ELF/.Po
+│   └── Cargo.toml          # bg-fastos → libfg_fastos.a
 │
 ├── fs/                     # Sistemas de archivos
-│   ├── vfs.c               # Virtual File System
-│   ├── fat32.c             # FAT32
-│   └── ext2.c              # EXT2
+│   └── vfs.c               # Virtual File System (futuro: FAT32, EXT2)
 │
 ├── lib/                    # C runtime mínimo
 │   ├── string.c
@@ -176,7 +181,7 @@ Los drivers viven en el disco y se cargan bajo demanda.
 
 ### kernel/main.c
 ```c
-#include <header_main.h>
+#include "kernel.h"
 
 // El CPU llegó aquí gradualmente
 // Ya sabe dónde está
@@ -186,7 +191,7 @@ void kernel_main() {
     memory_init();
     interrupts_init();
     scheduler_init();
-    hotplug_init();    // detecta hardware, descarga drivers
+    hotplug_init();    // PCI scan, carga drivers .Po desde disco
     bg_init();         // Binary Guardian activo
     shell_start();
 }
@@ -194,40 +199,66 @@ void kernel_main() {
 
 ---
 
-## Compilación
+## Compilación — ADead-BIB
 
 ```bash
-# Bootloader (FASM directo)
-fasm boot/stage1.asm boot/stage1.bin
-fasm boot/stage2.asm boot/stage2.bin
+# Boot stages (ADead-BIB raw output)
+adb cc boot/stage1.adB --raw --org=0x7C00 -o build/stage1.bin
+adb cc boot/stage2.adB --raw --org=0x7E00 -o build/stage2.bin
 
-# Kernel (ADead-BIB -- sin GCC, sin linker)
-adb cc kernel/main.c -o kernel/kernel.bin --flat --org=0x100000
+# BG Rust crate → staticlib
+cargo build --release --manifest-path security/Cargo.toml
 
-# Imagen de disco
-./build/mkimage.sh
+# Kernel (ADead-BIB — sin GCC, sin linker externo)
+adb cc kernel/main.c --flat --org=0x100000 -o build/kernel64.bin
+
+# Verificar con step mode (7 fases)
+adb step kernel/main.c
+#  [SOURCE] → [PREPROC] → [LEXER] → [PARSER] → [UB] → [CODEGEN] → [OUTPUT]
+#  0 UB encontrados ✅
+
+# Imagen booteable
+powershell -File build64.ps1
 ```
+
+### Step Mode — Verificación Obligatoria
+
+`adb step` muestra las 7 fases de compilación: source, preprocessor, lexer, parser, UB detector, codegen, output. El kernel DEBE compilar con **0 UB**. Step mode lo verifica antes de cada cambio.
 
 ---
 
 ## Sistema de Seguridad — Binary Guardian
 
+BG es un **guardián determinista a nivel ISA**, heredado del crate Rust `BG — Binary Guardian`.
+
 ```
-Nivel 1: Re-build automático
-→ corrupción detectada → FastOS se repara solo
-
-Nivel 2: Firewall Humano  
-→ comportamiento anómalo → bloqueado antes de ejecutar
-
-Nivel 3: BG Pre-execution
-→ cada binario verificado matemáticamente ANTES de correr
-
-Nivel 4: Dead Man's Switch
-→ si el sistema es comprometido → se protege solo
+Binario → Loader → ISA Decoder → ADead-BIB IR → Capability Mapper
+       → ArchitectureMap → PolicyEngine → APPROVE / DENY
 ```
+
+**Pipeline real (implementado en Rust):**
+- `BinaryLoader` — parsea PE/ELF/.Po
+- `CapabilityMapper` — decodifica cada instrucción ISA → capabilities
+- `ArchitectureMap` — mapa completo: IO ports, syscalls, hardware, memory, control flow
+- `PolicyEngine::evaluate()` — evalúa mapa contra SecurityPolicy → Verdict
+
+**4 Niveles de Seguridad:**
+
+| Nivel | Nombre | Implementación |
+|---|---|---|
+| 1 | Auto Rebuild | Re-compila con ADead-BIB, compara hash |
+| 2 | Human Firewall | Capabilities vs. permisos del proceso |
+| 3 | Pre-Execution | Análisis ISA completo antes de mapear en memoria |
+| 4 | Dead Man's Switch | Heartbeat + integrity check del kernel |
+
+**Security Levels (heredados de `policy.rs`):**
+- `Kernel (Ring 0)` — todo permitido
+- `Driver (Ring 1)` — IO + interrupts, sin MSR/descriptor tables
+- `Service (Ring 2)` — sin IO directo, solo syscalls autorizados
+- `User (Ring 3)` — máximas restricciones
 
 **Sin heurística. Sin "parece sospechoso".**  
-Binary Guardian usa verificación formal — **demuestra** si un binario viola propiedades de seguridad. No adivina.
+Mismo binario + misma policy = mismo veredicto. Siempre. Determinista y matemático.
 
 ---
 
@@ -278,34 +309,33 @@ ELF de Linux: 64 bytes + program headers + section headers.
 FastOS demuestra que el diseño original del OS era correcto — y todos se alejaron de él.
 
 ```
-Driver NVIDIA Windows  → corre en FastOS ✓  (Win32 via ADead-BIB)
-Driver NVIDIA Linux    → corre en FastOS ✓  (POSIX syscalls)
-Binarios .Po nativos   → FastOS ✓
-BIOS Legacy            → ✓
-UEFI Moderno           → ✓
-x86-64                 → ✓
+Binarios .Po nativos   → FastOS ✓  (formato nativo 24-byte header)
+BIOS Legacy boot       → ✓  (MBR stage1 → stage2 → kernel)
+x86-64 Long Mode       → ✓  (boot gradual 16→32→64)
+SSE/AVX2 detection     → ✓  (CPUID runtime, no hardcoded)
+BG security gate       → ✓  (todo binario verificado pre-ejecución)
 ```
+
+**Futuro:** Compatibilidad Win32/POSIX via ADead-BIB cross-compilation targets.
 
 ---
 
 ## Hotplug Inteligente
 
 ```
-Usuario conecta hardware desconocido
+Boot → hotplug_init() escanea bus PCI
         ↓
-kernel/hotplug.c detecta via PCI/USB
+Para cada dispositivo: buscar drivers/<vendor>_<device>.po en disco
         ↓
-"Hardware desconocido: NVIDIA RTX 4070"
-"¿Instalar driver? [S/N]"
+Cargar .Po → BG Pre-Execution Gate
         ↓
-Descarga driver específico de internet
-        ↓
-Instala. Funciona. Listo.
+APPROVED → ejecutar como proceso Driver (Ring 1)
+DENIED  → log de violaciones, hardware queda sin driver
 ```
 
-Sin disco de drivers. Sin búsqueda manual.  
-Sin 24 millones de líneas de drivers pre-instalados.  
-**El OS no sabe de impresoras hasta que conectas una.**
+Sin drivers pre-instalados en el kernel.  
+Sin 24 millones de líneas de código de drivers.  
+**El OS no sabe de hardware hasta que lo detecta. Los drivers viven en disco como binarios .Po verificados por BG.**
 
 ---
 
