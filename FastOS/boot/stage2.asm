@@ -386,7 +386,106 @@ lm_start:
     ; Stack 64-bit
     mov  rsp, STACK_64
 
-    ; ─── Mover el Kernel a 0x100000 ──────────────────────────
+    ; ─── Reportar 64-bit ──────────────────────────────────
+    mov  rdi, 0xB8000 + (4 * 160)     ; Fila 4
+    mov  rsi, LOAD_LINEAR + msg_lm
+    mov  ah, 0x0E                     ; Amarillo
+.print_lm:
+    lodsb
+    test al, al
+    jz   .print_lm_done
+    stosw
+    jmp  .print_lm
+.print_lm_done:
+
+; ─── FASE 3a: SSE ACTIVATION (128-bit XMM) ─────────────
+; El OS DEBE habilitar SSE explicitamente o faulteara.
+; CR0: limpiar EM (bit 2), setear MP (bit 1)
+; CR4: setear OSFXSR (bit 9) y OSXMMEXCPT (bit 10)
+enable_sse:
+    mov  rax, cr0
+    and  ax, 0xFFFB              ; Clear CR0.EM (bit 2) — no x87 emulation
+    or   ax, 0x0002              ; Set CR0.MP (bit 1) — monitor coprocessor
+    mov  cr0, rax
+
+    mov  rax, cr4
+    or   ax, 0x0200              ; CR4.OSFXSR (bit 9) — enable FXSAVE/FXRSTOR
+    or   ax, 0x0400              ; CR4.OSXMMEXCPT (bit 10) — SSE exceptions
+    mov  cr4, rax
+
+    ; Reportar SSE activo
+    mov  rdi, 0xB8000 + (5 * 160)     ; Fila 5
+    mov  rsi, LOAD_LINEAR + msg_sse
+    mov  ah, 0x0A                     ; Verde
+.print_sse:
+    lodsb
+    test al, al
+    jz   .print_sse_done
+    stosw
+    jmp  .print_sse
+.print_sse_done:
+
+; ─── FASE 3b: AVX2 DETECTION + ACTIVATION (256-bit YMM) ─
+; Primero verificar que el CPU soporta OSXSAVE (CPUID.1:ECX bit 27)
+; Luego verificar AVX2 (CPUID.7:EBX bit 5)
+detect_avx2:
+    ; Check OSXSAVE support (CPUID leaf 1, ECX bit 27)
+    mov  eax, 1
+    cpuid
+    test ecx, 0x08000000        ; OSXSAVE available? (bit 27)
+    jz   .no_avx2                ; No OSXSAVE → skip AVX2
+
+    ; Check AVX support (CPUID leaf 1, ECX bit 28)
+    test ecx, 0x10000000         ; AVX available? (bit 28)
+    jz   .no_avx2
+
+    ; Check AVX2 (CPUID leaf 7, sub-leaf 0, EBX bit 5)
+    mov  eax, 7
+    xor  ecx, ecx
+    cpuid
+    test ebx, 0x20               ; AVX2? (bit 5)
+    jz   .no_avx2
+
+    ; ─── Enable OSXSAVE in CR4 ────────────────────────────
+    mov  rax, cr4
+    or   rax, 0x40000            ; CR4.OSXSAVE (bit 18)
+    mov  cr4, rax
+
+    ; ─── Set XCR0: enable X87 (bit 0) + SSE (bit 1) + AVX (bit 2) ───
+    xor  rcx, rcx                ; XCR0 = extended control register 0
+    xgetbv                        ; Read current XCR0 into EDX:EAX
+    or   eax, 0x07               ; Set bits 0,1,2 = X87 + SSE + AVX
+    xsetbv                        ; Write back to XCR0
+
+    ; ─── Clean YMM state ──────────────────────────────────
+    vzeroupper                    ; Reset upper 128 bits of all YMM regs
+
+    ; Reportar AVX2 256-bit activo
+    mov  rdi, 0xB8000 + (6 * 160)     ; Fila 6
+    mov  rsi, LOAD_LINEAR + msg_avx2
+    mov  ah, 0x0B                     ; Cyan
+.print_avx2:
+    lodsb
+    test al, al
+    jz   .avx2_done
+    stosw
+    jmp  .print_avx2
+
+.no_avx2:
+    ; CPU no soporta AVX2 — reportar y continuar (SSE sigue activo)
+    mov  rdi, 0xB8000 + (6 * 160)
+    mov  rsi, LOAD_LINEAR + msg_no_avx2
+    mov  ah, 0x0C                     ; Rojo
+.print_no_avx2:
+    lodsb
+    test al, al
+    jz   .avx2_done
+    stosw
+    jmp  .print_no_avx2
+
+.avx2_done:
+
+; ─── Mover el Kernel a 0x100000 ──────────────────────────
     ; El script `build64.ps1` concatena `kernel.bin` despues de `stage2.bin`.
     ; Como stage2 ocupa 16KB (0x4000) y fue cargado en 0x10000, 
     ; el kernel esta en 0x10000 + 0x4000 = 0x14000.
@@ -397,8 +496,20 @@ lm_start:
     cld
     rep movsq
 
+; ─── Prefetch kernel a L1 cache ──────────────────────────
+    ; Anclamos las primeras paginas del kernel en L1 data cache
+    ; para que kernel_main() arranque sin cache misses
+    mov  rax, KERNEL_ENTRY
+    prefetcht0 [rax]
+    prefetcht0 [rax + 64]
+    prefetcht0 [rax + 128]
+    prefetcht0 [rax + 192]
+    prefetcht0 [rax + 256]
+    prefetcht0 [rax + 320]
+    prefetcht0 [rax + 384]
+    prefetcht0 [rax + 448]
+
     ; Limpiar todos los registros de proposito general
-    ; El CPU no garantiza su estado tras la transicion
     xor  rax, rax
     xor  rbx, rbx
     xor  rcx, rcx
@@ -415,20 +526,8 @@ lm_start:
     xor  r14, r14
     xor  r15, r15
 
-    ; Reportar en VGA — 64-bit activo
-    mov  rdi, 0xB8000 + (4 * 160)     ; Fila 4
-    mov  rsi, LOAD_LINEAR + msg_lm
-    mov  ah, 0x0E                     ; Amarillo
-.print_lm:
-    lodsb
-    test al, al
-    jz   .print_lm_done
-    stosw
-    jmp  .print_lm
-.print_lm_done:
-
     ; Reportar salto al kernel
-    mov  rdi, 0xB8000 + (5 * 160)
+    mov  rdi, 0xB8000 + (7 * 160)     ; Fila 7
     mov  rsi, LOAD_LINEAR + msg_kernel_jump
     mov  ah, 0x0A
 .print_kj:
@@ -440,17 +539,14 @@ lm_start:
 .print_kj_done:
 
     ; ─── Verificar que el kernel existe en 0x100000 ──────
-    ; Verificar primeros 4 bytes — si todos son 0x00 (NOP padding)
-    ; es un falso positivo. Un kernel C real empieza con push rbp (0x55)
-    ; o sub rsp (0x48) u otro prologo de funcion.
     mov  rax, KERNEL_ENTRY
     mov  eax, [rax]
     test eax, eax
     jz   .no_kernel
 
     ; ─── LLAMAR AL KERNEL ─────────────────────────────────
-    ; El CPU esta DESPIERTO — gradual, sin aturdir.
-    ; Llamamos a la direccion fisica absoluta a traves de RAX.
+    ; El CPU esta DESPIERTO — 16→32→64→SSE→AVX2 (256-bit YMM)
+    ; Gradual, sin aturdir. Cada capability fue activada en orden.
     mov  rax, KERNEL_ENTRY
     call rax
 
@@ -458,10 +554,9 @@ lm_start:
     jmp  .kernel_returned
 
 .no_kernel:
-    ; Kernel no encontrado — mostrar error en VGA
-    mov  rdi, 0xB8000 + (6 * 160)
+    mov  rdi, 0xB8000 + (8 * 160)
     mov  rsi, LOAD_LINEAR + msg_no_kernel
-    mov  ah, 0x0C                     ; Rojo
+    mov  ah, 0x0C
 .print_nk:
     lodsb
     test al, al
@@ -470,11 +565,9 @@ lm_start:
     jmp  .print_nk
 
 .kernel_returned:
-    ; kernel_main() retorno — esto es un panic
-    mov  rdi, 0xB8000 + (6 * 160)
+    mov  rdi, 0xB8000 + (8 * 160)
     mov  rsi, LOAD_LINEAR + msg_returned
     mov  ah, 0x0C
-
 .print_ret:
     lodsb
     test al, al
@@ -483,17 +576,19 @@ lm_start:
     jmp  .print_ret
 
 .halt:
-    ; CPU se detiene limpiamente
     cli
 .halt_loop:
     hlt
     jmp  .halt_loop
 
 ; ─── Datos 64-bit ────────────────────────────────────────
-msg_lm:          db "[64-bit] Long Mode ACTIVO — CPU completamente orientado", 0
-msg_kernel_jump: db "[64-bit] Llamando a kernel_main()...", 0
-msg_no_kernel:   db "[PANIC] Kernel no encontrado en 0x100000 — Halt", 0
-msg_returned:    db "[PANIC] kernel_main() retorno — sistema detenido", 0
+msg_lm:          db "[64-bit] Long Mode ACTIVO", 0
+msg_sse:         db "[SSE]    XMM 128-bit activo (CR0.MP CR4.OSFXSR)", 0
+msg_avx2:        db "[AVX2]   YMM 256-bit activo (OSXSAVE + XCR0 + vzeroupper)", 0
+msg_no_avx2:     db "[AVX2]   No soportado por CPU — SSE 128-bit OK", 0
+msg_kernel_jump: db "[BOOT]   Kernel prefetched L1 — call kernel_main()", 0
+msg_no_kernel:   db "[PANIC]  Kernel no encontrado en 0x100000 — Halt", 0
+msg_returned:    db "[PANIC]  kernel_main() retorno — sistema detenido", 0
 
 ; ─── Padding a 16KB ──────────────────────────────────────
 ; El build script espera que stage2 tenga 16KB (32 sectores)

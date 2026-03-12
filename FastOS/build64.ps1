@@ -89,40 +89,34 @@ $loaderSize = (Get-Item $loaderBin).Length
 Write-Success "Loader: $loaderSize bytes"
 
 # ============================================================
-# Step 3: Compile main.c with ADead-BIB
+# Step 3: Compile kernel_all.c (unity build) with ADead-BIB
 # ============================================================
-Write-Status "Step 3: Compiling main.c with ADead-BIB..."
+Write-Status "Step 3: Compiling kernel (unity build) with ADead-BIB..."
 
-$kernelSrc = "$KERNEL\main.c"
+$kernelSrc = "$KERNEL\kernel_all.c"
 $kernelBin = "$BUILD\kernel64.bin"
 
-# Compile kernel with ADead-BIB --flat
+# Unity build: kernel_all.c #includes ALL .c files in the correct order.
+# This ensures all cross-file function calls resolve within one translation unit.
+# ADead-BIB --flat doesn't link separate object files, so unity build is required.
 $compiled = $false
 try {
-    # Find all kernel source files, excluding shell, rust wrappers, and main.c (which we add manually at the start)
-    $kernelFiles = Get-ChildItem -Path $KERNEL, "$ROOT\lib", "$ROOT\security", "$ROOT\fs", "$ROOT\userspace" -Filter "*.c" -Recurse | Where-Object { 
-        $_.Name -ne "shell.c" -and 
-        $_.Name -ne "bg_fastos.c" -and 
-        $_.FullName -ne "$KERNEL\main.c" 
-    }
-    
     $ccArgs = @("--manifest-path=$ADEAD_ROOT\Cargo.toml", "--release", "--", "cc")
-    $ccArgs += "$KERNEL\main.c"       # CRITICO: main.c TIENE que ser el primero (offset 0x0)
-    $ccArgs += $kernelFiles.FullName
+    $ccArgs += "$kernelSrc"
     $ccArgs += @("-o", "$kernelBin", "--flat", "--org=0x100000", "--size=32768")
 
-    Write-Status "Compiling $(@($kernelFiles).Count) kernel source files with ADead-BIB..."
+    Write-Status "Compiling kernel_all.c (unity build) with ADead-BIB..."
     $result = & cargo run @ccArgs 2>&1
 
     if (Test-Path $kernelBin) {
         $kernelSize = (Get-Item $kernelBin).Length
         if ($kernelSize -gt 0) {
-            Write-Success "Kernel: $kernelSize bytes (ADead-BIB C)"
+            Write-Success "Kernel: $kernelSize bytes (ADead-BIB C, unity build)"
             $compiled = $true
         }
     }
 } catch {
-    Write-Status "ADead-BIB compilation failed"
+    Write-Status "ADead-BIB compilation failed: $_"
 }
 
 if (-not $compiled) {
@@ -316,7 +310,8 @@ if ($Run) {
     if (Test-Path $qemu) {
         Write-Success "Running: $qemu"
         # Boot from raw hard disk
-        & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu qemu64
+        # -cpu max enables all CPU features (SSE, AVX2 256-bit YMM, AES-NI)
+        & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu max -no-reboot -no-shutdown
     } else {
         Write-Error "QEMU not found"
     }

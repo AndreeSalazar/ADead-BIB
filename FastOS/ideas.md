@@ -309,14 +309,14 @@ BG está implementado en Rust (`BG — Binary Guardian/`). FastOS lo hereda via 
 └────────────────┬────────────────────────────┘
                  │ FFI (extern "C")
                  ▼
-┌─────────────────────────────────────────────┐
-│  FastOS security/ (C Wrappers)              │
-│  ├── bg/lib.rs      → staticlib (libfg_fastos.a)
-│  ├── bg_core.c      → bg_init(), bg_verify_binary()
-│  ├── bg_fastos.c    → bg_fastos_init(), bg_fastos_can_execute()
-│  ├── bg_levels.c    → 4 niveles de seguridad
-│  └── bg_preexec.c   → Gate pre-ejecución + cache FNV-1a
-└────────────────┬────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  FastOS security/ (C Wrappers)                                  │
+│  ├── bg/lib.rs      → staticlib (libfg_fastos.a)                │
+│  ├── bg_core.c      → bg_init(), bg_verify_binary()             │
+│  ├── bg_fastos.c    → bg_fastos_init(), bg_fastos_can_execute() │
+│  ├── bg_levels.c    → 4 niveles de seguridad                    │
+│  └── bg_preexec.c   → Gate pre-ejecución + cache FNV-1a         │
+└────────────────┬────────────────────────────────────────────────┘
                  │ C function calls
                  ▼
 ┌─────────────────────────────────────────────┐
@@ -566,7 +566,7 @@ $ adb step kernel/main.c
   PHASE 3: LEXER
 ═══════════════════════════════════════════════════
 [LEXER]    tokens generated: 4521
-[LEXER]    first 20: void(1:1) kernel_main(1:6) ((1:17) )(1:18) {(1:20) ...
+[LEXER]    first 20: void(1:1) kernel_main(1:6) ((1:17) )(1:18) (1:20) ...
 
 ═══════════════════════════════════════════════════
   PHASE 4: PARSER

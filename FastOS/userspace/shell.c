@@ -109,6 +109,7 @@ static void cmd_help(void) {
     term_write_color("\nFastOS Shell v2.0 — Comandos disponibles:\n\n", COLOR_INFO);
     term_write_color("  help   ", COLOR_ACCENT);  term_write("— este mensaje\n");
     term_write_color("  uname  ", COLOR_ACCENT);  term_write("— informacion del sistema\n");
+    term_write_color("  cpu    ", COLOR_ACCENT);  term_write("— CPU vendor, brand, SIMD status\n");
     term_write_color("  mem    ", COLOR_ACCENT);  term_write("— estado de la memoria\n");
     term_write_color("  sched  ", COLOR_ACCENT);  term_write("— lista de procesos\n");
     term_write_color("  bg     ", COLOR_ACCENT);  term_write("— Binary Guardian status\n");
@@ -118,13 +119,32 @@ static void cmd_help(void) {
 }
 
 static void cmd_uname(void) {
-    term_write_color("FastOS v2.0\n", COLOR_OK);
-    term_write("  Arch:     x86-64 Long Mode\n");
+    term_write_color("FastOS v2.0 — 256-bit\n", COLOR_OK);
+    term_write("  Arch:     x86-64 Long Mode + SSE(128) + AVX2(256)\n");
+    term_write("  Boot:     16-bit -> 32-bit -> 64-bit -> SSE -> AVX2\n");
     term_write("  Compiler: ADead-BIB (Native, 7-phase pipeline)\n");
     term_write("  Format:   .Po (FastOS Portable Object, 24B header)\n");
     term_write("  Size:     ~150KB loaded\n");
-    term_write("  Security: Binary Guardian (4 niveles, matematica pura)\n");
+    term_write("  Security: Binary Guardian (4 niveles, determinista)\n");
     term_write("  Origin:   Made in Peru\n\n");
+}
+
+extern int cpu_has_avx2(void);
+extern int cpu_has_sse(void);
+extern const char *cpu_get_vendor(void);
+extern const char *cpu_get_brand(void);
+
+static void cmd_cpu(void) {
+    term_write_color("[CPU] Informacion del procesador:\n", COLOR_INFO);
+    kprintf("  Vendor: %s\n", cpu_get_vendor());
+    kprintf("  Brand:  %s\n", cpu_get_brand());
+    if (cpu_has_avx2()) {
+        term_write_color("  SIMD:   AVX2 256-bit YMM activo\n\n", COLOR_OK);
+    } else if (cpu_has_sse()) {
+        term_write_color("  SIMD:   SSE 128-bit XMM activo\n\n", COLOR_INFO);
+    } else {
+        term_write_color("  SIMD:   No disponible\n\n", COLOR_ERROR);
+    }
 }
 
 static void cmd_mem(void) {
@@ -190,6 +210,7 @@ static void shell_exec(const shell_cmd_t *cmd) {
 
     if      (str_eq(name, "help"))  cmd_help();
     else if (str_eq(name, "uname")) cmd_uname();
+    else if (str_eq(name, "cpu"))   cmd_cpu();
     else if (str_eq(name, "mem"))   cmd_mem();
     else if (str_eq(name, "sched")) cmd_sched();
     else if (str_eq(name, "bg"))    cmd_bg();

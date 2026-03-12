@@ -208,6 +208,14 @@ typedef enum {
     VGA_WHITE  = 15,
 } vga_color_t;
 
+/* Aliases used across kernel sources */
+#define VGA_LIGHT_CYAN    VGA_LCYAN
+#define VGA_LIGHT_GREEN   VGA_LGREEN
+#define VGA_LIGHT_RED     VGA_LRED
+#define VGA_LIGHT_MAGENTA VGA_LMAGENTA
+#define VGA_GREEN         VGA_GREEN
+#define VGA_LIGHT_BLUE    VGA_LBLUE
+
 /* VGA_COLOR(fg, bg): atributo 8-bit para VGA text mode */
 #define VGA_COLOR(fg, bg)  ((uint8_t)((uint8_t)(bg) << 4 | (uint8_t)(fg)))
 
@@ -318,6 +326,19 @@ void fb_string(framebuffer_t *fb, uint32_t x, uint32_t y, const char *s, uint32_
 /* ============================================================
  * Drivers
  * ============================================================ */
+
+/* CPUID / CPU Features */
+void cpuid_init(void);
+int  cpu_has_sse(void);
+int  cpu_has_sse2(void);
+int  cpu_has_sse3(void);
+int  cpu_has_sse41(void);
+int  cpu_has_sse42(void);
+int  cpu_has_avx(void);
+int  cpu_has_avx2(void);
+int  cpu_has_aes(void);
+const char *cpu_get_vendor(void);
+const char *cpu_get_brand(void);
 
 /* Keyboard */
 void keyboard_init(void);
