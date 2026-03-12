@@ -102,7 +102,7 @@ $compiled = $false
 try {
     $ccArgs = @("--manifest-path=$ADEAD_ROOT\Cargo.toml", "--release", "--", "cc")
     $ccArgs += "$kernelSrc"
-    $ccArgs += @("-o", "$kernelBin", "--flat", "--org=0x100000", "--size=32768")
+    $ccArgs += @("-o", "$kernelBin", "--flat", "--org=0x100000", "--size=65536")
 
     Write-Status "Compiling $kernelSrc with ADead-BIB..."
     $result = & cargo run @ccArgs 2>&1
@@ -125,7 +125,7 @@ if (-not $compiled) {
     # Placeholder 64-bit kernel: clears VGA, prints 5-step boot banner, halts.
     # Mirrors kernel_main() output so the user sees the real boot sequence.
     # Replaced when ADead-BIB compiles the real kernel.
-    $kernel = New-Object byte[] 32768
+    $kernel = New-Object byte[] 65536
 
     # --- Subroutine: print_str (RSI=string, RDI=VGA ptr, AH=color) ---
     # Located at offset 0x00 so the main code can call it.
@@ -312,7 +312,7 @@ if ($Run) {
         # Boot from raw hard disk
         # -cpu EPYC-Milan = AMD Zen3 (AVX2, AES-NI, SSE4.2)
         # Matches user's Ryzen 5 5600X architecture
-        & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu EPYC-Milan -no-reboot -no-shutdown
+        & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu EPYC-Milan -no-reboot -no-shutdown -serial stdio
     } else {
         Write-Error "QEMU not found"
     }

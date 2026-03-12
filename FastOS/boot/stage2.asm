@@ -489,10 +489,10 @@ detect_avx2:
     ; El script `build64.ps1` concatena `kernel.bin` despues de `stage2.bin`.
     ; Como stage2 ocupa 16KB (0x4000) y fue cargado en 0x10000, 
     ; el kernel esta en 0x10000 + 0x4000 = 0x14000.
-    ; Movemos 32KB desde 0x14000 a 0x100000.
+    ; Movemos 64KB desde 0x14000 a 0x100000.
     mov  rsi, 0x14000
     mov  rdi, KERNEL_ENTRY
-    mov  rcx, 4096              ; 32768 bytes / 8 = 4096 QWORDs
+    mov  rcx, 8192              ; 65536 bytes / 8 = 8192 QWORDs
     cld
     rep movsq
 
