@@ -153,6 +153,7 @@ impl Encoder {
             }
 
             // Resolve all patches
+            let mut unresolved_patch_count = 0usize;
             for patch in &self.pending_patches {
                 if let Some(&target_pos) = self.label_positions.get(&patch.target.0) {
                     match patch.kind {
@@ -167,7 +168,17 @@ impl Encoder {
                             self.code[patch.code_offset] = (rel as i8) as u8;
                         }
                     }
+                } else {
+                    unresolved_patch_count += 1;
                 }
+            }
+            if unresolved_patch_count > 0 {
+                eprintln!(
+                    "   ⚠️  Encoder: {} unresolved label patches ({} labels known, {} patches total)",
+                    unresolved_patch_count,
+                    self.label_positions.len(),
+                    self.pending_patches.len()
+                );
             }
 
             // Convergence: find backward rel32 jumps that fit in rel8
@@ -206,6 +217,7 @@ impl Encoder {
     pub fn encode_op(&mut self, op: &ADeadOp) {
         match op {
             ADeadOp::Mov { dst, src } => self.encode_mov(dst, src),
+            ADeadOp::Store16 { base, disp, src } => self.encode_store16(base, *disp, src),
             ADeadOp::Store32 { base, disp, src } => self.encode_store32(base, *disp, src),
             ADeadOp::MovZx { dst, src } => self.encode_movzx(dst, src),
             ADeadOp::Lea { dst, src } => self.encode_lea(dst, src),
@@ -746,6 +758,39 @@ impl Encoder {
             // [base+disp32] — mod=10
             let modrm = self.modrm(2, reg_idx, base_idx);
             self.emit(&[rex, opcode, modrm]);
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Store16: mov WORD [base+disp], reg — 16-bit store (0x66 prefix)
+    /// Encodes: 0x66 [optional REX] 89 ModR/M [disp]
+    /// Used for VGA text mode writes (each cell = char:8 + attr:8 = 16 bits)
+    fn encode_store16(&mut self, base: &Reg, disp: i32, src: &Reg) {
+        let (reg_idx, reg_ext) = reg_index(src);
+        let (base_idx, base_ext) = reg_index(base);
+        let rex = self.rex_wrxb(false, reg_ext, base_ext);
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        if disp == 0 && base_idx != 5 {
+            let modrm = self.modrm(0, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[0x66, rex, 0x89, modrm]);
+            } else {
+                self.emit(&[0x66, 0x89, modrm]);
+            }
+        } else if fits_i8 {
+            let modrm = self.modrm(1, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[0x66, rex, 0x89, modrm, disp as u8]);
+            } else {
+                self.emit(&[0x66, 0x89, modrm, disp as u8]);
+            }
+        } else {
+            let modrm = self.modrm(2, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[0x66, rex, 0x89, modrm]);
+            } else {
+                self.emit(&[0x66, 0x89, modrm]);
+            }
             self.emit_i32(disp);
         }
     }

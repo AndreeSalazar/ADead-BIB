@@ -15,7 +15,14 @@ impl IsaCompiler {
         self.collect_strings_from_stmts(&program.statements);
 
         // Fase 2: Registrar labels de funciones
-        let has_main = program.functions.iter().any(|f| f.name == "main");
+        // Support multiple entry point names: main, kernel_main, _start, _main
+        let entry_candidates = ["main", "kernel_main", "_start", "_main"];
+        let entry_name = entry_candidates.iter()
+            .find(|&&name| program.functions.iter().any(|f| f.name == name))
+            .map(|&s| s.to_string());
+        let has_entry = entry_name.is_some();
+        let entry_name_str = entry_name.unwrap_or_else(|| "main".to_string());
+
         for func in &program.functions {
             let label = self.ir.new_label();
             self.functions.insert(
@@ -28,33 +35,33 @@ impl IsaCompiler {
             );
         }
 
-        // Fase 3: Si hay main, saltar a main
-        let main_label = self.functions.get("main").map(|f| f.label);
-        let needs_jmp = has_main && (program.functions.len() > 1 || !program.statements.is_empty());
+        // Fase 3: Si hay entry point, saltar a él
+        let entry_label = self.functions.get(&entry_name_str).map(|f| f.label);
+        let needs_jmp = has_entry && (program.functions.len() > 1 || !program.statements.is_empty());
         if needs_jmp {
-            if let Some(lbl) = main_label {
+            if let Some(lbl) = entry_label {
                 self.ir.emit(ADeadOp::Jmp { target: lbl });
             }
         }
 
-        // Fase 3.5: Dead code elimination — only compile functions reachable from main
-        let reachable = Self::collect_reachable_functions(program, "main");
+        // Fase 3.5: Dead code elimination — only compile functions reachable from entry
+        let reachable = Self::collect_reachable_functions(program, &entry_name_str);
 
         // Fase 4: Compilar funciones auxiliares (solo las alcanzables)
         for func in &program.functions {
-            if func.name != "main" && reachable.contains(&func.name) {
+            if func.name != entry_name_str && reachable.contains(&func.name) {
                 self.compile_function(func);
             }
         }
 
         // Fase 5: Compilar top-level statements
-        if !has_main && !program.statements.is_empty() {
+        if !has_entry && !program.statements.is_empty() {
             self.compile_top_level(&program.statements);
         }
 
-        // Fase 6: Compilar main
+        // Fase 6: Compilar entry point (ÚLTIMO — para que todas las funciones ya tengan labels)
         for func in &program.functions {
-            if func.name == "main" {
+            if func.name == entry_name_str {
                 self.compile_function(func);
             }
         }

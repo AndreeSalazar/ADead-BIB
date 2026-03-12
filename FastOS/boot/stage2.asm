@@ -544,9 +544,18 @@ detect_avx2:
     test eax, eax
     jz   .no_kernel
 
+    ; ─── Deshabilitar interrupts antes de kernel ──────────
+    ; No hay IDT configurada — cualquier IRQ causa triple fault.
+    ; Mascarar TODAS las IRQs del PIC y CLI.
+    cli
+    mov  al, 0xFF
+    out  0x21, al           ; Mask all master PIC IRQs
+    out  0xA1, al           ; Mask all slave PIC IRQs
+
     ; ─── LLAMAR AL KERNEL ─────────────────────────────────
     ; El CPU esta DESPIERTO — 16→32→64→SSE→AVX2 (256-bit YMM)
     ; Gradual, sin aturdir. Cada capability fue activada en orden.
+    ; Interrupts deshabilitadas — kernel debe configurar IDT antes de STI.
     mov  rax, KERNEL_ENTRY
     call rax
 

@@ -654,8 +654,17 @@ impl IsaCompiler {
             }
         }
 
-        // Fase 3.5: Dead code elimination — only compile functions reachable from entry
-        let reachable = Self::collect_reachable_functions(program, entry_name);
+        // Fase 3.5: Dead code elimination
+        // For Target::Raw (flat/OS kernels), compile ALL functions — callbacks,
+        // ISRs, shell commands etc. are not directly reachable from entry but needed.
+        // DCE only applies to PE/ELF where unused header inlines waste space.
+        let use_dce = self.target != Target::Raw;
+        let reachable = if use_dce {
+            Self::collect_reachable_functions(program, entry_name)
+        } else {
+            // Mark ALL functions as reachable for flat binaries
+            program.functions.iter().map(|f| f.name.clone()).collect()
+        };
 
         // Fase 4: Compilar funciones auxiliares (solo las alcanzables desde entry)
         for func in &program.functions {
@@ -4425,32 +4434,227 @@ impl IsaCompiler {
     }
 
     fn emit_call(&mut self, name: &str, args: &[Expr]) {
+        // ========== INTRINSIC: __store16(ptr, offset, value) ==========
+        // Emits a 16-bit store: mov WORD [ptr + offset], value
+        // Used for VGA text mode (each cell = char:8 + attr:8 = 16 bits)
+        if name == "__store16" && args.len() == 3 {
+            let const_offset = match &args[1] {
+                Expr::Number(n) => Some(*n as i32),
+                _ => None,
+            };
+            if let Some(disp) = const_offset {
+                self.emit_expression(&args[2]);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(&args[0]);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                self.ir.emit(ADeadOp::Store16 {
+                    base: Reg::RBX,
+                    disp,
+                    src: Reg::RAX,
+                });
+            } else {
+                self.emit_expression(&args[2]);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(&args[1]);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(&args[0]);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                self.ir.emit(ADeadOp::Add {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RCX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                self.ir.emit(ADeadOp::Store16 {
+                    base: Reg::RBX,
+                    disp: 0,
+                    src: Reg::RAX,
+                });
+            }
+            return;
+        }
+
         // ========== INTRINSIC: __store32(ptr, offset, value) ==========
         // Emits a 32-bit store: mov DWORD [ptr + offset], value
-        // Used for GUID construction and 4-byte struct field writes
+        // Used for VGA writes, GUID construction, 4-byte struct field writes
         if name == "__store32" && args.len() == 3 {
-            // Evaluate value (arg 2) → push
-            self.emit_expression(&args[2]);
-            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-            // Evaluate ptr (arg 0) → RAX
-            self.emit_expression(&args[0]);
-            self.ir.emit(ADeadOp::Mov {
-                dst: Operand::Reg(Reg::RBX),
-                src: Operand::Reg(Reg::RAX),
-            });
-            // Pop value into RAX
-            self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
-            // Get offset as constant
-            let offset = match &args[1] {
-                Expr::Number(n) => *n as i32,
-                _ => 0,
+            // Check if offset is a constant
+            let const_offset = match &args[1] {
+                Expr::Number(n) => Some(*n as i32),
+                _ => None,
             };
-            // Emit Store32: mov DWORD [RBX + offset], EAX
-            self.ir.emit(ADeadOp::Store32 {
-                base: Reg::RBX,
-                disp: offset,
-                src: Reg::RAX,
+
+            if let Some(disp) = const_offset {
+                // Fast path: constant offset → Store32 with displacement
+                self.emit_expression(&args[2]);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(&args[0]);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                self.ir.emit(ADeadOp::Store32 {
+                    base: Reg::RBX,
+                    disp,
+                    src: Reg::RAX,
+                });
+            } else {
+                // Dynamic offset: base + offset computed at runtime
+                // Evaluate value → push, evaluate offset → push, evaluate base → RBX
+                self.emit_expression(&args[2]);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(&args[1]);
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                self.emit_expression(&args[0]);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RAX),
+                });
+                // Pop offset → RCX, add to base
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                self.ir.emit(ADeadOp::Add {
+                    dst: Operand::Reg(Reg::RBX),
+                    src: Operand::Reg(Reg::RCX),
+                });
+                // Pop value → RAX
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                // Store32: mov DWORD [RBX + 0], EAX
+                self.ir.emit(ADeadOp::Store32 {
+                    base: Reg::RBX,
+                    disp: 0,
+                    src: Reg::RAX,
+                });
+            }
+            return;
+        }
+
+        // ========== INTRINSIC: __inb(port) ==========
+        // Reads a byte from I/O port. Returns value in AL (zero-extended to RAX).
+        // Used for PS/2 keyboard reading (port 0x60, 0x64)
+        if name == "__inb" && args.len() == 1 {
+            match &args[0] {
+                Expr::Number(p) if *p >= 0 && *p <= 255 => {
+                    self.ir.emit(ADeadOp::InByte {
+                        port: Operand::Imm8(*p as i8),
+                    });
+                }
+                _ => {
+                    // Dynamic port: evaluate → DX, then in al, dx
+                    self.emit_expression(&args[0]);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RDX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::InByte {
+                        port: Operand::Reg(Reg::DX),
+                    });
+                }
+            }
+            // Zero-extend AL → RAX
+            self.ir.emit(ADeadOp::MovZx {
+                dst: Reg::RAX,
+                src: Reg::AL,
             });
+            return;
+        }
+
+        // ========== INTRINSIC: __outb(port, value) ==========
+        // Writes a byte to I/O port.
+        // Used for PIC, PIT, keyboard controller
+        if name == "__outb" && args.len() == 2 {
+            // Evaluate value → AL
+            self.emit_expression(&args[1]);
+            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+            // Evaluate port
+            match &args[0] {
+                Expr::Number(p) if *p >= 0 && *p <= 255 => {
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                    self.ir.emit(ADeadOp::OutByte {
+                        port: Operand::Imm8(*p as i8),
+                        src: Operand::Reg(Reg::AL),
+                    });
+                }
+                _ => {
+                    self.emit_expression(&args[0]);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RDX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                    self.ir.emit(ADeadOp::OutByte {
+                        port: Operand::Reg(Reg::DX),
+                        src: Operand::Reg(Reg::AL),
+                    });
+                }
+            }
+            return;
+        }
+
+        // ========== INTRINSIC: __cpuid_eax/ebx/ecx/edx(leaf) ==========
+        // Execute CPUID with EAX=leaf, return specified register
+        if args.len() == 1 {
+            let cpuid_reg = if name == "__cpuid_eax" { Some(Reg::RAX) }
+                else if name == "__cpuid_ebx" { Some(Reg::RBX) }
+                else if name == "__cpuid_ecx" { Some(Reg::RCX) }
+                else if name == "__cpuid_edx" { Some(Reg::RDX) }
+                else { None };
+            if let Some(result_reg) = cpuid_reg {
+                // Save callee-saved registers that CPUID clobbers
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RBX) });
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RCX) });
+                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RDX) });
+                // Set EAX = leaf, ECX = 0 (sub-leaf)
+                self.emit_expression(&args[0]);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RCX),
+                    src: Operand::Imm64(0),
+                });
+                // Execute CPUID
+                self.ir.emit(ADeadOp::Cpuid);
+                // Move desired result to R8 (safe temp)
+                if result_reg != Reg::RAX {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::R8),
+                        src: Operand::Reg(result_reg),
+                    });
+                }
+                // Restore clobbered registers
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RDX });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+                // Move result to RAX (return value)
+                if result_reg != Reg::RAX {
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(Reg::R8),
+                    });
+                }
+                return;
+            }
+        }
+
+        // ========== INTRINSIC: __hlt() ==========
+        // Halt CPU until next interrupt
+        if name == "__hlt" && args.len() == 0 {
+            self.ir.emit(ADeadOp::Hlt);
+            return;
+        }
+
+        // ========== INTRINSIC: __cli() / __sti() ==========
+        if name == "__cli" && args.len() == 0 {
+            self.ir.emit(ADeadOp::Cli);
+            return;
+        }
+        if name == "__sti" && args.len() == 0 {
+            self.ir.emit(ADeadOp::Sti);
             return;
         }
 

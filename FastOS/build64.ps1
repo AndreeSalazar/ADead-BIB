@@ -89,29 +89,29 @@ $loaderSize = (Get-Item $loaderBin).Length
 Write-Success "Loader: $loaderSize bytes"
 
 # ============================================================
-# Step 3: Compile kernel_all.c (unity build) with ADead-BIB
+# Step 3: Compile kernel with ADead-BIB
 # ============================================================
-Write-Status "Step 3: Compiling kernel (unity build) with ADead-BIB..."
+Write-Status "Step 3: Compiling kernel with ADead-BIB..."
 
-$kernelSrc = "$KERNEL\kernel_all.c"
 $kernelBin = "$BUILD\kernel64.bin"
+$kernelSrc = "$KERNEL\kernel.c"
 
-# Unity build: kernel_all.c #includes ALL .c files in the correct order.
-# This ensures all cross-file function calls resolve within one translation unit.
-# ADead-BIB --flat doesn't link separate object files, so unity build is required.
+# Compile the kernel source file directly
+# Uses intrinsics: __store32 (VGA), __inb/__outb (PS/2), __hlt/__cli/__sti
 $compiled = $false
 try {
     $ccArgs = @("--manifest-path=$ADEAD_ROOT\Cargo.toml", "--release", "--", "cc")
     $ccArgs += "$kernelSrc"
     $ccArgs += @("-o", "$kernelBin", "--flat", "--org=0x100000", "--size=32768")
 
-    Write-Status "Compiling kernel_all.c (unity build) with ADead-BIB..."
+    Write-Status "Compiling $kernelSrc with ADead-BIB..."
     $result = & cargo run @ccArgs 2>&1
+    $result | ForEach-Object { Write-Host "   $_" }
 
     if (Test-Path $kernelBin) {
         $kernelSize = (Get-Item $kernelBin).Length
         if ($kernelSize -gt 0) {
-            Write-Success "Kernel: $kernelSize bytes (ADead-BIB C, unity build)"
+            Write-Success "Kernel: $kernelSize bytes (ADead-BIB C)"
             $compiled = $true
         }
     }
@@ -310,8 +310,9 @@ if ($Run) {
     if (Test-Path $qemu) {
         Write-Success "Running: $qemu"
         # Boot from raw hard disk
-        # -cpu max enables all CPU features (SSE, AVX2 256-bit YMM, AES-NI)
-        & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu max -no-reboot -no-shutdown
+        # -cpu EPYC-Milan = AMD Zen3 (AVX2, AES-NI, SSE4.2)
+        # Matches user's Ryzen 5 5600X architecture
+        & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu EPYC-Milan -no-reboot -no-shutdown
     } else {
         Write-Error "QEMU not found"
     }

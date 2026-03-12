@@ -451,6 +451,10 @@ pub enum ADeadOp {
     /// MOVZX dst, src — Zero-extend (ej: movzx rax, al)
     MovZx { dst: Reg, src: Reg },
 
+    /// Store16: mov WORD [base+disp], reg — 16-bit store (0x66 prefix)
+    /// Used for VGA text mode writes (each cell = char + attr = 2 bytes)
+    Store16 { base: Reg, disp: i32, src: Reg },
+
     /// Store32: mov DWORD [base+disp], reg — 32-bit store (no REX.W)
     /// Used for writing 4-byte fields (GUID, D3D12 structs, etc.)
     Store32 { base: Reg, disp: i32, src: Reg },
@@ -637,6 +641,7 @@ impl std::fmt::Display for ADeadOp {
         match self {
             ADeadOp::Mov { dst, src } => write!(f, "mov {}, {}", dst, src),
             ADeadOp::MovZx { dst, src } => write!(f, "movzx {}, {}", dst, src),
+            ADeadOp::Store16 { base, disp, src } => write!(f, "mov word [{}{:+}], {}", base, disp, src),
             ADeadOp::Store32 { base, disp, src } => write!(f, "mov dword [{}{:+}], {}", base, disp, src),
             ADeadOp::Lea { dst, src } => write!(f, "lea {}, {}", dst, src),
             ADeadOp::Add { dst, src } => write!(f, "add {}, {}", dst, src),

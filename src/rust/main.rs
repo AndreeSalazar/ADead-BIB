@@ -627,16 +627,58 @@ fn compile_c_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std::
     } else if is_any_flat {
         // Flat binary mode - no PE/ELF headers
         use adead_bib::backend::flat_binary::FlatBinaryGenerator;
+
+        // ─── FLAT BINARY STRING PATCHING ───
+        // The ISA compiler calculates string addresses as:
+        //   base_address(0) + data_rva(0x1000) + string_offset
+        // But in a flat binary, layout is: [code][data] at org_address.
+        // So the real string address is:
+        //   org_address + code_size + string_offset
+        // We patch all string imm64 values in the code section.
+        let mut patched_code = opcodes.clone();
+        let code_size = opcodes.len() as u64;
+        // Old assumption: data starts at base(0) + data_rva(0x1000)
+        let old_data_base = 0x1000u64;
+        // Real: data starts at org_address + code_size
+        let new_data_base = org_address + code_size;
+
+        let mut patched_count = 0usize;
+        for &offset in &string_offsets {
+            if offset + 8 <= patched_code.len() {
+                let old_val = u64::from_le_bytes(
+                    patched_code[offset..offset + 8].try_into().unwrap()
+                );
+                // Only patch values that look like data section references
+                // (they should be >= old_data_base and < old_data_base + data.len())
+                if old_val >= old_data_base && old_val < old_data_base + data.len() as u64 + 256 {
+                    let string_offset_in_data = old_val - old_data_base;
+                    let new_val = new_data_base + string_offset_in_data;
+                    patched_code[offset..offset + 8]
+                        .copy_from_slice(&new_val.to_le_bytes());
+                    patched_count += 1;
+                }
+            }
+        }
+
+        if patched_count > 0 {
+            println!(
+                "   Step 4a: Patched {} string addresses (data at 0x{:X})",
+                patched_count, new_data_base
+            );
+        }
+
         let mut gen = FlatBinaryGenerator::new(org_address);
         if fixed_size > 0 {
             gen.set_fixed_size(fixed_size);
         }
-        let binary = gen.generate(&opcodes, &data);
+        let binary = gen.generate(&patched_code, &data);
         fs::write(&output_file, &binary)?;
         println!(
-            "✅ Flat binary: {} ({} bytes, org=0x{:X})",
+            "✅ Flat binary: {} ({} bytes, code={}, data={}, org=0x{:X})",
             output_file,
             binary.len(),
+            code_size,
+            data.len(),
             org_address
         );
     } else {
