@@ -1,11 +1,13 @@
-/* FastOS v2.1 Kernel — ADead-BIB C (Inline, modular design)
+/* FastOS v2.2 Kernel — ADead-BIB C (Inline, modular design)
+ * TUI Desktop with windowed shell on VGA text mode (CP437 box chars)
  * Modules integrated inline:
  *   kernel/cpu/ryzen.c    → CPUID family/model, L3, cores, AVX2
  *   kernel/memory/e820    → E820 map from 0x20000, RAM total
  *   kernel/drivers/kbd    → i8042 PS/2 polling (__inb 0x64/0x60)
  *   kernel/drivers/timer  → PIT 8253 init (100 Hz)
  *   kernel/interrupts/pic → PIC remap 0x20/0x28
- * __store16(base, CONST, val) for VGA cells (2-byte stride)
+ *   kernel/tui/desktop    → Title bar, System Info window, Shell window, Taskbar
+ * __store16(p, CONST, val) where p=0xB8000+row*160 (constant offset pattern)
  * __store32 only for screen clear
  * __inl/__outl for PCI config space */
 
@@ -24,6 +26,12 @@ void kernel_main(void) {
     int e820_count; int e820_ptr; int e820_base_lo; int e820_len_lo;
     int e820_type; int total_ram_mb; int usable_ram_mb;
     int entry_len_lo;
+    /* BG/Po vars */
+    int bg_level; int po_magic;
+    /* TUI Window System vars */
+    int wx; int wy; int ww; int wh; int wattr; int wrow; int wcol;
+    int desktop_mode; int tbar_p;
+    int dx; int dy;
 
     __cli();
 
@@ -64,6 +72,14 @@ void kernel_main(void) {
     __outb(0x43, 0x36);
     __outb(0x40, 0x9C);
     __outb(0x40, 0x2E);
+    /* Serial: "PIC+PIT\r\n" */
+    __outb(0x3F8, 80); __outb(0x3F8, 73); __outb(0x3F8, 67);
+    __outb(0x3F8, 43); __outb(0x3F8, 80); __outb(0x3F8, 73);
+    __outb(0x3F8, 84); __outb(0x3F8, 13); __outb(0x3F8, 10);
+
+    /* BG Security: kernel runs at level 0 (KERNEL) */
+    bg_level = 0;
+    po_magic = 0x506F4F53;
 
     /* ================================================================
      * PHASE 1: Clear screen blue
@@ -174,184 +190,210 @@ void kernel_main(void) {
         __store16(0xB8000, 142, 0x0C74);
     }
 
-    /* Row 1: Vendor (EBX:EDX:ECX) */
-    ch = vb & 0xFF;        __store16(0xB8000, 160, 0x0B00 | ch);
-    ch = (vb >> 8) & 0xFF; __store16(0xB8000, 162, 0x0B00 | ch);
-    ch = (vb >> 16) & 0xFF; __store16(0xB8000, 164, 0x0B00 | ch);
-    ch = (vb >> 24) & 0xFF; __store16(0xB8000, 166, 0x0B00 | ch);
-    ch = vd & 0xFF;        __store16(0xB8000, 168, 0x0B00 | ch);
-    ch = (vd >> 8) & 0xFF; __store16(0xB8000, 170, 0x0B00 | ch);
-    ch = (vd >> 16) & 0xFF; __store16(0xB8000, 172, 0x0B00 | ch);
-    ch = (vd >> 24) & 0xFF; __store16(0xB8000, 174, 0x0B00 | ch);
-    ch = vc & 0xFF;        __store16(0xB8000, 176, 0x0B00 | ch);
-    ch = (vc >> 8) & 0xFF; __store16(0xB8000, 178, 0x0B00 | ch);
-    ch = (vc >> 16) & 0xFF; __store16(0xB8000, 180, 0x0B00 | ch);
-    ch = (vc >> 24) & 0xFF; __store16(0xB8000, 182, 0x0B00 | ch);
-
-    /* Row 1 col 15: Family XX Model XX */
-    __store16(0xB8000, 190, 0x0700 | 70);
-    __store16(0xB8000, 192, 0x0700 | 97);
-    __store16(0xB8000, 194, 0x0700 | 109);
-    nibble = (cpu_family >> 4) & 0xF;
-    if (nibble < 10) { ch = 48 + nibble; } if (nibble > 9) { ch = 55 + nibble; }
-    __store16(0xB8000, 196, 0x0F00 | ch);
-    nibble = cpu_family & 0xF;
-    if (nibble < 10) { ch = 48 + nibble; } if (nibble > 9) { ch = 55 + nibble; }
-    __store16(0xB8000, 198, 0x0F00 | ch);
-    __store16(0xB8000, 200, 0x1F20);
-    __store16(0xB8000, 202, 0x0700 | 77);
-    __store16(0xB8000, 204, 0x0700 | 111);
-    __store16(0xB8000, 206, 0x0700 | 100);
-    nibble = (cpu_model >> 4) & 0xF;
-    if (nibble < 10) { ch = 48 + nibble; } if (nibble > 9) { ch = 55 + nibble; }
-    __store16(0xB8000, 208, 0x0F00 | ch);
-    nibble = cpu_model & 0xF;
-    if (nibble < 10) { ch = 48 + nibble; } if (nibble > 9) { ch = 55 + nibble; }
-    __store16(0xB8000, 210, 0x0F00 | ch);
-
-    /* Row 2-3: Brand string (CPUID 0x80000002-4) */
-    tmp = __cpuid_eax(0x80000000);
-    if (tmp > 0x80000004) {
-        brand_a = __cpuid_eax(0x80000002);
-        brand_b = __cpuid_ebx(0x80000002);
-        brand_c = __cpuid_ecx(0x80000002);
-        brand_d = __cpuid_edx(0x80000002);
-        ch=brand_a&0xFF;       if(ch>31){__store16(0xB8000,320,0x0F00|ch);}
-        ch=(brand_a>>8)&0xFF;  if(ch>31){__store16(0xB8000,322,0x0F00|ch);}
-        ch=(brand_a>>16)&0xFF; if(ch>31){__store16(0xB8000,324,0x0F00|ch);}
-        ch=(brand_a>>24)&0xFF; if(ch>31){__store16(0xB8000,326,0x0F00|ch);}
-        ch=brand_b&0xFF;       if(ch>31){__store16(0xB8000,328,0x0F00|ch);}
-        ch=(brand_b>>8)&0xFF;  if(ch>31){__store16(0xB8000,330,0x0F00|ch);}
-        ch=(brand_b>>16)&0xFF; if(ch>31){__store16(0xB8000,332,0x0F00|ch);}
-        ch=(brand_b>>24)&0xFF; if(ch>31){__store16(0xB8000,334,0x0F00|ch);}
-        ch=brand_c&0xFF;       if(ch>31){__store16(0xB8000,336,0x0F00|ch);}
-        ch=(brand_c>>8)&0xFF;  if(ch>31){__store16(0xB8000,338,0x0F00|ch);}
-        ch=(brand_c>>16)&0xFF; if(ch>31){__store16(0xB8000,340,0x0F00|ch);}
-        ch=(brand_c>>24)&0xFF; if(ch>31){__store16(0xB8000,342,0x0F00|ch);}
-        ch=brand_d&0xFF;       if(ch>31){__store16(0xB8000,344,0x0F00|ch);}
-        ch=(brand_d>>8)&0xFF;  if(ch>31){__store16(0xB8000,346,0x0F00|ch);}
-        ch=(brand_d>>16)&0xFF; if(ch>31){__store16(0xB8000,348,0x0F00|ch);}
-        ch=(brand_d>>24)&0xFF; if(ch>31){__store16(0xB8000,350,0x0F00|ch);}
-        brand_a=__cpuid_eax(0x80000003);brand_b=__cpuid_ebx(0x80000003);
-        brand_c=__cpuid_ecx(0x80000003);brand_d=__cpuid_edx(0x80000003);
-        ch=brand_a&0xFF;       if(ch>31){__store16(0xB8000,352,0x0F00|ch);}
-        ch=(brand_a>>8)&0xFF;  if(ch>31){__store16(0xB8000,354,0x0F00|ch);}
-        ch=(brand_a>>16)&0xFF; if(ch>31){__store16(0xB8000,356,0x0F00|ch);}
-        ch=(brand_a>>24)&0xFF; if(ch>31){__store16(0xB8000,358,0x0F00|ch);}
-        ch=brand_b&0xFF;       if(ch>31){__store16(0xB8000,360,0x0F00|ch);}
-        ch=(brand_b>>8)&0xFF;  if(ch>31){__store16(0xB8000,362,0x0F00|ch);}
-        ch=(brand_b>>16)&0xFF; if(ch>31){__store16(0xB8000,364,0x0F00|ch);}
-        ch=(brand_b>>24)&0xFF; if(ch>31){__store16(0xB8000,366,0x0F00|ch);}
-        ch=brand_c&0xFF;       if(ch>31){__store16(0xB8000,368,0x0F00|ch);}
-        ch=(brand_c>>8)&0xFF;  if(ch>31){__store16(0xB8000,370,0x0F00|ch);}
-        ch=(brand_c>>16)&0xFF; if(ch>31){__store16(0xB8000,372,0x0F00|ch);}
-        ch=(brand_c>>24)&0xFF; if(ch>31){__store16(0xB8000,374,0x0F00|ch);}
-        ch=brand_d&0xFF;       if(ch>31){__store16(0xB8000,376,0x0F00|ch);}
-        ch=(brand_d>>8)&0xFF;  if(ch>31){__store16(0xB8000,378,0x0F00|ch);}
-        ch=(brand_d>>16)&0xFF; if(ch>31){__store16(0xB8000,380,0x0F00|ch);}
-        ch=(brand_d>>24)&0xFF; if(ch>31){__store16(0xB8000,382,0x0F00|ch);}
-        brand_a=__cpuid_eax(0x80000004);brand_b=__cpuid_ebx(0x80000004);
-        brand_c=__cpuid_ecx(0x80000004);brand_d=__cpuid_edx(0x80000004);
-        ch=brand_a&0xFF;       if(ch>31){__store16(0xB8000,384,0x0F00|ch);}
-        ch=(brand_a>>8)&0xFF;  if(ch>31){__store16(0xB8000,386,0x0F00|ch);}
-        ch=(brand_a>>16)&0xFF; if(ch>31){__store16(0xB8000,388,0x0F00|ch);}
-        ch=(brand_a>>24)&0xFF; if(ch>31){__store16(0xB8000,390,0x0F00|ch);}
-        ch=brand_b&0xFF;       if(ch>31){__store16(0xB8000,392,0x0F00|ch);}
-        ch=(brand_b>>8)&0xFF;  if(ch>31){__store16(0xB8000,394,0x0F00|ch);}
-        ch=(brand_b>>16)&0xFF; if(ch>31){__store16(0xB8000,396,0x0F00|ch);}
-        ch=(brand_b>>24)&0xFF; if(ch>31){__store16(0xB8000,398,0x0F00|ch);}
-        ch=brand_c&0xFF;       if(ch>31){__store16(0xB8000,400,0x0F00|ch);}
-        ch=(brand_c>>8)&0xFF;  if(ch>31){__store16(0xB8000,402,0x0F00|ch);}
-        ch=(brand_c>>16)&0xFF; if(ch>31){__store16(0xB8000,404,0x0F00|ch);}
-        ch=(brand_c>>24)&0xFF; if(ch>31){__store16(0xB8000,406,0x0F00|ch);}
-        ch=brand_d&0xFF;       if(ch>31){__store16(0xB8000,408,0x0F00|ch);}
-        ch=(brand_d>>8)&0xFF;  if(ch>31){__store16(0xB8000,410,0x0F00|ch);}
-        ch=(brand_d>>16)&0xFF; if(ch>31){__store16(0xB8000,412,0x0F00|ch);}
-        ch=(brand_d>>24)&0xFF; if(ch>31){__store16(0xB8000,414,0x0F00|ch);}
-    }
-
-    /* Row 4: Features */
-    p = 640;
-    if (avx2 > 0) {
-        __store16(0xB8000, 640, 0x0A41); __store16(0xB8000, 642, 0x0A56);
-        __store16(0xB8000, 644, 0x0A58); __store16(0xB8000, 646, 0x0A32);
-        __store16(0xB8000, 648, 0x1F20); p = 650;
-    }
-    if (cpu_feat_ecx & 0x100000) {
-        __store16(0xB8000, p, 0x0A53); __store16(0xB8000, p+2, 0x0A53);
-        __store16(0xB8000, p+4, 0x0A45); __store16(0xB8000, p+6, 0x0A34);
-        __store16(0xB8000, p+8, 0x0A2E); __store16(0xB8000, p+10, 0x0A32);
-        __store16(0xB8000, p+12, 0x1F20); p = p + 14;
-    }
-    if (cpu_feat_ecx & 0x2000000) {
-        __store16(0xB8000, p, 0x0A41); __store16(0xB8000, p+2, 0x0A45);
-        __store16(0xB8000, p+4, 0x0A53); __store16(0xB8000, p+6, 0x1F20);
-        p = p + 8;
-    }
-    if (cpu_feat_ebx7 & 0x100) {
-        __store16(0xB8000, p, 0x0A42); __store16(0xB8000, p+2, 0x0A4D);
-        __store16(0xB8000, p+4, 0x0A49); __store16(0xB8000, p+6, 0x0A32);
-        __store16(0xB8000, p+8, 0x1F20); p = p + 10;
-    }
-    if (cpu_feat_ebx7 & 0x20000000) {
-        __store16(0xB8000, p, 0x0A53); __store16(0xB8000, p+2, 0x0A48);
-        __store16(0xB8000, p+4, 0x0A41);
-    }
-
-    /* Row 4 right: L3 cache */
-    if (cpu_l3 > 0) {
-        __store16(0xB8000, 780, 0x0700 | 76); /* L */
-        __store16(0xB8000, 782, 0x0700 | 51); /* 3 */
-        __store16(0xB8000, 784, 0x0700 | 58); /* : */
-        nibble = (cpu_l3 / 10);
-        if (nibble > 0) { __store16(0xB8000, 786, 0x0F00 | (48 + nibble)); }
-        nibble = cpu_l3 - (cpu_l3 / 10) * 10;
-        __store16(0xB8000, 788, 0x0F00 | (48 + nibble));
-        __store16(0xB8000, 790, 0x0700 | 77); /* M */
-        __store16(0xB8000, 792, 0x0700 | 66); /* B */
-    }
-
-    /* Row 5: "Kernel OK 128MB ADead-BIB C" */
-    __store16(0xB8000, 800, 0x0A4B); __store16(0xB8000, 802, 0x0A65);
-    __store16(0xB8000, 804, 0x0A72); __store16(0xB8000, 806, 0x0A6E);
-    __store16(0xB8000, 808, 0x0A65); __store16(0xB8000, 810, 0x0A6C);
-    __store16(0xB8000, 812, 0x1F20);
-    __store16(0xB8000, 814, 0x0A4F); __store16(0xB8000, 816, 0x0A4B);
-    __store16(0xB8000, 818, 0x1F20);
-    /* RAM amount */
-    nibble = total_ram_mb / 100;
-    if (nibble > 0) { __store16(0xB8000, 820, 0x0E00 | (48 + nibble)); }
-    nibble = (total_ram_mb / 10) - (total_ram_mb / 100) * 10;
-    __store16(0xB8000, 822, 0x0E00 | (48 + nibble));
-    nibble = total_ram_mb - (total_ram_mb / 10) * 10;
-    __store16(0xB8000, 824, 0x0E00 | (48 + nibble));
-    __store16(0xB8000, 826, 0x0E4D); __store16(0xB8000, 828, 0x0E42);
-    __store16(0xB8000, 830, 0x1F20);
-    __store16(0xB8000, 832, 0x0B41); __store16(0xB8000, 834, 0x0B44);
-    __store16(0xB8000, 836, 0x0B65); __store16(0xB8000, 838, 0x0B61);
-    __store16(0xB8000, 840, 0x0B64); __store16(0xB8000, 842, 0x0B2D);
-    __store16(0xB8000, 844, 0x0B42); __store16(0xB8000, 846, 0x0B49);
-    __store16(0xB8000, 848, 0x0B42);
-
-    /* Row 6: PIC + PIT status */
-    __store16(0xB8000, 960, 0x0750); __store16(0xB8000, 962, 0x0749);
-    __store16(0xB8000, 964, 0x0743); __store16(0xB8000, 966, 0x1F20);
-    __store16(0xB8000, 968, 0x0A4F); __store16(0xB8000, 970, 0x0A4B);
-    __store16(0xB8000, 972, 0x1F20);
-    __store16(0xB8000, 974, 0x0750); __store16(0xB8000, 976, 0x0749);
-    __store16(0xB8000, 978, 0x0754); __store16(0xB8000, 980, 0x1F20);
-    __store16(0xB8000, 982, 0x0731); __store16(0xB8000, 984, 0x0730);
-    __store16(0xB8000, 986, 0x0730); __store16(0xB8000, 988, 0x0748);
-    __store16(0xB8000, 990, 0x077A);
+    /* (Old boot display removed — TUI Desktop draws all info in windows) */
 
     /* ================================================================
-     * PHASE 5: Shell (Row 8)
+     * PHASE 5: TUI Desktop — Window System on VGA Text Mode
+     * CP437 box chars: C9=╔ BB=╗ C8=╚ BC=╝ CD=═ BA=║ B3=│ C4=─
      * ================================================================ */
-    srow = 8;
-    p = srow * 160;
-    __store16(0xB8000, p, 0x0F3E);
-    __store16(0xB8000, p + 2, 0x0F20);
-    cursor = p + 4;
+    desktop_mode = 1;
+
+    /* --- Clear screen to dark blue (0x10 = blue bg, black fg) --- */
+    i = 0;
+    while (i < 4000) {
+        __store32(0xB8000, i, 0x10201020);
+        i = i + 4;
+    }
+
+    /* --- Row 0: Title bar (white on blue) "FastOS v2.1 Desktop" --- */
+    p = 0xB8000;
+    /* Fill row 0 with light-blue-on-blue spaces = 0x1F20 */
+    i = 0; while (i < 80) { __store16(p, i * 2, 0x1F20); i = i + 1; }
+    /* " FastOS v2.1" */
+    __store16(p, 2, 0x1F46); __store16(p, 4, 0x1F61);
+    __store16(p, 6, 0x1F73); __store16(p, 8, 0x1F74);
+    __store16(p, 10, 0x1F4F); __store16(p, 12, 0x1F53);
+    __store16(p, 14, 0x1F20);
+    __store16(p, 16, 0x1F76); __store16(p, 18, 0x1F32);
+    __store16(p, 20, 0x1F2E); __store16(p, 22, 0x1F31);
+    /* right side: "ADead-BIB" */
+    __store16(p, 140, 0x1E41); __store16(p, 142, 0x1E44);
+    __store16(p, 144, 0x1E65); __store16(p, 146, 0x1E61);
+    __store16(p, 148, 0x1E64); __store16(p, 150, 0x1E2D);
+    __store16(p, 152, 0x1E42); __store16(p, 154, 0x1E49);
+    __store16(p, 156, 0x1E42);
+
+    /* --- System Info Window (rows 2-8, cols 2-40) --- */
+    /* 0x1F = white on blue, 0x70 = black on gray (title) */
+    /* Top border: ╔══ System Info ══╗ */
+    p = 0xB8000 + 2 * 160 + 4; /* row 2, col 2 */
+    __store16(p, 0, 0x1FC9); /* ╔ */
+    i = 1; while (i < 37) { __store16(0xB8000, 2 * 160 + 4 + i * 2, 0x1FCD); i = i + 1; }
+    __store16(0xB8000, 2 * 160 + 4 + 37 * 2, 0x1FBB); /* ╗ */
+    /* Title in top border " System Info " at col offset 12 */
+    p = 0xB8000 + 2 * 160 + 4 + 12 * 2;
+    __store16(p, 0, 0x1E20); __store16(p, 2, 0x1E53); __store16(p, 4, 0x1E79);
+    __store16(p, 6, 0x1E73); __store16(p, 8, 0x1E74); __store16(p, 10, 0x1E65);
+    __store16(p, 12, 0x1E6D); __store16(p, 14, 0x1E20); __store16(p, 16, 0x1E49);
+    __store16(p, 18, 0x1E6E); __store16(p, 20, 0x1E66); __store16(p, 22, 0x1E6F);
+    __store16(p, 24, 0x1E20);
+
+    /* Rows 3-7: content with ║ borders */
+    /* Row 3: ║ CPU: <brand>           ║ */
+    p = 0xB8000 + 3 * 160 + 4;
+    __store16(p, 0, 0x1FBA); /* ║ left */
+    i = 1; while (i < 37) { __store16(0xB8000, 3 * 160 + 4 + i * 2, 0x1F20); i = i + 1; }
+    __store16(0xB8000, 3 * 160 + 4 + 37 * 2, 0x1FBA); /* ║ right */
+    /* " CPU: " */
+    __store16(p, 2, 0x0E43); __store16(p, 4, 0x0E50); __store16(p, 6, 0x0E55);
+    __store16(p, 8, 0x0E3A); __store16(p, 10, 0x1F20);
+    /* Brand: 12 chars from vb,vd,vc */
+    ch=vb&0xFF;__store16(p,12,0x0F00|ch);
+    ch=(vb>>8)&0xFF;__store16(p,14,0x0F00|ch);
+    ch=(vb>>16)&0xFF;__store16(p,16,0x0F00|ch);
+    ch=(vb>>24)&0xFF;__store16(p,18,0x0F00|ch);
+    ch=vd&0xFF;__store16(p,20,0x0F00|ch);
+    ch=(vd>>8)&0xFF;__store16(p,22,0x0F00|ch);
+    ch=(vd>>16)&0xFF;__store16(p,24,0x0F00|ch);
+    ch=(vd>>24)&0xFF;__store16(p,26,0x0F00|ch);
+    ch=vc&0xFF;__store16(p,28,0x0F00|ch);
+    ch=(vc>>8)&0xFF;__store16(p,30,0x0F00|ch);
+    ch=(vc>>16)&0xFF;__store16(p,32,0x0F00|ch);
+    ch=(vc>>24)&0xFF;__store16(p,34,0x0F00|ch);
+
+    /* Row 4: ║ RAM: NNN MB  DDR4       ║ */
+    p = 0xB8000 + 4 * 160 + 4;
+    __store16(p, 0, 0x1FBA);
+    i = 1; while (i < 37) { __store16(0xB8000, 4 * 160 + 4 + i * 2, 0x1F20); i = i + 1; }
+    __store16(0xB8000, 4 * 160 + 4 + 37 * 2, 0x1FBA);
+    __store16(p, 2, 0x0E52); __store16(p, 4, 0x0E41); __store16(p, 6, 0x0E4D);
+    __store16(p, 8, 0x0E3A); __store16(p, 10, 0x1F20);
+    nibble = total_ram_mb / 100;
+    if (nibble > 0) { __store16(p, 12, 0x0F00 | (48 + nibble)); }
+    nibble = (total_ram_mb / 10) - (total_ram_mb / 100) * 10;
+    __store16(p, 14, 0x0F00 | (48 + nibble));
+    nibble = total_ram_mb - (total_ram_mb / 10) * 10;
+    __store16(p, 16, 0x0F00 | (48 + nibble));
+    __store16(p, 18, 0x1F20); __store16(p, 20, 0x0F4D); __store16(p, 22, 0x0F42);
+
+    /* Row 5: ║ BG: KERNEL Ring0 APPROVE║ */
+    p = 0xB8000 + 5 * 160 + 4;
+    __store16(p, 0, 0x1FBA);
+    i = 1; while (i < 37) { __store16(0xB8000, 5 * 160 + 4 + i * 2, 0x1F20); i = i + 1; }
+    __store16(0xB8000, 5 * 160 + 4 + 37 * 2, 0x1FBA);
+    __store16(p, 2, 0x0E42); __store16(p, 4, 0x0E47); __store16(p, 6, 0x0E3A);
+    __store16(p, 8, 0x1F20);
+    /* KERNEL */
+    __store16(p, 10, 0x0A4B); __store16(p, 12, 0x0A45); __store16(p, 14, 0x0A52);
+    __store16(p, 16, 0x0A4E); __store16(p, 18, 0x0A45); __store16(p, 20, 0x0A4C);
+    __store16(p, 22, 0x1F20);
+    /* Ring0 */
+    __store16(p, 24, 0x0752); __store16(p, 26, 0x0769); __store16(p, 28, 0x076E);
+    __store16(p, 30, 0x0767); __store16(p, 32, 0x0F30);
+    __store16(p, 34, 0x1F20);
+    /* APPROVE in green */
+    __store16(p, 36, 0x0A41); __store16(p, 38, 0x0A50); __store16(p, 40, 0x0A50);
+    __store16(p, 42, 0x0A52); __store16(p, 44, 0x0A4F); __store16(p, 46, 0x0A56);
+    __store16(p, 48, 0x0A45);
+
+    /* Row 6: ║ AVX2 SSE4.2 AES Po:OK  ║ */
+    p = 0xB8000 + 6 * 160 + 4;
+    __store16(p, 0, 0x1FBA);
+    i = 1; while (i < 37) { __store16(0xB8000, 6 * 160 + 4 + i * 2, 0x1F20); i = i + 1; }
+    __store16(0xB8000, 6 * 160 + 4 + 37 * 2, 0x1FBA);
+    if (avx2 > 0) {
+        __store16(p, 2, 0x0B41); __store16(p, 4, 0x0B56);
+        __store16(p, 6, 0x0B58); __store16(p, 8, 0x0B32);
+    }
+    __store16(p, 10, 0x1F20);
+    __store16(p, 12, 0x0B53); __store16(p, 14, 0x0B53); __store16(p, 16, 0x0B45);
+    __store16(p, 18, 0x0B34); __store16(p, 20, 0x0B2E); __store16(p, 22, 0x0B32);
+    __store16(p, 24, 0x1F20);
+    __store16(p, 26, 0x0B41); __store16(p, 28, 0x0B45); __store16(p, 30, 0x0B53);
+    __store16(p, 32, 0x1F20);
+    /* Po:OK */
+    __store16(p, 34, 0x0E50); __store16(p, 36, 0x0E6F); __store16(p, 38, 0x0E3A);
+    __store16(p, 40, 0x0A4F); __store16(p, 42, 0x0A4B);
+
+    /* Row 7: ║ PIC OK  PIT 100hz      ║ */
+    p = 0xB8000 + 7 * 160 + 4;
+    __store16(p, 0, 0x1FBA);
+    i = 1; while (i < 37) { __store16(0xB8000, 7 * 160 + 4 + i * 2, 0x1F20); i = i + 1; }
+    __store16(0xB8000, 7 * 160 + 4 + 37 * 2, 0x1FBA);
+    __store16(p, 2, 0x0750); __store16(p, 4, 0x0749); __store16(p, 6, 0x0743);
+    __store16(p, 8, 0x1F20); __store16(p, 10, 0x0A4F); __store16(p, 12, 0x0A4B);
+    __store16(p, 14, 0x1F20); __store16(p, 16, 0x1F20);
+    __store16(p, 18, 0x0750); __store16(p, 20, 0x0749); __store16(p, 22, 0x0754);
+    __store16(p, 24, 0x1F20); __store16(p, 26, 0x0731); __store16(p, 28, 0x0730);
+    __store16(p, 30, 0x0730); __store16(p, 32, 0x0768); __store16(p, 34, 0x077A);
+
+    /* Bottom border: ╚══...══╝ */
+    p = 0xB8000 + 8 * 160 + 4;
+    __store16(p, 0, 0x1FC8); /* ╚ */
+    i = 1; while (i < 37) { __store16(0xB8000, 8 * 160 + 4 + i * 2, 0x1FCD); i = i + 1; }
+    __store16(0xB8000, 8 * 160 + 4 + 37 * 2, 0x1FBC); /* ╝ */
+
+    /* --- Shell Window (rows 10-22, cols 2-77) --- */
+    /* Top border: ╔══ Shell ══╗ */
+    p = 0xB8000 + 10 * 160 + 4;
+    __store16(p, 0, 0x1FC9); /* ╔ */
+    i = 1; while (i < 75) { __store16(0xB8000, 10 * 160 + 4 + i * 2, 0x1FCD); i = i + 1; }
+    __store16(0xB8000, 10 * 160 + 4 + 75 * 2, 0x1FBB); /* ╗ */
+    /* Title " Shell " at col offset 33 */
+    p = 0xB8000 + 10 * 160 + 4 + 33 * 2;
+    __store16(p, 0, 0x1E20); __store16(p, 2, 0x1E53); __store16(p, 4, 0x1E68);
+    __store16(p, 6, 0x1E65); __store16(p, 8, 0x1E6C); __store16(p, 10, 0x1E6C);
+    __store16(p, 12, 0x1E20);
+
+    /* Rows 11-21: ║ ... (empty with borders) ... ║ */
+    dy = 11;
+    while (dy < 22) {
+        p = 0xB8000 + dy * 160 + 4;
+        __store16(p, 0, 0x1FBA); /* ║ left */
+        i = 1; while (i < 75) { __store16(0xB8000, dy * 160 + 4 + i * 2, 0x1020); i = i + 1; }
+        __store16(0xB8000, dy * 160 + 4 + 75 * 2, 0x1FBA); /* ║ right */
+        dy = dy + 1;
+    }
+
+    /* Bottom border: ╚══...══╝ */
+    p = 0xB8000 + 22 * 160 + 4;
+    __store16(p, 0, 0x1FC8); /* ╚ */
+    i = 1; while (i < 75) { __store16(0xB8000, 22 * 160 + 4 + i * 2, 0x1FCD); i = i + 1; }
+    __store16(0xB8000, 22 * 160 + 4 + 75 * 2, 0x1FBC); /* ╝ */
+
+    /* --- Row 24: Taskbar (white on dark gray = 0x70) --- */
+    p = 0xB8000 + 24 * 160;
+    i = 0; while (i < 80) { __store16(p, i * 2, 0x7020); i = i + 1; }
+    /* " [F1] Help  [F2] CPU  [F3] PCI " */
+    __store16(p, 2, 0x7E5B); __store16(p, 4, 0x7E46); __store16(p, 6, 0x7E31);
+    __store16(p, 8, 0x7E5D); __store16(p, 10, 0x7048); __store16(p, 12, 0x7065);
+    __store16(p, 14, 0x706C); __store16(p, 16, 0x7070);
+    __store16(p, 20, 0x7E5B); __store16(p, 22, 0x7E46); __store16(p, 24, 0x7E32);
+    __store16(p, 26, 0x7E5D); __store16(p, 28, 0x7043); __store16(p, 30, 0x7050);
+    __store16(p, 32, 0x7055);
+    __store16(p, 36, 0x7E5B); __store16(p, 38, 0x7E46); __store16(p, 40, 0x7E33);
+    __store16(p, 42, 0x7E5D); __store16(p, 44, 0x7050); __store16(p, 46, 0x7043);
+    __store16(p, 48, 0x7049);
+    /* " BG:APPROVE " right side */
+    __store16(p, 124, 0x7042); __store16(p, 126, 0x7047); __store16(p, 128, 0x703A);
+    __store16(p, 130, 0x2A41); __store16(p, 132, 0x2A50); __store16(p, 134, 0x2A50);
+    __store16(p, 136, 0x2A52); __store16(p, 138, 0x2A4F); __store16(p, 140, 0x2A56);
+    __store16(p, 142, 0x2A45);
+
+    /* Serial: "Desktop OK\r\n" */
+    __outb(0x3F8, 68); __outb(0x3F8, 101); __outb(0x3F8, 115);
+    __outb(0x3F8, 107); __outb(0x3F8, 116); __outb(0x3F8, 111);
+    __outb(0x3F8, 112); __outb(0x3F8, 32); __outb(0x3F8, 79);
+    __outb(0x3F8, 75); __outb(0x3F8, 13); __outb(0x3F8, 10);
+
+    /* ================================================================
+     * PHASE 6: Shell inside window (Row 11, Col 4 inside shell window)
+     * ================================================================ */
+    srow = 11;
+    p = 0xB8000 + srow * 160 + 8; /* col 4 inside window = offset 4+4=8 */
+    __store16(p, 0, 0x0F3E);
+    __store16(p, 2, 0x0F20);
+    cursor = srow * 160 + 12; /* col 6 inside window */
     clen = 0;
     c0=0; c1=0; c2=0; c3=0; c4=0; c5=0;
 
@@ -368,187 +410,202 @@ void kernel_main(void) {
 
                     /* help */
                     if(c0==104){if(c1==101){if(c2==108){if(c3==112){if(c4==0){
-                        p = orow * 160;
-                        __store16(0xB8000,p,0x0E43);__store16(0xB8000,p+2,0x0E6F);
-                        __store16(0xB8000,p+4,0x0E6D);__store16(0xB8000,p+6,0x0E6D);
-                        __store16(0xB8000,p+8,0x0E61);__store16(0xB8000,p+10,0x0E6E);
-                        __store16(0xB8000,p+12,0x0E64);__store16(0xB8000,p+14,0x0E73);
-                        __store16(0xB8000,p+16,0x0E3A);
-                        p=(orow+1)*160+4;
-                        __store16(0xB8000,p,0x0F68);__store16(0xB8000,p+2,0x0F65);
-                        __store16(0xB8000,p+4,0x0F6C);__store16(0xB8000,p+6,0x0F70);
-                        __store16(0xB8000,p+14,0x0773);__store16(0xB8000,p+16,0x0768);
-                        __store16(0xB8000,p+18,0x076F);__store16(0xB8000,p+20,0x0777);
-                        __store16(0xB8000,p+22,0x1F20);__store16(0xB8000,p+24,0x0774);
-                        __store16(0xB8000,p+26,0x0768);__store16(0xB8000,p+28,0x0769);
-                        __store16(0xB8000,p+30,0x0773);
-                        p=(orow+2)*160+4;
-                        __store16(0xB8000,p,0x0F63);__store16(0xB8000,p+2,0x0F70);
-                        __store16(0xB8000,p+4,0x0F75);
-                        __store16(0xB8000,p+14,0x0743);__store16(0xB8000,p+16,0x0750);
-                        __store16(0xB8000,p+18,0x0755);__store16(0xB8000,p+20,0x1F20);
-                        __store16(0xB8000,p+22,0x0769);__store16(0xB8000,p+24,0x076E);
-                        __store16(0xB8000,p+26,0x0766);__store16(0xB8000,p+28,0x076F);
-                        p=(orow+3)*160+4;
-                        __store16(0xB8000,p,0x0F6D);__store16(0xB8000,p+2,0x0F65);
-                        __store16(0xB8000,p+4,0x0F6D);
-                        __store16(0xB8000,p+14,0x0752);__store16(0xB8000,p+16,0x0741);
-                        __store16(0xB8000,p+18,0x074D);__store16(0xB8000,p+20,0x1F20);
-                        __store16(0xB8000,p+22,0x0769);__store16(0xB8000,p+24,0x076E);
-                        __store16(0xB8000,p+26,0x0766);__store16(0xB8000,p+28,0x076F);
-                        p=(orow+4)*160+4;
-                        __store16(0xB8000,p,0x0F70);__store16(0xB8000,p+2,0x0F63);
-                        __store16(0xB8000,p+4,0x0F69);
-                        __store16(0xB8000,p+14,0x0750);__store16(0xB8000,p+16,0x0743);
-                        __store16(0xB8000,p+18,0x0749);__store16(0xB8000,p+20,0x1F20);
-                        __store16(0xB8000,p+22,0x0773);__store16(0xB8000,p+24,0x0763);
-                        __store16(0xB8000,p+26,0x0761);__store16(0xB8000,p+28,0x076E);
-                        p=(orow+5)*160+4;
-                        __store16(0xB8000,p,0x0F63);__store16(0xB8000,p+2,0x0F6C);
-                        __store16(0xB8000,p+4,0x0F65);__store16(0xB8000,p+6,0x0F61);
-                        __store16(0xB8000,p+8,0x0F72);
-                        __store16(0xB8000,p+14,0x0763);__store16(0xB8000,p+16,0x076C);
-                        __store16(0xB8000,p+18,0x0765);__store16(0xB8000,p+20,0x0761);
-                        __store16(0xB8000,p+22,0x0772);
-                        p=(orow+6)*160+4;
-                        __store16(0xB8000,p,0x0F76);__store16(0xB8000,p+2,0x0F65);
-                        __store16(0xB8000,p+4,0x0F72);
-                        __store16(0xB8000,p+14,0x0776);__store16(0xB8000,p+16,0x0765);
-                        __store16(0xB8000,p+18,0x0772);__store16(0xB8000,p+20,0x0773);
-                        __store16(0xB8000,p+22,0x0769);__store16(0xB8000,p+24,0x076F);
-                        __store16(0xB8000,p+26,0x076E);
-                        srow = orow + 8;
+                        /* "Commands:" */
+                        p=0xB8000+orow*160;
+                        __store16(p,0,0x0E43);__store16(p,2,0x0E6F);
+                        __store16(p,4,0x0E6D);__store16(p,6,0x0E6D);
+                        __store16(p,8,0x0E61);__store16(p,10,0x0E6E);
+                        __store16(p,12,0x0E64);__store16(p,14,0x0E73);
+                        __store16(p,16,0x0E3A);
+                        /* "help    show this" */
+                        p=0xB8000+(orow+1)*160+4;
+                        __store16(p,0,0x0F68);__store16(p,2,0x0F65);
+                        __store16(p,4,0x0F6C);__store16(p,6,0x0F70);
+                        __store16(p,14,0x0773);__store16(p,16,0x0768);
+                        __store16(p,18,0x076F);__store16(p,20,0x0777);
+                        __store16(p,22,0x1F20);__store16(p,24,0x0774);
+                        __store16(p,26,0x0768);__store16(p,28,0x0769);
+                        __store16(p,30,0x0773);
+                        /* "cpu     CPU info" */
+                        p=0xB8000+(orow+2)*160+4;
+                        __store16(p,0,0x0F63);__store16(p,2,0x0F70);
+                        __store16(p,4,0x0F75);
+                        __store16(p,14,0x0743);__store16(p,16,0x0750);
+                        __store16(p,18,0x0755);__store16(p,20,0x1F20);
+                        __store16(p,22,0x0769);__store16(p,24,0x076E);
+                        __store16(p,26,0x0766);__store16(p,28,0x076F);
+                        /* "mem     RAM info" */
+                        p=0xB8000+(orow+3)*160+4;
+                        __store16(p,0,0x0F6D);__store16(p,2,0x0F65);
+                        __store16(p,4,0x0F6D);
+                        __store16(p,14,0x0752);__store16(p,16,0x0741);
+                        __store16(p,18,0x074D);__store16(p,20,0x1F20);
+                        __store16(p,22,0x0769);__store16(p,24,0x076E);
+                        __store16(p,26,0x0766);__store16(p,28,0x076F);
+                        /* "pci     PCI scan" */
+                        p=0xB8000+(orow+4)*160+4;
+                        __store16(p,0,0x0F70);__store16(p,2,0x0F63);
+                        __store16(p,4,0x0F69);
+                        __store16(p,14,0x0750);__store16(p,16,0x0743);
+                        __store16(p,18,0x0749);__store16(p,20,0x1F20);
+                        __store16(p,22,0x0773);__store16(p,24,0x0763);
+                        __store16(p,26,0x0761);__store16(p,28,0x076E);
+                        /* "clear   clear" */
+                        p=0xB8000+(orow+5)*160+4;
+                        __store16(p,0,0x0F63);__store16(p,2,0x0F6C);
+                        __store16(p,4,0x0F65);__store16(p,6,0x0F61);
+                        __store16(p,8,0x0F72);
+                        __store16(p,14,0x0763);__store16(p,16,0x076C);
+                        __store16(p,18,0x0765);__store16(p,20,0x0761);
+                        __store16(p,22,0x0772);
+                        /* "ver     version" */
+                        p=0xB8000+(orow+6)*160+4;
+                        __store16(p,0,0x0F76);__store16(p,2,0x0F65);
+                        __store16(p,4,0x0F72);
+                        __store16(p,14,0x0776);__store16(p,16,0x0765);
+                        __store16(p,18,0x0772);__store16(p,20,0x0773);
+                        __store16(p,22,0x0769);__store16(p,24,0x076F);
+                        __store16(p,26,0x076E);
+                        /* "bg      Binary Guardian" */
+                        p=0xB8000+(orow+7)*160+4;
+                        __store16(p,0,0x0F62);__store16(p,2,0x0F67);
+                        __store16(p,14,0x0742);__store16(p,16,0x0769);
+                        __store16(p,18,0x076E);__store16(p,20,0x0761);
+                        __store16(p,22,0x0772);__store16(p,24,0x0779);
+                        __store16(p,26,0x1F20);
+                        __store16(p,28,0x0747);__store16(p,30,0x0775);
+                        __store16(p,32,0x0761);__store16(p,34,0x0772);
+                        __store16(p,36,0x0764);__store16(p,38,0x0769);
+                        __store16(p,40,0x0761);__store16(p,42,0x076E);
+                        srow = orow + 9;
                     }}}}}
 
                     /* cpu */
                     if(c0==99){if(c1==112){if(c2==117){if(c3==0){
-                        p = orow * 160;
-                        __store16(0xB8000,p,0x0E43);__store16(0xB8000,p+2,0x0E50);
-                        __store16(0xB8000,p+4,0x0E55);__store16(0xB8000,p+6,0x0E3A);
-                        __store16(0xB8000,p+8,0x1F20);
-                        ch=vb&0xFF;__store16(0xB8000,p+10,0x0F00|ch);
-                        ch=(vb>>8)&0xFF;__store16(0xB8000,p+12,0x0F00|ch);
-                        ch=(vb>>16)&0xFF;__store16(0xB8000,p+14,0x0F00|ch);
-                        ch=(vb>>24)&0xFF;__store16(0xB8000,p+16,0x0F00|ch);
-                        ch=vd&0xFF;__store16(0xB8000,p+18,0x0F00|ch);
-                        ch=(vd>>8)&0xFF;__store16(0xB8000,p+20,0x0F00|ch);
-                        ch=(vd>>16)&0xFF;__store16(0xB8000,p+22,0x0F00|ch);
-                        ch=(vd>>24)&0xFF;__store16(0xB8000,p+24,0x0F00|ch);
-                        ch=vc&0xFF;__store16(0xB8000,p+26,0x0F00|ch);
-                        ch=(vc>>8)&0xFF;__store16(0xB8000,p+28,0x0F00|ch);
-                        ch=(vc>>16)&0xFF;__store16(0xB8000,p+30,0x0F00|ch);
-                        ch=(vc>>24)&0xFF;__store16(0xB8000,p+32,0x0F00|ch);
-                        /* Line 2: Family Model */
-                        p=(orow+1)*160;
-                        __store16(0xB8000,p,0x0746);__store16(0xB8000,p+2,0x0761);
-                        __store16(0xB8000,p+4,0x076D);__store16(0xB8000,p+6,0x1F20);
+                        p=0xB8000+orow*160;
+                        __store16(p,0,0x0E43);__store16(p,2,0x0E50);
+                        __store16(p,4,0x0E55);__store16(p,6,0x0E3A);
+                        __store16(p,8,0x1F20);
+                        ch=vb&0xFF;__store16(p,10,0x0F00|ch);
+                        ch=(vb>>8)&0xFF;__store16(p,12,0x0F00|ch);
+                        ch=(vb>>16)&0xFF;__store16(p,14,0x0F00|ch);
+                        ch=(vb>>24)&0xFF;__store16(p,16,0x0F00|ch);
+                        ch=vd&0xFF;__store16(p,18,0x0F00|ch);
+                        ch=(vd>>8)&0xFF;__store16(p,20,0x0F00|ch);
+                        ch=(vd>>16)&0xFF;__store16(p,22,0x0F00|ch);
+                        ch=(vd>>24)&0xFF;__store16(p,24,0x0F00|ch);
+                        ch=vc&0xFF;__store16(p,26,0x0F00|ch);
+                        ch=(vc>>8)&0xFF;__store16(p,28,0x0F00|ch);
+                        ch=(vc>>16)&0xFF;__store16(p,30,0x0F00|ch);
+                        ch=(vc>>24)&0xFF;__store16(p,32,0x0F00|ch);
+                        p=0xB8000+(orow+1)*160;
+                        __store16(p,0,0x0746);__store16(p,2,0x0761);
+                        __store16(p,4,0x076D);__store16(p,6,0x1F20);
                         nibble=(cpu_family>>4)&0xF;
                         if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                        __store16(0xB8000,p+8,0x0F00|ch);
+                        __store16(p,8,0x0F00|ch);
                         nibble=cpu_family&0xF;
                         if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                        __store16(0xB8000,p+10,0x0F00|ch);
-                        __store16(0xB8000,p+12,0x1F20);
-                        __store16(0xB8000,p+14,0x074D);__store16(0xB8000,p+16,0x076F);
-                        __store16(0xB8000,p+18,0x0764);__store16(0xB8000,p+20,0x1F20);
+                        __store16(p,10,0x0F00|ch);
+                        __store16(p,12,0x1F20);
+                        __store16(p,14,0x074D);__store16(p,16,0x076F);
+                        __store16(p,18,0x0764);__store16(p,20,0x1F20);
                         nibble=(cpu_model>>4)&0xF;
                         if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                        __store16(0xB8000,p+22,0x0F00|ch);
+                        __store16(p,22,0x0F00|ch);
                         nibble=cpu_model&0xF;
                         if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                        __store16(0xB8000,p+24,0x0F00|ch);
-                        /* Line 3: Features */
-                        p=(orow+2)*160;
+                        __store16(p,24,0x0F00|ch);
+                        p=0xB8000+(orow+2)*160;
                         if(avx2>0){
-                            __store16(0xB8000,p,0x0A41);__store16(0xB8000,p+2,0x0A56);
-                            __store16(0xB8000,p+4,0x0A58);__store16(0xB8000,p+6,0x0A32);
-                            __store16(0xB8000,p+8,0x1F20);
+                            __store16(p,0,0x0A41);__store16(p,2,0x0A56);
+                            __store16(p,4,0x0A58);__store16(p,6,0x0A32);
+                            __store16(p,8,0x1F20);
                         }
-                        __store16(0xB8000,p+10,0x0A53);__store16(0xB8000,p+12,0x0A53);
-                        __store16(0xB8000,p+14,0x0A45);__store16(0xB8000,p+16,0x0A34);
-                        __store16(0xB8000,p+18,0x0A2E);__store16(0xB8000,p+20,0x0A32);
-                        __store16(0xB8000,p+22,0x1F20);
-                        __store16(0xB8000,p+24,0x0A41);__store16(0xB8000,p+26,0x0A45);
-                        __store16(0xB8000,p+28,0x0A53);
-                        /* Line 4: Cache */
-                        p=(orow+3)*160;
-                        __store16(0xB8000,p,0x074C);__store16(0xB8000,p+2,0x0732);
-                        __store16(0xB8000,p+4,0x073A);
-                        nibble=cpu_l2/100; if(nibble>0){__store16(0xB8000,p+6,0x0F00|(48+nibble));}
+                        __store16(p,10,0x0A53);__store16(p,12,0x0A53);
+                        __store16(p,14,0x0A45);__store16(p,16,0x0A34);
+                        __store16(p,18,0x0A2E);__store16(p,20,0x0A32);
+                        __store16(p,22,0x1F20);
+                        __store16(p,24,0x0A41);__store16(p,26,0x0A45);
+                        __store16(p,28,0x0A53);
+                        p=0xB8000+(orow+3)*160;
+                        __store16(p,0,0x074C);__store16(p,2,0x0732);
+                        __store16(p,4,0x073A);
+                        nibble=cpu_l2/100; if(nibble>0){__store16(p,6,0x0F00|(48+nibble));}
                         nibble=(cpu_l2/10)-(cpu_l2/100)*10;
-                        __store16(0xB8000,p+8,0x0F00|(48+nibble));
+                        __store16(p,8,0x0F00|(48+nibble));
                         nibble=cpu_l2-(cpu_l2/10)*10;
-                        __store16(0xB8000,p+10,0x0F00|(48+nibble));
-                        __store16(0xB8000,p+12,0x074B);__store16(0xB8000,p+14,0x0742);
-                        __store16(0xB8000,p+18,0x074C);__store16(0xB8000,p+20,0x0733);
-                        __store16(0xB8000,p+22,0x073A);
-                        nibble=cpu_l3/10; if(nibble>0){__store16(0xB8000,p+24,0x0F00|(48+nibble));}
+                        __store16(p,10,0x0F00|(48+nibble));
+                        __store16(p,12,0x074B);__store16(p,14,0x0742);
+                        __store16(p,18,0x074C);__store16(p,20,0x0733);
+                        __store16(p,22,0x073A);
+                        nibble=cpu_l3/10; if(nibble>0){__store16(p,24,0x0F00|(48+nibble));}
                         nibble=cpu_l3-(cpu_l3/10)*10;
-                        __store16(0xB8000,p+26,0x0F00|(48+nibble));
-                        __store16(0xB8000,p+28,0x074D);__store16(0xB8000,p+30,0x0742);
+                        __store16(p,26,0x0F00|(48+nibble));
+                        __store16(p,28,0x074D);__store16(p,30,0x0742);
                         srow = orow + 5;
                     }}}}
 
                     /* mem */
                     if(c0==109){if(c1==101){if(c2==109){if(c3==0){
-                        p = orow * 160;
-                        __store16(0xB8000,p,0x0E4D);__store16(0xB8000,p+2,0x0E65);
-                        __store16(0xB8000,p+4,0x0E6D);__store16(0xB8000,p+6,0x0E6F);
-                        __store16(0xB8000,p+8,0x0E72);__store16(0xB8000,p+10,0x0E79);
-                        __store16(0xB8000,p+12,0x0E3A);
-                        p=(orow+1)*160;
-                        __store16(0xB8000,p,0x0F20);__store16(0xB8000,p+2,0x0754);
-                        __store16(0xB8000,p+4,0x076F);__store16(0xB8000,p+6,0x0774);
-                        __store16(0xB8000,p+8,0x0761);__store16(0xB8000,p+10,0x076C);
-                        __store16(0xB8000,p+12,0x073A);__store16(0xB8000,p+14,0x1F20);
+                        p=0xB8000+orow*160;
+                        __store16(p,0,0x0E4D);__store16(p,2,0x0E65);
+                        __store16(p,4,0x0E6D);__store16(p,6,0x0E6F);
+                        __store16(p,8,0x0E72);__store16(p,10,0x0E79);
+                        __store16(p,12,0x0E3A);
+                        p=0xB8000+(orow+1)*160;
+                        __store16(p,0,0x0F20);__store16(p,2,0x0754);
+                        __store16(p,4,0x076F);__store16(p,6,0x0774);
+                        __store16(p,8,0x0761);__store16(p,10,0x076C);
+                        __store16(p,12,0x073A);__store16(p,14,0x1F20);
                         nibble=total_ram_mb/100;
-                        if(nibble>0){__store16(0xB8000,p+16,0x0F00|(48+nibble));}
+                        if(nibble>0){__store16(p,16,0x0F00|(48+nibble));}
                         nibble=(total_ram_mb/10)-(total_ram_mb/100)*10;
-                        __store16(0xB8000,p+18,0x0F00|(48+nibble));
+                        __store16(p,18,0x0F00|(48+nibble));
                         nibble=total_ram_mb-(total_ram_mb/10)*10;
-                        __store16(0xB8000,p+20,0x0F00|(48+nibble));
-                        __store16(0xB8000,p+22,0x1F20);
-                        __store16(0xB8000,p+24,0x0F4D);__store16(0xB8000,p+26,0x0F42);
-                        p=(orow+2)*160;
-                        __store16(0xB8000,p,0x0F20);__store16(0xB8000,p+2,0x0744);
-                        __store16(0xB8000,p+4,0x0744);__store16(0xB8000,p+6,0x0752);
-                        __store16(0xB8000,p+8,0x0734);__store16(0xB8000,p+10,0x072D);
-                        __store16(0xB8000,p+12,0x0733);__store16(0xB8000,p+14,0x0732);
-                        __store16(0xB8000,p+16,0x0730);__store16(0xB8000,p+18,0x0730);
-                        p=(orow+3)*160;
-                        __store16(0xB8000,p,0x0F20);__store16(0xB8000,p+2,0x074B);
-                        __store16(0xB8000,p+4,0x0765);__store16(0xB8000,p+6,0x0772);
-                        __store16(0xB8000,p+8,0x076E);__store16(0xB8000,p+10,0x0765);
-                        __store16(0xB8000,p+12,0x076C);__store16(0xB8000,p+14,0x073A);
-                        __store16(0xB8000,p+16,0x1F20);
-                        __store16(0xB8000,p+18,0x0F30);__store16(0xB8000,p+20,0x0F78);
-                        __store16(0xB8000,p+22,0x0F31);__store16(0xB8000,p+24,0x0F30);
-                        __store16(0xB8000,p+26,0x0F30);__store16(0xB8000,p+28,0x0F30);
-                        __store16(0xB8000,p+30,0x0F30);__store16(0xB8000,p+32,0x0F30);
-                        p=(orow+4)*160;
-                        __store16(0xB8000,p,0x0F20);__store16(0xB8000,p+2,0x0748);
-                        __store16(0xB8000,p+4,0x0765);__store16(0xB8000,p+6,0x0761);
-                        __store16(0xB8000,p+8,0x0770);__store16(0xB8000,p+10,0x073A);
-                        __store16(0xB8000,p+12,0x1F20);
-                        __store16(0xB8000,p+14,0x0F30);__store16(0xB8000,p+16,0x0F78);
-                        __store16(0xB8000,p+18,0x0F32);__store16(0xB8000,p+20,0x0F30);
-                        __store16(0xB8000,p+22,0x0F30);__store16(0xB8000,p+24,0x0F30);
-                        __store16(0xB8000,p+26,0x0F30);__store16(0xB8000,p+28,0x0F30);
-                        __store16(0xB8000,p+30,0x1F20);
-                        __store16(0xB8000,p+32,0x0738);__store16(0xB8000,p+34,0x074D);
-                        __store16(0xB8000,p+36,0x0742);
+                        __store16(p,20,0x0F00|(48+nibble));
+                        __store16(p,22,0x1F20);
+                        __store16(p,24,0x0F4D);__store16(p,26,0x0F42);
+                        p=0xB8000+(orow+2)*160;
+                        __store16(p,0,0x0F20);__store16(p,2,0x0744);
+                        __store16(p,4,0x0744);__store16(p,6,0x0752);
+                        __store16(p,8,0x0734);__store16(p,10,0x072D);
+                        __store16(p,12,0x0733);__store16(p,14,0x0732);
+                        __store16(p,16,0x0730);__store16(p,18,0x0730);
+                        p=0xB8000+(orow+3)*160;
+                        __store16(p,0,0x0F20);__store16(p,2,0x074B);
+                        __store16(p,4,0x0765);__store16(p,6,0x0772);
+                        __store16(p,8,0x076E);__store16(p,10,0x0765);
+                        __store16(p,12,0x076C);__store16(p,14,0x073A);
+                        __store16(p,16,0x1F20);
+                        __store16(p,18,0x0F30);__store16(p,20,0x0F78);
+                        __store16(p,22,0x0F31);__store16(p,24,0x0F30);
+                        __store16(p,26,0x0F30);__store16(p,28,0x0F30);
+                        __store16(p,30,0x0F30);__store16(p,32,0x0F30);
+                        p=0xB8000+(orow+4)*160;
+                        __store16(p,0,0x0F20);__store16(p,2,0x0748);
+                        __store16(p,4,0x0765);__store16(p,6,0x0761);
+                        __store16(p,8,0x0770);__store16(p,10,0x073A);
+                        __store16(p,12,0x1F20);
+                        __store16(p,14,0x0F30);__store16(p,16,0x0F78);
+                        __store16(p,18,0x0F32);__store16(p,20,0x0F30);
+                        __store16(p,22,0x0F30);__store16(p,24,0x0F30);
+                        __store16(p,26,0x0F30);__store16(p,28,0x0F30);
+                        __store16(p,30,0x1F20);
+                        __store16(p,32,0x0738);__store16(p,34,0x074D);
+                        __store16(p,36,0x0742);
                         srow = orow + 6;
                     }}}}
 
                     /* pci */
                     if(c0==112){if(c1==99){if(c2==105){if(c3==0){
-                        p = orow * 160;
-                        __store16(0xB8000,p,0x0E50);__store16(0xB8000,p+2,0x0E43);
-                        __store16(0xB8000,p+4,0x0E49);__store16(0xB8000,p+6,0x1F20);
-                        __store16(0xB8000,p+8,0x0E44);__store16(0xB8000,p+10,0x0E65);
-                        __store16(0xB8000,p+12,0x0E76);__store16(0xB8000,p+14,0x0E69);
-                        __store16(0xB8000,p+16,0x0E63);__store16(0xB8000,p+18,0x0E65);
-                        __store16(0xB8000,p+20,0x0E73);__store16(0xB8000,p+22,0x0E3A);
+                        p=0xB8000+orow*160;
+                        __store16(p,0,0x0E50);__store16(p,2,0x0E43);
+                        __store16(p,4,0x0E49);__store16(p,6,0x1F20);
+                        __store16(p,8,0x0E44);__store16(p,10,0x0E65);
+                        __store16(p,12,0x0E76);__store16(p,14,0x0E69);
+                        __store16(p,16,0x0E63);__store16(p,18,0x0E65);
+                        __store16(p,20,0x0E73);__store16(p,22,0x0E3A);
                         n = 1;
                         pci_dev = 0;
                         while (pci_dev < 32) {
@@ -558,54 +615,54 @@ void kernel_main(void) {
                             pci_vendor = pci_val & 0xFFFF;
                             pci_device = (pci_val >> 16) & 0xFFFF;
                             if (pci_vendor != 0xFFFF) { if (pci_vendor > 0) {
-                                p = (orow + n) * 160;
+                                p = 0xB8000 + (orow + n) * 160;
                                 nibble=(pci_dev>>4)&0xF;
                                 if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p,0x0700|ch);
+                                __store16(p,0,0x0700|ch);
                                 nibble=pci_dev&0xF;
                                 if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+2,0x0700|ch);
-                                __store16(0xB8000,p+4,0x0F3A);
+                                __store16(p,2,0x0700|ch);
+                                __store16(p,4,0x0F3A);
                                 hexval=pci_vendor;
                                 nibble=(hexval>>12)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+6,0x0A00|ch);
+                                __store16(p,6,0x0A00|ch);
                                 nibble=(hexval>>8)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+8,0x0A00|ch);
+                                __store16(p,8,0x0A00|ch);
                                 nibble=(hexval>>4)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+10,0x0A00|ch);
+                                __store16(p,10,0x0A00|ch);
                                 nibble=hexval&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+12,0x0A00|ch);
-                                __store16(0xB8000,p+14,0x0F3A);
+                                __store16(p,12,0x0A00|ch);
+                                __store16(p,14,0x0F3A);
                                 hexval=pci_device;
                                 nibble=(hexval>>12)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+16,0x0B00|ch);
+                                __store16(p,16,0x0B00|ch);
                                 nibble=(hexval>>8)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+18,0x0B00|ch);
+                                __store16(p,18,0x0B00|ch);
                                 nibble=(hexval>>4)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+20,0x0B00|ch);
+                                __store16(p,20,0x0B00|ch);
                                 nibble=hexval&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
-                                __store16(0xB8000,p+22,0x0B00|ch);
+                                __store16(p,22,0x0B00|ch);
                                 if(pci_vendor==0x10DE){
-                                    __store16(0xB8000,p+26,0x0A4E);__store16(0xB8000,p+28,0x0A56);
-                                    __store16(0xB8000,p+30,0x0A49);__store16(0xB8000,p+32,0x0A44);
-                                    __store16(0xB8000,p+34,0x0A49);__store16(0xB8000,p+36,0x0A41);
+                                    __store16(p,26,0x0A4E);__store16(p,28,0x0A56);
+                                    __store16(p,30,0x0A49);__store16(p,32,0x0A44);
+                                    __store16(p,34,0x0A49);__store16(p,36,0x0A41);
                                 }
                                 if(pci_vendor==0x8086){
-                                    __store16(0xB8000,p+26,0x0B49);__store16(0xB8000,p+28,0x0B6E);
-                                    __store16(0xB8000,p+30,0x0B74);__store16(0xB8000,p+32,0x0B65);
-                                    __store16(0xB8000,p+34,0x0B6C);
+                                    __store16(p,26,0x0B49);__store16(p,28,0x0B6E);
+                                    __store16(p,30,0x0B74);__store16(p,32,0x0B65);
+                                    __store16(p,34,0x0B6C);
                                 }
                                 if(pci_vendor==0x1022){
-                                    __store16(0xB8000,p+26,0x0C41);__store16(0xB8000,p+28,0x0C4D);
-                                    __store16(0xB8000,p+30,0x0C44);
+                                    __store16(p,26,0x0C41);__store16(p,28,0x0C4D);
+                                    __store16(p,30,0x0C44);
                                 }
                                 if(pci_vendor==0x1234){
-                                    __store16(0xB8000,p+26,0x0D56);__store16(0xB8000,p+28,0x0D47);
-                                    __store16(0xB8000,p+30,0x0D41);
+                                    __store16(p,26,0x0D56);__store16(p,28,0x0D47);
+                                    __store16(p,30,0x0D41);
                                 }
                                 if(pci_vendor==0x1AF4){
-                                    __store16(0xB8000,p+26,0x0D51);__store16(0xB8000,p+28,0x0D45);
-                                    __store16(0xB8000,p+30,0x0D4D);__store16(0xB8000,p+32,0x0D55);
+                                    __store16(p,26,0x0D51);__store16(p,28,0x0D45);
+                                    __store16(p,30,0x0D4D);__store16(p,32,0x0D55);
                                 }
                                 n = n + 1;
                                 if (n > 14) { pci_dev = 32; }
@@ -615,53 +672,124 @@ void kernel_main(void) {
                         srow = orow + n + 1;
                     }}}}
 
-                    /* clear */
+                    /* clear — clear shell window interior only */
                     if(c0==99){if(c1==108){if(c2==101){if(c3==97){if(c4==114){
-                        i=0; while(i<4000){__store32(0xB8000,i,0x1F201F20);i=i+4;}
-                        __store16(0xB8000,0,0x1E46);__store16(0xB8000,2,0x1E61);
-                        __store16(0xB8000,4,0x1E73);__store16(0xB8000,6,0x1E74);
-                        __store16(0xB8000,8,0x1E4F);__store16(0xB8000,10,0x1E53);
-                        __store16(0xB8000,12,0x1F20);__store16(0xB8000,14,0x1F76);
-                        __store16(0xB8000,16,0x1F32);__store16(0xB8000,18,0x1F2E);
-                        __store16(0xB8000,20,0x1F31);
-                        srow = 3;
+                        dy = 11;
+                        while (dy < 22) {
+                            i = 1; while (i < 75) {
+                                __store16(0xB8000, dy * 160 + 4 + i * 2, 0x1020);
+                                i = i + 1;
+                            }
+                            dy = dy + 1;
+                        }
+                        srow = 11;
                     }}}}}
 
                     /* ver */
                     if(c0==118){if(c1==101){if(c2==114){if(c3==0){
-                        p=orow*160;
-                        __store16(0xB8000,p,0x0E46);__store16(0xB8000,p+2,0x0E61);
-                        __store16(0xB8000,p+4,0x0E73);__store16(0xB8000,p+6,0x0E74);
-                        __store16(0xB8000,p+8,0x0E4F);__store16(0xB8000,p+10,0x0E53);
-                        __store16(0xB8000,p+12,0x1F20);
-                        __store16(0xB8000,p+14,0x0F76);__store16(0xB8000,p+16,0x0F32);
-                        __store16(0xB8000,p+18,0x0F2E);__store16(0xB8000,p+20,0x0F31);
-                        __store16(0xB8000,p+22,0x1F20);
-                        __store16(0xB8000,p+24,0x0741);__store16(0xB8000,p+26,0x0744);
-                        __store16(0xB8000,p+28,0x0765);__store16(0xB8000,p+30,0x0761);
-                        __store16(0xB8000,p+32,0x0764);__store16(0xB8000,p+34,0x072D);
-                        __store16(0xB8000,p+36,0x0742);__store16(0xB8000,p+38,0x0749);
-                        __store16(0xB8000,p+40,0x0742);
+                        p=0xB8000+orow*160;
+                        /* "FastOS v2.2 ADead-BIB" */
+                        __store16(p,0,0x0E46);__store16(p,2,0x0E61);
+                        __store16(p,4,0x0E73);__store16(p,6,0x0E74);
+                        __store16(p,8,0x0E4F);__store16(p,10,0x0E53);
+                        __store16(p,12,0x1F20);
+                        __store16(p,14,0x0F76);__store16(p,16,0x0F32);
+                        __store16(p,18,0x0F2E);__store16(p,20,0x0F32);
+                        __store16(p,22,0x1F20);
+                        __store16(p,24,0x0741);__store16(p,26,0x0744);
+                        __store16(p,28,0x0765);__store16(p,30,0x0761);
+                        __store16(p,32,0x0764);__store16(p,34,0x072D);
+                        __store16(p,36,0x0742);__store16(p,38,0x0749);
+                        __store16(p,40,0x0742);
                         srow = orow + 2;
                     }}}}
 
-                    /* Scroll reset */
-                    if (srow > 23) {
-                        i=0; while(i<4000){__store32(0xB8000,i,0x1F201F20);i=i+4;}
-                        __store16(0xB8000,0,0x1E46);__store16(0xB8000,2,0x1E61);
-                        __store16(0xB8000,4,0x1E73);__store16(0xB8000,6,0x1E74);
-                        __store16(0xB8000,8,0x1E4F);__store16(0xB8000,10,0x1E53);
-                        __store16(0xB8000,12,0x1F20);__store16(0xB8000,14,0x1F76);
-                        __store16(0xB8000,16,0x1F32);__store16(0xB8000,18,0x1F2E);
-                        __store16(0xB8000,20,0x1F31);
-                        srow = 3;
+                    /* bg (Binary Guardian status) */
+                    if(c0==98){if(c1==103){if(c2==0){
+                        __outb(0x3F8, 66); __outb(0x3F8, 71); __outb(0x3F8, 13); __outb(0x3F8, 10);
+                        /* Line 1: "BG - Binary Guardian" */
+                        p=0xB8000+orow*160;
+                        __store16(p,0,0x0E42);__store16(p,2,0x0E47);
+                        __store16(p,4,0x1F20);__store16(p,6,0x0E2D);
+                        __store16(p,8,0x1F20);
+                        __store16(p,10,0x0F42);__store16(p,12,0x0F69);
+                        __store16(p,14,0x0F6E);__store16(p,16,0x0F61);
+                        __store16(p,18,0x0F72);__store16(p,20,0x0F79);
+                        __store16(p,22,0x1F20);
+                        __store16(p,24,0x0F47);__store16(p,26,0x0F75);
+                        __store16(p,28,0x0F61);__store16(p,30,0x0F72);
+                        __store16(p,32,0x0F64);__store16(p,34,0x0F69);
+                        __store16(p,36,0x0F61);__store16(p,38,0x0F6E);
+                        /* Line 2: " Po Magic: 506F4F53" */
+                        p=0xB8000+(orow+1)*160;
+                        __store16(p,0,0x0720);__store16(p,2,0x0750);
+                        __store16(p,4,0x076F);__store16(p,6,0x1F20);
+                        __store16(p,8,0x074D);__store16(p,10,0x0761);
+                        __store16(p,12,0x0767);__store16(p,14,0x0769);
+                        __store16(p,16,0x0763);__store16(p,18,0x073A);
+                        __store16(p,20,0x1F20);
+                        __store16(p,22,0x0A35);__store16(p,24,0x0A30);
+                        __store16(p,26,0x0A36);__store16(p,28,0x0A46);
+                        __store16(p,30,0x0A34);__store16(p,32,0x0A46);
+                        __store16(p,34,0x0A35);__store16(p,36,0x0A33);
+                        /* Line 3: " Level: KERNEL (Ring 0)" */
+                        p=0xB8000+(orow+2)*160;
+                        __store16(p,0,0x0720);__store16(p,2,0x074C);
+                        __store16(p,4,0x0765);__store16(p,6,0x0776);
+                        __store16(p,8,0x0765);__store16(p,10,0x076C);
+                        __store16(p,12,0x073A);__store16(p,14,0x1F20);
+                        __store16(p,16,0x0C4B);__store16(p,18,0x0C45);
+                        __store16(p,20,0x0C52);__store16(p,22,0x0C4E);
+                        __store16(p,24,0x0C45);__store16(p,26,0x0C4C);
+                        __store16(p,28,0x1F20);
+                        __store16(p,30,0x0728);__store16(p,32,0x0752);
+                        __store16(p,34,0x0769);__store16(p,36,0x076E);
+                        __store16(p,38,0x0767);__store16(p,40,0x1F20);
+                        __store16(p,42,0x0F30);__store16(p,44,0x0729);
+                        /* Line 4: " Load>Decode>Map>Policy" */
+                        p=0xB8000+(orow+3)*160;
+                        __store16(p,0,0x0720);__store16(p,2,0x0A4C);
+                        __store16(p,4,0x0A6F);__store16(p,6,0x0A61);
+                        __store16(p,8,0x0A64);__store16(p,10,0x0F3E);
+                        __store16(p,12,0x0A44);__store16(p,14,0x0A65);
+                        __store16(p,16,0x0A63);__store16(p,18,0x0F3E);
+                        __store16(p,20,0x0A4D);__store16(p,22,0x0A61);
+                        __store16(p,24,0x0A70);__store16(p,26,0x0F3E);
+                        __store16(p,28,0x0A50);__store16(p,30,0x0A6F);
+                        __store16(p,32,0x0A6C);__store16(p,34,0x0A69);
+                        __store16(p,36,0x0A63);__store16(p,38,0x0A79);
+                        /* Line 5: " Verdict: APPROVE" */
+                        p=0xB8000+(orow+4)*160;
+                        __store16(p,0,0x0720);__store16(p,2,0x0756);
+                        __store16(p,4,0x0765);__store16(p,6,0x0772);
+                        __store16(p,8,0x0764);__store16(p,10,0x0769);
+                        __store16(p,12,0x0763);__store16(p,14,0x0774);
+                        __store16(p,16,0x073A);__store16(p,18,0x1F20);
+                        __store16(p,20,0x0A41);__store16(p,22,0x0A50);
+                        __store16(p,24,0x0A50);__store16(p,26,0x0A52);
+                        __store16(p,28,0x0A4F);__store16(p,30,0x0A56);
+                        __store16(p,32,0x0A45);
+                        srow = orow + 6;
+                    }}}
+
+                    /* Scroll reset — clear shell window interior */
+                    if (srow > 21) {
+                        dy = 11;
+                        while (dy < 22) {
+                            i = 1; while (i < 75) {
+                                __store16(0xB8000, dy * 160 + 4 + i * 2, 0x1020);
+                                i = i + 1;
+                            }
+                            dy = dy + 1;
+                        }
+                        srow = 11;
                     }
 
-                    /* New prompt */
-                    p = srow * 160;
-                    __store16(0xB8000, p, 0x0F3E);
-                    __store16(0xB8000, p + 2, 0x0F20);
-                    cursor = p + 4;
+                    /* New prompt inside shell window (col 4 = offset 8) */
+                    p = 0xB8000 + srow * 160 + 8;
+                    __store16(p, 0, 0x0F3E);
+                    __store16(p, 2, 0x0F20);
+                    cursor = srow * 160 + 12;
                     clen = 0;
                     c0=0; c1=0; c2=0; c3=0; c4=0; c5=0;
                 }
@@ -671,7 +799,7 @@ void kernel_main(void) {
                     if (clen > 0) {
                         clen = clen - 1;
                         cursor = cursor - 2;
-                        __store16(0xB8000, cursor, 0x1F20);
+                        __store16(0xB8000, cursor, 0x1020);
                         if(clen==0){c0=0;} if(clen==1){c1=0;}
                         if(clen==2){c2=0;} if(clen==3){c3=0;}
                         if(clen==4){c4=0;} if(clen==5){c5=0;}

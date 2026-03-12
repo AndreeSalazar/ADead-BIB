@@ -312,6 +312,7 @@ if ($Run) {
         # Boot from raw hard disk
         # -cpu EPYC-Milan = AMD Zen3 (AVX2, AES-NI, SSE4.2)
         # Matches user's Ryzen 5 5600X architecture
+        # PS/2 mouse: Ctrl+Alt+G to release/grab cursor in QEMU window
         & $qemu -drive "file=$imagePath,format=raw" -m 128M -boot c -cpu EPYC-Milan -no-reboot -no-shutdown -serial stdio
     } else {
         Write-Error "QEMU not found"
