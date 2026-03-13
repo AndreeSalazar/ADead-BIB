@@ -298,6 +298,23 @@ impl CppLexer {
             while self.pos < self.chars.len() && self.peek().is_ascii_hexdigit() {
                 self.advance();
             }
+        } else if self.peek() == '0' && (self.peek_at(1) == 'b' || self.peek_at(1) == 'B') {
+            // C++14 binary literals: 0b10101010
+            self.advance(); // 0
+            self.advance(); // b
+            let bin_start = self.pos;
+            while self.pos < self.chars.len() && matches!(self.peek(), '0' | '1' | '\'') {
+                self.advance();
+            }
+            let bin_str: String = self.chars[bin_start..self.pos].iter()
+                .filter(|c| **c != '\'')
+                .collect();
+            // Skip suffixes
+            while self.pos < self.chars.len() && matches!(self.peek(), 'u' | 'U' | 'l' | 'L') {
+                self.advance();
+            }
+            let val = i64::from_str_radix(&bin_str, 2).unwrap_or(0);
+            return CppToken::IntLiteral(val);
         } else {
             // Decimal / float
             while self.pos < self.chars.len() && self.peek().is_ascii_digit() {
