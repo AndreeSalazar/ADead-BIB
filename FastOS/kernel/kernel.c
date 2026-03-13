@@ -1,12 +1,19 @@
-/* FastOS v2.2 Kernel — ADead-BIB C (Inline, modular design)
+/* FastOS v3.0 Kernel — ADead-BIB C (Inline, modular design)
  * TUI Desktop with windowed shell on VGA text mode (CP437 box chars)
+ * GUI Desktop available via framebuffer (VESA VBE 1024x768x32)
  * Modules integrated inline:
- *   kernel/cpu/ryzen.c    → CPUID family/model, L3, cores, AVX2
- *   kernel/memory/e820    → E820 map from 0x20000, RAM total
- *   kernel/drivers/kbd    → i8042 PS/2 polling (__inb 0x64/0x60)
- *   kernel/drivers/timer  → PIT 8253 init (100 Hz)
- *   kernel/interrupts/pic → PIC remap 0x20/0x28
- *   kernel/tui/desktop    → Title bar, System Info window, Shell window, Taskbar
+ *   kernel/cpu/ryzen.c      → CPUID family/model, L3, cores, AVX2
+ *   kernel/memory/e820      → E820 map from 0x20000, RAM total
+ *   kernel/drivers/kbd      → i8042 PS/2 polling (__inb 0x64/0x60)
+ *   kernel/drivers/timer    → PIT 8253 init (100 Hz)
+ *   kernel/drivers/fb.c     → Framebuffer AVX2 256-bit (fill/blit/flip)
+ *   kernel/drivers/mouse_drv.c → PS/2 mouse polling
+ *   kernel/interrupts/pic   → PIC remap 0x20/0x28
+ *   kernel/tui/desktop      → Title bar, System Info window, Shell window, Taskbar
+ *   kernel/gui/font.c       → 8x16 CP437 bitmap font
+ *   kernel/gui/wm.c         → Window Manager (PoWindow, z-order, drag)
+ *   kernel/gui/svg.c        → Procedural icon renderer
+ *   kernel/gui/desktop.c    → GUI desktop compositor + event loop
  * __store16(p, CONST, val) where p=0xB8000+row*160 (constant offset pattern)
  * __store32 only for screen clear
  * __inl/__outl for PCI config space */
@@ -387,7 +394,37 @@ void kernel_main(void) {
     __outb(0x3F8, 75); __outb(0x3F8, 13); __outb(0x3F8, 10);
 
     /* ================================================================
-     * PHASE 6: Shell inside window (Row 11, Col 4 inside shell window)
+     * PHASE 6: GUI Desktop (v3.0) — Framebuffer mode
+     * If VESA VBE was set by stage2, switch to GUI desktop.
+     * desktop_mode = 1 → GUI framebuffer (1024x768 or 1920x1080)
+     * desktop_mode = 0 → VGA text TUI (fallback, current default)
+     *
+     * To enable GUI: stage2.asm must set VESA VBE mode before
+     * jumping to kernel_main, and set desktop_mode flag at a
+     * known address (e.g. 0x20100) or via a CPUID-like probe.
+     *
+     * Integration:
+     *   fb_init(1920, 1080, 32);   — init framebuffer
+     *   desktop_init(1920, 1080);   — init desktop + subsystems
+     *   desktop_run();              — event loop (never returns)
+     * ================================================================ */
+    desktop_mode = 0; /* 0=TUI, 1=GUI — set to 1 when VESA VBE ready */
+
+    if (desktop_mode == 1) {
+        /* GUI path: framebuffer desktop replaces VGA text TUI */
+        /* Serial: "GUI:INIT\r\n" */
+        __outb(0x3F8, 71); __outb(0x3F8, 85); __outb(0x3F8, 73);
+        __outb(0x3F8, 58); __outb(0x3F8, 73); __outb(0x3F8, 78);
+        __outb(0x3F8, 73); __outb(0x3F8, 84);
+        __outb(0x3F8, 13); __outb(0x3F8, 10);
+
+        fb_init(1920, 1080, 32);
+        desktop_init(1920, 1080);
+        desktop_run();  /* event loop — never returns */
+    }
+
+    /* ================================================================
+     * PHASE 6b: VGA Text TUI Shell (fallback when no VESA)
      * ================================================================ */
     srow = 11;
     p = 0xB8000 + srow * 160 + 8; /* col 4 inside window = offset 4+4=8 */
@@ -410,48 +447,48 @@ void kernel_main(void) {
 
                     /* help */
                     if(c0==104){if(c1==101){if(c2==108){if(c3==112){if(c4==0){
-                        /* "Commands:" */
-                        p=0xB8000+orow*160;
+                        /* "Commands:" — inside shell window (offset 8 from row start) */
+                        p=0xB8000+orow*160+8;
                         __store16(p,0,0x0E43);__store16(p,2,0x0E6F);
                         __store16(p,4,0x0E6D);__store16(p,6,0x0E6D);
                         __store16(p,8,0x0E61);__store16(p,10,0x0E6E);
                         __store16(p,12,0x0E64);__store16(p,14,0x0E73);
                         __store16(p,16,0x0E3A);
                         /* "help    show this" */
-                        p=0xB8000+(orow+1)*160+4;
+                        p=0xB8000+(orow+1)*160+8;
                         __store16(p,0,0x0F68);__store16(p,2,0x0F65);
                         __store16(p,4,0x0F6C);__store16(p,6,0x0F70);
                         __store16(p,14,0x0773);__store16(p,16,0x0768);
                         __store16(p,18,0x076F);__store16(p,20,0x0777);
-                        __store16(p,22,0x1F20);__store16(p,24,0x0774);
+                        __store16(p,22,0x1020);__store16(p,24,0x0774);
                         __store16(p,26,0x0768);__store16(p,28,0x0769);
                         __store16(p,30,0x0773);
                         /* "cpu     CPU info" */
-                        p=0xB8000+(orow+2)*160+4;
+                        p=0xB8000+(orow+2)*160+8;
                         __store16(p,0,0x0F63);__store16(p,2,0x0F70);
                         __store16(p,4,0x0F75);
                         __store16(p,14,0x0743);__store16(p,16,0x0750);
-                        __store16(p,18,0x0755);__store16(p,20,0x1F20);
+                        __store16(p,18,0x0755);__store16(p,20,0x1020);
                         __store16(p,22,0x0769);__store16(p,24,0x076E);
                         __store16(p,26,0x0766);__store16(p,28,0x076F);
                         /* "mem     RAM info" */
-                        p=0xB8000+(orow+3)*160+4;
+                        p=0xB8000+(orow+3)*160+8;
                         __store16(p,0,0x0F6D);__store16(p,2,0x0F65);
                         __store16(p,4,0x0F6D);
                         __store16(p,14,0x0752);__store16(p,16,0x0741);
-                        __store16(p,18,0x074D);__store16(p,20,0x1F20);
+                        __store16(p,18,0x074D);__store16(p,20,0x1020);
                         __store16(p,22,0x0769);__store16(p,24,0x076E);
                         __store16(p,26,0x0766);__store16(p,28,0x076F);
                         /* "pci     PCI scan" */
-                        p=0xB8000+(orow+4)*160+4;
+                        p=0xB8000+(orow+4)*160+8;
                         __store16(p,0,0x0F70);__store16(p,2,0x0F63);
                         __store16(p,4,0x0F69);
                         __store16(p,14,0x0750);__store16(p,16,0x0743);
-                        __store16(p,18,0x0749);__store16(p,20,0x1F20);
+                        __store16(p,18,0x0749);__store16(p,20,0x1020);
                         __store16(p,22,0x0773);__store16(p,24,0x0763);
                         __store16(p,26,0x0761);__store16(p,28,0x076E);
                         /* "clear   clear" */
-                        p=0xB8000+(orow+5)*160+4;
+                        p=0xB8000+(orow+5)*160+8;
                         __store16(p,0,0x0F63);__store16(p,2,0x0F6C);
                         __store16(p,4,0x0F65);__store16(p,6,0x0F61);
                         __store16(p,8,0x0F72);
@@ -459,7 +496,7 @@ void kernel_main(void) {
                         __store16(p,18,0x0765);__store16(p,20,0x0761);
                         __store16(p,22,0x0772);
                         /* "ver     version" */
-                        p=0xB8000+(orow+6)*160+4;
+                        p=0xB8000+(orow+6)*160+8;
                         __store16(p,0,0x0F76);__store16(p,2,0x0F65);
                         __store16(p,4,0x0F72);
                         __store16(p,14,0x0776);__store16(p,16,0x0765);
@@ -467,25 +504,25 @@ void kernel_main(void) {
                         __store16(p,22,0x0769);__store16(p,24,0x076F);
                         __store16(p,26,0x076E);
                         /* "bg      Binary Guardian" */
-                        p=0xB8000+(orow+7)*160+4;
+                        p=0xB8000+(orow+7)*160+8;
                         __store16(p,0,0x0F62);__store16(p,2,0x0F67);
                         __store16(p,14,0x0742);__store16(p,16,0x0769);
                         __store16(p,18,0x076E);__store16(p,20,0x0761);
                         __store16(p,22,0x0772);__store16(p,24,0x0779);
-                        __store16(p,26,0x1F20);
+                        __store16(p,26,0x1020);
                         __store16(p,28,0x0747);__store16(p,30,0x0775);
                         __store16(p,32,0x0761);__store16(p,34,0x0772);
                         __store16(p,36,0x0764);__store16(p,38,0x0769);
                         __store16(p,40,0x0761);__store16(p,42,0x076E);
                         /* "compat  compat layer" */
-                        p=0xB8000+(orow+8)*160+4;
+                        p=0xB8000+(orow+8)*160+8;
                         __store16(p,0,0x0F63);__store16(p,2,0x0F6F);
                         __store16(p,4,0x0F6D);__store16(p,6,0x0F70);
                         __store16(p,8,0x0F61);__store16(p,10,0x0F74);
                         __store16(p,14,0x0763);__store16(p,16,0x076F);
                         __store16(p,18,0x076D);__store16(p,20,0x0770);
                         __store16(p,22,0x0761);__store16(p,24,0x0774);
-                        __store16(p,26,0x1F20);__store16(p,28,0x076C);
+                        __store16(p,26,0x1020);__store16(p,28,0x076C);
                         __store16(p,30,0x0761);__store16(p,32,0x0779);
                         __store16(p,34,0x0765);__store16(p,36,0x0772);
                         srow = orow + 10;

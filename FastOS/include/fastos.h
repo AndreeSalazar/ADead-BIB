@@ -1,15 +1,17 @@
 /*
- * include/fastos.h — FastOS Native API v2.2
+ * include/fastos.h — FastOS Native API v3.0
  *
  * El header nativo de FastOS. Un solo include da acceso
  * a toda la API del OS. Sin linker externo. Sin flags misteriosos.
+ * GUI desktop nativo con framebuffer 256-bit.
  *
  * Uso:
  *   #include <fastos.h>
  *
  * Compilar con ADead-BIB:
- *   adb cc miapp.c --target fastos -o miapp.po
- *   adb step miapp.c   ← ver pipeline completo de 7 fases
+ *   adb cc miapp.c --target fastos256 -o miapp.po
+ *   adb cc miapp.c --target fastos64  -o miapp.po
+ *   adb step miapp.c   ← ver pipeline completo de 8 fases
  */
 
 #ifndef _FASTOS_H
@@ -49,7 +51,7 @@ typedef struct __attribute__((packed)) {
 } fastos_po_header_t;
 
 #define FASTOS_PO_MAGIC    "FASTOS"
-#define FASTOS_PO_VERSION  2
+#define FASTOS_PO_VERSION  8   /* v8.0 — 32-byte header */
 #define FASTOS_PO_HDRSIZE  24
 
 /* ══════════════════════════════════════════════════════
@@ -69,6 +71,13 @@ typedef struct __attribute__((packed)) {
 #define SYS_BG_VERIFY      201  /* verificar binario con Binary Guardian */
 #define SYS_PO_EXEC        202  /* ejecutar binario .Po */
 #define SYS_DRIVER_LOAD    203  /* cargar driver desde disco */
+/* GUI syscalls (v3.0) */
+#define SYS_WIN_CREATE     300  /* crear ventana PoWindow */
+#define SYS_WIN_DESTROY    301  /* destruir ventana */
+#define SYS_WIN_DRAW       302  /* dibujar en ventana */
+#define SYS_WIN_EVENT      303  /* leer evento de ventana */
+#define SYS_FB_BLIT        304  /* blit superficie al framebuffer */
+#define SYS_ICON_LOAD      305  /* cargar icono SVG */
 
 /* ══════════════════════════════════════════════════════
  * § 3. Binary Guardian — Capabilities
@@ -187,7 +196,40 @@ void shell_start(void);
 void init_main(void);
 
 /* ══════════════════════════════════════════════════════
- * § 6. Compatibility Layer (v2.2)
+ * § 6. GUI API (v3.0) — Ventanas nativas .po
+ * ══════════════════════════════════════════════════════ */
+
+/*
+ * FastOS GUI: framebuffer directo, sin X11, sin Wayland, sin GDI.
+ * Rendering 256-bit AVX2: 8 píxeles/ciclo.
+ *
+ * App nativa con ventana:
+ *   #include <fastos.h>
+ *   int main() {
+ *       PoWindow *win = po_window_create("Mi App", 800, 600);
+ *       po_window_draw(win, ...);
+ *       po_event_loop(win);
+ *       return 0;
+ *   }
+ *   adb cc miapp.c --target fastos256 -o miapp.po
+ *
+ * Módulos GUI (kernel/gui/ + kernel/drivers/):
+ *   fb.c        → framebuffer VESA VBE + AVX2 256-bit
+ *   font.c      → bitmap font 8×16 CP437
+ *   mouse_drv.c → PS/2 mouse polling + cursor
+ *   wm.c        → window manager (PoWindow, z-order, drag)
+ *   svg.c       → icon renderer (procedural, 32×32)
+ *   desktop.c   → desktop compositor (titlebar, taskbar, icons)
+ *
+ * Memory map (GUI):
+ *   0x400000 (4MB)  — framebuffer back buffer (3MB)
+ *   0x700000 (7MB)  — icon cache (128KB)
+ *   0x800000 (8MB)  — window content surfaces (2MB each × 16)
+ *   0xFD000000      — hardware framebuffer (VESA VBE)
+ */
+
+/* ══════════════════════════════════════════════════════
+ * § 7. Compatibility Layer (v2.2)
  *
  * FastOS no hereda Windows ni Linux. TRADUCE sus llamadas.
  * ADead-BIB actúa como intérprete automático.
@@ -209,7 +251,7 @@ void init_main(void);
  * ══════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════
- * § 7. Filosofía FastOS — Compilado en el Header
+ * § 8. Filosofía FastOS — Compilado en el Header
  * ══════════════════════════════════════════════════════ */
 
 /*
@@ -217,17 +259,19 @@ void init_main(void);
  * "El CPU ya sabe todo — solo hay que dejarlo recordar gradualmente."
  * "Los drivers van en el disco, no en el OS."
  * "No heredar, TRADUCIR."
+ * "ASM despierta. C controla. 256-bit vuela."
  *
  * Si compilas con ADead-BIB:
- *   adb cc miapp.c --target fastos   → binario .Po 24-byte header
- *   adb cc miapp.c --target windows  → PE compatible
- *   adb cc miapp.c --target linux    → ELF compatible
- *   adb cc miapp.c --target all      → los 3 simultáneamente
- *   adb step miapp.c                 → ver las 7 fases del compilador
+ *   adb cc miapp.c --target fastos256 → .Po 32-byte header + YMM
+ *   adb cc miapp.c --target fastos64  → .Po 32-byte header
+ *   adb cc miapp.c --target windows   → PE compatible
+ *   adb cc miapp.c --target linux     → ELF compatible
+ *   adb cc miapp.c --target all       → los 3 simultáneamente
+ *   adb step miapp.c                  → ver las 8 fases del compilador
  *
  * SIN linker. SIN flags. SIN Stack Overflow obligatorio.
  * UN comando. UN binario. Cero dolor.
- * Binary Is Binary.
+ * Binary Is Binary. 💀🦈 🇵🇪
  */
 
 #endif /* _FASTOS_H */

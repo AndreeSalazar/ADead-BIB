@@ -1,12 +1,14 @@
-# FastOS v2.0 💀🦈
-**El OS Definitivo — Puro, Mínimo, Sin Muletas**
+# FastOS v3.0 💀🦈 🇵🇪
+**El OS Definitivo — GUI Nativo + 256-bit + Sin Muletas**
 
 > *"Un OS es un OS. No una muleta."*  
 > *"El CPU ya sabe todo — solo hay que dejarlo recordar gradualmente."*  
-> *"Los drivers van en el disco, no en el OS."*
+> *"ASM despierta. C controla. 256-bit vuela."*
 
-**Compilador:** ADead-BIB (GPLv2)  
-**Formato nativo:** `.Po` (24 bytes header)  
+**Compilador:** ADead-BIB v8.0 (GPLv2)  
+**Formato nativo:** `.Po` v8.0 (32 bytes header, 256-bit YMM)  
+**GUI:** Framebuffer directo — sin X11, sin Wayland, sin GDI  
+**Rendering:** AVX2 256-bit — 8 píxeles/ciclo via YMM  
 **Seguridad:** Binary Guardian (matemática pura, sin heurística)  
 **Licencia:** Apache 2.0  
 **Autor:** Eddi Andreé Salazar Matos 🇵🇪
@@ -25,7 +27,7 @@ FastOS es la respuesta a una pregunta simple:
 
 > *¿Qué es un OS si solo contiene lo que debe contener?*
 
-La respuesta: **~150 KB.**
+La respuesta: **~200 KB con GUI completo.**
 
 ---
 
@@ -34,7 +36,7 @@ La respuesta: **~150 KB.**
 ### 1. El CPU ya sabe todo — solo hay que dejarlo recordar
 
 Cualquier CPU x86-64 moderno ya tiene quemado en silicio:
-- Modos 16/32/64-bit, SSE, AVX2
+- Modos 16/32/64-bit, SSE, AVX2 (256-bit YMM0-YMM15)
 - Controladores de teclado, VGA, PCI, interrupciones
 - Toda la historia x86 desde 1978 hasta hoy
 
@@ -104,12 +106,27 @@ FastOS/
 │   └── uefi/               # UEFI support (entrada directa 64-bit)
 │
 ├── kernel/                  # Kernel core — C puro via ADead-BIB
-│   ├── main.c              # Entry point — CPU ya está despierto aquí
-│   ├── memory.c            # Paginación, heap
-│   ├── interrupts.c        # IDT, IRQ handlers
-│   ├── scheduler.c         # Round-robin preemptivo
-│   ├── syscall.c           # POSIX-like + extensiones FastOS
-│   ├── hotplug.c           # PCI scan → buscar driver .Po → BG verify → ejecutar
+│   ├── kernel.c            # Entry point — CPU ya está despierto aquí
+│   ├── memory/             # Paginación, heap, E820
+│   │   └── memory_init.c   # Bump allocator + E820 map
+│   ├── drivers/            # Hardware drivers (C puro, polling)
+│   │   ├── keyboard.c      # PS/2 keyboard (i8042 port 0x60)
+│   │   ├── mouse_drv.c     # PS/2 mouse (auxiliary port, 3-byte packets)
+│   │   ├── timer.c         # PIT 8254 @ 100Hz
+│   │   └── fb.c            # Framebuffer VESA VBE + AVX2 256-bit
+│   │                         #   fill_rect: 8 pixels/cycle (VPBROADCASTD+VMOVAPS)
+│   │                         #   blit: 8 pixels/cycle (VMOVAPS load+store)
+│   │                         #   alpha blend, gradient, cursor
+│   ├── gui/                # GUI Desktop (v3.0)
+│   │   ├── font.c          # Bitmap font 8×16 CP437 (built-in, 4KB)
+│   │   ├── wm.c            # Window Manager (PoWindow, z-order, drag)
+│   │   │                     #   16 windows max, titlebar, close, focus
+│   │   ├── svg.c           # Icon renderer (procedural, 32×32 ARGB)
+│   │   │                     #   Built-in: folder, terminal, settings, app, adead
+│   │   └── desktop.c       # Desktop compositor
+│   │                         #   titlebar, taskbar, icons, shell window
+│   │                         #   event loop: keyboard + mouse + compose + flip
+│   ├── hotplug.c           # PCI scan → buscar driver .Po → BG verify
 │   └── panic.c             # Kernel panic handler
 │
 ├── security/               # Binary Guardian (hereda BG Rust crate via FFI)
@@ -134,18 +151,26 @@ FastOS/
 │   ├── memory.c
 │   └── printf.c
 │
+├── compat/                 # Compatibility Layer (v2.2)
+│   ├── fastos_syscall.h    # Syscalls nativas FastOS
+│   ├── fastos_stdlib.h     # Stdlib mínima (mem, str, I/O, math AVX2)
+│   ├── fastos_win32.h      # Win32 subset → traduce a syscalls FastOS
+│   ├── fastos_posix.h      # POSIX subset → traduce a syscalls FastOS
+│   └── compat_test.c       # Test suite de traducción
+│
 ├── include/
-│   ├── kernel.h
-│   ├── types.h
-│   └── fastos.h            # FastOS native API
+│   ├── kernel.h            # v3.0: kernel + GUI subsystem declarations
+│   ├── types.h             # Fixed-width types, macros
+│   ├── fastos.h            # FastOS Native API v3.0 + GUI
+│   └── po.h                # Po executable format (detailed)
 │
 └── userspace/
     ├── shell.c             # Shell básico
     └── init.c              # Init process
 ```
 
-**Nota:** No existe `/drivers/` en el kernel.  
-Los drivers viven en el disco y se cargan bajo demanda.
+**Nota:** Los drivers en `kernel/drivers/` son drivers de hardware esencial (teclado, mouse, timer, framebuffer).  
+Drivers de dispositivos externos viven en disco como binarios `.Po` verificados por BG.
 
 ---
 
@@ -212,9 +237,9 @@ cargo build --release --manifest-path security/Cargo.toml
 # Kernel (ADead-BIB — sin GCC, sin linker externo)
 adb cc kernel/main.c --flat --org=0x100000 -o build/kernel64.bin
 
-# Verificar con step mode (7 fases)
+# Verificar con step mode (8 fases)
 adb step kernel/main.c
-#  [SOURCE] → [PREPROC] → [LEXER] → [PARSER] → [UB] → [CODEGEN] → [OUTPUT]
+#  [SOURCE] → [PREPROC] → [LEXER] → [PARSER] → [IR] → [UB] → [CODEGEN] → [OUTPUT]
 #  0 UB encontrados ✅
 
 # Imagen booteable
@@ -223,7 +248,7 @@ powershell -File build64.ps1
 
 ### Step Mode — Verificación Obligatoria
 
-`adb step` muestra las 7 fases de compilación: source, preprocessor, lexer, parser, UB detector, codegen, output. El kernel DEBE compilar con **0 UB**. Step mode lo verifica antes de cada cambio.
+`adb step` muestra las 8 fases de compilación: source, preprocessor, lexer, parser, IR, UB detector, codegen, output. El kernel DEBE compilar con **0 UB**. Step mode lo verifica antes de cada cambio.
 
 ---
 
@@ -262,24 +287,30 @@ Mismo binario + misma policy = mismo veredicto. Siempre. Determinista y matemát
 
 ---
 
-## Formato .Po — Ejecutable Nativo
+## Formato .Po v8.0 — Ejecutable Nativo 256-bit
 
 ```
-Header: 24 bytes exactos
+Header: 32 bytes (v8.0)
 
-"FASTOS" (6 bytes)  — identidad
-version  (2 bytes)  — compatibilidad
-code_offset (4 bytes)
-code_size   (4 bytes)
-data_offset (4 bytes)
-data_size   (4 bytes)
-─────────────────────
-Total: 24 bytes. Listo.
+Offset  Size  Campo
+------  ----  ----------------
+  0       4   magic: 0x506F4F53 ("PoOS")
+  4       1   version: 0x80
+  5       1   bits: 16|64|128|256
+  6       2   ymm_used: bitmask YMM0-YMM15
+  8       4   code_offset
+ 12       4   code_size
+ 16       4   data_offset
+ 20       4   data_size
+ 24       4   soa_map: offset to SoA descriptor
+ 28       4   bg_stamp: FNV-1a hash for BG
+──────────────────────
+Total: 32 bytes.
 ```
 
 PE de Windows: ~1KB mínimo de header.  
 ELF de Linux: 64 bytes + program headers + section headers.  
-`.Po` de FastOS: **24 bytes. Solo lo que existe.**
+`.Po` v8.0: **32 bytes. 256-bit nativo. BG integrado.**
 
 ---
 
@@ -289,17 +320,21 @@ ELF de Linux: 64 bytes + program headers + section headers.
 |---|---|
 | stage1.asm | 512 bytes |
 | stage2.asm | ~3 KB |
-| kernel core | ~50-100 KB |
+| kernel core | ~50 KB |
+| GUI (fb+wm+font+svg+desktop) | ~40 KB |
+| Mouse driver | ~3 KB |
 | Binary Guardian | ~20 KB |
+| Font data (8×16 CP437) | ~4 KB |
+| Icon cache (5 icons) | ~20 KB |
 | lib/ mínima | ~10 KB |
-| **Total FastOS** | **~150 KB** |
+| **Total FastOS v3.0** | **~200 KB** |
 
 | OS | Tamaño mínimo |
 |---|---|
 | Windows 11 | 4 GB |
 | Linux (minimal) | 100 MB |
 | Android | 2 GB |
-| **FastOS** | **~150 KB** |
+| **FastOS v3.0** | **~200 KB** |
 
 ---
 
@@ -309,14 +344,16 @@ ELF de Linux: 64 bytes + program headers + section headers.
 FastOS demuestra que el diseño original del OS era correcto — y todos se alejaron de él.
 
 ```
-Binarios .Po nativos   → FastOS ✓  (formato nativo 24-byte header)
+Binarios .Po v8.0      → FastOS ✓  (formato nativo 32-byte header, 256-bit)
 BIOS Legacy boot       → ✓  (MBR stage1 → stage2 → kernel)
 x86-64 Long Mode       → ✓  (boot gradual 16→32→64)
-SSE/AVX2 detection     → ✓  (CPUID runtime, no hardcoded)
+AVX2 256-bit           → ✓  (YMM0-YMM15, 8 pixels/cycle rendering)
+GUI Desktop            → ✓  (framebuffer 1024×768, window manager, icons)
+PS/2 Mouse             → ✓  (3-byte packets, cursor overlay)
 BG security gate       → ✓  (todo binario verificado pre-ejecución)
+Win32 compat layer     → ✓  (CreateFile, VirtualAlloc, etc. → fastos_syscall)
+POSIX compat layer     → ✓  (open, malloc, mmap, etc. → fastos_syscall)
 ```
-
-**Futuro:** Compatibilidad Win32/POSIX via ADead-BIB cross-compilation targets.
 
 ---
 
@@ -363,13 +400,17 @@ Sin 24 millones de líneas de código de drivers.
 
 ---
 
-**FastOS v2.0 — ~150 KB. Sin muletas. Sin museo. Sin cuernos dorados falsos. 💀🦈🇵🇪**
+**FastOS v3.0 — ~200 KB. GUI nativo. 256-bit. Sin muletas. 💀🦈🇵🇪**
 
 ```
-ADead-BIB compila → FastOS arranca → CPU despierta gradual
-drivers bajo demanda → Binary Guardian matemático
-.Po 24 bytes → Win32 heredado → NVIDIA funciona
-Todo en 150 KB.
+ADead-BIB v8.0 compila → FastOS arranca → CPU despierta gradual
+framebuffer directo → AVX2 256-bit rendering → 8 pixels/cycle
+window manager nativo → PoWindow + z-order + drag
+mouse PS/2 → cursor overlay → click dispatch
+iconos procedurales → folder, terminal, settings, app
+.Po v8.0 32 bytes → YMM registers → BG stamp
+Win32/POSIX compat → TRADUCIR, no heredar
+Todo en 200 KB.
 ```
 
 *Hecho en Perú 🇵🇪 — Eddi Andreé Salazar Matos*

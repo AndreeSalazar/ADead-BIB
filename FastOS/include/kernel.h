@@ -1,6 +1,7 @@
 /*
- * FastOS v2.0 — Kernel Header
+ * FastOS v3.0 — Kernel Header
  * ADead-BIB Native Operating System
+ * GUI Desktop + 256-bit Native
  */
 
 #ifndef _FASTOS_KERNEL_H
@@ -512,5 +513,97 @@ int gpu_init(void);
 int gpu_detect_nvidia(struct nv_device *dev);
 int gpu_set_mode(uint32_t width, uint32_t height, uint32_t bpp);
 uint32_t *gpu_get_framebuffer(void);
+
+/* ============================================================
+ * GUI Subsystem (v3.0)
+ *
+ * Framebuffer → Font → Mouse → WM → Icons → Desktop
+ * No X11, no Wayland, no GDI — direct framebuffer compositing.
+ * AVX2 256-bit accelerated fill/blit (8 pixels/cycle).
+ * ============================================================ */
+
+/* --- Framebuffer Surface (shared by all GUI modules) --- */
+typedef struct {
+    uint32_t *buffer;       /* renamed to avoid conflict with fb_t above */
+    uint32_t width;
+    uint32_t height;
+    uint32_t pitch;         /* bytes per scanline */
+    uint32_t bpp;           /* bits per pixel (32) */
+    uint32_t size;          /* total buffer size in bytes */
+} gui_surface_t;
+
+/* --- Window Manager: PoWindow --- */
+#define WM_MAX_WINDOWS    16
+#define WM_TITLEBAR_H     24
+#define WM_TITLE_MAX      63
+
+/* Window flags */
+#define WINDOW_VISIBLE     0x0001
+#define WINDOW_RESIZABLE   0x0002
+#define WINDOW_MODAL       0x0004
+#define WINDOW_FOCUSED     0x0008
+#define WINDOW_DRAGGING    0x0010
+#define WINDOW_CLOSABLE    0x0020
+#define WINDOW_MINIMIZED   0x0040
+#define WINDOW_MAXIMIZED   0x0080
+#define WINDOW_DECORATED   0x0100
+#define WINDOW_SHELL       0x0200
+
+typedef struct {
+    uint32_t    id;
+    char        title[WM_TITLE_MAX + 1];
+    int32_t     x, y, w, h;
+    int32_t     content_w, content_h;
+    uint32_t    flags;
+    uint32_t    bg_color;
+    int32_t     z_order;
+    gui_surface_t content;
+} po_window_gui_t;
+
+/* --- Icon System --- */
+#define ICON_SMALL   32
+#define ICON_LARGE   64
+
+typedef struct {
+    uint32_t *pixels;
+    uint32_t  width;
+    uint32_t  height;
+    int       valid;
+    char      name[16];
+} gui_icon_t;
+
+/* --- GUI Function Prototypes --- */
+
+/* Framebuffer (kernel/drivers/fb.c) */
+void gui_fb_init(void);
+void gui_fb_clear(uint32_t color);
+void gui_fb_pixel(uint32_t x, uint32_t y, uint32_t color);
+void gui_fb_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);
+void gui_fb_flip(void);
+
+/* Font (kernel/gui/font.c) */
+void gui_font_draw_char(uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg);
+void gui_font_draw_string(uint32_t x, uint32_t y, const char *s, uint32_t fg, uint32_t bg);
+
+/* Mouse (kernel/drivers/mouse_drv.c) */
+int  gui_mouse_init(int32_t screen_w, int32_t screen_h);
+int  gui_mouse_poll(void);
+void gui_mouse_get_pos(int32_t *x, int32_t *y);
+int  gui_mouse_left_clicked(void);
+
+/* Window Manager (kernel/gui/wm.c) */
+void gui_wm_init(int32_t screen_w, int32_t screen_h);
+po_window_gui_t *gui_wm_create(const char *title, int32_t x, int32_t y,
+                                int32_t w, int32_t h, uint32_t flags);
+void gui_wm_destroy(po_window_gui_t *win);
+void gui_wm_compose(void);
+
+/* Icons (kernel/gui/svg.c) */
+void gui_icon_init(void);
+gui_icon_t *gui_icon_find(const char *name);
+
+/* Desktop (kernel/gui/desktop.c) */
+void gui_desktop_init(int32_t screen_w, int32_t screen_h);
+void gui_desktop_run(void);
 
 #endif /* _FASTOS_KERNEL_H */
