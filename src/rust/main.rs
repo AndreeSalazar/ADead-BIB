@@ -1,7 +1,8 @@
 // ============================================================
-// ADead-BIB Compiler CLI v7.0
+// ADead-BIB Compiler CLI v8.0
 // C/C++ Native Compiler — Sin GCC, Sin LLVM, Sin Clang
 // 100% Self-Sufficient — Sin libc, Sin linker externo
+// 256-bit nativo — YMM/AVX2 — SoA natural
 // ============================================================
 
 use adead_bib::backend::gpu::gpu_detect::GPUFeatures;
@@ -465,9 +466,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "version" | "-v" | "--version" => {
-            println!("ADead-BIB v7.0.0 💀🦈 🇵🇪 — C/C++ Native Compiler");
+            println!("ADead-BIB v8.0.0 💀🦈 🇵🇪 — C/C++ Native Compiler");
             println!("Sin GCC, Sin LLVM, Sin Clang — 100% ADead-BIB");
             println!("Sin libc externa, Sin linker — Totalmente autosuficiente");
+            println!("256-bit nativo — YMM/AVX2 — SoA natural");
             println!();
             if let Ok(exe) = env::current_exe() {
                 println!("Executable: {}", exe.display());
@@ -1135,7 +1137,7 @@ fn is_fastos_target(args: &[String]) -> bool {
     for i in 0..args.len() {
         if args[i] == "--target" && i + 1 < args.len() {
             let t = &args[i + 1];
-            if t == "fastos" || t == "po" {
+            if t == "fastos" || t == "fastos64" || t == "fastos128" || t == "fastos256" || t == "po" {
                 return true;
             }
         }
@@ -1147,14 +1149,12 @@ fn determine_target(args: &[String]) -> Target {
     for i in 0..args.len() {
         if args[i] == "--target" && i + 1 < args.len() {
             let t = &args[i + 1];
-            if t == "fastos" || t == "po" || t == "raw" {
-                return Target::Raw;
-            }
-            if t == "windows" || t == "pe" || t == "win" {
-                return Target::Windows;
-            }
-            if t == "linux" || t == "elf" {
-                return Target::Linux;
+            match t.as_str() {
+                "fastos" | "fastos64" | "fastos128" | "fastos256" | "po" | "raw"
+                | "boot16" | "boot32" | "all" => return Target::Raw,
+                "windows" | "pe" | "win" => return Target::Windows,
+                "linux" | "elf" => return Target::Linux,
+                _ => {}
             }
         }
     }
@@ -1989,12 +1989,12 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
 
 fn print_usage(_program: &str) {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║       🔥 ADead-BIB v7.0.0 💀🦈 — C/C++ Compiler 🔥         ║");
+    println!("║       🔥 ADead-BIB v8.0.0 💀🦈 — C/C++ Compiler 🔥         ║");
     println!("║    Sin GCC, Sin LLVM, Sin Clang — 100% Self-Sufficient       ║");
-    println!("║    Sin libc, Sin linker — header_main.h = TODO               ║");
+    println!("║    256-bit nativo — YMM/AVX2 — SoA natural                   ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
-    println!("� PROYECTOS (como cargo):");
+    println!("📁 PROYECTOS (como cargo):");
     println!("   adb create <name>               Nuevo proyecto C (adb.toml)");
     println!("   adb create <name> --cpp         Nuevo proyecto C++");
     println!("   adb build                       Compilar proyecto (lee adb.toml)");
@@ -2003,7 +2003,7 @@ fn print_usage(_program: &str) {
     println!("🔨 COMPILAR C/C++:");
     println!("   adb cc <file.c> [-o output]     Compile C99/C11");
     println!("   adb cxx <file.cpp> [-o output]  Compile C++11/14/17/20");
-    println!("     [--target fastos|windows|linux]");
+    println!("     [--target boot16|boot32|fastos64|fastos128|fastos256|windows|linux|all]");
     println!("     [--warn-ub] (Warning only, don't stop on UB)");
     println!("   adb build <file> [-o output]    Auto-detect by extension");
     println!("   adb run <file>                  Build and execute");
@@ -2019,6 +2019,7 @@ fn print_usage(_program: &str) {
     println!("   cd hola && adb run              Compilar y ejecutar");
     println!("   adb cc hello.c                  Compile hello.c → hello.exe");
     println!("   adb cxx main.cpp -o app.exe     Compile main.cpp → app.exe");
+    println!("   adb cc kernel.c --target fastos256 -o kernel.po");
     println!("   adb run test.c                  Compile and run test.c");
     println!("   adb install                     Setup global headers");
     println!();
@@ -2039,10 +2040,15 @@ fn print_usage(_program: &str) {
     println!("   C++: C++98/11/14/17, classes, templates, namespaces, STL");
     println!("   header_main.h: Un solo #include — todo disponible");
     println!();
-    println!("🎯 OUTPUT FORMATS:");
-    println!("   Windows: PE executable (.exe)");
-    println!("   Linux:   ELF executable");
-    println!("   FastOS:  Po executable (.po)");
+    println!("🎯 OUTPUT TARGETS (v8.0):");
+    println!("   boot16     16-bit flat binary (stage1 bootloader)");
+    println!("   boot32     32-bit flat binary (stage2 protected mode)");
+    println!("   fastos64   FastOS Po 64-bit (.po)");
+    println!("   fastos128  FastOS Po 128-bit — XMM/SSE (.po)");
+    println!("   fastos256  FastOS Po 256-bit — YMM/AVX2 (.po) ★");
+    println!("   windows    Windows PE x64 (.exe)");
+    println!("   linux      Linux ELF x64");
+    println!("   all        Multi-target (PE + ELF + Po)");
     println!();
     println!("🔧 SETUP:");
     println!("   adb --version      Show path and setup instructions");

@@ -1,11 +1,12 @@
-# ADead-BIB v7.0 💀🦈
+# ADead-BIB v8.0 💀🦈
 
-**Compilador Nativo: C99 · C++17 → Machine Code Puro**
+**Compilador Nativo: C99 · C++17 → Machine Code Puro · 256-bit Nativo**
 
 > Zero Overhead · Zero Bloat · Zero Dead Code  
 > Sin NASM · Sin LLVM · Sin GCC · Sin Clang  
 > Sin libc externa · Sin linker · 100% Autosuficiente  
 > FASM-style: bytes directos al CPU  
+> 256-bit nativo: YMM/AVX2 · SoA natural · VEX prefix  
 > `#include <header_main.h>` = TODO disponible
 
 ```
@@ -27,14 +28,20 @@ Tu Código (.c / .cpp)
 │             Optimizer                     │
 │             (DCE, Fold, Inline, Peep)     │
 │                    ↓                      │
-│             Encoder                       │
-│             (FASM-style, x86-64 bytes)    │
+│             BitResolver (v8.0)            │
+│             (16/32/64/128/256 bits)       │
 │                    ↓                      │
-│             PE / ELF / Raw                │
+│             SoA Optimizer                 │
+│             (float arr[8] → YMM register) │
+│                    ↓                      │
+│             Encoder + VEX Emitter         │
+│             (FASM-style, x86-64/AVX2)     │
+│                    ↓                      │
+│             PE / ELF / Po                 │
 └───────────────────────────────────────────┘
         ↓
-  .exe / .elf / .bin
-  (Machine Code Puro)
+  .exe / .elf / .po / .bin
+  (Machine Code Puro · 256-bit)
 ```
 
 ---
@@ -46,12 +53,13 @@ Tu Código (.c / .cpp)
 3. [Inicio Rápido](#inicio-rápido)
 4. [Step Compiler](#step-compiler)
 5. [Frontends: C99 y C++17](#frontends-c99-y-c17)
-6. [Referencia Técnica](#referencia-técnica)
-7. [Estructura del Proyecto](#estructura-del-proyecto)
-8. [Tamaños de Binario](#tamaños-de-binario)
-9. [Resultados de Tests](#resultados-de-tests)
-10. [Comandos CLI](#comandos-cli)
-11. [GPU Backend](#gpu-backend)
+6. [256-bit Pipeline (v8.0)](#256-bit-pipeline-v80)
+7. [Referencia Técnica](#referencia-técnica)
+8. [Estructura del Proyecto](#estructura-del-proyecto)
+9. [Tamaños de Binario](#tamaños-de-binario)
+10. [Resultados de Tests](#resultados-de-tests)
+11. [Comandos CLI](#comandos-cli)
+12. [GPU Backend](#gpu-backend)
 
 ---
 
@@ -206,17 +214,23 @@ Sin `-I flags`, sin CMake, sin Makefile.
 
 ---
 
-## v7.0 — Autosuficiencia Total
+## v8.0 — 256-bit Nativo + Autosuficiencia Total
 
 ```c
-// Un solo include. Todo disponible. Sin linker.
+// Un solo include. Todo disponible. Sin linker. 256-bit nativo.
 #include <header_main.h>
 
 int main() {
-    printf("Hello from ADead-BIB v7.0!\n");
-    double s = sin(3.14);
-    void *p = malloc(1024);
-    free(p);
+    printf("Hello from ADead-BIB v8.0!\n");
+
+    // SoA natural → detectado automáticamente → YMM register
+    float pos_x[8] = {1,2,3,4,5,6,7,8};
+    float pos_y[8] = {8,7,6,5,4,3,2,1};
+
+    // 8 sumas en 1 instrucción: VADDPS ymm0, ymm0, ymm1
+    for (int i = 0; i < 8; i++)
+        pos_x[i] += pos_y[i];
+
     return 0;
 }
 ```
@@ -224,6 +238,10 @@ int main() {
 - **Sin libc externa** — toda la stdlib C/C++ está implementada internamente
 - **Sin linker** — unity build, todo compila a un solo IR y un solo binario
 - **Tree shaking** — solo las funciones que usas llegan al binario final
+- **256-bit nativo** — `float arr[8]` detectado como SoA → YMM register automático
+- **BitResolver** — detecta automáticamente si compilar a 16/32/64/128/256 bits
+- **VEX Emitter** — genera VEX prefix C4/C5 para instrucciones AVX2
+- **Po v8.0** — header de 32 bytes con `ymm_used`, `soa_map`, `bg_stamp`
 - **`fastos_*.h`** — headers individuales para control granular (`fastos_stdio.h`, `fastos_math.h`, etc.)
 
 ---
@@ -315,6 +333,74 @@ Funciona con C y C++: `adb step archivo.c` o `adb step archivo.cpp`
 | **Exceptions (try/catch/throw)** | ✅ → eliminados | Convertidos a error codes |
 | **Smart pointers (unique_ptr, shared_ptr)** | ✅ → eliminados | Convertidos a raw pointers |
 | **RTTI (typeid, dynamic_cast runtime)** | ✅ → eliminado | Si no se usa, no existe |
+
+---
+
+## 256-bit Pipeline (v8.0)
+
+ADead-BIB v8.0 introduce soporte nativo para registros YMM (256-bit) via AVX2, con detección automática de patrones SoA (Structure-of-Arrays).
+
+### BitResolver — Detección automática de ancho
+
+El BitResolver analiza el IR y decide el ancho óptimo de compilación:
+
+| Target | Bits | Registros | Uso |
+|---|---|---|---|
+| `boot16` | 16 | AX-DX | Stage1 bootloader |
+| `boot32` | 32 | EAX-EDI | Stage2 protected mode |
+| `fastos64` | 64 | RAX-R15 | FastOS standard |
+| `fastos128` | 128 | XMM0-XMM15 | SSE/SSE4.2 vectorial |
+| `fastos256` | 256 | **YMM0-YMM15** | **AVX2 nativo** ★ |
+
+### SoA Optimizer — Vectorización natural
+
+```c
+// ADead-BIB detecta este patrón automáticamente:
+float pos_x[8];   // 8 × float32 = 256 bits → YMM0
+float pos_y[8];   // 8 × float32 = 256 bits → YMM1
+float vel_x[8];   // 8 × float32 = 256 bits → YMM2
+
+// Este loop se compila a UNA instrucción:
+for (int i = 0; i < 8; i++)
+    pos_x[i] += vel_x[i];
+// → VADDPS ymm0, ymm0, ymm2    (8 sumas en 1 ciclo)
+```
+
+| Tipo | Elementos/YMM | Instrucción |
+|---|---|---|
+| `float` (32-bit) | 8 | VADDPS, VMULPS, VFMADD231PS |
+| `double` (64-bit) | 4 | VADDPD, VMULPD |
+| `int` (32-bit) | 8 | VPADDD, VPCMPEQD |
+
+### VEX Emitter — Encoding directo
+
+Genera VEX prefix C4/C5 para todas las instrucciones AVX2:
+
+```
+Instrucción              Bytes                  Encoding
+──────────────────────────────────────────────────────────────
+VADDPS ymm0,ymm0,ymm1   C5 FC 58 C1           VEX.256.0F 58 /r
+VMOVAPS ymm0,[rbp-32]    C5 FC 28 45 E0        VEX.256.0F 28 /r
+VFMADD231PS ymm0,y1,y2   C4 E2 75 B8 C2        VEX.256.66.0F38 B8 /r
+VZEROUPPER               C5 F8 77              VEX.128.0F 77
+```
+
+### Po v8.0 — Header de 32 bytes
+
+```
+Offset  Size  Field       Description
+──────────────────────────────────────────
+0x00    4     magic       0x506F4F53 ('PoOS')
+0x04    1     version     0x80 (v8.0)
+0x05    1     bits        16/64/128/0xFF(256)
+0x06    2     ymm_used    bitmask YMM0-YMM15
+0x08    4     code_off    offset to .text
+0x0C    4     code_size   size of .text
+0x10    4     data_off    offset to .data
+0x14    4     data_size   size of .data
+0x18    4     soa_map     offset to SoA table
+0x1C    4     bg_stamp    BG verification hash
+```
 
 ---
 
@@ -447,12 +533,16 @@ ADead-BIB/
 │   │   ├── decoder.rs                 # x86-64 → ADeadOp (disassembly)
 │   │   ├── optimizer.rs               # Peephole optimization
 │   │   ├── reg_alloc.rs               # Register allocator
+│   │   ├── bit_resolver.rs            # v8.0: BitTarget 16→256, SoA detection
+│   │   ├── soa_optimizer.rs           # v8.0: SoA pattern detection (float[8]→YMM)
+│   │   ├── ymm_allocator.rs           # v8.0: YMM0-YMM15 register allocation
+│   │   ├── vex_emitter.rs             # v8.0: VEX C4/C5 prefix encoding
 │   │   └── compiler/                  # expressions, statements, control_flow, functions, arrays
 │   │
 │   ├── output/                        # Binary output (sin linker)
 │   │   ├── pe.rs                      # Windows PE (.exe)
 │   │   ├── elf.rs                     # Linux ELF
-│   │   └── po.rs                      # FastOS .po (24-byte header)
+│   │   └── po.rs                      # FastOS .po v8.0 (32-byte header, YMM/SoA/BG)
 │   │
 │   ├── backend/
 │   │   ├── cpu/                       # x86-64: PE, ELF, flat binary, MicroVM, syscalls, Win32
@@ -505,7 +595,7 @@ Sin CRT. Sin exception handling tables. Sin RTTI. Sin debug info por defecto. So
 | C++98 Canon | 15 | 15 | **100%** ✅ |
 | Integration tests | 18 | 18 | **100%** ✅ |
 | FASE tests (C99+C++17+PE) | 19 | 19 | **100%** ✅ |
-| **Total Rust tests** | **539** | **539** | **100%** ✅ |
+| **Total Rust tests** | **580** | **580** | **100%** ✅ |
 
 ```
 C99 Canon (18):   tipos, punteros, arrays, structs, unions, enums,
@@ -553,6 +643,13 @@ adb include                  # Muestra ruta de headers
 # Flat Binary (OS/Kernel)
 adb cc kernel.c -o kernel.bin --flat
 adb cc boot.c -o boot.bin --flat16 --org=0x7C00 --size=512
+
+# FastOS targets (v8.0)
+adb cc kernel.c --target fastos64 -o kernel.po
+adb cc kernel.c --target fastos128 -o kernel.po
+adb cc kernel.c --target fastos256 -o kernel.po   # 256-bit YMM/AVX2
+adb cc kernel.c --target boot16 -o stage1.bin
+adb cc kernel.c --target boot32 -o stage2.bin
 
 # Binarios mínimos
 adb nano output.exe          # PE más pequeño posible
@@ -620,7 +717,7 @@ Copyright (C) 2024–2026 Eddi Andreé Salazar Matos
 
 ---
 
-**ADead-BIB v7.0: C99 · C++17 → Machine Code Puro 💀🦈**
+**ADead-BIB v8.0: C99 · C++17 → Machine Code Puro · 256-bit Nativo 💀🦈**
 
 ```
 MSVC, GCC, LLVM  = referencias técnicas estudiadas y respetadas
@@ -628,12 +725,14 @@ FASM             = el modelo de encoding directo que ADead-BIB sigue
 Rust             = el guardián que garantiza que el compilador nunca falle
 header_main.h    = un include, todo disponible
 adb create       = como cargo new, pero para C/C++
+YMM/AVX2         = 256-bit nativo, SoA natural, VEX prefix
 ```
 
 > *"C = intención absoluta del programador*  
 > *C++ = zero overhead principle*  
 > *Rust = guardián de correctitud*  
 > *FASM = bytes directos al CPU*  
+> *YMM = 256 bits nativos, 8 floats en paralelo*  
 > *ADead-BIB = único en el mundo 💀🦈 🇵🇪"*
 
 ```bash

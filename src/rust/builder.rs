@@ -65,7 +65,7 @@ impl BuildOptions {
         match target {
             Target::Windows => OutputFormat::WindowsPE,
             Target::Linux => OutputFormat::LinuxELF,
-            Target::Raw => OutputFormat::FastOS,
+            Target::Raw => OutputFormat::FastOS64,
         }
     }
 }
@@ -236,11 +236,19 @@ impl Builder {
             OutputFormat::LinuxELF => {
                 elf::generate_elf(&final_opcodes, &data, &options.output_path)?;
             }
-            OutputFormat::FastOS => {
+            OutputFormat::FastOS64 | OutputFormat::FastOS128 | OutputFormat::FastOS256 => {
                 let po = crate::output::po::PoOutput::new();
                 let size = po.generate(&final_opcodes, &data, &options.output_path)?;
                 if options.verbose {
                     println!("   .Po size: {} bytes", size);
+                }
+            }
+            OutputFormat::Boot16 | OutputFormat::Boot32 | OutputFormat::All => {
+                // Boot and multi-target not yet implemented in builder
+                let po = crate::output::po::PoOutput::new();
+                let size = po.generate(&final_opcodes, &data, &options.output_path)?;
+                if options.verbose {
+                    println!("   .Po size: {} bytes (fallback)", size);
                 }
             }
         }

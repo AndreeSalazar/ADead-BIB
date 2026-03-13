@@ -1,5 +1,5 @@
 // ============================================================
-// ADead-BIB v7.0 - Main Library
+// ADead-BIB v8.0 - Main Library
 // ============================================================
 // ADead = ASM Dead | BIB = Binary Is Binary
 //
@@ -11,9 +11,13 @@
 //
 // SIN LINKER EXTERNO — NUNCA
 // UB DETECTION ANTES DEL OPTIMIZER
+// 256-BIT NATIVO — YMM/AVX2 — SoA NATURAL
 //
 // Pipeline: Source → Preprocessor → Parser → IR → UB_Detector →
-//           Optimizer → RegAlloc → ISA → Output (PE/ELF/Po)
+//           BitResolver → SoA → Optimizer → RegAlloc → ISA → Output
+//
+// Targets: boot16 | boot32 | fastos64 | fastos128 | fastos256 |
+//          windows | linux | all
 // ============================================================
 
 // ── Core modules ─────────────────────────────────────────────
@@ -53,6 +57,12 @@ pub use frontend::type_checker;
 // ── ISA layer re-exports ─────────────────────────────────────
 pub use isa::codegen;
 pub use isa::isa_compiler::IsaCompiler;
+
+// ── ISA v8.0: 256-bit pipeline ───────────────────────────────
+pub use isa::bit_resolver::{BitResolver, BitTarget};
+pub use isa::soa_optimizer::SoaOptimizer;
+pub use isa::vex_emitter::VexEmitter;
+pub use isa::ymm_allocator::YmmAllocator;
 
 // ── Runtime re-exports ───────────────────────────────────────
 pub use runtime::{CPUFeatures, ComputeBackend};

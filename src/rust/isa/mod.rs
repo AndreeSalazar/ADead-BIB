@@ -18,6 +18,7 @@
 // Email: eddi.salazar.dev@gmail.com
 // ============================================================
 
+pub mod bit_resolver;
 pub mod c_isa;
 pub mod codegen;
 pub mod compiler;
@@ -27,6 +28,9 @@ pub mod encoder;
 pub mod isa_compiler;
 pub mod optimizer;
 pub mod reg_alloc;
+pub mod soa_optimizer;
+pub mod vex_emitter;
+pub mod ymm_allocator;
 
 // Re-export modular compiler
 pub use compiler::{
@@ -91,9 +95,41 @@ pub enum Reg {
     DL,
     DH,
 
-    // SSE registers
+    // SSE/AVX registers (128-bit XMM / 256-bit YMM)
     XMM0,
     XMM1,
+    XMM2,
+    XMM3,
+    XMM4,
+    XMM5,
+    XMM6,
+    XMM7,
+    XMM8,
+    XMM9,
+    XMM10,
+    XMM11,
+    XMM12,
+    XMM13,
+    XMM14,
+    XMM15,
+
+    // AVX2 256-bit registers (v8.0)
+    YMM0,
+    YMM1,
+    YMM2,
+    YMM3,
+    YMM4,
+    YMM5,
+    YMM6,
+    YMM7,
+    YMM8,
+    YMM9,
+    YMM10,
+    YMM11,
+    YMM12,
+    YMM13,
+    YMM14,
+    YMM15,
 
     // Control registers (OS-level)
     CR0,
@@ -187,9 +223,31 @@ impl Reg {
         )
     }
 
-    /// Retorna true si es un registro SSE/XMM.
+    /// Retorna true si es un registro SSE/XMM (128-bit).
     pub fn is_xmm(&self) -> bool {
-        matches!(self, Reg::XMM0 | Reg::XMM1)
+        matches!(
+            self,
+            Reg::XMM0 | Reg::XMM1 | Reg::XMM2 | Reg::XMM3
+                | Reg::XMM4 | Reg::XMM5 | Reg::XMM6 | Reg::XMM7
+                | Reg::XMM8 | Reg::XMM9 | Reg::XMM10 | Reg::XMM11
+                | Reg::XMM12 | Reg::XMM13 | Reg::XMM14 | Reg::XMM15
+        )
+    }
+
+    /// Retorna true si es un registro AVX2/YMM (256-bit). v8.0
+    pub fn is_ymm(&self) -> bool {
+        matches!(
+            self,
+            Reg::YMM0 | Reg::YMM1 | Reg::YMM2 | Reg::YMM3
+                | Reg::YMM4 | Reg::YMM5 | Reg::YMM6 | Reg::YMM7
+                | Reg::YMM8 | Reg::YMM9 | Reg::YMM10 | Reg::YMM11
+                | Reg::YMM12 | Reg::YMM13 | Reg::YMM14 | Reg::YMM15
+        )
+    }
+
+    /// Retorna true si es un registro vectorial (XMM o YMM). v8.0
+    pub fn is_vector(&self) -> bool {
+        self.is_xmm() || self.is_ymm()
     }
 }
 
@@ -238,6 +296,36 @@ impl std::fmt::Display for Reg {
             Reg::DH => "dh",
             Reg::XMM0 => "xmm0",
             Reg::XMM1 => "xmm1",
+            Reg::XMM2 => "xmm2",
+            Reg::XMM3 => "xmm3",
+            Reg::XMM4 => "xmm4",
+            Reg::XMM5 => "xmm5",
+            Reg::XMM6 => "xmm6",
+            Reg::XMM7 => "xmm7",
+            Reg::XMM8 => "xmm8",
+            Reg::XMM9 => "xmm9",
+            Reg::XMM10 => "xmm10",
+            Reg::XMM11 => "xmm11",
+            Reg::XMM12 => "xmm12",
+            Reg::XMM13 => "xmm13",
+            Reg::XMM14 => "xmm14",
+            Reg::XMM15 => "xmm15",
+            Reg::YMM0 => "ymm0",
+            Reg::YMM1 => "ymm1",
+            Reg::YMM2 => "ymm2",
+            Reg::YMM3 => "ymm3",
+            Reg::YMM4 => "ymm4",
+            Reg::YMM5 => "ymm5",
+            Reg::YMM6 => "ymm6",
+            Reg::YMM7 => "ymm7",
+            Reg::YMM8 => "ymm8",
+            Reg::YMM9 => "ymm9",
+            Reg::YMM10 => "ymm10",
+            Reg::YMM11 => "ymm11",
+            Reg::YMM12 => "ymm12",
+            Reg::YMM13 => "ymm13",
+            Reg::YMM14 => "ymm14",
+            Reg::YMM15 => "ymm15",
             Reg::CR0 => "cr0",
             Reg::CR2 => "cr2",
             Reg::CR3 => "cr3",
