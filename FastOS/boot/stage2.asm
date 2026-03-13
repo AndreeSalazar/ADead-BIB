@@ -47,7 +47,10 @@ STACK_64        equ 0x90000   ; Stack 64-bit RSP
 KERNEL_ENTRY    equ 0x100000  ; Kernel cargado aqui por build script
 PAGE_PML4       equ 0x70000   ; Tablas de pagina
 PAGE_PDPT       equ 0x71000
-PAGE_PD         equ 0x72000
+PAGE_PD         equ 0x72000   ; PD for 0GB-1GB (512 × 2MB)
+PAGE_PD1        equ 0x73000   ; PD for 1GB-2GB
+PAGE_PD2        equ 0x74000   ; PD for 2GB-3GB
+PAGE_PD3        equ 0x75000   ; PD for 3GB-4GB (VESA FB here)
 
 ; ============================================================
 ; ─── FASE 1: 16-BIT REAL MODE ────────────────────────────
@@ -140,6 +143,111 @@ detect_memory:
     mov  ax, 0x1000
     mov  es, ax
 
+; ─── VESA VBE Mode Set (16-bit, requiere BIOS INT 0x10) ──
+; Intentamos 1024×768×32bpp linear (modo seguro, universal).
+; Info del modo se guarda en 0x5000 para que kernel_main() lea:
+;   [0x5000] = framebuffer physical address (uint32)
+;   [0x5004] = width  (uint32)
+;   [0x5008] = height (uint32)
+;   [0x500C] = pitch  (uint32, bytes por linea)
+; Si VESA falla → [0x5000] = 0 → kernel usa TUI fallback.
+setup_vesa:
+    mov  si, msg_vesa
+    call print16
+
+    ; Limpiar info area en caso de fallo
+    xor  ax, ax
+    mov  [ds:vesa_fb_addr], ax
+    mov  [ds:vesa_fb_addr+2], ax
+
+    ; --- Obtener VBE Controller Info ---
+    ; Buffer temporal en 0x3000:0x0000 (area libre)
+    mov  ax, 0x3000
+    mov  es, ax
+    xor  di, di
+    mov  ax, 0x4F00          ; VBE: Get Controller Info
+    int  0x10
+    cmp  ax, 0x004F          ; AX=0x004F = success
+    jne  .vesa_fail
+
+    ; --- Obtener Mode Info para 0x0118 (1024×768×32bpp) ---
+    mov  ax, 0x3000
+    mov  es, ax
+    mov  di, 256             ; Offset 256 en el buffer (no sobreescribir ctrl info)
+    mov  cx, 0x0118          ; Mode 0x118 = 1024×768×32bpp
+    mov  ax, 0x4F01          ; VBE: Get Mode Info
+    int  0x10
+    cmp  ax, 0x004F
+    jne  .vesa_fail
+
+    ; Verificar que el modo soporta linear framebuffer (bit 7 de ModeAttributes)
+    mov  ax, [es:256]        ; ModeAttributes at offset 0
+    test ax, 0x80            ; Linear framebuffer available?
+    jz   .vesa_fail
+
+    ; Verificar resolucion correcta (XResolution at offset 18, YResolution at offset 20)
+    cmp  word [es:256+18], 1024
+    jne  .vesa_fail
+    cmp  word [es:256+20], 768
+    jne  .vesa_fail
+    ; Verificar BPP (BitsPerPixel at offset 25)
+    cmp  byte [es:256+25], 32
+    jne  .vesa_fail
+
+    ; Guardar info del framebuffer en variables locales
+    ; PhysBasePtr esta en offset 40 del mode info block
+    mov  eax, [es:256+40]    ; Framebuffer physical address
+    mov  [ds:vesa_fb_addr], eax
+
+    ; Guardar width, height
+    movzx eax, word [es:256+18]
+    mov  [ds:vesa_width], eax
+    movzx eax, word [es:256+20]
+    mov  [ds:vesa_height], eax
+
+    ; BytesPerScanLine at offset 16
+    movzx eax, word [es:256+16]
+    mov  [ds:vesa_pitch], eax
+
+    ; --- Set VBE Mode 0x4118 (0x118 + 0x4000 = linear framebuffer) ---
+    mov  bx, 0x4118          ; Mode 0x118 con bit 14 = linear FB
+    mov  ax, 0x4F02          ; VBE: Set Mode
+    int  0x10
+    cmp  ax, 0x004F
+    jne  .vesa_fail
+
+    mov  si, msg_vesa_ok
+    call print16
+    jmp  .vesa_done
+
+.vesa_fail:
+    ; VESA fallo — limpiar fb_addr, kernel usara TUI
+    xor  eax, eax
+    mov  [ds:vesa_fb_addr], eax
+    mov  [ds:vesa_width], eax
+    mov  [ds:vesa_height], eax
+    mov  [ds:vesa_pitch], eax
+    mov  si, msg_vesa_fail
+    call print16
+
+.vesa_done:
+    ; Copiar VESA info a direccion fija 0x5000 (accesible por kernel)
+    ; Usamos ES=0x0500 para llegar a 0x5000 lineal
+    mov  ax, 0x0500
+    mov  es, ax
+    mov  eax, [ds:vesa_fb_addr]
+    mov  [es:0x0000], eax    ; [0x5000] = fb physical addr
+    mov  eax, [ds:vesa_width]
+    mov  [es:0x0004], eax    ; [0x5004] = width
+    mov  eax, [ds:vesa_height]
+    mov  [es:0x0008], eax    ; [0x5008] = height
+    mov  eax, [ds:vesa_pitch]
+    mov  [es:0x000C], eax    ; [0x500C] = pitch
+
+    ; Restaurar ES
+    mov  ax, 0x1000
+    mov  es, ax
+
 ; ─── GDT de Transicion (para 32-bit PM) ──────────────────
     cli                     ; CRITICO: sin interrupciones antes de cambio de modo
     lgdt [gdt32_desc]
@@ -178,7 +286,16 @@ boot_drive:  db 0
 msg_16bit:   db "[16-bit] Real mode OK — A20, E820, GDT preparados", 13, 10, 0
 msg_a20:     db "[16-bit] A20 line habilitada", 13, 10, 0
 msg_mem:     db "[16-bit] Detectando memoria (E820)...", 13, 10, 0
+msg_vesa:    db "[16-bit] VESA VBE: probando 1024x768x32...", 13, 10, 0
+msg_vesa_ok: db "[16-bit] VESA VBE 1024x768x32 linear OK", 13, 10, 0
+msg_vesa_fail: db "[16-bit] VESA VBE fallo — TUI fallback", 13, 10, 0
 msg_pm:      db "[16-bit] Entrando a 32-bit Protected Mode...", 13, 10, 0
+
+; ─── VESA VBE variables (16-bit section) ─────────────────
+vesa_fb_addr: dd 0          ; Framebuffer physical address
+vesa_width:   dd 0          ; Screen width
+vesa_height:  dd 0          ; Screen height
+vesa_pitch:   dd 0          ; Bytes per scanline
 
 ; ─── GDT para 32-bit Protected Mode ──────────────────────
 ; Minima y correcta. Dos descriptores: code + data.
@@ -251,32 +368,75 @@ pm_start:
 ; Tablas en 0x70000-0x72FFF (area de memoria baja libre).
 
 setup_paging:
-    ; Limpiar area de tablas (4 paginas = 16KB)
+    ; Limpiar area de tablas (6 paginas = 24KB: PML4+PDPT+PD0+PD1+PD2+PD3)
     mov  edi, PAGE_PML4
     xor  eax, eax
-    mov  ecx, 0x3000 / 4    ; 12KB / 4 bytes = limpiamos PML4+PDPT+PD
+    mov  ecx, 0x6000 / 4    ; 24KB / 4 bytes
     rep  stosd
 
     ; PML4[0] → PDPT en PAGE_PDPT (Present + Writable)
     mov  dword [PAGE_PML4], PAGE_PDPT + 0x3
 
-    ; PDPT[0] → PD en PAGE_PD (Present + Writable)
-    mov  dword [PAGE_PDPT], PAGE_PD + 0x3
+    ; PDPT[0] → PD  for 0GB-1GB
+    ; PDPT[1] → PD1 for 1GB-2GB
+    ; PDPT[2] → PD2 for 2GB-3GB
+    ; PDPT[3] → PD3 for 3GB-4GB (VESA framebuffer lives here)
+    mov  dword [PAGE_PDPT + 0x00], PAGE_PD  + 0x3
+    mov  dword [PAGE_PDPT + 0x08], PAGE_PD1 + 0x3
+    mov  dword [PAGE_PDPT + 0x10], PAGE_PD2 + 0x3
+    mov  dword [PAGE_PDPT + 0x18], PAGE_PD3 + 0x3
 
-    ; PD: 4 entradas × 2MB = primeros 8MB
-    ; PS=1 (page size = 2MB), P=1, RW=1
-    ; Mascara: 0x83 = PS+RW+P
-    ; Cada entrada apunta a: n * 0x200000
-    mov  dword [PAGE_PD + 0x00], 0x000083   ; 0MB-2MB
-    mov  dword [PAGE_PD + 0x08], 0x200083   ; 2MB-4MB
-    mov  dword [PAGE_PD + 0x10], 0x400083   ; 4MB-6MB
-    mov  dword [PAGE_PD + 0x18], 0x600083   ; 6MB-8MB
+    ; Fill all 4 PD tables: 512 entries each × 2MB = 1GB per table
+    ; PS=1 (page size = 2MB), P=1, RW=1 → mask 0x83
+    ; Loop: for each PD table, fill 512 entries with ascending 2MB pages
 
-    ; Mapear tambien los 4GB superiores para hardware (VGA, MMIO)
-    ; PML4[511] → PDPT de 4GB (identity map completo)
-    ; Usamos un PDPT grande con 1GB pages (PS=1 en PDPT, reqiere 1GB support)
-    ; Alternativa segura: 2MB pages hasta 4GB con mas entradas PD
-    ; Por ahora: 4 entradas × 2MB son suficientes para el kernel en 0x100000
+    ; --- PD0: 0x00000000 - 0x3FFFFFFF (0GB-1GB) ---
+    mov  edi, PAGE_PD
+    mov  eax, 0x000083        ; First 2MB page, PS+RW+P
+    mov  ecx, 512
+.fill_pd0:
+    mov  [edi], eax
+    mov  dword [edi+4], 0     ; High 32 bits = 0
+    add  eax, 0x200000        ; Next 2MB page
+    add  edi, 8
+    dec  ecx
+    jnz  .fill_pd0
+
+    ; --- PD1: 0x40000000 - 0x7FFFFFFF (1GB-2GB) ---
+    mov  edi, PAGE_PD1
+    mov  eax, 0x40000083
+    mov  ecx, 512
+.fill_pd1:
+    mov  [edi], eax
+    mov  dword [edi+4], 0
+    add  eax, 0x200000
+    add  edi, 8
+    dec  ecx
+    jnz  .fill_pd1
+
+    ; --- PD2: 0x80000000 - 0xBFFFFFFF (2GB-3GB) ---
+    mov  edi, PAGE_PD2
+    mov  eax, 0x80000083
+    mov  ecx, 512
+.fill_pd2:
+    mov  [edi], eax
+    mov  dword [edi+4], 0
+    add  eax, 0x200000
+    add  edi, 8
+    dec  ecx
+    jnz  .fill_pd2
+
+    ; --- PD3: 0xC0000000 - 0xFFFFFFFF (3GB-4GB) — VESA FB here ---
+    mov  edi, PAGE_PD3
+    mov  eax, 0xC0000083
+    mov  ecx, 512
+.fill_pd3:
+    mov  [edi], eax
+    mov  dword [edi+4], 0
+    add  eax, 0x200000
+    add  edi, 8
+    dec  ecx
+    jnz  .fill_pd3
 
     ; Cargar CR3 con la direccion de PML4
     mov  eax, PAGE_PML4

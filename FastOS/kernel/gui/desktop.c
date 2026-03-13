@@ -1,20 +1,13 @@
-/* FastOS v3.0 — Desktop Environment
- * ADead-BIB Native OS
+/* FastOS v4.0 — Desktop Environment
+ * ADead-BIB Native OS — Ventanas reales 256-bit
  *
- * The main GUI composition layer. Ties together:
- *   - Framebuffer (drivers/fb.c)
- *   - Font renderer (gui/font.c)
- *   - Mouse driver (drivers/mouse_drv.c)
- *   - Window manager (gui/wm.c)
- *   - Icon system (gui/svg.c)
+ * Main GUI composition layer. All modules inline (static):
+ *   fb.c → font.c → mouse_drv.c → svg.c → wm.c → desktop.c
  *
  * Desktop layout (1024×768):
- *   Row 0-23:     Title bar (gradient, "FastOS v3.0" + clock area)
+ *   Row 0-23:     Title bar ("FastOS v4.0" + BG:256-bit)
  *   Row 24-727:   Desktop area (gradient bg, icons, windows)
- *   Row 728-767:  Taskbar (dark, running apps, system tray)
- *
- * Desktop icons are clickable — double-click launches .po apps.
- * Single-click selects icon (highlighted border).
+ *   Row 728-767:  Taskbar (apps, "BG:APPROVE 256-bit")
  *
  * Event loop:
  *   1. Poll keyboard (i8042 port 0x60)
@@ -22,9 +15,6 @@
  *   3. Dispatch events to WM / desktop
  *   4. Compose: bg → icons → windows → cursor → taskbar
  *   5. fb_flip() — present frame
- *
- * This replaces the VGA text mode TUI from kernel v2.2.
- * VGA text mode is still used for serial debug output.
  *
  * Compiled by: ADead-BIB (C is Master, Rust is Safety)
  */
@@ -91,68 +81,9 @@ typedef struct {
 
 static desktop_state_t desktop;
 
-/* ================================================================
- * Forward Declarations (from other GUI modules)
- * ================================================================ */
-
-/* fb.c */
-static void fb_init(void);
-static void fb_clear(fb_surface_t *s, uint32_t color);
-static void fb_fill_rect(fb_surface_t *s, uint32_t x, uint32_t y,
-                         uint32_t w, uint32_t h, uint32_t color);
-static void fb_gradient_v(fb_surface_t *s, uint32_t x, uint32_t y,
-                          uint32_t w, uint32_t h,
-                          uint32_t color_top, uint32_t color_bot);
-static void fb_flip(void);
-static void fb_cursor_restore(fb_surface_t *s);
-static void fb_cursor_draw(fb_surface_t *s, int32_t mx, int32_t my);
-static void fb_rect_outline(fb_surface_t *s, uint32_t x, uint32_t y,
-                            uint32_t w, uint32_t h, uint32_t color);
-
-/* font.c */
-static uint32_t font_draw_string(fb_surface_t *s, uint32_t x, uint32_t y,
-                                 const char *str, uint32_t fg, uint32_t bg);
-static void font_draw_centered(fb_surface_t *s, uint32_t y,
-                                uint32_t area_x, uint32_t area_w,
-                                const char *str, uint32_t fg, uint32_t bg);
-static void font_draw_char(fb_surface_t *s, uint32_t x, uint32_t y,
-                            char c, uint32_t fg, uint32_t bg);
-static void font_int_to_str(int val, char *buf, int buf_size);
-
-/* mouse_drv.c */
-static int  mouse_init(int32_t screen_w, int32_t screen_h);
-static int  mouse_poll(void);
-static int  mouse_left_clicked(void);
-static int  mouse_left_down(void);
-static int  mouse_left_released(void);
-static void mouse_get_pos(int32_t *out_x, int32_t *out_y);
-static int  mouse_in_rect(int32_t rx, int32_t ry, int32_t rw, int32_t rh);
-
-/* wm.c */
-static void wm_init(int32_t screen_w, int32_t screen_h);
-static po_window_t *wm_create(const char *title, int32_t x, int32_t y,
-                               int32_t w, int32_t h, uint32_t flags);
-static void wm_compose(fb_surface_t *target);
-static int  wm_handle_mouse(int32_t mx, int32_t my,
-                            int left_down, int left_clicked,
-                            int left_released);
-static fb_surface_t *wm_get_content(po_window_t *win);
-static po_window_t *wm_get_focused(void);
-
-/* svg.c */
-static void icon_init_builtin(void);
-static svg_icon_t *icon_find(const char *name);
-static void icon_draw(fb_surface_t *target, int32_t x, int32_t y,
-                      svg_icon_t *icon);
-
-/* fb state (from fb.c) */
-typedef struct {
-    fb_surface_t front;
-    fb_surface_t back;
-    int          double_buffered;
-    uint32_t     bg_color;
-} fb_state_t;
-extern fb_state_t fb;
+/* All functions (fb_*, font_*, mouse_*, wm_*, icon_*) are defined
+ * in the inline files included before this file. No forward decls needed.
+ * fb_state_t and fb (global) defined in fb.c. */
 
 /* ================================================================
  * String helpers (inline, no libc)
@@ -220,8 +151,7 @@ static void desktop_init(int32_t screen_w, int32_t screen_h)
         i = i + 1;
     }
 
-    /* Init subsystems */
-    fb_init();
+    /* Init subsystems — fb already initialized by kernel_main via fb_init_from_bios() */
     mouse_init(screen_w, screen_h);
     wm_init(screen_w, screen_h);
     icon_init_builtin();
@@ -251,18 +181,18 @@ static void desktop_draw_titlebar(fb_surface_t *target)
                  (uint32_t)desktop.screen_w, DESKTOP_TITLEBAR_H,
                  DESKTOP_TITLEBAR_BG);
 
-    /* "FastOS v3.0" left-aligned */
+    /* "FastOS v4.0" left-aligned */
     font_draw_string(target, 8, 4,
-                     "FastOS v3.0", DESKTOP_TITLEBAR_FG, 0x00000000);
+                     "FastOS v4.0", DESKTOP_TITLEBAR_FG, 0x00000000);
 
     /* "ADead-BIB" right-aligned */
     font_draw_string(target, (uint32_t)(desktop.screen_w - 80), 4,
                      "ADead-BIB", 0xFF888899, 0x00000000);
 
-    /* BG status: green dot + "BG" */
-    fb_fill_rect(target, (uint32_t)(desktop.screen_w - 160), 8, 8, 8, 0xFF00AA00);
-    font_draw_string(target, (uint32_t)(desktop.screen_w - 148), 4,
-                     "BG", 0xFF00CC00, 0x00000000);
+    /* BG status: green dot + "BG:256" */
+    fb_fill_rect(target, (uint32_t)(desktop.screen_w - 180), 8, 8, 8, 0xFF00AA00);
+    font_draw_string(target, (uint32_t)(desktop.screen_w - 168), 4,
+                     "BG:256-bit", 0xFF00CC00, 0x00000000);
 
     /* Separator line */
     fb_fill_rect(target, 0, DESKTOP_TITLEBAR_H - 1,
@@ -314,8 +244,7 @@ static void desktop_draw_icons(fb_surface_t *target)
     }
 }
 
-/* font_strlen forward decl */
-static uint32_t font_strlen(const char *s);
+/* font_strlen defined in font.c (inline) */
 
 /* ================================================================
  * Draw Taskbar
@@ -387,7 +316,7 @@ static void desktop_open_shell(void)
 
         /* Welcome message */
         font_draw_string(content, 0, 0,
-                         "FastOS v3.0 Terminal", 0xFF55FF55, 0x00000000);
+                         "FastOS v4.0 Terminal", 0xFF55FF55, 0x00000000);
         font_draw_string(content, 0, 16,
                          "Type 'help' for commands", 0xFF888888, 0x00000000);
 
@@ -462,14 +391,17 @@ static void shell_exec(fb_surface_t *content, const char *cmd, int len)
     }
     /* ver */
     else if (len == 3 && cmd[0] == 'v' && cmd[1] == 'e' && cmd[2] == 'r') {
-        shell_puts(content, "FastOS v3.0 ADead-BIB\n");
-        shell_puts(content, "256-bit native YMM/AVX2\n");
+        shell_puts(content, "FastOS v4.0 ADead-BIB\n");
+        shell_puts(content, "BG: 256-bit YMM active\n");
+        shell_puts(content, "Heap: 14MB @ 0x200000\n");
         shell_puts(content, "Po magic: 506F4F53\n");
     }
     /* bg */
     else if (len == 2 && cmd[0] == 'b' && cmd[1] == 'g') {
-        shell_puts(content, "BG - Binary Guardian\n");
+        shell_puts(content, "BG 256-bit Guardian\n");
+        shell_puts(content, " Mode: 8 checks/cycle YMM\n");
         shell_puts(content, " Level: KERNEL Ring0\n");
+        shell_puts(content, " Load>BG256>Map>Policy\n");
         shell_puts(content, " Verdict: APPROVE\n");
     }
     /* clear */

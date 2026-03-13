@@ -1,23 +1,19 @@
-/* FastOS v3.0 — Window Manager (PoWindow Native)
- * ADead-BIB Native OS
+/* FastOS v4.0 — Window Manager (PoWindow Native)
+ * ADead-BIB Native OS — GUI Desktop con ventanas reales
  *
  * Manages PoWindow instances on framebuffer surface.
  * No X11, no Wayland, no GDI — direct framebuffer compositing.
+ * Connected to real VESA VBE framebuffer via fb.c.
  *
  * Architecture:
- *   - Fixed-size window pool (no malloc yet — bump allocator later)
- *   - Z-order via linked list (front → back)
- *   - Window decorations: titlebar (24px), border (1px)
- *   - Drag support: titlebar click+hold → move
- *   - Close button: [X] in titlebar top-right
- *   - Content area: app renders into window's own surface
+ *   - 16-window pool, content surfaces at 0x800000 (2MB each)
+ *   - Z-order: integer sort, focus brings to front
+ *   - Decorations: titlebar 24px, border 1px, close [X]
+ *   - Drag: titlebar click+hold → move (clamped to screen)
+ *   - Content: apps draw into per-window fb_surface_t
  *
- * Window lifecycle:
- *   wm_create() → wm_draw() → wm_move()/wm_resize() → wm_destroy()
- *
- * Integration:
- *   desktop.c calls wm_init() then wm_compose() every frame.
- *   Mouse events dispatched via wm_handle_mouse().
+ * Lifecycle: wm_create() → wm_compose() → wm_handle_mouse() → wm_destroy()
+ * desktop.c calls wm_init() + wm_compose() every frame.
  *
  * Compiled by: ADead-BIB (C is Master, Rust is Safety)
  */
@@ -63,15 +59,7 @@
 #define WM_COLOR_CLOSE_FG      0xFFFFFFFF  /* close X text */
 #define WM_COLOR_SHADOW        0x40000000  /* window shadow (alpha) */
 
-/* Forward reference to fb_surface_t */
-typedef struct {
-    uint32_t *pixels;
-    uint32_t  width;
-    uint32_t  height;
-    uint32_t  pitch;
-    uint32_t  bpp;
-    uint32_t  size;
-} fb_surface_t;
+/* fb_surface_t is defined in fb.c (included inline before this file) */
 
 /* ================================================================
  * PoWindow — Native FastOS Window
@@ -303,18 +291,8 @@ static void wm_focus(int slot)
  * The content area is drawn by the app (or cleared to bg_color).
  * ================================================================ */
 
-/* Forward declarations for fb/font functions (defined in fb.c / font.c) */
-static void fb_fill_rect(fb_surface_t *s, uint32_t x, uint32_t y,
-                         uint32_t w, uint32_t h, uint32_t color);
-static void fb_rect_outline(fb_surface_t *s, uint32_t x, uint32_t y,
-                            uint32_t w, uint32_t h, uint32_t color);
-static void fb_blit(fb_surface_t *dst, uint32_t dx, uint32_t dy,
-                    fb_surface_t *src, uint32_t sx, uint32_t sy,
-                    uint32_t w, uint32_t h);
-static void font_draw_string(fb_surface_t *s, uint32_t x, uint32_t y,
-                              const char *str, uint32_t fg, uint32_t bg);
-static void font_draw_char(fb_surface_t *s, uint32_t x, uint32_t y,
-                            char c, uint32_t fg, uint32_t bg);
+/* fb_fill_rect, fb_rect_outline, fb_blit defined in fb.c (inline) */
+/* font_draw_string, font_draw_char defined in font.c (inline) */
 
 static void wm_draw_window(fb_surface_t *target, po_window_t *win)
 {

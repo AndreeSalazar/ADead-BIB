@@ -1,5 +1,5 @@
-# FastOS v3.0 💀🦈 🇵🇪
-**El OS Definitivo — GUI Nativo + 256-bit + Sin Muletas**
+# FastOS v4.0 💀🦈 🇵🇪
+**El OS Definitivo — GUI Nativo VESA VBE + 256-bit + Sin Muletas**
 
 > *"Un OS es un OS. No una muleta."*  
 > *"El CPU ya sabe todo — solo hay que dejarlo recordar gradualmente."*  
@@ -7,7 +7,7 @@
 
 **Compilador:** ADead-BIB v8.0 (GPLv2)  
 **Formato nativo:** `.Po` v8.0 (32 bytes header, 256-bit YMM)  
-**GUI:** Framebuffer directo — sin X11, sin Wayland, sin GDI  
+**GUI:** VESA VBE 1024×768×32 — sin X11, sin Wayland, sin GDI  
 **Rendering:** AVX2 256-bit — 8 píxeles/ciclo via YMM  
 **Seguridad:** Binary Guardian (matemática pura, sin heurística)  
 **Licencia:** Apache 2.0  
@@ -117,15 +117,20 @@ FastOS/
 │   │                         #   fill_rect: 8 pixels/cycle (VPBROADCASTD+VMOVAPS)
 │   │                         #   blit: 8 pixels/cycle (VMOVAPS load+store)
 │   │                         #   alpha blend, gradient, cursor
-│   ├── gui/                # GUI Desktop (v3.0)
+│   ├── gui/                # GUI Desktop (v4.0)
 │   │   ├── font.c          # Bitmap font 8×16 CP437 (built-in, 4KB)
 │   │   ├── wm.c            # Window Manager (PoWindow, z-order, drag)
 │   │   │                     #   16 windows max, titlebar, close, focus
 │   │   ├── svg.c           # Icon renderer (procedural, 32×32 ARGB)
 │   │   │                     #   Built-in: folder, terminal, settings, app, adead
+│   │   ├── api.c           # FastOSAPI — function table for Po apps
+│   │   │                     #   create_window, draw_rect, draw_text, input
 │   │   └── desktop.c       # Desktop compositor
 │   │                         #   titlebar, taskbar, icons, shell window
 │   │                         #   event loop: keyboard + mouse + compose + flip
+│   ├── apps/               # Native Po applications (v4.0)
+│   │   └── terminal.c      # Built-in terminal emulator
+│   │                         #   help, ver, bg, bg256, mem, clear, exit
 │   ├── hotplug.c           # PCI scan → buscar driver .Po → BG verify
 │   └── panic.c             # Kernel panic handler
 │

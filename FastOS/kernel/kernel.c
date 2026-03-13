@@ -1,6 +1,6 @@
-/* FastOS v3.1 Kernel — ADead-BIB C (Inline, modular design)
- * TUI Desktop with windowed shell on VGA text mode (CP437 box chars)
- * GUI Desktop available via framebuffer (VESA VBE 1024x768x32)
+/* FastOS v4.0 Kernel — ADead-BIB C (Inline, modular design)
+ * Native GUI Desktop with real windows on VESA VBE framebuffer
+ * TUI fallback on VGA text mode (CP437 box chars)
  * BG 256-bit: Binary Guardian with AVX2 YMM batch verification
  * Modules integrated inline:
  *   kernel/cpu/ryzen.c        → CPUID family/model, L3, cores, AVX2
@@ -10,7 +10,7 @@
  *   kernel/loader/po_loader.c → Po v8.0 loader + BG verification
  *   kernel/drivers/kbd        → i8042 PS/2 polling (__inb 0x64/0x60)
  *   kernel/drivers/timer      → PIT 8253 init (100 Hz)
- *   kernel/drivers/fb.c       → Framebuffer AVX2 256-bit (fill/blit/flip)
+ *   kernel/drivers/fb.c       → Framebuffer VESA VBE + AVX2 256-bit
  *   kernel/drivers/mouse_drv.c → PS/2 mouse polling
  *   kernel/interrupts/pic     → PIC remap 0x20/0x28
  *   kernel/tui/desktop        → Title bar, System Info, Shell, Taskbar
@@ -18,6 +18,8 @@
  *   kernel/gui/wm.c           → Window Manager (PoWindow, z-order, drag)
  *   kernel/gui/svg.c          → Procedural icon renderer
  *   kernel/gui/desktop.c      → GUI desktop compositor + event loop
+ *   kernel/gui/api.c          → FastOS API for Po apps
+ *   kernel/apps/terminal.c    → Native terminal app
  * __store16(p, CONST, val) where p=0xB8000+row*160 (constant offset pattern)
  * __store32 only for screen clear
  * __inl/__outl for PCI config space */
@@ -228,17 +230,17 @@ void kernel_main(void) {
         i = i + 4;
     }
 
-    /* --- Row 0: Title bar (white on blue) "FastOS v3.1 Desktop" --- */
+    /* --- Row 0: Title bar (white on blue) "FastOS v4.0 Desktop" --- */
     p = 0xB8000;
     /* Fill row 0 with light-blue-on-blue spaces = 0x1F20 */
     i = 0; while (i < 80) { __store16(p, i * 2, 0x1F20); i = i + 1; }
-    /* " FastOS v3.1" */
+    /* " FastOS v4.0" */
     __store16(p, 2, 0x1F46); __store16(p, 4, 0x1F61);
     __store16(p, 6, 0x1F73); __store16(p, 8, 0x1F74);
     __store16(p, 10, 0x1F4F); __store16(p, 12, 0x1F53);
     __store16(p, 14, 0x1F20);
-    __store16(p, 16, 0x1F76); __store16(p, 18, 0x1F33);
-    __store16(p, 20, 0x1F2E); __store16(p, 22, 0x1F31);
+    __store16(p, 16, 0x1F76); __store16(p, 18, 0x1F34);
+    __store16(p, 20, 0x1F2E); __store16(p, 22, 0x1F30);
     /* right side: "ADead-BIB" */
     __store16(p, 140, 0x1E41); __store16(p, 142, 0x1E44);
     __store16(p, 144, 0x1E65); __store16(p, 146, 0x1E61);
@@ -410,21 +412,19 @@ void kernel_main(void) {
     __outb(0x3F8, 75); __outb(0x3F8, 13); __outb(0x3F8, 10);
 
     /* ================================================================
-     * PHASE 6: GUI Desktop (v3.0) — Framebuffer mode
-     * If VESA VBE was set by stage2, switch to GUI desktop.
-     * desktop_mode = 1 → GUI framebuffer (1024x768 or 1920x1080)
-     * desktop_mode = 0 → VGA text TUI (fallback, current default)
+     * PHASE 6: GUI Desktop (v4.0) — VESA VBE Framebuffer mode
+     * stage2.asm sets VESA VBE mode and deposits info at [0x5000].
+     * fb_init_from_bios() reads it: returns 1 = GUI, 0 = TUI fallback.
      *
-     * To enable GUI: stage2.asm must set VESA VBE mode before
-     * jumping to kernel_main, and set desktop_mode flag at a
-     * known address (e.g. 0x20100) or via a CPUID-like probe.
+     * GUI path:
+     *   fb_init_from_bios() → reads [0x5000] fb addr/width/height/pitch
+     *   desktop_init()      → mouse, WM, icons, desktop compositor
+     *   desktop_run()       → event loop (never returns)
      *
-     * Integration:
-     *   fb_init(1920, 1080, 32);   — init framebuffer
-     *   desktop_init(1920, 1080);   — init desktop + subsystems
-     *   desktop_run();              — event loop (never returns)
+     * TUI path:
+     *   Falls through to VGA text mode shell below.
      * ================================================================ */
-    desktop_mode = 0; /* 0=TUI, 1=GUI — set to 1 when VESA VBE ready */
+    desktop_mode = fb_init_from_bios();
 
     if (desktop_mode == 1) {
         /* GUI path: framebuffer desktop replaces VGA text TUI */
@@ -434,8 +434,7 @@ void kernel_main(void) {
         __outb(0x3F8, 73); __outb(0x3F8, 84);
         __outb(0x3F8, 13); __outb(0x3F8, 10);
 
-        fb_init(1920, 1080, 32);
-        desktop_init(1920, 1080);
+        desktop_init(fb.front.width, fb.front.height);
         desktop_run();  /* event loop — never returns */
     }
 
@@ -752,13 +751,13 @@ void kernel_main(void) {
                     /* ver */
                     if(c0==118){if(c1==101){if(c2==114){if(c3==0){
                         p=0xB8000+orow*160+8;
-                        /* "FastOS v3.1 ADead-BIB" */
+                        /* "FastOS v4.0 ADead-BIB" */
                         __store16(p,0,0x0E46);__store16(p,2,0x0E61);
                         __store16(p,4,0x0E73);__store16(p,6,0x0E74);
                         __store16(p,8,0x0E4F);__store16(p,10,0x0E53);
                         __store16(p,12,0x1020);
-                        __store16(p,14,0x0F76);__store16(p,16,0x0F33);
-                        __store16(p,18,0x0F2E);__store16(p,20,0x0F31);
+                        __store16(p,14,0x0F76);__store16(p,16,0x0F34);
+                        __store16(p,18,0x0F2E);__store16(p,20,0x0F30);
                         __store16(p,22,0x1020);
                         __store16(p,24,0x0741);__store16(p,26,0x0744);
                         __store16(p,28,0x0765);__store16(p,30,0x0761);

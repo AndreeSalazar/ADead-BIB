@@ -1,7 +1,7 @@
 /*
- * FastOS v3.1 — Kernel Header
+ * FastOS v4.0 — Kernel Header
  * ADead-BIB Native Operating System
- * BG 256-bit + GUI Desktop + 256-bit Native
+ * VESA VBE GUI Desktop + BG 256-bit + Po v8.0 Native
  */
 
 #ifndef _FASTOS_KERNEL_H
@@ -515,7 +515,7 @@ int gpu_set_mode(uint32_t width, uint32_t height, uint32_t bpp);
 uint32_t *gpu_get_framebuffer(void);
 
 /* ============================================================
- * BG 256-bit — Binary Guardian (v3.1)
+ * BG 256-bit — Binary Guardian (v4.0)
  *
  * Inherited from BG Rust crate (analyzer.rs, policy.rs, capability.rs)
  * C99 kernel implementation with AVX2 YMM 256-bit batch ops.
@@ -539,7 +539,7 @@ int  bg256_scan_memory(uint32_t base, uint32_t size);
 void bg256_report_serial(void);
 
 /* ============================================================
- * Flat Heap — Physical Memory Allocator (v3.1)
+ * Flat Heap — Physical Memory Allocator (v4.0)
  *
  * Bitmap-based, 32KB blocks, 14MB @ 0x200000.
  * No MMU, no paging — direct physical allocation.
@@ -556,7 +556,7 @@ uint32_t kmem_used(void);
 uint32_t kmem_free(void);
 
 /* ============================================================
- * Po v8.0 Loader (v3.1)
+ * Po v8.0 Loader (v4.0)
  *
  * Loads .Po binaries with BG 256-bit pre-execution gate.
  * 32-byte header, 8 execution slots @ 16MB.
@@ -582,95 +582,32 @@ void po_loader_init(void);
 int  po_load(void *data, uint32_t size);
 
 /* ============================================================
- * GUI Subsystem (v3.0)
+ * GUI Subsystem (v4.0)
  *
- * Framebuffer → Font → Mouse → WM → Icons → Desktop
+ * VESA VBE → Framebuffer → Font → Mouse → WM → Icons → Desktop
+ * stage2.asm deposits fb info at [0x5000] for fb_init_from_bios().
  * No X11, no Wayland, no GDI — direct framebuffer compositing.
  * AVX2 256-bit accelerated fill/blit (8 pixels/cycle).
  * ============================================================ */
 
-/* --- Framebuffer Surface (shared by all GUI modules) --- */
-typedef struct {
-    uint32_t *buffer;       /* renamed to avoid conflict with fb_t above */
-    uint32_t width;
-    uint32_t height;
-    uint32_t pitch;         /* bytes per scanline */
-    uint32_t bpp;           /* bits per pixel (32) */
-    uint32_t size;          /* total buffer size in bytes */
-} gui_surface_t;
-
-/* --- Window Manager: PoWindow --- */
-#define WM_MAX_WINDOWS    16
-#define WM_TITLEBAR_H     24
-#define WM_TITLE_MAX      63
-
-/* Window flags */
-#define WINDOW_VISIBLE     0x0001
-#define WINDOW_RESIZABLE   0x0002
-#define WINDOW_MODAL       0x0004
-#define WINDOW_FOCUSED     0x0008
-#define WINDOW_DRAGGING    0x0010
-#define WINDOW_CLOSABLE    0x0020
-#define WINDOW_MINIMIZED   0x0040
-#define WINDOW_MAXIMIZED   0x0080
-#define WINDOW_DECORATED   0x0100
-#define WINDOW_SHELL       0x0200
-
-typedef struct {
-    uint32_t    id;
-    char        title[WM_TITLE_MAX + 1];
-    int32_t     x, y, w, h;
-    int32_t     content_w, content_h;
-    uint32_t    flags;
-    uint32_t    bg_color;
-    int32_t     z_order;
-    gui_surface_t content;
-} po_window_gui_t;
-
-/* --- Icon System --- */
-#define ICON_SMALL   32
-#define ICON_LARGE   64
-
-typedef struct {
-    uint32_t *pixels;
-    uint32_t  width;
-    uint32_t  height;
-    int       valid;
-    char      name[16];
-} gui_icon_t;
-
-/* --- GUI Function Prototypes --- */
-
-/* Framebuffer (kernel/drivers/fb.c) */
-void gui_fb_init(void);
-void gui_fb_clear(uint32_t color);
-void gui_fb_pixel(uint32_t x, uint32_t y, uint32_t color);
-void gui_fb_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);
-void gui_fb_flip(void);
-
-/* Font (kernel/gui/font.c) */
-void gui_font_draw_char(uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg);
-void gui_font_draw_string(uint32_t x, uint32_t y, const char *s, uint32_t fg, uint32_t bg);
-
-/* Mouse (kernel/drivers/mouse_drv.c) */
-int  gui_mouse_init(int32_t screen_w, int32_t screen_h);
-int  gui_mouse_poll(void);
-void gui_mouse_get_pos(int32_t *x, int32_t *y);
-int  gui_mouse_left_clicked(void);
-
-/* Window Manager (kernel/gui/wm.c) */
-void gui_wm_init(int32_t screen_w, int32_t screen_h);
-po_window_gui_t *gui_wm_create(const char *title, int32_t x, int32_t y,
-                                int32_t w, int32_t h, uint32_t flags);
-void gui_wm_destroy(po_window_gui_t *win);
-void gui_wm_compose(void);
-
-/* Icons (kernel/gui/svg.c) */
-void gui_icon_init(void);
-gui_icon_t *gui_icon_find(const char *name);
+/* Framebuffer init from VESA VBE info at [0x5000] (kernel/drivers/fb.c) */
+int  fb_init_from_bios(void);   /* returns 1=GUI, 0=TUI fallback */
+void fb_flip(void);
 
 /* Desktop (kernel/gui/desktop.c) */
-void gui_desktop_init(int32_t screen_w, int32_t screen_h);
-void gui_desktop_run(void);
+void desktop_init(int32_t screen_w, int32_t screen_h);
+void desktop_run(void);   /* event loop — never returns */
+
+/* ============================================================
+ * FastOSAPI — Function Table for Po Applications (v4.0)
+ *
+ * Po apps receive a pointer to FastOSAPI and use it to:
+ *   create/destroy windows, draw, handle input, alloc memory.
+ * Defined in kernel/gui/api.c.
+ * ============================================================ */
+
+typedef struct FastOSAPI FastOSAPI;
+
+#define FASTOS_API_VERSION 0x0400
 
 #endif /* _FASTOS_KERNEL_H */

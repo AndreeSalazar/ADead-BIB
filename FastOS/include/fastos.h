@@ -1,5 +1,5 @@
 /*
- * include/fastos.h — FastOS Native API v3.1
+ * include/fastos.h — FastOS Native API v4.0
  *
  * El header nativo de FastOS. Un solo include da acceso
  * a toda la API del OS. Sin linker externo. Sin flags misteriosos.

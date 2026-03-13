@@ -1,4 +1,4 @@
-/* FastOS v3.0 — Bitmap Font Renderer (8×16 CP437)
+/* FastOS v4.0 — Bitmap Font Renderer (8×16 CP437)
  * ADead-BIB Native OS
  *
  * Renders text onto framebuffer surfaces using a built-in 8×16
@@ -20,15 +20,7 @@
 
 #include "../include/types.h"
 
-/* Forward reference to fb_surface_t from drivers/fb.c */
-typedef struct {
-    uint32_t *pixels;
-    uint32_t  width;
-    uint32_t  height;
-    uint32_t  pitch;
-    uint32_t  bpp;
-    uint32_t  size;
-} fb_surface_t;
+/* fb_surface_t defined in fb.c (inline) */
 
 /* ================================================================
  * Font Constants

@@ -1,39 +1,16 @@
-/* FastOS v3.0 — Minimal SVG Parser + Rasterizer
- * ADead-BIB Native OS
+/* FastOS v4.0 — Procedural Icon System
+ * ADead-BIB Native OS — 5 built-in 32×32 ARGB icons
  *
- * Parses a minimal SVG subset for rendering icons at 32×32 and 64×64.
- * No external library — everything inline.
- *
- * Supported SVG subset:
- *   <svg viewBox="0 0 W H">
- *   <path d="M x y L x y C x1 y1 x2 y2 x y Z" fill="#RRGGBB"/>
- *   <rect x="n" y="n" width="n" height="n" fill="#RRGGBB" rx="n"/>
- *   <circle cx="n" cy="n" r="n" fill="#RRGGBB"/>
- *
- * This is sufficient for system icons (folder, terminal, settings, app).
- * Complex SVGs (gradients, transforms, text, clip paths) NOT supported.
- *
- * Rasterization: scanline fill with edge table.
- * For 32×32 icons, this is ~1024 pixels — negligible cost.
- *
- * Built-in icons are stored as C arrays (svg_icon_*) rather than
- * parsing XML at runtime. This avoids needing a string parser in
- * the kernel. The SVG parser is available for loading .po app icons.
+ * Icons rendered procedurally (rect, circle, rounded_rect).
+ * Cache at 0x700000 (7MB), 4096 bytes per 32×32 icon.
+ * folder, terminal, settings, app (Po), adead (skull).
  *
  * Compiled by: ADead-BIB (C is Master, Rust is Safety)
  */
 
 #include "../include/types.h"
 
-/* Forward reference to fb_surface_t */
-typedef struct {
-    uint32_t *pixels;
-    uint32_t  width;
-    uint32_t  height;
-    uint32_t  pitch;
-    uint32_t  bpp;
-    uint32_t  size;
-} fb_surface_t;
+/* fb_surface_t defined in fb.c (inline) */
 
 /* ================================================================
  * Icon Constants

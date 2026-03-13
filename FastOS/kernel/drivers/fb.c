@@ -1,29 +1,23 @@
-/* FastOS v3.0 — Framebuffer Driver (VESA VBE + AVX2 256-bit)
+/* FastOS v4.0 — Framebuffer Driver (VESA VBE + AVX2 256-bit)
  * ADead-BIB Native OS — AMD Ryzen 5 5600X
  *
  * Direct framebuffer rendering — no X11, no Wayland, no GDI.
  * VESA VBE mode set by stage2.asm (INT 0x10, AX=0x4F02).
- * Framebuffer at physical address from VBE mode info block.
+ * stage2 deposits fb info at physical 0x5000:
+ *   [0x5000] = framebuffer physical address (uint32)
+ *   [0x5004] = width  (uint32)
+ *   [0x5008] = height (uint32)
+ *   [0x500C] = pitch  (uint32, bytes per scanline)
+ * If [0x5000]==0 → VESA failed → kernel uses VGA text TUI.
  *
  * AVX2 256-bit acceleration:
- *   VMOVAPS  ymm0, [src]    — load 8 × uint32 (8 pixels)
- *   VMOVAPS  [dst], ymm0    — store 8 × uint32 (8 pixels)
  *   VPBROADCASTD ymm0, eax  — broadcast color to all 8 lanes
+ *   VMOVAPS  [dst], ymm0    — store 8 × uint32 (8 pixels)
  *   → fill_rect: 8 pixels/cycle vs 1 pixel/cycle (8× speedup)
  *   → blit:      8 pixels/cycle memcpy via YMM registers
  *
  * Pixel format: ARGB 32-bit (0xAARRGGBB)
- *   Alpha = 0xFF (opaque), 0x00 (transparent)
- *
- * Memory layout (1024×768×32bpp):
- *   Pitch  = width × 4 = 4096 bytes/row
- *   Size   = 4096 × 768 = 3,145,728 bytes (~3MB)
- *   Framebuffer at 0xFD000000 (typical QEMU/VBE address)
- *
- * Integration with kernel_main():
- *   After TUI init, call fb_init() to set up framebuffer.
- *   All GUI rendering goes through fb_* functions.
- *   VGA text mode (0xB8000) still available for fallback/serial.
+ * Memory: 1024×768×32bpp = ~3MB, back buffer at 0x400000
  *
  * Compiled by: ADead-BIB (C is Master, Rust is Safety)
  */
@@ -40,8 +34,15 @@
 #define FB_DEFAULT_BPP     32
 #define FB_DEFAULT_PITCH   (FB_DEFAULT_WIDTH * 4)
 
-/* VBE mode info at physical 0x7E00 (stage2 deposits it there) */
-#define VBE_MODE_INFO_ADDR 0x7E00
+/* VESA VBE info deposited by stage2.asm at physical 0x5000 */
+#define VESA_INFO_ADDR     0x5000
+#define VESA_INFO_FB       0x5000   /* uint32: framebuffer physical address */
+#define VESA_INFO_WIDTH    0x5004   /* uint32: width */
+#define VESA_INFO_HEIGHT   0x5008   /* uint32: height */
+#define VESA_INFO_PITCH    0x500C   /* uint32: pitch (bytes per scanline) */
+
+/* Back buffer location — above kernel heap (4MB), fits 1024×768×4 = 3MB */
+#define FB_BACKBUF_ADDR    0x400000
 
 /* Framebuffer surface — the core structure */
 typedef struct {
@@ -105,38 +106,73 @@ static void fb_init_surface(fb_surface_t *s, uint32_t *buf,
     s->size   = pitch * h;
 }
 
-/* Read VBE mode info from stage2 deposit area.
- * VBE mode info block (256 bytes) at VBE_MODE_INFO_ADDR:
- *   offset 0x00: uint16 attributes
- *   offset 0x12: uint16 pitch
- *   offset 0x14: uint16 width
- *   offset 0x16: uint16 height
- *   offset 0x19: uint8  bpp
- *   offset 0x28: uint32 framebuffer_addr
+/* ================================================================
+ * fb_init_from_bios() — Read VESA VBE info deposited by stage2
  *
- * If stage2 hasn't set VBE mode, fb_addr = 0 → fall back to default. */
+ * stage2.asm sets VESA VBE mode and writes info at 0x5000:
+ *   [0x5000] = framebuffer physical address (0 if VESA failed)
+ *   [0x5004] = width
+ *   [0x5008] = height
+ *   [0x500C] = pitch (bytes per scanline)
+ *
+ * Returns: 1 = framebuffer active (GUI mode)
+ *          0 = no framebuffer (TUI fallback)
+ * ================================================================ */
 
-static void fb_init(void)
+static int fb_init_from_bios(void)
 {
-    uint32_t fb_addr;
-    uint32_t w, h, pitch;
+    volatile uint32_t *vesa = (volatile uint32_t *)VESA_INFO_ADDR;
+    uint32_t fb_addr, w, h, pitch;
 
-    /* Try to read VBE mode info (deposited by stage2 at 0x7E00) */
-    /* For now, use QEMU VBE defaults — stage2 will be enhanced later */
-    fb_addr = 0xFD000000;  /* QEMU default linear framebuffer */
-    w       = FB_DEFAULT_WIDTH;
-    h       = FB_DEFAULT_HEIGHT;
-    pitch   = FB_DEFAULT_PITCH;
+    fb_addr = vesa[0];   /* [0x5000] */
+    w       = vesa[1];   /* [0x5004] */
+    h       = vesa[2];   /* [0x5008] */
+    pitch   = vesa[3];   /* [0x500C] */
 
-    /* Front buffer: direct to hardware framebuffer */
+    /* Serial debug: "FB:" */
+    __outb(0x3F8, 70); __outb(0x3F8, 66); __outb(0x3F8, 58);
+
+    /* If fb_addr is 0, VESA failed — TUI fallback */
+    if (fb_addr == 0 || w == 0 || h == 0) {
+        /* Serial: "NONE\r\n" */
+        __outb(0x3F8, 78); __outb(0x3F8, 79); __outb(0x3F8, 78);
+        __outb(0x3F8, 69); __outb(0x3F8, 13); __outb(0x3F8, 10);
+        fb.double_buffered = 0;
+        return 0;
+    }
+
+    /* Sanity check — clamp to reasonable limits */
+    if (w > 1920) w = 1920;
+    if (h > 1080) h = 1080;
+    if (pitch == 0) pitch = w * 4;
+
+    /* Front buffer: hardware framebuffer (VESA VBE linear address) */
     fb_init_surface(&fb.front, (uint32_t *)((uintptr_t)fb_addr), w, h, pitch);
 
-    /* Back buffer: at 0x400000 (4MB) — well above kernel heap at 2MB
-     * 1024×768×4 = 3MB, fits between 4MB-7MB */
-    fb_init_surface(&fb.back, (uint32_t *)0x400000, w, h, pitch);
+    /* Back buffer: at 0x400000 (4MB) — above heap (2MB-16MB)
+     * 1024×768×4 = 3MB, fits between 4MB-7MB
+     * Note: heap ends at 16MB, back buffer at 4MB overlaps heap area.
+     * This is OK because heap bitmap won't allocate below HEAP_BASE+used.
+     * For safety, we could move this higher but 4MB is fine for now. */
+    fb_init_surface(&fb.back, (uint32_t *)FB_BACKBUF_ADDR, w, h, pitch);
 
     fb.double_buffered = 1;
     fb.bg_color = COLOR_DARK_BLUE;
+
+    /* Serial: "OK WxH\r\n" */
+    __outb(0x3F8, 79); __outb(0x3F8, 75); __outb(0x3F8, 32);
+    /* Print width as decimal digits */
+    __outb(0x3F8, 48 + (w / 1000) % 10);
+    __outb(0x3F8, 48 + (w / 100) % 10);
+    __outb(0x3F8, 48 + (w / 10) % 10);
+    __outb(0x3F8, 48 + w % 10);
+    __outb(0x3F8, 120); /* 'x' */
+    __outb(0x3F8, 48 + (h / 100) % 10);
+    __outb(0x3F8, 48 + (h / 10) % 10);
+    __outb(0x3F8, 48 + h % 10);
+    __outb(0x3F8, 13); __outb(0x3F8, 10);
+
+    return 1;
 }
 
 /* ================================================================
