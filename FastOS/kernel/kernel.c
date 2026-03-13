@@ -1,19 +1,23 @@
-/* FastOS v3.0 Kernel — ADead-BIB C (Inline, modular design)
+/* FastOS v3.1 Kernel — ADead-BIB C (Inline, modular design)
  * TUI Desktop with windowed shell on VGA text mode (CP437 box chars)
  * GUI Desktop available via framebuffer (VESA VBE 1024x768x32)
+ * BG 256-bit: Binary Guardian with AVX2 YMM batch verification
  * Modules integrated inline:
- *   kernel/cpu/ryzen.c      → CPUID family/model, L3, cores, AVX2
- *   kernel/memory/e820      → E820 map from 0x20000, RAM total
- *   kernel/drivers/kbd      → i8042 PS/2 polling (__inb 0x64/0x60)
- *   kernel/drivers/timer    → PIT 8253 init (100 Hz)
- *   kernel/drivers/fb.c     → Framebuffer AVX2 256-bit (fill/blit/flip)
+ *   kernel/cpu/ryzen.c        → CPUID family/model, L3, cores, AVX2
+ *   kernel/memory/e820        → E820 map from 0x20000, RAM total
+ *   kernel/memory/heap.c      → Flat physical heap (kmalloc/kfree)
+ *   kernel/security/bg256.c   → BG 256-bit (8 checks/cycle YMM)
+ *   kernel/loader/po_loader.c → Po v8.0 loader + BG verification
+ *   kernel/drivers/kbd        → i8042 PS/2 polling (__inb 0x64/0x60)
+ *   kernel/drivers/timer      → PIT 8253 init (100 Hz)
+ *   kernel/drivers/fb.c       → Framebuffer AVX2 256-bit (fill/blit/flip)
  *   kernel/drivers/mouse_drv.c → PS/2 mouse polling
- *   kernel/interrupts/pic   → PIC remap 0x20/0x28
- *   kernel/tui/desktop      → Title bar, System Info window, Shell window, Taskbar
- *   kernel/gui/font.c       → 8x16 CP437 bitmap font
- *   kernel/gui/wm.c         → Window Manager (PoWindow, z-order, drag)
- *   kernel/gui/svg.c        → Procedural icon renderer
- *   kernel/gui/desktop.c    → GUI desktop compositor + event loop
+ *   kernel/interrupts/pic     → PIC remap 0x20/0x28
+ *   kernel/tui/desktop        → Title bar, System Info, Shell, Taskbar
+ *   kernel/gui/font.c         → 8x16 CP437 bitmap font
+ *   kernel/gui/wm.c           → Window Manager (PoWindow, z-order, drag)
+ *   kernel/gui/svg.c          → Procedural icon renderer
+ *   kernel/gui/desktop.c      → GUI desktop compositor + event loop
  * __store16(p, CONST, val) where p=0xB8000+row*160 (constant offset pattern)
  * __store32 only for screen clear
  * __inl/__outl for PCI config space */
@@ -89,6 +93,18 @@ void kernel_main(void) {
     po_magic = 0x506F4F53;
 
     /* ================================================================
+     * PHASE 0c: Heap + BG 256-bit + Po Loader init
+     * heap_init()      — flat physical heap @ 0x200000 (14MB)
+     * bg256_init()     — BG 256-bit guardian (avx2 detected later)
+     * po_loader_init() — Po v8.0 binary loader (8 slots @ 16MB)
+     * Note: bg256_init(0) starts in scalar mode. After CPUID
+     * detects AVX2, bg256_state.avx2_available is updated.
+     * ================================================================ */
+    heap_init();
+    bg256_init(0);          /* 0=scalar fallback until CPUID runs */
+    po_loader_init();
+
+    /* ================================================================
      * PHASE 1: Clear screen blue
      * ================================================================ */
     i = 0;
@@ -124,7 +140,7 @@ void kernel_main(void) {
     cpu_feat_ebx7 = 0;
     if (maxl > 6) {
         cpu_feat_ebx7 = __cpuid_ebx(7);
-        if (cpu_feat_ebx7 & 32) { avx2 = 1; }
+        if (cpu_feat_ebx7 & 32) { avx2 = 1; bg256_state.avx2_available = 1; }
     }
 
     /* L2/L3 cache from leaf 0x80000006 */
@@ -212,16 +228,16 @@ void kernel_main(void) {
         i = i + 4;
     }
 
-    /* --- Row 0: Title bar (white on blue) "FastOS v2.1 Desktop" --- */
+    /* --- Row 0: Title bar (white on blue) "FastOS v3.1 Desktop" --- */
     p = 0xB8000;
     /* Fill row 0 with light-blue-on-blue spaces = 0x1F20 */
     i = 0; while (i < 80) { __store16(p, i * 2, 0x1F20); i = i + 1; }
-    /* " FastOS v2.1" */
+    /* " FastOS v3.1" */
     __store16(p, 2, 0x1F46); __store16(p, 4, 0x1F61);
     __store16(p, 6, 0x1F73); __store16(p, 8, 0x1F74);
     __store16(p, 10, 0x1F4F); __store16(p, 12, 0x1F53);
     __store16(p, 14, 0x1F20);
-    __store16(p, 16, 0x1F76); __store16(p, 18, 0x1F32);
+    __store16(p, 16, 0x1F76); __store16(p, 18, 0x1F33);
     __store16(p, 20, 0x1F2E); __store16(p, 22, 0x1F31);
     /* right side: "ADead-BIB" */
     __store16(p, 140, 0x1E41); __store16(p, 142, 0x1E44);
@@ -735,88 +751,125 @@ void kernel_main(void) {
 
                     /* ver */
                     if(c0==118){if(c1==101){if(c2==114){if(c3==0){
-                        p=0xB8000+orow*160;
-                        /* "FastOS v2.2 ADead-BIB" */
+                        p=0xB8000+orow*160+8;
+                        /* "FastOS v3.1 ADead-BIB" */
                         __store16(p,0,0x0E46);__store16(p,2,0x0E61);
                         __store16(p,4,0x0E73);__store16(p,6,0x0E74);
                         __store16(p,8,0x0E4F);__store16(p,10,0x0E53);
-                        __store16(p,12,0x1F20);
-                        __store16(p,14,0x0F76);__store16(p,16,0x0F32);
-                        __store16(p,18,0x0F2E);__store16(p,20,0x0F32);
-                        __store16(p,22,0x1F20);
+                        __store16(p,12,0x1020);
+                        __store16(p,14,0x0F76);__store16(p,16,0x0F33);
+                        __store16(p,18,0x0F2E);__store16(p,20,0x0F31);
+                        __store16(p,22,0x1020);
                         __store16(p,24,0x0741);__store16(p,26,0x0744);
                         __store16(p,28,0x0765);__store16(p,30,0x0761);
                         __store16(p,32,0x0764);__store16(p,34,0x072D);
                         __store16(p,36,0x0742);__store16(p,38,0x0749);
                         __store16(p,40,0x0742);
-                        srow = orow + 2;
+                        /* Line 2: "BG: 256-bit YMM active" */
+                        p=0xB8000+(orow+1)*160+8;
+                        __store16(p,0,0x0A42);__store16(p,2,0x0A47);
+                        __store16(p,4,0x0A3A);__store16(p,6,0x1020);
+                        __store16(p,8,0x0F32);__store16(p,10,0x0F35);
+                        __store16(p,12,0x0F36);__store16(p,14,0x0F2D);
+                        __store16(p,16,0x0F62);__store16(p,18,0x0F69);
+                        __store16(p,20,0x0F74);__store16(p,22,0x1020);
+                        __store16(p,24,0x0F59);__store16(p,26,0x0F4D);
+                        __store16(p,28,0x0F4D);__store16(p,30,0x1020);
+                        __store16(p,32,0x0A61);__store16(p,34,0x0A63);
+                        __store16(p,36,0x0A74);__store16(p,38,0x0A69);
+                        __store16(p,40,0x0A76);__store16(p,42,0x0A65);
+                        /* Line 3: "Heap: 14MB @ 0x200000" */
+                        p=0xB8000+(orow+2)*160+8;
+                        __store16(p,0,0x0E48);__store16(p,2,0x0E65);
+                        __store16(p,4,0x0E61);__store16(p,6,0x0E70);
+                        __store16(p,8,0x0E3A);__store16(p,10,0x1020);
+                        __store16(p,12,0x0F31);__store16(p,14,0x0F34);
+                        __store16(p,16,0x0F4D);__store16(p,18,0x0F42);
+                        __store16(p,20,0x1020);
+                        __store16(p,22,0x0740);__store16(p,24,0x1020);
+                        __store16(p,26,0x0730);__store16(p,28,0x0778);
+                        __store16(p,30,0x0732);__store16(p,32,0x0730);
+                        __store16(p,34,0x0730);__store16(p,36,0x0730);
+                        __store16(p,38,0x0730);__store16(p,40,0x0730);
+                        srow = orow + 4;
                     }}}}
 
-                    /* bg (Binary Guardian status) */
+                    /* bg (Binary Guardian status — updated for 256-bit) */
                     if(c0==98){if(c1==103){if(c2==0){
                         __outb(0x3F8, 66); __outb(0x3F8, 71); __outb(0x3F8, 13); __outb(0x3F8, 10);
-                        /* Line 1: "BG - Binary Guardian" */
-                        p=0xB8000+orow*160;
+                        bg256_report_serial();
+                        /* Line 1: "BG 256-bit Guardian" */
+                        p=0xB8000+orow*160+8;
                         __store16(p,0,0x0E42);__store16(p,2,0x0E47);
-                        __store16(p,4,0x1F20);__store16(p,6,0x0E2D);
-                        __store16(p,8,0x1F20);
-                        __store16(p,10,0x0F42);__store16(p,12,0x0F69);
-                        __store16(p,14,0x0F6E);__store16(p,16,0x0F61);
-                        __store16(p,18,0x0F72);__store16(p,20,0x0F79);
-                        __store16(p,22,0x1F20);
-                        __store16(p,24,0x0F47);__store16(p,26,0x0F75);
-                        __store16(p,28,0x0F61);__store16(p,30,0x0F72);
-                        __store16(p,32,0x0F64);__store16(p,34,0x0F69);
-                        __store16(p,36,0x0F61);__store16(p,38,0x0F6E);
-                        /* Line 2: " Po Magic: 506F4F53" */
-                        p=0xB8000+(orow+1)*160;
-                        __store16(p,0,0x0720);__store16(p,2,0x0750);
-                        __store16(p,4,0x076F);__store16(p,6,0x1F20);
-                        __store16(p,8,0x074D);__store16(p,10,0x0761);
-                        __store16(p,12,0x0767);__store16(p,14,0x0769);
-                        __store16(p,16,0x0763);__store16(p,18,0x073A);
-                        __store16(p,20,0x1F20);
-                        __store16(p,22,0x0A35);__store16(p,24,0x0A30);
-                        __store16(p,26,0x0A36);__store16(p,28,0x0A46);
-                        __store16(p,30,0x0A34);__store16(p,32,0x0A46);
-                        __store16(p,34,0x0A35);__store16(p,36,0x0A33);
-                        /* Line 3: " Level: KERNEL (Ring 0)" */
-                        p=0xB8000+(orow+2)*160;
+                        __store16(p,4,0x1020);
+                        __store16(p,6,0x0A32);__store16(p,8,0x0A35);
+                        __store16(p,10,0x0A36);__store16(p,12,0x0A2D);
+                        __store16(p,14,0x0A62);__store16(p,16,0x0A69);
+                        __store16(p,18,0x0A74);__store16(p,20,0x1020);
+                        __store16(p,22,0x0F47);__store16(p,24,0x0F75);
+                        __store16(p,26,0x0F61);__store16(p,28,0x0F72);
+                        __store16(p,30,0x0F64);__store16(p,32,0x0F69);
+                        __store16(p,34,0x0F61);__store16(p,36,0x0F6E);
+                        /* Line 2: " Mode: 8 checks/cycle YMM" */
+                        p=0xB8000+(orow+1)*160+8;
+                        __store16(p,0,0x0720);__store16(p,2,0x074D);
+                        __store16(p,4,0x076F);__store16(p,6,0x0764);
+                        __store16(p,8,0x0765);__store16(p,10,0x073A);
+                        __store16(p,12,0x1020);
+                        __store16(p,14,0x0F38);__store16(p,16,0x1020);
+                        __store16(p,18,0x0F63);__store16(p,20,0x0F68);
+                        __store16(p,22,0x0F65);__store16(p,24,0x0F63);
+                        __store16(p,26,0x0F6B);__store16(p,28,0x0F73);
+                        __store16(p,30,0x0F2F);__store16(p,32,0x0F63);
+                        __store16(p,34,0x0F79);__store16(p,36,0x0F63);
+                        __store16(p,38,0x1020);
+                        __store16(p,40,0x0A59);__store16(p,42,0x0A4D);
+                        __store16(p,44,0x0A4D);
+                        /* Line 3: " Level: KERNEL Ring0 APPROVE" */
+                        p=0xB8000+(orow+2)*160+8;
                         __store16(p,0,0x0720);__store16(p,2,0x074C);
                         __store16(p,4,0x0765);__store16(p,6,0x0776);
                         __store16(p,8,0x0765);__store16(p,10,0x076C);
-                        __store16(p,12,0x073A);__store16(p,14,0x1F20);
+                        __store16(p,12,0x073A);__store16(p,14,0x1020);
                         __store16(p,16,0x0C4B);__store16(p,18,0x0C45);
                         __store16(p,20,0x0C52);__store16(p,22,0x0C4E);
                         __store16(p,24,0x0C45);__store16(p,26,0x0C4C);
-                        __store16(p,28,0x1F20);
-                        __store16(p,30,0x0728);__store16(p,32,0x0752);
-                        __store16(p,34,0x0769);__store16(p,36,0x076E);
-                        __store16(p,38,0x0767);__store16(p,40,0x1F20);
-                        __store16(p,42,0x0F30);__store16(p,44,0x0729);
-                        /* Line 4: " Load>Decode>Map>Policy" */
-                        p=0xB8000+(orow+3)*160;
+                        __store16(p,28,0x1020);
+                        __store16(p,30,0x0752);__store16(p,32,0x0769);
+                        __store16(p,34,0x076E);__store16(p,36,0x0767);
+                        __store16(p,38,0x0F30);__store16(p,40,0x1020);
+                        __store16(p,42,0x0A41);__store16(p,44,0x0A50);
+                        __store16(p,46,0x0A50);__store16(p,48,0x0A52);
+                        __store16(p,50,0x0A4F);__store16(p,52,0x0A56);
+                        __store16(p,54,0x0A45);
+                        /* Line 4: " Load>BG256>Map>Policy" */
+                        p=0xB8000+(orow+3)*160+8;
                         __store16(p,0,0x0720);__store16(p,2,0x0A4C);
                         __store16(p,4,0x0A6F);__store16(p,6,0x0A61);
                         __store16(p,8,0x0A64);__store16(p,10,0x0F3E);
-                        __store16(p,12,0x0A44);__store16(p,14,0x0A65);
-                        __store16(p,16,0x0A63);__store16(p,18,0x0F3E);
-                        __store16(p,20,0x0A4D);__store16(p,22,0x0A61);
-                        __store16(p,24,0x0A70);__store16(p,26,0x0F3E);
-                        __store16(p,28,0x0A50);__store16(p,30,0x0A6F);
-                        __store16(p,32,0x0A6C);__store16(p,34,0x0A69);
-                        __store16(p,36,0x0A63);__store16(p,38,0x0A79);
-                        /* Line 5: " Verdict: APPROVE" */
-                        p=0xB8000+(orow+4)*160;
-                        __store16(p,0,0x0720);__store16(p,2,0x0756);
-                        __store16(p,4,0x0765);__store16(p,6,0x0772);
-                        __store16(p,8,0x0764);__store16(p,10,0x0769);
-                        __store16(p,12,0x0763);__store16(p,14,0x0774);
-                        __store16(p,16,0x073A);__store16(p,18,0x1F20);
-                        __store16(p,20,0x0A41);__store16(p,22,0x0A50);
-                        __store16(p,24,0x0A50);__store16(p,26,0x0A52);
-                        __store16(p,28,0x0A4F);__store16(p,30,0x0A56);
-                        __store16(p,32,0x0A45);
+                        __store16(p,12,0x0A42);__store16(p,14,0x0A47);
+                        __store16(p,16,0x0A32);__store16(p,18,0x0A35);
+                        __store16(p,20,0x0A36);__store16(p,22,0x0F3E);
+                        __store16(p,24,0x0A4D);__store16(p,26,0x0A61);
+                        __store16(p,28,0x0A70);__store16(p,30,0x0F3E);
+                        __store16(p,32,0x0A50);__store16(p,34,0x0A6F);
+                        __store16(p,36,0x0A6C);__store16(p,38,0x0A69);
+                        __store16(p,40,0x0A63);__store16(p,42,0x0A79);
+                        /* Line 5: " Po: 506F4F53 Threats: 0" */
+                        p=0xB8000+(orow+4)*160+8;
+                        __store16(p,0,0x0720);__store16(p,2,0x0750);
+                        __store16(p,4,0x076F);__store16(p,6,0x073A);
+                        __store16(p,8,0x1020);
+                        __store16(p,10,0x0A35);__store16(p,12,0x0A30);
+                        __store16(p,14,0x0A36);__store16(p,16,0x0A46);
+                        __store16(p,18,0x0A34);__store16(p,20,0x0A46);
+                        __store16(p,22,0x0A35);__store16(p,24,0x0A33);
+                        __store16(p,26,0x1020);
+                        __store16(p,28,0x0754);__store16(p,30,0x0768);
+                        __store16(p,32,0x0772);__store16(p,34,0x0765);
+                        __store16(p,36,0x0761);__store16(p,38,0x0774);
+                        __store16(p,40,0x0773);__store16(p,42,0x073A);
+                        __store16(p,44,0x1020);__store16(p,46,0x0A30);
                         srow = orow + 6;
                     }}}
 

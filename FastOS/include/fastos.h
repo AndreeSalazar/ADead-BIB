@@ -1,9 +1,9 @@
 /*
- * include/fastos.h — FastOS Native API v3.0
+ * include/fastos.h — FastOS Native API v3.1
  *
  * El header nativo de FastOS. Un solo include da acceso
  * a toda la API del OS. Sin linker externo. Sin flags misteriosos.
- * GUI desktop nativo con framebuffer 256-bit.
+ * BG 256-bit + GUI desktop nativo con framebuffer 256-bit.
  *
  * Uso:
  *   #include <fastos.h>
@@ -78,6 +78,19 @@ typedef struct __attribute__((packed)) {
 #define SYS_WIN_EVENT      303  /* leer evento de ventana */
 #define SYS_FB_BLIT        304  /* blit superficie al framebuffer */
 #define SYS_ICON_LOAD      305  /* cargar icono SVG */
+/* BG 256-bit syscalls (v3.1) */
+#define SYS_BG256_VERIFY   310  /* verificar binario con BG 256-bit */
+#define SYS_BG256_SCAN     311  /* escanear memoria con BG 256-bit */
+#define SYS_BG256_STATUS   312  /* consultar estado BG 256-bit */
+#define SYS_BG256_WATCH    313  /* monitorear región de memoria */
+/* Heap syscalls (v3.1) */
+#define SYS_KMALLOC        320  /* asignar memoria física */
+#define SYS_KFREE          321  /* liberar memoria */
+#define SYS_KMEM_INFO      322  /* consultar estado del heap */
+/* Po loader syscalls (v3.1) */
+#define SYS_PO_LOAD        330  /* cargar binario .Po v8.0 */
+#define SYS_PO_UNLOAD      331  /* descargar binario .Po */
+#define SYS_PO_INFO        332  /* info de binario cargado */
 
 /* ══════════════════════════════════════════════════════
  * § 3. Binary Guardian — Capabilities

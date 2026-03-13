@@ -1,7 +1,7 @@
 /*
- * FastOS v3.0 — Kernel Header
+ * FastOS v3.1 — Kernel Header
  * ADead-BIB Native Operating System
- * GUI Desktop + 256-bit Native
+ * BG 256-bit + GUI Desktop + 256-bit Native
  */
 
 #ifndef _FASTOS_KERNEL_H
@@ -513,6 +513,73 @@ int gpu_init(void);
 int gpu_detect_nvidia(struct nv_device *dev);
 int gpu_set_mode(uint32_t width, uint32_t height, uint32_t bpp);
 uint32_t *gpu_get_framebuffer(void);
+
+/* ============================================================
+ * BG 256-bit — Binary Guardian (v3.1)
+ *
+ * Inherited from BG Rust crate (analyzer.rs, policy.rs, capability.rs)
+ * C99 kernel implementation with AVX2 YMM 256-bit batch ops.
+ * 8 Po magic verifications per cycle via VPCMPEQD.
+ * ============================================================ */
+
+/* BG256 verdicts and security levels */
+#define BG_APPROVE      0x00000001
+#define BG_DENY         0x00000000
+#define BG_LEVEL_KERNEL 0
+#define BG_LEVEL_DRIVER 1
+#define BG_LEVEL_SERVICE 2
+#define BG_LEVEL_USER   3
+#define BG_PO_MAGIC     0x506F4F53
+
+/* BG256 function prototypes (kernel/security/bg256.c) */
+void bg256_init(int avx2_detected);
+int  bg256_verify_po(void *data, uint32_t size);
+int  bg256_verify_batch(uint32_t *magic_values, int count);
+int  bg256_scan_memory(uint32_t base, uint32_t size);
+void bg256_report_serial(void);
+
+/* ============================================================
+ * Flat Heap — Physical Memory Allocator (v3.1)
+ *
+ * Bitmap-based, 32KB blocks, 14MB @ 0x200000.
+ * No MMU, no paging — direct physical allocation.
+ * ============================================================ */
+
+#define HEAP_BASE       0x200000
+#define HEAP_SIZE       0xE00000
+#define HEAP_BLOCK_SIZE 0x8000
+
+void  heap_init(void);
+void *kmalloc(uint32_t size);
+void  kfree(void *ptr);
+uint32_t kmem_used(void);
+uint32_t kmem_free(void);
+
+/* ============================================================
+ * Po v8.0 Loader (v3.1)
+ *
+ * Loads .Po binaries with BG 256-bit pre-execution gate.
+ * 32-byte header, 8 execution slots @ 16MB.
+ * ============================================================ */
+
+typedef struct {
+    uint32_t   magic;       /* 0x506F4F53 "PoOS" */
+    uint8_t    version;     /* 0x80 = v8.0 */
+    uint8_t    bits;        /* 16/64/128/255(=256) */
+    uint16_t   ymm_used;   /* bitmask YMM0-YMM15 */
+    uint32_t   code_off;
+    uint32_t   code_size;
+    uint32_t   data_off;
+    uint32_t   data_size;
+    uint32_t   soa_map;
+    uint32_t   bg_stamp;   /* FNV-1a hash — BG verification */
+} PoHeaderV8;
+
+#define PO_OK       0
+#define PO_ERR_BG   2
+
+void po_loader_init(void);
+int  po_load(void *data, uint32_t size);
 
 /* ============================================================
  * GUI Subsystem (v3.0)
