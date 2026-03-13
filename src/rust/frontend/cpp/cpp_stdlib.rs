@@ -54,7 +54,7 @@ pub fn get_cpp_header(name: &str) -> Option<&'static str> {
         "algorithm" | "numeric" | "ranges" => Some(HEADER_EMPTY),
         "memory" | "functional" | "utility" | "tuple" => Some(HEADER_EMPTY),
         "optional" | "variant" | "any" => Some(HEADER_EMPTY),
-        "type_traits" => Some(HEADER_TYPE_TRAITS),
+        "type_traits" => Some(HEADER_EMPTY),
         "limits" | "concepts" => Some(HEADER_EMPTY),
         "chrono" | "thread" | "mutex" | "atomic" | "future" | "condition_variable" => {
             Some(HEADER_EMPTY)

@@ -123,6 +123,17 @@ impl CppParser {
             | CppToken::Thread_local => true,
             CppToken::Identifier(name) => {
                 if self.type_names.contains(name) {
+                    // If followed by ::, check if the inner name is also a type
+                    // to avoid treating namespace::function() as a type declaration
+                    if *self.peek() == CppToken::Scope {
+                        if let CppToken::Identifier(inner) = self.peek_at(2) {
+                            // If inner is a known type → type declaration (e.g., std::vector)
+                            // If inner is NOT a type → likely function call (e.g., fs::exists)
+                            // Also accept if inner is followed by < (template type)
+                            return self.type_names.contains(inner)
+                                || *self.peek_at(3) == CppToken::Lt;
+                        }
+                    }
                     return true;
                 }
                 // Recognize namespace::type patterns (e.g. std::vector, std::string)
@@ -732,11 +743,20 @@ impl CppParser {
             "ostream", "istream", "iostream",
             "ofstream", "ifstream", "fstream",
             "ostringstream", "istringstream", "stringstream",
+            // Type traits (template types)
+            "is_same", "is_integral", "is_floating_point", "is_pointer",
+            "is_reference", "is_void", "is_const", "is_array", "is_signed",
+            "is_unsigned", "is_arithmetic", "is_enum", "is_class", "is_function",
+            "remove_const", "remove_volatile", "remove_cv", "remove_reference",
+            "remove_pointer", "add_pointer", "add_const", "add_lvalue_reference",
+            "add_rvalue_reference", "decay", "enable_if", "conditional",
+            "make_signed", "make_unsigned", "integral_constant",
+            "true_type", "false_type",
             // Numeric types
             "size_t", "ptrdiff_t", "nullptr_t",
             "int8_t", "int16_t", "int32_t", "int64_t",
             "uint8_t", "uint16_t", "uint32_t", "uint64_t",
-            "intptr_t", "uintptr_t",
+            "intptr_t", "uintptr_t", "intmax_t", "uintmax_t",
         ] {
             self.type_names.insert(name.to_string());
         }
@@ -2263,7 +2283,67 @@ impl CppParser {
     }
 
     fn parse_var_decl_stmt(&mut self) -> Result<CppStmt, String> {
+        // C++17 structured bindings: auto [a, b, c] = expr;
+        // Must detect BEFORE parse_type() because parse_type() would consume [ as array syntax
+        if *self.current() == CppToken::Auto {
+            if *self.peek() == CppToken::LBracket {
+                if let CppToken::Identifier(_) = self.peek_at(2) {
+                    self.advance(); // skip auto
+                    self.advance(); // skip [
+                    let mut names = Vec::new();
+                    names.push(self.expect_identifier()?);
+                    while self.eat(&CppToken::Comma) {
+                        names.push(self.expect_identifier()?);
+                    }
+                    self.expect(&CppToken::RBracket)?;
+                    self.expect(&CppToken::Assign)?;
+                    let init_expr = self.parse_assignment_expr()?;
+                    self.expect(&CppToken::Semicolon)?;
+                    let declarators: Vec<CppDeclarator> = names
+                        .into_iter()
+                        .map(|n| CppDeclarator {
+                            name: n,
+                            derived_type: Vec::new(),
+                            initializer: Some(init_expr.clone()),
+                        })
+                        .collect();
+                    return Ok(CppStmt::VarDecl {
+                        type_spec: CppType::Auto,
+                        declarators,
+                    });
+                }
+            }
+        }
+
         let type_spec = self.parse_type()?;
+
+        // Fallback structured bindings check (in case parse_type didn't consume [)
+        if matches!(type_spec, CppType::Auto) && *self.current() == CppToken::LBracket {
+            self.advance(); // skip [
+            let mut names = Vec::new();
+            names.push(self.expect_identifier()?);
+            while self.eat(&CppToken::Comma) {
+                names.push(self.expect_identifier()?);
+            }
+            self.expect(&CppToken::RBracket)?;
+            self.expect(&CppToken::Assign)?;
+            let init_expr = self.parse_assignment_expr()?;
+            self.expect(&CppToken::Semicolon)?;
+            // Lower to individual auto declarations from the source expression
+            let declarators: Vec<CppDeclarator> = names
+                .into_iter()
+                .map(|n| CppDeclarator {
+                    name: n,
+                    derived_type: Vec::new(),
+                    initializer: Some(init_expr.clone()),
+                })
+                .collect();
+            return Ok(CppStmt::VarDecl {
+                type_spec: CppType::Auto,
+                declarators,
+            });
+        }
+
         let mut declarators = Vec::new();
         let name = self.expect_identifier()?;
         let first = self.parse_declarator_rest(name)?;
