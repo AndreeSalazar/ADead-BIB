@@ -393,3 +393,217 @@ pub fn mangle_std_function(name: &str, params: &[&str]) -> String {
     };
     NameMangler::new().mangle_cpp(name, &ctx)
 }
+
+/// Mangle a C++ method for the current platform.
+pub fn mangle_method(class: &str, name: &str, params: &[&str], is_const: bool) -> String {
+    let ctx = ManglerContext {
+        class_name: Some(class.to_string()),
+        params: params.iter().map(|s| s.to_string()).collect(),
+        is_const,
+        ..Default::default()
+    };
+    NameMangler::new().mangle_cpp(name, &ctx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn itanium() -> NameMangler {
+        NameMangler::with_style(ManglingStyle::Itanium)
+    }
+
+    #[test]
+    fn test_free_function_void() {
+        // void foo() → _Z3foov
+        let ctx = ManglerContext { ..Default::default() };
+        assert_eq!(itanium().mangle_cpp("foo", &ctx), "_Z3foov");
+    }
+
+    #[test]
+    fn test_free_function_int() {
+        // void foo(int) → _Z3fooi
+        let ctx = ManglerContext {
+            params: vec!["int".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("foo", &ctx), "_Z3fooi");
+    }
+
+    #[test]
+    fn test_free_function_int_double() {
+        // void foo(int, double) → _Z3fooid
+        let ctx = ManglerContext {
+            params: vec!["int".to_string(), "double".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("foo", &ctx), "_Z3fooid");
+    }
+
+    #[test]
+    fn test_namespace_function() {
+        // Math::add(int, int) → _ZN4Math3addEii
+        let ctx = ManglerContext {
+            namespaces: vec!["Math".to_string()],
+            params: vec!["int".to_string(), "int".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("add", &ctx), "_ZN4Math3addEii");
+    }
+
+    #[test]
+    fn test_method() {
+        // Foo::bar() → _ZN3Foo3barEv
+        let ctx = ManglerContext {
+            class_name: Some("Foo".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("bar", &ctx), "_ZN3Foo3barEv");
+    }
+
+    #[test]
+    fn test_method_int() {
+        // Foo::bar(int) → _ZN3Foo3barEi
+        let ctx = ManglerContext {
+            class_name: Some("Foo".to_string()),
+            params: vec!["int".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("bar", &ctx), "_ZN3Foo3barEi");
+    }
+
+    #[test]
+    fn test_constructor() {
+        // Foo::Foo() → _ZN3FooC1Ev
+        let ctx = ManglerContext {
+            class_name: Some("Foo".to_string()),
+            is_ctor: true,
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("Foo", &ctx), "_ZN3FooC1Ev");
+    }
+
+    #[test]
+    fn test_destructor() {
+        // Foo::~Foo() → _ZN3FooD1Ev
+        let ctx = ManglerContext {
+            class_name: Some("Foo".to_string()),
+            is_dtor: true,
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("Foo", &ctx), "_ZN3FooD1Ev");
+    }
+
+    #[test]
+    fn test_const_method() {
+        // Foo::get() const → _ZNK3Foo3getEv
+        let ctx = ManglerContext {
+            class_name: Some("Foo".to_string()),
+            is_const: true,
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("get", &ctx), "_ZNK3Foo3getEv");
+    }
+
+    #[test]
+    fn test_pointer_param() {
+        // void foo(int*) → _Z3fooPi
+        let ctx = ManglerContext {
+            params: vec!["int *".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("foo", &ctx), "_Z3fooPi");
+    }
+
+    #[test]
+    fn test_ref_param() {
+        // void foo(int&) → _Z3fooRi
+        let ctx = ManglerContext {
+            params: vec!["int &".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(itanium().mangle_cpp("foo", &ctx), "_Z3fooRi");
+    }
+
+    #[test]
+    fn test_std_namespace() {
+        // std::sort(int*, int*) — Itanium
+        let mangler = itanium();
+        let ctx = ManglerContext {
+            namespaces: vec!["std".to_string()],
+            params: vec!["int *".to_string(), "int *".to_string()],
+            ..Default::default()
+        };
+        let result = mangler.mangle_cpp("sort", &ctx);
+        assert!(result.starts_with("_ZN"), "Should start with _ZN: {}", result);
+        assert!(result.contains("3std"), "Should contain 3std: {}", result);
+        assert!(result.contains("4sort"), "Should contain 4sort: {}", result);
+    }
+
+    #[test]
+    fn test_itanium_mangle_function() {
+        let ctx = ManglerContext {
+            params: vec!["int".to_string(), "int".to_string()],
+            ..Default::default()
+        };
+        let result = itanium().mangle_cpp("add", &ctx);
+        assert_eq!(result, "_Z3addii");
+    }
+
+    #[test]
+    fn test_itanium_mangle_constructor() {
+        let ctx = ManglerContext {
+            class_name: Some("Vector3".to_string()),
+            params: vec!["float".to_string(), "float".to_string(), "float".to_string()],
+            is_ctor: true,
+            ..Default::default()
+        };
+        let result = itanium().mangle_cpp("Vector3", &ctx);
+        assert!(result.contains("C1"), "Should contain C1 for ctor: {}", result);
+        assert!(result.contains("7Vector3"), "Should contain 7Vector3: {}", result);
+    }
+
+    #[test]
+    fn test_itanium_mangle_destructor() {
+        let ctx = ManglerContext {
+            class_name: Some("Vector3".to_string()),
+            is_dtor: true,
+            ..Default::default()
+        };
+        let result = itanium().mangle_cpp("Vector3", &ctx);
+        assert!(result.contains("D1"), "Should contain D1 for dtor: {}", result);
+        assert!(result.contains("7Vector3"), "Should contain 7Vector3: {}", result);
+    }
+
+    #[test]
+    fn test_msvc_free_function() {
+        let mangler = NameMangler::with_style(ManglingStyle::Msvc);
+        let ctx = ManglerContext {
+            params: vec!["int".to_string()],
+            ..Default::default()
+        };
+        let result = mangler.mangle_cpp("foo", &ctx);
+        assert!(result.starts_with("?foo@"), "MSVC should start with ?foo@: {}", result);
+    }
+
+    #[test]
+    fn test_demangle_itanium() {
+        let mangler = NameMangler::new();
+        let d = mangler.demangle("_ZN3Foo3barEv");
+        assert!(d.is_some());
+    }
+
+    #[test]
+    fn test_demangle_msvc() {
+        let mangler = NameMangler::new();
+        let d = mangler.demangle("?foo@@YAHH@Z");
+        assert!(d.is_some());
+    }
+
+    #[test]
+    fn test_demangle_c() {
+        let mangler = NameMangler::new();
+        let d = mangler.demangle("printf");
+        assert_eq!(d, Some("printf".to_string()));
+    }
+}

@@ -45,7 +45,7 @@ void abort();
 /// STL types are recognized by the parser's type_names prescan.
 pub fn get_cpp_header(name: &str) -> Option<&'static str> {
     match name {
-        // C++ Standard Library — all map to flat declarations
+        // C++ Standard Library — real implementations injected as C inline code
         "iostream" | "iomanip" | "sstream" | "fstream" => Some(HEADER_IO),
         "string" | "string_view" => Some(HEADER_EMPTY),
         "vector" | "array" | "list" | "deque" | "forward_list" => Some(HEADER_EMPTY),
@@ -188,6 +188,14 @@ pub fn is_known_cpp_symbol(name: &str) -> bool {
 
 /// Empty header — no declarations needed, types recognized by parser
 pub const HEADER_EMPTY: &str = "";
+
+// NOTE: Real C implementations of std::string (SSO), std::vector (move semantics),
+// std::iostream (operator<< chains), and std::function (type erasure) are defined in
+// the fastos_*.rs modules under src/rust/stdlib/cpp/. They serve as the specification
+// for how these types should behave. The parser recognizes std:: types via prescan,
+// and IR lowering handles method dispatch. The C inline code is not injected via
+// headers because the parser can't handle complex C struct/function definitions
+// in the preprocessor output. Instead, the ISA compiler handles these types natively.
 
 /// I/O header — injects printf/scanf/puts
 pub const HEADER_IO: &str = r#"
