@@ -437,6 +437,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // ============================================================
+        // TEST — Run self-test suite
+        // ============================================================
+        "test" => {
+            run_test_suite(&args)?;
+        }
+
+        // ============================================================
         // INSTALL — Copy headers to ~/.adead/include/
         // ============================================================
         "install" => {
@@ -948,6 +955,122 @@ struct AdbProject {
     output_dir: String, // "bin/"
 }
 
+/// Run the ADead-BIB self-test suite: adb test [--cpp|--c99|--stdlib|--abi|--report]
+fn run_test_suite(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let filter = args.iter().find(|a| a.starts_with("--")).map(|s| s.as_str());
+
+    // Discover test files
+    let test_dir = PathBuf::from("reportes").join("tests_cpp_new");
+    if !test_dir.exists() {
+        eprintln!("No test directory found at {}", test_dir.display());
+        std::process::exit(1);
+    }
+
+    let mut test_files: Vec<PathBuf> = fs::read_dir(&test_dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cpp"))
+        .collect();
+    test_files.sort();
+
+    // Categorize tests
+    let categorize = |name: &str| -> &str {
+        if name.contains("cpp98") || name.contains("cpp11") || name.contains("cpp14")
+            || name.contains("cpp17") || name.contains("cpp20")
+        {
+            "C++ Standard"
+        } else if name.contains("algorithm") || name.contains("string_real")
+            || name.contains("vector_real") || name.contains("iostream")
+            || name.contains("functional") || name.contains("map_real")
+            || name.contains("containers")
+        {
+            "stdlib"
+        } else if name.contains("mangling") || name.contains("vtable") {
+            "ABI"
+        } else if name.contains("raii") || name.contains("new_delete")
+            || name.contains("sfinae") || name.contains("exceptions")
+        {
+            "C++ Features"
+        } else if name.contains("win32") || name.contains("posix") {
+            "Compat"
+        } else {
+            "Other"
+        }
+    };
+
+    // Filter if needed
+    let tests: Vec<&PathBuf> = test_files.iter().filter(|p| {
+        let name = p.file_stem().unwrap_or_default().to_str().unwrap_or("");
+        match filter {
+            Some("--cpp") => name.contains("cpp"),
+            Some("--stdlib") => categorize(name) == "stdlib",
+            Some("--abi") => categorize(name) == "ABI",
+            _ => true,
+        }
+    }).collect();
+
+    println!();
+    println!("=== ADead-BIB Test Suite v8.0 ===");
+    println!();
+
+    let total = tests.len();
+    let mut passed = 0usize;
+    let mut failed_names = Vec::new();
+
+    let exe_path = env::current_exe().unwrap_or_default();
+    let exe = exe_path.to_str().unwrap_or("cargo run --release --");
+
+    for (i, test_path) in tests.iter().enumerate() {
+        let name = test_path.file_stem().unwrap_or_default().to_str().unwrap_or("?");
+        let cat = categorize(name);
+
+        // Run the test via step mode (silently)
+        let output = Command::new(exe)
+            .args(&["step", test_path.to_str().unwrap_or("")])
+            .output();
+
+        let ok = match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                stdout.contains("ALL PHASES PASSED") || stderr.contains("ALL PHASES PASSED")
+            }
+            Err(_) => false,
+        };
+
+        if ok {
+            passed += 1;
+            println!("  [{:>2}/{:>2}] PASS  {:.<42} [{}]", i + 1, total, name, cat);
+        } else {
+            failed_names.push(name.to_string());
+            println!("  [{:>2}/{:>2}] FAIL  {:.<42} [{}]", i + 1, total, name, cat);
+        }
+    }
+
+    println!();
+    let bar_len = 30;
+    let filled = if total > 0 { (passed * bar_len) / total } else { 0 };
+    let bar: String = "=".repeat(filled) + &" ".repeat(bar_len - filled);
+    println!("  [{}] {}/{} PASS", bar, passed, total);
+    println!();
+
+    if !failed_names.is_empty() {
+        println!("  FAILED:");
+        for f in &failed_names {
+            println!("    - {}", f);
+        }
+        println!();
+    }
+
+    if passed == total {
+        println!("  ALL TESTS PASSED");
+    }
+    println!("  Binary Is Binary");
+    println!();
+
+    Ok(())
+}
+
 /// Create a new project: adb create <name> [--cpp]
 fn create_project(name: &str, is_cpp: bool) -> Result<(), Box<dyn std::error::Error>> {
     // Validate project name
@@ -1018,6 +1141,9 @@ fn create_project(name: &str, is_cpp: bool) -> Result<(), Box<dyn std::error::Er
     let main_file = format!("src/main.{}", ext);
     let main_content = if is_cpp {
         format!(
+
+
+     //Aquí para modificar cuando quiera LEL
 r#"#include <header_main.h>
 #include <iostream>
 #include <vector>
@@ -1588,7 +1714,7 @@ fn step_compile_c(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── FINAL SUMMARY ───────────────────────────────────────
     println!("{}", term::phase_header("╔══════════════════════════════════════════════════════════════╗"));
-    println!("{}", term::phase_header("║   Step Compilation Complete ✅                               ║"));
+    println!("{}", term::phase_header("║   Step Compilation Complete ✅                              ║"));
     println!("{}", term::phase_header("╚══════════════════════════════════════════════════════════════╝"));
     println!("  {} 7/7 phases completed successfully", term::ok("✓ ALL PHASES PASSED"));
     println!("  {} adb cc {} -o output.exe", term::info("  build:"), input_file);

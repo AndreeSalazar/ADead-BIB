@@ -394,9 +394,180 @@ static inline DWORD GetTickCount(void) {
 }
 
 /* ══════════════════════════════════════════════════════
- * § 7. IGNORADOS — Basura Win32 que NO se traduce
+ * § 7. VirtualAlloc / VirtualFree → kmalloc/kfree
+ * ══════════════════════════════════════════════════════ */
+
+#define MEM_COMMIT      0x1000
+#define MEM_RESERVE     0x2000
+#define MEM_RELEASE     0x8000
+#define PAGE_READWRITE  0x04
+#define PAGE_EXECUTE_READWRITE 0x40
+#define HEAP_ZERO_MEMORY 0x08
+
+static inline LPVOID VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize,
+                                   DWORD flAllocationType, DWORD flProtect) {
+    (void)lpAddress; (void)flAllocationType; (void)flProtect;
+    return heap_alloc((uint32_t)dwSize);
+}
+
+static inline BOOL VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) {
+    (void)dwSize; (void)dwFreeType;
+    heap_free(lpAddress);
+    return TRUE;
+}
+
+static inline HANDLE HeapCreate(DWORD flOptions, SIZE_T dwInitialSize, SIZE_T dwMaximumSize) {
+    (void)flOptions; (void)dwInitialSize; (void)dwMaximumSize;
+    return (HANDLE)1; /* FastOS uses single global heap */
+}
+
+static inline LPVOID HeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes) {
+    (void)hHeap;
+    LPVOID p = heap_alloc((uint32_t)dwBytes);
+    if (p && (dwFlags & HEAP_ZERO_MEMORY)) {
+        char *cp = (char*)p;
+        for (SIZE_T i = 0; i < dwBytes; i++) cp[i] = 0;
+    }
+    return p;
+}
+
+static inline BOOL HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem) {
+    (void)hHeap; (void)dwFlags;
+    heap_free(lpMem);
+    return TRUE;
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 8. Console I/O → serial/VGA
+ * ══════════════════════════════════════════════════════ */
+
+static inline HANDLE GetStdHandle(DWORD nStdHandle) {
+    return (HANDLE)(intptr_t)(nStdHandle + 1);
+}
+
+#define STD_INPUT_HANDLE  ((DWORD)-10)
+#define STD_OUTPUT_HANDLE ((DWORD)-11)
+#define STD_ERROR_HANDLE  ((DWORD)-12)
+
+static inline BOOL WriteConsoleA(HANDLE hOutput, const void *lpBuffer,
+                                  DWORD nCharsToWrite, LPDWORD lpCharsWritten,
+                                  LPVOID lpReserved) {
+    (void)hOutput; (void)lpReserved;
+    const char *s = (const char *)lpBuffer;
+    for (DWORD i = 0; i < nCharsToWrite; i++) serial_putc(s[i]);
+    if (lpCharsWritten) *lpCharsWritten = nCharsToWrite;
+    return TRUE;
+}
+
+static inline BOOL ReadConsoleA(HANDLE hInput, LPVOID lpBuffer,
+                                 DWORD nCharsToRead, LPDWORD lpCharsRead,
+                                 LPVOID lpReserved) {
+    (void)hInput; (void)lpReserved;
+    /* Stub: read from keyboard buffer */
+    if (lpCharsRead) *lpCharsRead = 0;
+    return TRUE;
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 9. Process/Thread Info
+ * ══════════════════════════════════════════════════════ */
+
+static inline DWORD GetCurrentProcessId(void) { return 1; }
+static inline DWORD GetCurrentThreadId(void)  { return 1; }
+
+static inline void ExitProcess(UINT uExitCode) {
+    proc_exit((int)uExitCode);
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 10. Timing — GetSystemTime, QueryPerformanceCounter
+ * ══════════════════════════════════════════════════════ */
+
+typedef struct _SYSTEMTIME {
+    WORD wYear; WORD wMonth; WORD wDayOfWeek; WORD wDay;
+    WORD wHour; WORD wMinute; WORD wSecond; WORD wMilliseconds;
+} SYSTEMTIME, *LPSYSTEMTIME;
+
+typedef union _LARGE_INTEGER {
+    struct { DWORD LowPart; LONG HighPart; };
+    LONGLONG QuadPart;
+} LARGE_INTEGER;
+
+static inline void GetSystemTime(LPSYSTEMTIME lpST) {
+    fastos_time_t t;
+    time_get(&t);
+    lpST->wYear = 2026; lpST->wMonth = 1; lpST->wDay = 1;
+    lpST->wDayOfWeek = 0;
+    lpST->wHour = (WORD)(t.seconds / 3600);
+    lpST->wMinute = (WORD)((t.seconds % 3600) / 60);
+    lpST->wSecond = (WORD)(t.seconds % 60);
+    lpST->wMilliseconds = (WORD)t.milliseconds;
+}
+
+static inline BOOL QueryPerformanceCounter(LARGE_INTEGER *lpPC) {
+    fastos_time_t t;
+    time_get(&t);
+    lpPC->QuadPart = (LONGLONG)t.seconds * 1000000LL + (LONGLONG)t.milliseconds * 1000LL;
+    return TRUE;
+}
+
+static inline BOOL QueryPerformanceFrequency(LARGE_INTEGER *lpFreq) {
+    lpFreq->QuadPart = 1000000LL; /* 1 MHz */
+    return TRUE;
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 11. String Conversion (stubs)
+ * ══════════════════════════════════════════════════════ */
+
+#define CP_UTF8 65001
+
+static inline int MultiByteToWideChar(UINT cp, DWORD flags, LPCSTR lpMB,
+                                       int cbMB, void *lpWC, int cchWC) {
+    (void)cp; (void)flags; (void)lpMB; (void)cbMB; (void)lpWC; (void)cchWC;
+    return 0; /* Stub — FastOS uses UTF-8 natively */
+}
+
+static inline int WideCharToMultiByte(UINT cp, DWORD flags, const void *lpWC,
+                                       int cchWC, LPSTR lpMB, int cbMB,
+                                       LPCSTR lpDef, BOOL *lpUsed) {
+    (void)cp; (void)flags; (void)lpWC; (void)cchWC;
+    (void)lpMB; (void)cbMB; (void)lpDef; (void)lpUsed;
+    return 0; /* Stub — FastOS uses UTF-8 natively */
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 12. Registry (stubs → ENOSYS)
+ * ══════════════════════════════════════════════════════ */
+
+typedef HANDLE HKEY;
+#define HKEY_LOCAL_MACHINE ((HKEY)(intptr_t)0x80000002)
+#define HKEY_CURRENT_USER  ((HKEY)(intptr_t)0x80000001)
+#define ERROR_SUCCESS      0L
+#define ERROR_FILE_NOT_FOUND 2L
+
+static inline LONG RegOpenKeyExA(HKEY hKey, LPCSTR lpSubKey, DWORD ulOptions,
+                                  DWORD samDesired, HKEY *phkResult) {
+    (void)hKey; (void)lpSubKey; (void)ulOptions; (void)samDesired; (void)phkResult;
+    return FASTOS_ENOSYS;
+}
+
+static inline LONG RegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved,
+                                     LPDWORD lpType, BYTE *lpData, LPDWORD lpcbData) {
+    (void)hKey; (void)lpValueName; (void)lpReserved;
+    (void)lpType; (void)lpData; (void)lpcbData;
+    return FASTOS_ENOSYS;
+}
+
+static inline LONG RegCloseKey(HKEY hKey) {
+    (void)hKey;
+    return FASTOS_ENOSYS;
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 13. IGNORADOS — Basura Win32 que NO se traduce
  *
- * Registry, COM, DCOM, WMI, telemetría → IGNORAR
+ * COM, DCOM, WMI, telemetría → IGNORAR
  * LoadLibrary → FUTURO (Po loader)
  * ══════════════════════════════════════════════════════ */
 

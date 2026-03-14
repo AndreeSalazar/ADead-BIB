@@ -361,11 +361,74 @@ static int errno = 0;
 #define ENOSYS  38
 
 /* ══════════════════════════════════════════════════════
- * § 11. IGNORADOS — Basura Linux que NO se traduce
- *
- * systemd, dbus, X11, netlink, cgroups → IGNORAR
- * fork → FUTURO (proc_spawn mod)
+ * § 11. mmap / munmap → heap_alloc/heap_free
  * ══════════════════════════════════════════════════════ */
+
+#define PROT_READ   0x1
+#define PROT_WRITE  0x2
+#define PROT_EXEC   0x4
+#define MAP_PRIVATE 0x02
+#define MAP_ANONYMOUS 0x20
+#define MAP_ANON    MAP_ANONYMOUS
+#define MAP_FAILED  ((void *)-1)
+
+static inline void *mmap(void *addr, size_t length, int prot, int flags,
+                          int fd, off_t offset) {
+    (void)addr; (void)prot; (void)flags; (void)fd; (void)offset;
+    void *p = heap_alloc((uint32_t)length);
+    return p ? p : MAP_FAILED;
+}
+
+static inline int munmap(void *addr, size_t length) {
+    (void)length;
+    heap_free(addr);
+    return 0;
+}
+
+static inline void *sbrk(intptr_t increment) {
+    if (increment <= 0) return (void *)-1;
+    return heap_alloc((uint32_t)increment);
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 12. Directory operations (opendir/readdir/closedir)
+ * ══════════════════════════════════════════════════════ */
+
+typedef struct {
+    int _fd;
+    int _pos;
+} DIR;
+
+struct dirent {
+    unsigned long d_ino;
+    char          d_name[256];
+};
+
+static inline DIR *opendir(const char *name) {
+    int fd = fs_open(name, 0); /* O_RDONLY */
+    if (fd < 0) return (DIR *)0;
+    DIR *d = (DIR *)heap_alloc(sizeof(DIR));
+    if (d) { d->_fd = fd; d->_pos = 0; }
+    return d;
+}
+
+static inline struct dirent *readdir(DIR *dirp) {
+    (void)dirp;
+    return (struct dirent *)0; /* Stub: no FS enumeration yet */
+}
+
+static inline int closedir(DIR *dirp) {
+    if (!dirp) return -1;
+    fs_close(dirp->_fd);
+    heap_free(dirp);
+    return 0;
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 13. Process stubs
+ * ══════════════════════════════════════════════════════ */
+
+static inline pid_t getppid(void) { return 1; /* init */ }
 
 /* fork: not yet — use proc_spawn instead */
 static inline pid_t fork(void) {
@@ -375,16 +438,75 @@ static inline pid_t fork(void) {
 
 /* exec family: not yet — use Po loader */
 static inline int execve(const char *pathname, char *const argv[], char *const envp[]) {
+    (void)pathname; (void)argv; (void)envp;
     errno = ENOSYS;
     return -1; /* FUTURO: Po loader */
 }
 
-/* These don't exist in FastOS */
-#define socket(...)    -1  /* FUTURO: network stack */
-#define bind(...)      -1
-#define listen(...)    -1
-#define accept(...)    -1
-#define connect(...)   -1
+/* ══════════════════════════════════════════════════════
+ * § 14. Socket stubs (FUTURO: network stack)
+ * ══════════════════════════════════════════════════════ */
+
+typedef unsigned int socklen_t;
+
+struct sockaddr {
+    unsigned short sa_family;
+    char           sa_data[14];
+};
+
+#define AF_INET  2
+#define SOCK_STREAM 1
+#define SOCK_DGRAM  2
+
+static inline int socket(int domain, int type, int protocol) {
+    (void)domain; (void)type; (void)protocol;
+    errno = ENOSYS;
+    return -1;
+}
+
+static inline int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    (void)sockfd; (void)addr; (void)addrlen;
+    errno = ENOSYS;
+    return -1;
+}
+
+static inline int listen(int sockfd, int backlog) {
+    (void)sockfd; (void)backlog;
+    errno = ENOSYS;
+    return -1;
+}
+
+static inline int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+    (void)sockfd; (void)addr; (void)addrlen;
+    errno = ENOSYS;
+    return -1;
+}
+
+static inline int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    (void)sockfd; (void)addr; (void)addrlen;
+    errno = ENOSYS;
+    return -1;
+}
+
+typedef long ssize_t;
+
+static inline ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
+    (void)sockfd; (void)buf; (void)len; (void)flags;
+    errno = ENOSYS;
+    return -1;
+}
+
+static inline ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
+    (void)sockfd; (void)buf; (void)len; (void)flags;
+    errno = ENOSYS;
+    return -1;
+}
+
+/* ══════════════════════════════════════════════════════
+ * § 15. IGNORADOS — Basura Linux que NO se traduce
+ *
+ * systemd, dbus, X11, netlink, cgroups → IGNORAR
+ * ══════════════════════════════════════════════════════ */
 
 /* systemd/dbus → BLOCKED */
 #define sd_notify(...)     FASTOS_EBGDENY

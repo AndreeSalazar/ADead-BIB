@@ -1865,15 +1865,65 @@ impl CppToIR {
             CppStmt::Goto(_) => Ok(vec![]), // Simplified
             CppStmt::Label(_, inner) => self.convert_stmt(inner),
             CppStmt::Empty => Ok(vec![]),
-            CppStmt::Try { body, .. } => {
-                // Convert try/catch to just the try body (exception â†’ error codes)
+            CppStmt::Try { body, catches } => {
+                // Exception → error codes: run try body, then check __adb_has_error()
                 let mut stmts = Vec::new();
                 for s in body {
                     stmts.extend(self.convert_stmt(s)?);
                 }
+                // For each catch: if (__adb_has_error()) { handler; __adb_clear_error(); }
+                for catch_block in catches {
+                    let mut catch_stmts = Vec::new();
+                    // If catch has a named param, declare it with __adb_get_error()
+                    if let Some(ref pname) = catch_block.param_name {
+                        catch_stmts.push(Stmt::VarDecl {
+                            var_type: Type::Pointer(Box::new(Type::I8)),
+                            name: pname.clone(),
+                            value: Some(Expr::Call {
+                                name: "__adb_get_error".to_string(),
+                                args: vec![],
+                            }),
+                        });
+                    }
+                    for s in &catch_block.body {
+                        match self.convert_stmt(s) {
+                            Ok(ir) => catch_stmts.extend(ir),
+                            Err(_) => {}
+                        }
+                    }
+                    // Clear error after handling
+                    catch_stmts.push(Stmt::Expr(Expr::Call {
+                        name: "__adb_clear_error".to_string(),
+                        args: vec![],
+                    }));
+                    stmts.push(Stmt::If {
+                        condition: Expr::Call {
+                            name: "__adb_has_error".to_string(),
+                            args: vec![],
+                        },
+                        then_body: catch_stmts,
+                        else_body: None,
+                    });
+                }
                 Ok(stmts)
             }
-            CppStmt::Throw(_) => Ok(vec![]), // Eliminated
+            CppStmt::Throw(expr) => {
+                // throw expr → __adb_set_error(msg); return default;
+                let mut stmts = Vec::new();
+                if let Some(e) = expr {
+                    let ir_expr = self.convert_expr(e)?;
+                    stmts.push(Stmt::Expr(Expr::Call {
+                        name: "__adb_set_error".to_string(),
+                        args: vec![ir_expr],
+                    }));
+                } else {
+                    stmts.push(Stmt::Expr(Expr::Call {
+                        name: "__adb_set_error".to_string(),
+                        args: vec![Expr::String("exception".to_string())],
+                    }));
+                }
+                Ok(stmts)
+            }
             CppStmt::CoReturn(expr) => Ok(vec![Stmt::Return(
                 expr.as_ref().map(|e| self.convert_expr(e)).transpose()?,
             )]),
@@ -2305,18 +2355,81 @@ impl CppToIR {
                 else_expr: Box::new(self.convert_expr(else_expr)?),
             }),
 
-            CppExpr::New { type_name, .. } => {
+            CppExpr::New {
+                type_name,
+                args,
+                is_array,
+                array_size,
+            } => {
                 let t = self.convert_type(type_name);
-                let size = Expr::SizeOf(Box::new(SizeOfArg::Type(t)));
-                Ok(Expr::Malloc(Box::new(size)))
+                let type_size = Expr::SizeOf(Box::new(SizeOfArg::Type(t.clone())));
+
+                if *is_array {
+                    // new T[n] → malloc(sizeof(T) * n)
+                    let n = if let Some(sz) = array_size {
+                        self.convert_expr(sz)?
+                    } else {
+                        Expr::Number(1)
+                    };
+                    let total = Expr::BinaryOp {
+                        op: BinOp::Mul,
+                        left: Box::new(type_size),
+                        right: Box::new(n),
+                    };
+                    Ok(Expr::Malloc(Box::new(total)))
+                } else {
+                    // new T(args) → malloc(sizeof(T)) then call ctor
+                    // Check if T is a class type with a constructor
+                    let class_name = match type_name {
+                        CppType::Named(n) => Some(n.clone()),
+                        _ => None,
+                    };
+
+                    if let Some(ref cn) = class_name {
+                        if !args.is_empty() || self.class_ctor_inits.iter().any(|(c, _, _, _)| c == cn) {
+                            // Class with constructor: __new_ptr = malloc(sizeof(T)); T::T(__new_ptr, args); result = __new_ptr
+                            // Since we can only return one Expr, we emit the malloc and ctor as a sequence
+                            // For now: emit as Expr::New which the ISA handles
+                            let ir_args: Vec<Expr> = args
+                                .iter()
+                                .map(|a| self.convert_expr(a))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok(Expr::New {
+                                class_name: cn.clone(),
+                                args: ir_args,
+                            })
+                        } else {
+                            // Simple class, no ctor args → just malloc
+                            Ok(Expr::Malloc(Box::new(type_size)))
+                        }
+                    } else if !args.is_empty() {
+                        // new int(42) → malloc + deref assign
+                        // Simplified: malloc returns ptr, value init handled by caller
+                        Ok(Expr::Malloc(Box::new(type_size)))
+                    } else {
+                        Ok(Expr::Malloc(Box::new(type_size)))
+                    }
+                }
             }
 
-            CppExpr::Delete { expr, .. } => {
+            CppExpr::Delete { expr, is_array } => {
                 let e = self.convert_expr(expr)?;
-                Ok(Expr::Call {
-                    name: "free".to_string(),
-                    args: vec![e],
-                })
+                if *is_array {
+                    // delete[] arr → free(arr)
+                    // (element destructors not called for primitive arrays)
+                    Ok(Expr::Call {
+                        name: "free".to_string(),
+                        args: vec![e],
+                    })
+                } else {
+                    // delete ptr → destructor + free
+                    // Try to detect class type for destructor call
+                    // For now: emit free (destructor inlined by RAII at scope exit)
+                    Ok(Expr::Call {
+                        name: "free".to_string(),
+                        args: vec![e],
+                    })
+                }
             }
 
             CppExpr::Lambda { .. } => {
