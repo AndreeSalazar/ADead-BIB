@@ -1,12 +1,12 @@
-# ADead-BIB C++ Compliance Report v3.0
+# ADead-BIB C++ Compliance Report v4.0
 
 **Author:** Eddi Andreé Salazar Matos -- Lima, Peru
 **Compiler:** ADead-BIB v8.0 -- C99/C++17 to Machine Code (Rust)
-**Date:** Session 3 -- C++ Standard Library and ABI
+**Date:** Session 4 -- Project System, Algorithms, Maps, RAII
 
 ---
 
-## Integration Tests: 21/21 PASS
+## Integration Tests: 24/24 PASS
 
 | # | Test File | Status | Category |
 | --- | --- | --- | --- |
@@ -25,12 +25,15 @@
 | 13 | test_cpp17_constexpr_if.cpp | PASS | Session 2 |
 | 14 | test_cpp17_nested_ns.cpp | PASS | Session 2 |
 | 15 | test_cpp11_initializer_lists.cpp | PASS | Session 2 |
-| 16 | **test_cpp_string_real.cpp** | PASS | **Session 3 NEW** |
-| 17 | **test_cpp_vector_real.cpp** | PASS | **Session 3 NEW** |
-| 18 | **test_cpp_iostream_real.cpp** | PASS | **Session 3 NEW** |
-| 19 | **test_cpp_functional_real.cpp** | PASS | **Session 3 NEW** |
-| 20 | **test_cpp_vtable_real.cpp** | PASS | **Session 3 NEW** |
-| 21 | **test_cpp_mangling.cpp** | PASS | **Session 3 NEW** |
+| 16 | test_cpp_string_real.cpp | PASS | Session 3 |
+| 17 | test_cpp_vector_real.cpp | PASS | Session 3 |
+| 18 | test_cpp_iostream_real.cpp | PASS | Session 3 |
+| 19 | test_cpp_functional_real.cpp | PASS | Session 3 |
+| 20 | test_cpp_vtable_real.cpp | PASS | Session 3 |
+| 21 | test_cpp_mangling.cpp | PASS | Session 3 |
+| 22 | **test_cpp_algorithm_real.cpp** | PASS | **Session 4 NEW** |
+| 23 | **test_cpp_map_real.cpp** | PASS | **Session 4 NEW** |
+| 24 | **test_cpp_raii.cpp** | PASS | **Session 4 NEW** |
 
 ## Rust Unit Tests: 615/615 PASS
 
@@ -136,6 +139,63 @@ The C inline code cannot be injected via headers because the parser does not sup
 | **Vtable ABI** | **Itanium layout (vptr at offset 0)** |
 | **Name Mangling** | **Itanium + MSVC dual ABI** |
 
-**21/21 integration tests PASS. 615/615 unit tests PASS.**
+## Session 4: Project System, Algorithms, Maps, RAII
+
+### TAREA 1: adb create --cpp
+
+- **File:** `src/rust/main.rs` (create_project function)
+- **Command:** `adb create <name> --cpp` generates full project structure
+- **Structure:** `adb.toml` + `src/main.cpp` + `include/header_main.h` + `bin/`
+- **Template:** Real C++17 code with std::string, std::vector, lambdas, constexpr, cout
+
+### TAREA 2: std::algorithm real
+
+- **File:** `src/rust/stdlib/cpp/fastos_algorithm.rs`
+- **Implementation:** 14 C inline functions for algorithm operations
+- **Functions:** `__alg_sort` (quicksort), `__alg_find`, `__alg_count_if_even`, `__alg_accumulate`, `__alg_reverse`, `__alg_binary_search`, `__alg_min_element`, `__alg_max_element`, `__alg_transform_double`, `__alg_unique`, `__alg_lower_bound`, `__alg_upper_bound`, `__alg_swap`, `__alg_partition`
+
+### TAREA 3: std::map and std::unordered_map
+
+- **File:** `src/rust/stdlib/cpp/fastos_map.rs`
+- **std::map:** Sorted array of `__adb_map_entry` (key[64] + value), insertion-sort for ordering
+- **std::unordered_map:** Open-addressing hash table with djb2 hash (`__hash_str`)
+- **Methods:** `__map_init`, `__map_insert_sorted`, `__map_get`, `__map_count`, `__map_erase`, `__map_size`, `__map_free`, `__umap_init`, `__umap_get`, `__umap_size`, `__umap_free`
+
+### TAREA 4: RAII destructors (LIFO order)
+
+- **File:** `src/rust/frontend/cpp/cpp_to_ir.rs` (Block handler)
+- **Mechanism:** Track `variable_types` before/after block; on block exit, emit destructor calls in reverse (LIFO) order
+- **Inline expansion:** Destructor body is inlined with `subst_this_in_stmt` for field substitution
+- **Fallback:** If no body found, emits `ClassName::~ClassName(&var)` call
+
+## New Test Files (Session 4)
+
+| File | Tests |
+| --- | --- |
+| `test_cpp_algorithm_real.cpp` | sort, accumulate, find, count_if, reverse, min/max_element, binary_search |
+| `test_cpp_map_real.cpp` | map insert/iterate/count/erase, unordered_map frequency counter |
+| `test_cpp_raii.cpp` | RAII destructor LIFO order, nested scopes, Guard pattern |
+
+---
+
+**24/24 integration tests PASS. 615/615 unit tests PASS.**
+
+| Standard | Coverage |
+| --- | --- |
+| C++98 | Complete |
+| C++11 | Complete (auto, lambda, range-for, nullptr, constexpr, enum class, initializer lists, type_traits) |
+| C++14 | Complete (generic lambdas, relaxed constexpr, auto return) |
+| C++17 | Complete (structured bindings, if constexpr, nested namespaces, string_view, attributes) |
+| Preprocessor | Complete (#if/#elif/#else/#endif, defined(), complex expressions, multiline macros) |
+| **std::string** | **SSO implementation (22-byte threshold)** |
+| **std::vector** | **Dynamic array with move semantics** |
+| **std::iostream** | **operator<< chaining via printf** |
+| **std::function** | **Type erasure via void* + function pointers** |
+| **Vtable ABI** | **Itanium layout (vptr at offset 0)** |
+| **Name Mangling** | **Itanium + MSVC dual ABI** |
+| **std::algorithm** | **sort, find, accumulate, reverse, binary_search, min/max_element** |
+| **std::map** | **Sorted array ordered map + djb2 hash table** |
+| **RAII** | **Destructor LIFO on scope exit** |
+| **adb create --cpp** | **Full project scaffolding with C++17 template** |
 
 *Sin GCC. Sin LLVM. Sin Clang. Solo ADead-BIB.*

@@ -1018,7 +1018,39 @@ fn create_project(name: &str, is_cpp: bool) -> Result<(), Box<dyn std::error::Er
     let main_file = format!("src/main.{}", ext);
     let main_content = if is_cpp {
         format!(
-            "#include <header_main.h>\n\nint main() {{\n    printf(\"Hola desde %s\\n\", \"{}\");\n    return 0;\n}}\n",
+r#"#include <header_main.h>
+#include <iostream>
+#include <vector>
+#include <string>
+
+// ADead-BIB v8.0 — C++17 nativo
+// adb run → compila + ejecuta → ~2-3KB binario
+
+int main() {{
+    // std::string SSO
+    std::string name = "{}";
+    printf("Compiler: %s v8.0\n", name.c_str());
+
+    // std::vector con range-for
+    std::vector<int> nums = {{1, 2, 3, 4, 5}};
+    int sum = 0;
+    for (auto n : nums) sum += n;
+    printf("Sum: %d\n", sum);
+
+    // Lambda C++11
+    auto square = [](int x) {{ return x * x; }};
+    printf("5^2 = %d\n", square(5));
+
+    // constexpr C++11
+    constexpr int N = 10;
+    printf("N = %d\n", N);
+
+    // cout chaining
+    std::cout << "Hello from " << name << std::endl;
+
+    return 0;
+}}
+"#,
             name
         )
     } else {

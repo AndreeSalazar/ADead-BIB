@@ -1626,10 +1626,58 @@ impl CppToIR {
             CppStmt::Return(Some(expr)) => Ok(vec![Stmt::Return(Some(self.convert_expr(expr)?))]),
             CppStmt::Return(None) => Ok(vec![Stmt::Return(None)]),
             CppStmt::Block(stmts) => {
+                let vars_before = self.variable_types.len();
                 let mut ir_stmts = Vec::new();
                 for s in stmts {
                     ir_stmts.extend(self.convert_stmt(s)?);
                 }
+                // RAII: emit destructor calls in LIFO order for class-typed
+                // variables declared in this block scope
+                let scope_vars: Vec<(String, String)> = self
+                    .variable_types[vars_before..]
+                    .iter()
+                    .cloned()
+                    .collect();
+                for (var_name, class_name) in scope_vars.iter().rev() {
+                    let dtor_name = format!("{}::~{}", class_name, class_name);
+                    // Check if a destructor body was actually defined
+                    let has_dtor = self
+                        .class_method_bodies
+                        .iter()
+                        .any(|(cn, mn, _, _)| cn == class_name && mn == &format!("~{}", class_name));
+                    if has_dtor {
+                        // Inline the destructor body with this→field substitution
+                        let class_fields_clone = self.class_fields.clone();
+                        let method_bodies_clone = self.class_method_bodies.clone();
+                        for (cn, mn, _params, body_stmts) in &method_bodies_clone {
+                            if cn == class_name && mn == &format!("~{}", class_name) {
+                                for body_stmt in body_stmts {
+                                    let s = Self::subst_this_in_stmt(
+                                        body_stmt.clone(),
+                                        var_name,
+                                        &class_fields_clone,
+                                        class_name,
+                                    );
+                                    match self.convert_stmt(&s) {
+                                        Ok(dtor_stmts) => ir_stmts.extend(dtor_stmts),
+                                        Err(_) => {}
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    } else {
+                        // No body — emit a call to the destructor function
+                        ir_stmts.push(Stmt::Expr(Expr::Call {
+                            name: dtor_name,
+                            args: vec![Expr::AddressOf(Box::new(Expr::Variable(
+                                var_name.clone(),
+                            )))],
+                        }));
+                    }
+                }
+                // Remove scope-local variable types
+                self.variable_types.truncate(vars_before);
                 Ok(ir_stmts)
             }
             CppStmt::If {
