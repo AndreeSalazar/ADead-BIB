@@ -402,6 +402,13 @@ impl CppParser {
                     base = CppType::RValueRef(Box::new(base));
                 }
                 CppToken::LBracket => {
+                    // Don't consume [ as array when base is auto-related (structured bindings)
+                    let is_auto_base = matches!(base, CppType::Auto)
+                        || matches!(base, CppType::Reference(ref inner) if matches!(**inner, CppType::Auto))
+                        || matches!(base, CppType::Const(ref inner) if matches!(**inner, CppType::Auto));
+                    if is_auto_base {
+                        break;
+                    }
                     // Array type: int[], int[10]
                     self.advance();
                     let size = if *self.current() != CppToken::RBracket {
@@ -762,9 +769,35 @@ impl CppParser {
         }
     }
 
+    // ========== Attribute skipping ==========
+
+    fn skip_attributes(&mut self) {
+        while *self.current() == CppToken::LBracket && *self.peek() == CppToken::LBracket {
+            self.advance(); // skip first [
+            self.advance(); // skip second [
+            let mut depth = 1;
+            while depth > 0 && *self.current() != CppToken::Eof {
+                if *self.current() == CppToken::LBracket && *self.peek() == CppToken::LBracket {
+                    depth += 1;
+                    self.advance();
+                    self.advance();
+                } else if *self.current() == CppToken::RBracket && *self.peek() == CppToken::RBracket {
+                    depth -= 1;
+                    self.advance();
+                    self.advance();
+                } else {
+                    self.advance();
+                }
+            }
+        }
+    }
+
     // ========== Top-level parsing ==========
 
     fn parse_top_level(&mut self) -> Result<CppTopLevel, String> {
+        // Skip C++11/14/17 attributes: [[nodiscard]], [[deprecated(...)]], etc.
+        self.skip_attributes();
+
         // Template
         if *self.current() == CppToken::Template {
             return self.parse_template_decl();
@@ -944,7 +977,8 @@ impl CppParser {
             }
             let method_name = self.expect_identifier()?;
             let full_name = format!("{}::{}", name, method_name);
-            return self.parse_function_rest(ret_type, full_name, Vec::new());
+            // Could be method definition (LParen) or static member init (Assign/Semicolon)
+            return self.parse_function_or_var(ret_type, full_name, Vec::new());
         }
 
         self.parse_function_or_var(ret_type, name, Vec::new())
@@ -1329,15 +1363,36 @@ impl CppParser {
             // Friend
             if *self.current() == CppToken::Friend {
                 self.advance();
-                // Skip friend declaration until semicolon
+                // Skip friend declaration — may end with ; (declaration) or { } (inline definition)
                 let mut friend_name = String::new();
-                while *self.current() != CppToken::Semicolon && *self.current() != CppToken::Eof {
+                let mut brace_depth = 0;
+                loop {
+                    if *self.current() == CppToken::Eof {
+                        break;
+                    }
+                    if *self.current() == CppToken::LBrace {
+                        brace_depth += 1;
+                        self.advance();
+                        continue;
+                    }
+                    if *self.current() == CppToken::RBrace {
+                        brace_depth -= 1;
+                        self.advance();
+                        if brace_depth <= 0 {
+                            // Friend function with inline body — no semicolon needed
+                            break;
+                        }
+                        continue;
+                    }
+                    if *self.current() == CppToken::Semicolon && brace_depth == 0 {
+                        self.advance(); // consume ;
+                        break;
+                    }
                     if let CppToken::Identifier(ref n) = self.current().clone() {
                         friend_name = n.clone();
                     }
                     self.advance();
                 }
-                self.expect(&CppToken::Semicolon)?;
                 members.push(CppClassMember::FriendDecl(friend_name));
                 continue;
             }
@@ -1883,7 +1938,53 @@ impl CppParser {
 
     fn parse_typedef(&mut self) -> Result<CppTopLevel, String> {
         self.advance(); // skip typedef
+
+        // Check for function pointer typedef: typedef void (*Name)(int, int);
+        // Pattern: typedef ReturnType (*Name)(ParamTypes...);
         let original = self.parse_type_with_member_access()?;
+
+        if *self.current() == CppToken::LParen {
+            // Could be: typedef void (*Callback)(int);
+            // After parse_type got "void", current is "("
+            let save = self.pos;
+            self.advance(); // skip (
+            if *self.current() == CppToken::Star {
+                self.advance(); // skip *
+                if let Ok(name) = self.expect_identifier() {
+                    if self.eat(&CppToken::RParen) {
+                        // Now parse parameter list: (int, int)
+                        self.expect(&CppToken::LParen)?;
+                        let mut _param_types = Vec::new();
+                        while *self.current() != CppToken::RParen && *self.current() != CppToken::Eof {
+                            let _pt = self.parse_type()?;
+                            _param_types.push(_pt);
+                            // Skip optional parameter name
+                            if let CppToken::Identifier(_) = self.current().clone() {
+                                self.advance();
+                            }
+                            if !self.eat(&CppToken::Comma) {
+                                break;
+                            }
+                        }
+                        self.expect(&CppToken::RParen)?;
+                        self.expect(&CppToken::Semicolon)?;
+                        self.type_names.insert(name.clone());
+                        // Lower function pointer typedef to a named type alias
+                        return Ok(CppTopLevel::TypeAlias {
+                            new_name: name,
+                            original: CppType::Pointer(Box::new(CppType::Function {
+                                return_type: Box::new(original),
+                                params: _param_types,
+                            })),
+                            template_params: Vec::new(),
+                        });
+                    }
+                }
+            }
+            // Not a function pointer typedef — restore position
+            self.pos = save;
+        }
+
         let new_name = self.expect_identifier()?;
         self.type_names.insert(new_name.clone());
         self.expect(&CppToken::Semicolon)?;
@@ -2162,6 +2263,13 @@ impl CppParser {
     }
 
     fn parse_statement(&mut self) -> Result<CppStmt, String> {
+        // Skip C++11/14/17 attributes before statements: [[fallthrough]], [[maybe_unused]], etc.
+        self.skip_attributes();
+        // Handle [[fallthrough]]; as empty statement
+        if *self.current() == CppToken::Semicolon {
+            self.advance();
+            return Ok(CppStmt::Empty);
+        }
         match self.current().clone() {
             CppToken::LBrace => {
                 let stmts = self.parse_block_stmts()?;
@@ -2172,6 +2280,19 @@ impl CppParser {
                 if *self.current() == CppToken::Semicolon {
                     self.advance();
                     Ok(CppStmt::Return(None))
+                } else if *self.current() == CppToken::LBrace {
+                    // return {}; or return {expr, expr, ...};
+                    self.advance(); // skip {
+                    let mut items = Vec::new();
+                    while *self.current() != CppToken::RBrace && *self.current() != CppToken::Eof {
+                        items.push(self.parse_assignment_expr()?);
+                        if !self.eat(&CppToken::Comma) {
+                            break;
+                        }
+                    }
+                    self.expect(&CppToken::RBrace)?;
+                    self.expect(&CppToken::Semicolon)?;
+                    Ok(CppStmt::Return(Some(CppExpr::InitList(items))))
                 } else {
                     let expr = self.parse_expression()?;
                     self.expect(&CppToken::Semicolon)?;
@@ -2237,6 +2358,22 @@ impl CppParser {
                 self.expect(&CppToken::Semicolon)?;
                 // Emit as a type alias statement
                 Ok(CppStmt::Expr(CppExpr::Identifier(format!("namespace_alias_{}_{}", alias, target))))
+            }
+            // static_assert inside function body (C++11)
+            CppToken::Static_assert => {
+                self.advance(); // skip static_assert
+                self.expect(&CppToken::LParen)?;
+                let _condition = self.parse_expression()?;
+                if self.eat(&CppToken::Comma) {
+                    // Skip message string
+                    if let CppToken::StringLiteral(_) = self.current().clone() {
+                        self.advance();
+                    }
+                }
+                self.expect(&CppToken::RParen)?;
+                self.expect(&CppToken::Semicolon)?;
+                // static_assert is compile-time only — emit empty statement
+                Ok(CppStmt::Empty)
             }
             CppToken::Typedef => {
                 // Local typedef: typedef std::remove_const<const int>::type no_const;
@@ -2318,7 +2455,12 @@ impl CppParser {
         let type_spec = self.parse_type()?;
 
         // Fallback structured bindings check (in case parse_type didn't consume [)
-        if matches!(type_spec, CppType::Auto) && *self.current() == CppToken::LBracket {
+        // Handles: auto [a,b], auto& [a,b], const auto& [a,b]
+        let is_auto_type = matches!(type_spec, CppType::Auto)
+            || matches!(type_spec, CppType::Reference(ref inner) if matches!(**inner, CppType::Auto))
+            || matches!(type_spec, CppType::Const(ref inner) if matches!(**inner, CppType::Auto))
+            || matches!(type_spec, CppType::Reference(ref inner) if matches!(**inner, CppType::Const(ref c) if matches!(**c, CppType::Auto)));
+        if is_auto_type && *self.current() == CppToken::LBracket {
             self.advance(); // skip [
             let mut names = Vec::new();
             names.push(self.expect_identifier()?);
@@ -2484,12 +2626,36 @@ impl CppParser {
         self.expect(&CppToken::LParen)?;
 
         // Range-for: for (type var : iterable)
+        // Also: for (auto& [key, val] : m) — C++17 structured bindings
         // Try to detect range-for by looking ahead
         let save = self.pos;
         if self.is_type_start() {
             let type_spec = self.parse_type();
             if let Ok(ts) = type_spec {
-                if let Ok(name) = self.expect_identifier() {
+                // C++17: structured bindings in range-for: auto& [a, b] : iterable
+                if *self.current() == CppToken::LBracket {
+                    self.advance(); // skip [
+                    let mut binding_names = Vec::new();
+                    binding_names.push(self.expect_identifier()?);
+                    while self.eat(&CppToken::Comma) {
+                        binding_names.push(self.expect_identifier()?);
+                    }
+                    self.expect(&CppToken::RBracket)?;
+                    if self.eat(&CppToken::Colon) {
+                        let iterable = self.parse_expression()?;
+                        self.expect(&CppToken::RParen)?;
+                        let body = Box::new(self.parse_statement()?);
+                        // Use first binding as loop var name (IR will destructure)
+                        let combined_name = binding_names.join("_");
+                        return Ok(CppStmt::RangeFor {
+                            type_spec: ts,
+                            name: combined_name,
+                            iterable,
+                            body,
+                        });
+                    }
+                    self.pos = save;
+                } else if let Ok(name) = self.expect_identifier() {
                     if self.eat(&CppToken::Colon) {
                         let iterable = self.parse_expression()?;
                         self.expect(&CppToken::RParen)?;
