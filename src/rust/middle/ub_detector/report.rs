@@ -34,6 +34,12 @@ pub enum UBKind {
     FormatStringMismatch,
     BufferOverflow,
     AlignmentViolation,
+    // "Respetar Bits" — Type Strictness ULTRA
+    TypeMismatch,           // int + float, int32 + int64
+    SignedUnsignedMix,      // signed vs unsigned comparison/arithmetic
+    NarrowingConversion,    // double → int, int64 → int32
+    ImplicitCast,           // void* → int* without explicit cast
+    ImplicitConstruction,   // C++ Vec2 v = 5.0f (implicit constructor)
 }
 
 impl fmt::Display for UBKind {
@@ -60,6 +66,12 @@ impl fmt::Display for UBKind {
             UBKind::FormatStringMismatch => write!(f, "Format String Mismatch"),
             UBKind::BufferOverflow => write!(f, "Buffer Overflow"),
             UBKind::AlignmentViolation => write!(f, "Alignment Violation"),
+            // "Respetar Bits" — Type Strictness ULTRA
+            UBKind::TypeMismatch => write!(f, "Type Mismatch (int + float)"),
+            UBKind::SignedUnsignedMix => write!(f, "Signed/Unsigned Mix"),
+            UBKind::NarrowingConversion => write!(f, "Narrowing Conversion"),
+            UBKind::ImplicitCast => write!(f, "Implicit Cast"),
+            UBKind::ImplicitConstruction => write!(f, "Implicit Construction"),
         }
     }
 }

@@ -10,6 +10,7 @@ pub mod analysis;
 pub mod ir;
 pub mod lowering;
 pub mod passes;
+pub mod strict_type_checker;
 pub mod ub_detector;
 
 pub use ir::{BasicBlock, Function, Instruction, Module, Type as IRType, Value};
