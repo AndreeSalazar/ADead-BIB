@@ -251,6 +251,12 @@ impl Encoder {
                 self.emit(&[0xF2, rex, 0x0F, 0x2A, modrm]);
             }
             ADeadOp::MovQ { dst, src } => self.encode_movq(dst, src),
+            ADeadOp::Addsd { dst, src } => self.encode_sse_arith(0x58, dst, src),
+            ADeadOp::Subsd { dst, src } => self.encode_sse_arith(0x5C, dst, src),
+            ADeadOp::Mulsd { dst, src } => self.encode_sse_arith(0x59, dst, src),
+            ADeadOp::Divsd { dst, src } => self.encode_sse_arith(0x5E, dst, src),
+            ADeadOp::MovsdStore { base, disp, src } => self.encode_movsd_store(base, *disp, src),
+            ADeadOp::MovsdLoad { dst, base, disp } => self.encode_movsd_load(dst, base, *disp),
             ADeadOp::Label(label) => {
                 self.label_positions.insert(label.0, self.code.len());
             }
@@ -683,7 +689,68 @@ impl Encoder {
             (Reg::RAX, Reg::XMM0) => self.emit(&[0x66, 0x48, 0x0F, 0x7E, 0xC0]),
             (Reg::XMM1, Reg::RDX) => self.emit(&[0x66, 0x48, 0x0F, 0x6E, 0xCA]),
             (Reg::XMM0, Reg::RAX) => self.emit(&[0x66, 0x48, 0x0F, 0x6E, 0xC0]),
-            _ => self.emit(&[0x66, 0x48, 0x0F, 0x7E, 0xC0]),
+            _ => {
+                // Generic MOVQ encoding: XMM→GP = 66 REX 0F 7E, GP→XMM = 66 REX 0F 6E
+                let (dst_idx, _dst_ext) = reg_index(dst);
+                let (src_idx, _src_ext) = reg_index(src);
+                if dst.is_xmm() {
+                    // GP → XMM: 66 REX.W 0F 6E /r (MOVQ xmm, r/m64)
+                    let modrm = 0xC0 | (dst_idx << 3) | src_idx;
+                    self.emit(&[0x66, 0x48, 0x0F, 0x6E, modrm]);
+                } else {
+                    // XMM → GP: 66 REX.W 0F 7E /r (MOVQ r/m64, xmm)
+                    let modrm = 0xC0 | (src_idx << 3) | dst_idx;
+                    self.emit(&[0x66, 0x48, 0x0F, 0x7E, modrm]);
+                }
+            }
+        }
+    }
+
+    // ========================================
+    // SSE Scalar Double Arithmetic
+    // ========================================
+
+    /// Encode SSE scalar double instruction: F2 0F <opcode> /r
+    /// ADDSD=0x58, SUBSD=0x5C, MULSD=0x59, DIVSD=0x5E
+    fn encode_sse_arith(&mut self, opcode: u8, dst: &Reg, src: &Reg) {
+        let (dst_idx, _) = reg_index(dst);
+        let (src_idx, _) = reg_index(src);
+        let modrm = 0xC0 | (dst_idx << 3) | src_idx;
+        // F2 0F <op> ModRM — scalar double precision
+        self.emit(&[0xF2, 0x0F, opcode, modrm]);
+    }
+
+    /// MOVSD [base+disp], xmm — F2 0F 11 ModRM [disp]
+    fn encode_movsd_store(&mut self, base: &Reg, disp: i32, src: &Reg) {
+        let (src_idx, _) = reg_index(src);
+        let (base_idx, _) = reg_index(base);
+        if disp == 0 && base_idx != 5 {
+            let modrm = (src_idx << 3) | base_idx;
+            self.emit(&[0xF2, 0x0F, 0x11, modrm]);
+        } else if disp >= -128 && disp <= 127 {
+            let modrm = 0x40 | (src_idx << 3) | base_idx;
+            self.emit(&[0xF2, 0x0F, 0x11, modrm, disp as u8]);
+        } else {
+            let modrm = 0x80 | (src_idx << 3) | base_idx;
+            self.emit(&[0xF2, 0x0F, 0x11, modrm]);
+            self.emit_i32(disp);
+        }
+    }
+
+    /// MOVSD xmm, [base+disp] — F2 0F 10 ModRM [disp]
+    fn encode_movsd_load(&mut self, dst: &Reg, base: &Reg, disp: i32) {
+        let (dst_idx, _) = reg_index(dst);
+        let (base_idx, _) = reg_index(base);
+        if disp == 0 && base_idx != 5 {
+            let modrm = (dst_idx << 3) | base_idx;
+            self.emit(&[0xF2, 0x0F, 0x10, modrm]);
+        } else if disp >= -128 && disp <= 127 {
+            let modrm = 0x40 | (dst_idx << 3) | base_idx;
+            self.emit(&[0xF2, 0x0F, 0x10, modrm, disp as u8]);
+        } else {
+            let modrm = 0x80 | (dst_idx << 3) | base_idx;
+            self.emit(&[0xF2, 0x0F, 0x10, modrm]);
+            self.emit_i32(disp);
         }
     }
 

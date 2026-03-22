@@ -449,6 +449,25 @@ impl IsaCompiler {
         }
     }
 
+    /// Check if an expression produces a float value (for SSE codegen path)
+    fn expr_is_float(expr: &Expr, var_types: &HashMap<String, Type>) -> bool {
+        match expr {
+            Expr::Float(_) => true,
+            Expr::FloatCast(_) => true,
+            Expr::BinaryOp { left, right, .. } => {
+                Self::expr_is_float(left, var_types) || Self::expr_is_float(right, var_types)
+            }
+            Expr::Variable(name) => {
+                matches!(var_types.get(name), Some(Type::F32) | Some(Type::F64))
+            }
+            Expr::FieldAccess { .. } => false,
+            Expr::Cast { target_type, .. } => {
+                matches!(target_type, Type::F32 | Type::F64)
+            }
+            _ => false,
+        }
+    }
+
     /// Check if a variable is a heap pointer (not a local array on stack)
     fn is_heap_pointer(&self, var_name: &str) -> bool {
         if self.array_vars.contains(var_name) {
@@ -3206,48 +3225,75 @@ impl IsaCompiler {
                 }
             }
             Expr::BinaryOp { op, left, right } => {
-                // Use push/pop to preserve left across right evaluation.
-                // This is safe for all cases including nested calls and recursion.
-                self.emit_expression(left);
-                self.ir.emit(ADeadOp::Push {
-                    src: Operand::Reg(Reg::RAX),
-                });
-                self.emit_expression(right);
-                self.ir.emit(ADeadOp::Mov {
-                    dst: Operand::Reg(Reg::RBX),
-                    src: Operand::Reg(Reg::RAX),
-                });
-                self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                // Detect float operands for SSE codegen
+                let is_float_op = Self::expr_is_float(left, &self.variable_types)
+                    || Self::expr_is_float(right, &self.variable_types);
 
-                match op {
-                    BinOp::Add => self.ir.emit(ADeadOp::Add {
-                        dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Reg(Reg::RBX),
-                    }),
-                    BinOp::Sub => self.ir.emit(ADeadOp::Sub {
-                        dst: Operand::Reg(Reg::RAX),
-                        src: Operand::Reg(Reg::RBX),
-                    }),
-                    BinOp::Mul => self.ir.emit(ADeadOp::Mul {
-                        dst: Reg::RAX,
-                        src: Reg::RBX,
-                    }),
-                    BinOp::Div => self.ir.emit(ADeadOp::Div { src: Reg::RBX }),
-                    BinOp::Mod => {
-                        self.ir.emit(ADeadOp::Div { src: Reg::RBX });
-                        self.ir.emit(ADeadOp::Mov {
-                            dst: Operand::Reg(Reg::RAX),
-                            src: Operand::Reg(Reg::RDX),
-                        });
+                if is_float_op && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div) {
+                    // Float path: use XMM registers with SSE instructions
+                    // Evaluate left → RAX (float bits), move to XMM0, save on stack
+                    self.emit_expression(left);
+                    self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM0, src: Reg::RAX });
+                    self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+                    // Evaluate right → RAX (float bits), move to XMM1
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM1, src: Reg::RAX });
+                    // Restore left into XMM0
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+                    self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM0, src: Reg::RAX });
+                    // Perform SSE operation
+                    match op {
+                        BinOp::Add => self.ir.emit(ADeadOp::Addsd { dst: Reg::XMM0, src: Reg::XMM1 }),
+                        BinOp::Sub => self.ir.emit(ADeadOp::Subsd { dst: Reg::XMM0, src: Reg::XMM1 }),
+                        BinOp::Mul => self.ir.emit(ADeadOp::Mulsd { dst: Reg::XMM0, src: Reg::XMM1 }),
+                        BinOp::Div => self.ir.emit(ADeadOp::Divsd { dst: Reg::XMM0, src: Reg::XMM1 }),
+                        _ => unreachable!(),
                     }
-                    BinOp::And => self.ir.emit(ADeadOp::And {
-                        dst: Reg::RAX,
-                        src: Reg::RBX,
-                    }),
-                    BinOp::Or => self.ir.emit(ADeadOp::Or {
-                        dst: Reg::RAX,
-                        src: Reg::RBX,
-                    }),
+                    // Move result back to RAX
+                    self.ir.emit(ADeadOp::MovQ { dst: Reg::RAX, src: Reg::XMM0 });
+                } else {
+                    // Integer path: use GPR registers
+                    self.emit_expression(left);
+                    self.ir.emit(ADeadOp::Push {
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.emit_expression(right);
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+
+                    match op {
+                        BinOp::Add => self.ir.emit(ADeadOp::Add {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Reg(Reg::RBX),
+                        }),
+                        BinOp::Sub => self.ir.emit(ADeadOp::Sub {
+                            dst: Operand::Reg(Reg::RAX),
+                            src: Operand::Reg(Reg::RBX),
+                        }),
+                        BinOp::Mul => self.ir.emit(ADeadOp::Mul {
+                            dst: Reg::RAX,
+                            src: Reg::RBX,
+                        }),
+                        BinOp::Div => self.ir.emit(ADeadOp::Div { src: Reg::RBX }),
+                        BinOp::Mod => {
+                            self.ir.emit(ADeadOp::Div { src: Reg::RBX });
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Reg(Reg::RDX),
+                            });
+                        }
+                        BinOp::And => self.ir.emit(ADeadOp::And {
+                            dst: Reg::RAX,
+                            src: Reg::RBX,
+                        }),
+                        BinOp::Or => self.ir.emit(ADeadOp::Or {
+                            dst: Reg::RAX,
+                            src: Reg::RBX,
+                        }),
+                    }
                 }
             }
             Expr::UnaryOp { op, expr: inner } => {

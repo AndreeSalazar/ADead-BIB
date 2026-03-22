@@ -628,6 +628,19 @@ pub enum ADeadOp {
     /// MOVQ dst, src — Mover entre registro GP y XMM (64-bit)
     MovQ { dst: Reg, src: Reg },
 
+    /// ADDSD xmm, xmm — Add scalar double-precision float
+    Addsd { dst: Reg, src: Reg },
+    /// SUBSD xmm, xmm — Subtract scalar double-precision float
+    Subsd { dst: Reg, src: Reg },
+    /// MULSD xmm, xmm — Multiply scalar double-precision float
+    Mulsd { dst: Reg, src: Reg },
+    /// DIVSD xmm, xmm — Divide scalar double-precision float
+    Divsd { dst: Reg, src: Reg },
+    /// MOVSD [base+disp], xmm — Store scalar double to memory
+    MovsdStore { base: Reg, disp: i32, src: Reg },
+    /// MOVSD xmm, [base+disp] — Load scalar double from memory
+    MovsdLoad { dst: Reg, base: Reg, disp: i32 },
+
     // ---- Pseudo-instructions ----
     /// Pseudo-instrucción: marca la posición de un label.
     /// No emite bytes, solo registra el offset para resolución de saltos.
@@ -762,6 +775,12 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::Syscall => write!(f, "syscall"),
             ADeadOp::CvtSi2Sd { dst, src } => write!(f, "cvtsi2sd {}, {}", dst, src),
             ADeadOp::MovQ { dst, src } => write!(f, "movq {}, {}", dst, src),
+            ADeadOp::Addsd { dst, src } => write!(f, "addsd {}, {}", dst, src),
+            ADeadOp::Subsd { dst, src } => write!(f, "subsd {}, {}", dst, src),
+            ADeadOp::Mulsd { dst, src } => write!(f, "mulsd {}, {}", dst, src),
+            ADeadOp::Divsd { dst, src } => write!(f, "divsd {}, {}", dst, src),
+            ADeadOp::MovsdStore { base, disp, src } => write!(f, "movsd [{}{:+}], {}", base, disp, src),
+            ADeadOp::MovsdLoad { dst, base, disp } => write!(f, "movsd {}, [{}{:+}]", dst, base, disp),
             ADeadOp::Label(label) => write!(f, "{}:", label),
             ADeadOp::Nop => write!(f, "nop"),
             ADeadOp::RawBytes(bytes) => {
