@@ -320,7 +320,7 @@ fn is_compatible_for_aliasing(source: &Type, target: &Type) -> bool {
 /// Infer the type of an expression from the environment
 fn infer_type(expr: &Expr, env: &HashMap<String, Type>) -> Type {
     match expr {
-        Expr::Number(_) => Type::I64,
+        Expr::Number(_) => Type::I32,  // C/C++ standard: int literals are int (32-bit)
         Expr::Float(_) => Type::F64,
         Expr::Bool(_) => Type::Bool,
         Expr::String(_) => Type::Str,

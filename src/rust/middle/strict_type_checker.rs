@@ -227,6 +227,26 @@ pub fn check_types_compatible(left: &CType, right: &CType, op: &str) -> TypeComp
         return TypeCompatResult::Ok(CType::Int32);
     }
 
+    // Special case: char vs int32 (C standard, integer promotion for comparisons)
+    // This is common: str[i] != '\0' where str[i] is char and '\0' is int
+    if (*left == CType::Char && *right == CType::Int32) || 
+       (*left == CType::Int32 && *right == CType::Char) {
+        return TypeCompatResult::Ok(CType::Int32);
+    }
+
+    // Special case: int8 vs int32 (C standard, integer promotion)
+    // char is often represented as int8, and comparisons with int literals are common
+    if (*left == CType::Int8 && *right == CType::Int32) || 
+       (*left == CType::Int32 && *right == CType::Int8) {
+        return TypeCompatResult::Ok(CType::Int32);
+    }
+
+    // Special case: int16 vs int32 (C standard, integer promotion)
+    if (*left == CType::Int16 && *right == CType::Int32) || 
+       (*left == CType::Int32 && *right == CType::Int16) {
+        return TypeCompatResult::Ok(CType::Int32);
+    }
+
     // Special case: bool + bool = int32 (C standard, integer promotion)
     if *left == CType::Bool && *right == CType::Bool {
         return TypeCompatResult::Ok(CType::Int32);

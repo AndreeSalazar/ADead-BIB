@@ -1,8 +1,9 @@
 // ============================================================
-// ADead-BIB Compiler CLI v8.0
+// ADead-BIB Compiler CLI v9.0
 // C/C++ Native Compiler — Sin GCC, Sin LLVM, Sin Clang
 // 100% Self-Sufficient — Sin libc, Sin linker externo
 // 256-bit nativo — YMM/AVX2 — SoA natural
+// "Respetar Bits" — FORTRAN 1957 + Ada 1983 + ADead-BIB 2025
 // ============================================================
 
 use adead_bib::backend::gpu::gpu_detect::GPUFeatures;
@@ -757,54 +758,114 @@ fn parse_fixed_size(args: &[String]) -> usize {
 }
 
 // ============================================================
+// ANSI Color Codes for Terminal Output
+// ============================================================
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+
+// C++ Logo Colors (Blue/White theme)
+const BLUE: &str = "\x1b[38;5;33m";      // C++ Blue
+const LIGHT_BLUE: &str = "\x1b[38;5;39m"; // Light blue
+const WHITE: &str = "\x1b[38;5;255m";     // Bright white
+const CYAN: &str = "\x1b[38;5;51m";       // Cyan accent
+
+// Status colors
+const GREEN: &str = "\x1b[38;5;46m";      // Success green
+const YELLOW: &str = "\x1b[38;5;226m";    // Warning yellow
+const RED: &str = "\x1b[38;5;196m";       // Error red
+const MAGENTA: &str = "\x1b[38;5;201m";   // Phase magenta
+
+fn print_cpp_banner() {
+    println!();
+    println!("{}{}    ╔═══════════════════════════════════════════════════════╗{}", BLUE, BOLD, RESET);
+    println!("{}{}    ║{}{}  █████╗ ██████╗ ███████╗ █████╗ ██████╗            {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
+    println!("{}{}    ║{}{} ██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔══██╗           {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
+    println!("{}{}    ║{}{} ███████║██║  ██║█████╗  ███████║██║  ██║  {}▄▄▄▄▄   {}║{}", BLUE, BOLD, WHITE, BOLD, LIGHT_BLUE, BLUE, RESET);
+    println!("{}{}    ║{}{} ██╔══██║██║  ██║██╔══╝  ██╔══██║██║  ██║  {}█████   {}║{}", BLUE, BOLD, WHITE, BOLD, LIGHT_BLUE, BLUE, RESET);
+    println!("{}{}    ║{}{} ██║  ██║██████╔╝███████╗██║  ██║██████╔╝  {}▀▀▀▀▀   {}║{}", BLUE, BOLD, WHITE, BOLD, LIGHT_BLUE, BLUE, RESET);
+    println!("{}{}    ║{}{} ╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝   {}++      {}║{}", BLUE, BOLD, WHITE, BOLD, CYAN, BLUE, RESET);
+    println!("{}{}    ║{}                                                       {}║{}", BLUE, BOLD, DIM, BLUE, RESET);
+    println!("{}{}    ║{}  {}B{}inary {}I{}s {}B{}inary — C++ Native Compiler v9.0       {}║{}", BLUE, BOLD, DIM, CYAN, WHITE, CYAN, WHITE, CYAN, WHITE, BLUE, RESET);
+    println!("{}{}    ║{}  \"Respetar Bits\" 💀🦈 — Lima, Perú 🇵🇪                {}║{}", BLUE, BOLD, DIM, BLUE, RESET);
+    println!("{}{}    ╚═══════════════════════════════════════════════════════╝{}", BLUE, BOLD, RESET);
+    println!();
+}
+
+fn print_phase(phase_num: u8, name: &str, description: &str) {
+    println!("{}{}── Phase {}: {} ─{} {}", MAGENTA, BOLD, phase_num, name, RESET, description);
+}
+
+fn print_success(msg: &str) {
+    println!("  {}✓{} {}", GREEN, RESET, msg);
+}
+
+fn print_info(msg: &str) {
+    println!("  {}•{} {}", CYAN, RESET, msg);
+}
+
+#[allow(dead_code)]
+fn print_step(step_num: u8, msg: &str) {
+    println!("   {}Step {}:{} {}", LIGHT_BLUE, step_num, RESET, msg);
+}
+
+// ============================================================
 // C++ COMPILATION
 // ============================================================
 fn compile_cpp_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let output_file = get_output_filename(input_file, args);
 
-    println!("🔨 ADead-BIB C++ Compiler");
-    println!("   Source: {}", input_file);
-    println!("   Target: {}", output_file);
+    // Print beautiful banner
+    print_cpp_banner();
+    
+    println!("{}{}🔨 Compiling C++ Source{}", BOLD, WHITE, RESET);
+    println!("   {}Source:{} {}", DIM, RESET, input_file);
+    println!("   {}Target:{} {}", DIM, RESET, output_file);
 
     // 1. Read source
     let source = fs::read_to_string(input_file)
         .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
 
     // 2. Parse C++
-    println!("   Step 1: Parsing C++...");
+    print_phase(1, "PARSER", "Analyzing C++ source");
     let program = compile_cpp_to_program(&source).map_err(|e| format!("C++ parse error: {}", e))?;
 
-    println!(
-        "   Step 2: {} functions, {} structs, {} classes found",
-        program.functions.len(),
-        program.structs.len(),
-        program.classes.len()
-    );
+    print_success(&format!(
+        "{}{} functions{}, {}{} structs{}, {}{} classes{}",
+        GREEN, program.functions.len(), RESET,
+        CYAN, program.structs.len(), RESET,
+        MAGENTA, program.classes.len(), RESET
+    ));
 
+    // UB Detection
+    print_phase(2, "UB DETECTOR", "Checking for undefined behavior");
     let warn_ub = args.iter().any(|a| a == "--warn-ub");
     let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
     if warn_ub {
         ub_detector = ub_detector.with_warn_mode();
-        println!("   ⚠️  UB_Detector: warning mode (avisa y continua)");
+        print_info(&format!("{}⚠️  Warning mode{} (reports but continues)", YELLOW, RESET));
     } else {
-        println!("   🛡️  UB_Detector: strict mode (se detiene en errores)");
+        print_info(&format!("{}🛡️  Strict mode{} (stops on errors)", GREEN, RESET));
     }
 
     ub_detector.analyze(&program);
     ub_detector.print_reports();
     if !warn_ub && ub_detector.has_errors() {
-        eprintln!("❌ Error: Undefined Behavior detectado en modo estricto. Operación cancelada.");
+        eprintln!("{}{}❌ Error:{} Undefined Behavior detected. Compilation aborted.", RED, BOLD, RESET);
         std::process::exit(1);
     }
+    print_success("No undefined behavior detected");
 
     // 3. Compile to native x86-64
-    println!("   Step 3: Compiling to native x86-64...");
+    print_phase(3, "CODEGEN", "Generating x86-64 machine code");
     let target = determine_target(args);
     let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
     let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
+    print_success(&format!("{} bytes of machine code", opcodes.len()));
+    print_info(&format!("{} bytes of data section", data.len()));
 
     // 4. Generate binary
-    println!("   Step 4: Generating binary...");
+    print_phase(4, "OUTPUT", "Generating PE executable");
     if is_fastos_target(args) {
         use adead_bib::output::po::PoOutput;
         let gen = PoOutput::new();
@@ -838,16 +899,19 @@ fn compile_cpp_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std
         }
     }
 
+    // Final success message
+    println!();
+    println!("{}{}╔════════════════════════════════════════════════════════════╗{}", GREEN, BOLD, RESET);
     if let Ok(meta) = fs::metadata(&output_file) {
-        println!(
-            "✅ C++ compilation complete: {} ({} bytes)",
-            output_file,
-            meta.len()
-        );
+        println!("{}{}║  ✅ COMPILATION SUCCESSFUL                                   ║{}", GREEN, BOLD, RESET);
+        println!("{}{}║  Output: {:<47} ║{}", GREEN, BOLD, output_file, RESET);
+        println!("{}{}║  Size:   {:<47} ║{}", GREEN, BOLD, format!("{} bytes", meta.len()), RESET);
     } else {
-        println!("✅ C++ compilation complete: {}", output_file);
+        println!("{}{}║  ✅ COMPILATION SUCCESSFUL                                   ║{}", GREEN, BOLD, RESET);
+        println!("{}{}║  Output: {:<47} ║{}", GREEN, BOLD, output_file, RESET);
     }
-    println!("   🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB C++");
+    println!("{}{}║  🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB           ║{}", GREEN, BOLD, RESET);
+    println!("{}{}╚════════════════════════════════════════════════════════════╝{}", GREEN, BOLD, RESET);
     print_path_hint();
 
     Ok(())
