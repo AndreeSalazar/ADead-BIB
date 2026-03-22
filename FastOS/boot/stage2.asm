@@ -1,4 +1,5 @@
 ; ============================================================
+; Faggin-Scale
 ; FastOS v2.0 — stage2.asm (Stage 2 — Transicion Gradual)
 ; Compilar: fasm boot/stage2.asm boot/stage2.bin
 ;

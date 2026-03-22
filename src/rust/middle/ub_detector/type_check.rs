@@ -4,9 +4,13 @@
 // Detecta casts invalidos y confusion de tipos.
 // UBKind::TypeConfusion, UBKind::InvalidCast
 // ============================================================
+// "Respetar Bits" — FORTRAN 1957 + Ada 1983 + ADead-BIB 2025
+// Type Strictness ULTRA Agresivo para C y C++
+// ============================================================
 
 use super::report::{UBKind, UBReport, UBSeverity};
-use crate::ast::{Expr, Program, Stmt, Type};
+use crate::ast::{BinOp, CmpOp, Expr, Program, Stmt, Type};
+use crate::middle::strict_type_checker::{self, CType, TypeCompatResult};
 use std::collections::HashMap;
 
 pub fn analyze_type_safety(program: &Program) -> Vec<UBReport> {
@@ -157,7 +161,113 @@ fn check_expr_types(
             
             check_expr_types(inner, func_name, reports, current_line, env);
         }
-        Expr::BinaryOp { left, right, .. } => {
+        Expr::BinaryOp { left, right, op } => {
+            // "Respetar Bits" — Strict type checking for binary operations
+            let left_type = infer_type(left, env);
+            let right_type = infer_type(right, env);
+            let c_left = CType::from_frontend_type(&left_type);
+            let c_right = CType::from_frontend_type(&right_type);
+            
+            let op_str = match op {
+                BinOp::Add => "+",
+                BinOp::Sub => "-",
+                BinOp::Mul => "*",
+                BinOp::Div => "/",
+                BinOp::Mod => "%",
+                BinOp::And => "&&",
+                BinOp::Or => "||",
+            };
+            
+            let result = strict_type_checker::check_types_compatible(&c_left, &c_right, op_str);
+            
+            match result {
+                TypeCompatResult::Mismatch { left, right, op, suggestions } => {
+                    reports.push(
+                        UBReport::new(
+                            UBSeverity::Error,
+                            UBKind::TypeMismatch,
+                            format!(
+                                "TypeMismatch: {} {} {} — {} usa {}, {} usa {}",
+                                left, op, right,
+                                left, left.cpu_unit(),
+                                right, right.cpu_unit()
+                            ),
+                        )
+                        .with_location(func_name.to_string(), *current_line)
+                        .with_suggestion(suggestions.join(" o "))
+                    );
+                }
+                TypeCompatResult::SignedUnsignedMix { signed, unsigned, suggestions } => {
+                    reports.push(
+                        UBReport::new(
+                            UBSeverity::Error,
+                            UBKind::SignedUnsignedMix,
+                            format!(
+                                "SignedUnsignedMix: {} (signed) vs {} (unsigned) — C convierte signed a unsigned implícitamente, -1 → 4294967295",
+                                signed, unsigned
+                            ),
+                        )
+                        .with_location(func_name.to_string(), *current_line)
+                        .with_suggestion(suggestions.join(" o "))
+                    );
+                }
+                TypeCompatResult::Ok(_) => {}
+                _ => {}
+            }
+            
+            check_expr_types(left, func_name, reports, current_line, env);
+            check_expr_types(right, func_name, reports, current_line, env);
+        }
+        Expr::Comparison { left, right, op } => {
+            // "Respetar Bits" — Strict type checking for comparisons
+            let left_type = infer_type(left, env);
+            let right_type = infer_type(right, env);
+            let c_left = CType::from_frontend_type(&left_type);
+            let c_right = CType::from_frontend_type(&right_type);
+            
+            let op_str = match op {
+                CmpOp::Lt => "<",
+                CmpOp::Gt => ">",
+                CmpOp::Le => "<=",
+                CmpOp::Ge => ">=",
+                CmpOp::Eq => "==",
+                CmpOp::Ne => "!=",
+            };
+            
+            let result = strict_type_checker::check_types_compatible(&c_left, &c_right, op_str);
+            
+            match result {
+                TypeCompatResult::SignedUnsignedMix { signed, unsigned, suggestions } => {
+                    reports.push(
+                        UBReport::new(
+                            UBSeverity::Error,
+                            UBKind::SignedUnsignedMix,
+                            format!(
+                                "SignedUnsignedMix en comparación: {} {} {} — signed vs unsigned comparison es peligroso",
+                                signed, op_str, unsigned
+                            ),
+                        )
+                        .with_location(func_name.to_string(), *current_line)
+                        .with_suggestion(suggestions.join(" o "))
+                    );
+                }
+                TypeCompatResult::Mismatch { left, right, op, suggestions } => {
+                    reports.push(
+                        UBReport::new(
+                            UBSeverity::Error,
+                            UBKind::TypeMismatch,
+                            format!(
+                                "TypeMismatch en comparación: {} {} {}",
+                                left, op, right
+                            ),
+                        )
+                        .with_location(func_name.to_string(), *current_line)
+                        .with_suggestion(suggestions.join(" o "))
+                    );
+                }
+                _ => {}
+            }
+            
             check_expr_types(left, func_name, reports, current_line, env);
             check_expr_types(right, func_name, reports, current_line, env);
         }
@@ -204,6 +314,124 @@ fn is_compatible_for_aliasing(source: &Type, target: &Type) -> bool {
         (Type::I64, Type::U64) | (Type::U64, Type::I64) => true,
         (Type::I16, Type::U16) | (Type::U16, Type::I16) => true,
         _ => false,
+    }
+}
+
+/// Infer the type of an expression from the environment
+fn infer_type(expr: &Expr, env: &HashMap<String, Type>) -> Type {
+    match expr {
+        Expr::Number(_) => Type::I64,
+        Expr::Float(_) => Type::F64,
+        Expr::Bool(_) => Type::Bool,
+        Expr::String(_) => Type::Str,
+        Expr::Variable(name) => env.get(name).cloned().unwrap_or(Type::Unknown),
+        Expr::Cast { target_type, .. } => target_type.clone(),
+        Expr::BinaryOp { left, right, op } => {
+            let l = infer_type(left, env);
+            let r = infer_type(right, env);
+            match op {
+                BinOp::And | BinOp::Or => Type::Bool,
+                _ => {
+                    // Return the "wider" type for arithmetic
+                    if l.is_float() || r.is_float() {
+                        Type::F64
+                    } else {
+                        l
+                    }
+                }
+            }
+        }
+        Expr::Comparison { .. } => Type::Bool,
+        Expr::UnaryOp { expr: inner, .. } => infer_type(inner, env),
+        Expr::Deref(inner) => {
+            if let Type::Pointer(inner_type) = infer_type(inner, env) {
+                *inner_type
+            } else {
+                Type::Unknown
+            }
+        }
+        Expr::AddressOf(inner) => Type::Pointer(Box::new(infer_type(inner, env))),
+        Expr::Call { .. } => Type::Unknown, // Would need function signature lookup
+        Expr::Index { object, .. } => {
+            if let Type::Array(inner, _) = infer_type(object, env) {
+                *inner
+            } else if let Type::Pointer(inner) = infer_type(object, env) {
+                *inner
+            } else {
+                Type::Unknown
+            }
+        }
+        Expr::FieldAccess { .. } => Type::Unknown, // Would need struct lookup
+        Expr::SizeOf(_) => Type::U64,
+        _ => Type::Unknown,
+    }
+}
+
+/// Check assignment for narrowing conversions and implicit casts
+pub fn check_assignment_strict(
+    target_type: &Type,
+    source_expr: &Expr,
+    func_name: &str,
+    line: usize,
+    env: &HashMap<String, Type>,
+) -> Option<UBReport> {
+    let source_type = infer_type(source_expr, env);
+    let c_target = CType::from_frontend_type(target_type);
+    let c_source = CType::from_frontend_type(&source_type);
+    
+    let result = strict_type_checker::check_assignment_compatible(&c_target, &c_source);
+    
+    match result {
+        TypeCompatResult::NarrowingConversion { from, to, suggestion } => {
+            Some(
+                UBReport::new(
+                    UBSeverity::Error,
+                    UBKind::NarrowingConversion,
+                    format!(
+                        "NarrowingConversion: {} → {} — pérdida de datos posible ({} bits → {} bits)",
+                        from, to,
+                        from.size_bytes() * 8,
+                        to.size_bytes() * 8
+                    ),
+                )
+                .with_location(func_name.to_string(), line)
+                .with_suggestion(suggestion)
+            )
+        }
+        TypeCompatResult::ImplicitCast { from, to, suggestion } => {
+            Some(
+                UBReport::new(
+                    UBSeverity::Error,
+                    UBKind::ImplicitCast,
+                    format!("ImplicitCast: {} → {} — cast implícito de puntero", from, to),
+                )
+                .with_location(func_name.to_string(), line)
+                .with_suggestion(suggestion)
+            )
+        }
+        TypeCompatResult::SignedUnsignedMix { signed, unsigned, suggestions } => {
+            Some(
+                UBReport::new(
+                    UBSeverity::Error,
+                    UBKind::SignedUnsignedMix,
+                    format!("SignedUnsignedMix en asignación: {} vs {}", signed, unsigned),
+                )
+                .with_location(func_name.to_string(), line)
+                .with_suggestion(suggestions.join(" o "))
+            )
+        }
+        TypeCompatResult::Mismatch { left, right, suggestions, .. } => {
+            Some(
+                UBReport::new(
+                    UBSeverity::Error,
+                    UBKind::TypeMismatch,
+                    format!("TypeMismatch en asignación: {} ← {}", left, right),
+                )
+                .with_location(func_name.to_string(), line)
+                .with_suggestion(suggestions.join(" o "))
+            )
+        }
+        _ => None,
     }
 }
 
