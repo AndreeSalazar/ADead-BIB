@@ -1020,15 +1020,39 @@ impl CppToIR {
         }
     }
 
-    // ========== Class â†’ Struct ==========
+    // ========== Class → Struct ==========
 
     fn convert_class_to_struct(
         &self,
         name: &str,
         members: &[CppClassMember],
-        _bases: &[CppBaseClass],
+        bases: &[CppBaseClass],
     ) -> Result<IrStruct, String> {
         let mut fields = Vec::new();
+        
+        // First, include fields from base classes (inheritance support)
+        for base in bases {
+            // Find base class fields from class_fields
+            for (class_name, class_field_list) in &self.class_fields {
+                if class_name == &base.name {
+                    for field_name in class_field_list {
+                        // Get field type from class_field_type_map
+                        let field_type = self.class_field_type_map
+                            .iter()
+                            .find(|(cn, fn2, _)| cn == &base.name && fn2 == field_name)
+                            .map(|(_, _, cpp_ty)| self.convert_type(cpp_ty))
+                            .unwrap_or(Type::I64);
+                        
+                        fields.push(StructField {
+                            name: field_name.clone(),
+                            field_type,
+                        });
+                    }
+                }
+            }
+        }
+        
+        // Then add this class's own fields
         for member in members {
             if let CppClassMember::Field {
                 type_spec,

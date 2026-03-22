@@ -48,51 +48,53 @@ void test_basic_class() {
 }
 
 // ============================================================
-// Test 2: Multiple Classes (inheritance not yet supported)
+// Test 2: Class Inheritance
 // ============================================================
-class Rectangle2 {
+class Shape {
 public:
     int width, height;
     
-    Rectangle2(int w, int h) : width(w), height(h) {
-        printf("[Rectangle2] Constructor: %dx%d\n", width, height);
+    Shape(int w, int h) : width(w), height(h) {
+        printf("[Shape] Base constructor: %dx%d\n", width, height);
+    }
+    
+    int area() {
+        return 0;
+    }
+};
+
+class Rectangle : public Shape {
+public:
+    Rectangle(int w, int h) : Shape(w, h) {
+        printf("[Rectangle] Derived constructor\n");
     }
     
     int area() {
         return width * height;
     }
-    
-    void describe() {
-        printf("  Rectangle: %dx%d, area=%d\n", width, height, area());
-    }
 };
 
-class Triangle2 {
+class Triangle : public Shape {
 public:
-    int base, height;
-    
-    Triangle2(int b, int h) : base(b), height(h) {
-        printf("[Triangle2] Constructor: base=%d, height=%d\n", base, height);
+    Triangle(int w, int h) : Shape(w, h) {
+        printf("[Triangle] Derived constructor\n");
     }
     
     int area() {
-        return (base * height) / 2;
-    }
-    
-    void describe() {
-        printf("  Triangle: base=%d, height=%d, area=%d\n", base, height, area());
+        return (width * height) / 2;
     }
 };
 
 void test_inheritance() {
-    printf("\n=== TEST 2: Multiple Classes ===\n");
-    Rectangle2 rect(10, 5);
+    printf("\n=== TEST 2: Class Inheritance ===\n");
+    
+    Rectangle rect(10, 5);
     printf("  Rectangle area: %d\n", rect.area());
     
-    Triangle2 tri(10, 5);
+    Triangle tri(10, 5);
     printf("  Triangle area: %d\n", tri.area());
     
-    printf("  [OK] Multiple class instances work\n");
+    printf("  [OK] Inheritance works!\n");
 }
 
 // ============================================================

@@ -778,17 +778,17 @@ const MAGENTA: &str = "\x1b[38;5;201m";   // Phase magenta
 
 fn print_cpp_banner() {
     println!();
-    println!("{}{}    ╔═══════════════════════════════════════════════════════╗{}", BLUE, BOLD, RESET);
-    println!("{}{}    ║{}{}  █████╗ ██████╗ ███████╗ █████╗ ██████╗            {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
-    println!("{}{}    ║{}{} ██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔══██╗           {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
-    println!("{}{}    ║{}{} ███████║██║  ██║█████╗  ███████║██║  ██║  {}▄▄▄▄▄   {}║{}", BLUE, BOLD, WHITE, BOLD, LIGHT_BLUE, BLUE, RESET);
-    println!("{}{}    ║{}{} ██╔══██║██║  ██║██╔══╝  ██╔══██║██║  ██║  {}█████   {}║{}", BLUE, BOLD, WHITE, BOLD, LIGHT_BLUE, BLUE, RESET);
-    println!("{}{}    ║{}{} ██║  ██║██████╔╝███████╗██║  ██║██████╔╝  {}▀▀▀▀▀   {}║{}", BLUE, BOLD, WHITE, BOLD, LIGHT_BLUE, BLUE, RESET);
-    println!("{}{}    ║{}{} ╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝   {}++      {}║{}", BLUE, BOLD, WHITE, BOLD, CYAN, BLUE, RESET);
-    println!("{}{}    ║{}                                                       {}║{}", BLUE, BOLD, DIM, BLUE, RESET);
-    println!("{}{}    ║{}  {}B{}inary {}I{}s {}B{}inary — C++ Native Compiler v9.0       {}║{}", BLUE, BOLD, DIM, CYAN, WHITE, CYAN, WHITE, CYAN, WHITE, BLUE, RESET);
-    println!("{}{}    ║{}  \"Respetar Bits\" 💀🦈 — Lima, Perú 🇵🇪                {}║{}", BLUE, BOLD, DIM, BLUE, RESET);
-    println!("{}{}    ╚═══════════════════════════════════════════════════════╝{}", BLUE, BOLD, RESET);
+    println!("{}{}╔═══════════════════════════════════════════════════════════════════════════════╗{}", BLUE, BOLD, RESET);
+    println!("{}{}║{}{}  █████╗ ██████╗ ███████╗ █████╗ ██████╗       ██████╗ ██╗██████╗        {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
+    println!("{}{}║{}{} ██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔══██╗      ██╔══██╗██║██╔══██╗       {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
+    println!("{}{}║{}{} ███████║██║  ██║█████╗  ███████║██║  ██║█████╗██████╔╝██║██████╔╝       {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
+    println!("{}{}║{}{} ██╔══██║██║  ██║██╔══╝  ██╔══██║██║  ██║╚════╝██╔══██╗██║██╔══██╗       {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
+    println!("{}{}║{}{} ██║  ██║██████╔╝███████╗██║  ██║██████╔╝      ██████╔╝██║██████╔╝  {}++ {}║{}", BLUE, BOLD, WHITE, BOLD, CYAN, BLUE, RESET);
+    println!("{}{}║{}{} ╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝       ╚═════╝ ╚═╝╚═════╝        {}║{}", BLUE, BOLD, WHITE, BOLD, BLUE, RESET);
+    println!("{}{}║{}                                                                           {}║{}", BLUE, BOLD, DIM, BLUE, RESET);
+    println!("{}{}║{}  {}A{}Dead-{}BIB{} — {}B{}inary {}I{}s {}B{}inary — C++ Native Compiler v9.1              {}║{}", BLUE, BOLD, DIM, CYAN, WHITE, CYAN, WHITE, CYAN, WHITE, CYAN, WHITE, CYAN, WHITE, BLUE, RESET);
+    println!("{}{}║{}  \"Respetar Bits\" 💀🦈 — Sin GCC, Sin LLVM, Sin Clang — Lima, Perú 🇵🇪   {}║{}", BLUE, BOLD, DIM, BLUE, RESET);
+    println!("{}{}╚═══════════════════════════════════════════════════════════════════════════════╝{}", BLUE, BOLD, RESET);
     println!();
 }
 
