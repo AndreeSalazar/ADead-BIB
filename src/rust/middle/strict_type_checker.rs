@@ -222,19 +222,19 @@ pub fn check_types_compatible(left: &CType, right: &CType, op: &str) -> TypeComp
         return TypeCompatResult::Ok(CType::Unknown);
     }
 
-    // Same type is always compatible
-    if left == right {
-        return TypeCompatResult::Ok(left.clone());
-    }
-
-    // Special case: char + char = int32 (C standard)
+    // Special case: char + char = int32 (C standard, integer promotion)
     if *left == CType::Char && *right == CType::Char {
         return TypeCompatResult::Ok(CType::Int32);
     }
 
-    // Special case: bool + bool = int32 (C standard)
+    // Special case: bool + bool = int32 (C standard, integer promotion)
     if *left == CType::Bool && *right == CType::Bool {
         return TypeCompatResult::Ok(CType::Int32);
+    }
+
+    // Same type is always compatible
+    if left == right {
+        return TypeCompatResult::Ok(left.clone());
     }
 
     // BLOCKED: signed vs unsigned mixing
