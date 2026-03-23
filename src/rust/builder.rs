@@ -28,6 +28,7 @@ use std::path::Path;
 pub enum SourceLanguage {
     C,
     Cpp,
+    Js,
 }
 
 #[derive(Clone, Debug)]
@@ -113,6 +114,25 @@ impl Builder {
         Self::compile_program(&mut program, options)
     }
 
+    /// Compile JavaScript source code to executable (JsDead-BIB)
+    pub fn build_js(
+        source: &str,
+        options: BuildOptions,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if options.verbose {
+            println!("Starting JS build for target: {:?}", options.target);
+        }
+
+        // 1. Frontend: JS Parsing → IR
+        if options.verbose {
+            println!("Step 1: Parsing JavaScript (JsDead-BIB)...");
+        }
+        let mut program = crate::frontend::js::compile_js_to_program(source)?;
+
+        // Continue with common pipeline
+        Self::compile_program(&mut program, options)
+    }
+
     /// Build from file, auto-detecting language by extension
     pub fn build_file(path: &str, options: BuildOptions) -> Result<(), Box<dyn std::error::Error>> {
         let source = fs::read_to_string(path)?;
@@ -124,6 +144,7 @@ impl Builder {
         match ext {
             "c" | "h" => Self::build_c(&source, options),
             "cpp" | "cxx" | "cc" | "hpp" | "hxx" => Self::build_cpp(&source, options),
+            "js" => Self::build_js(&source, options),
             _ => Err(format!("Unknown file extension: .{}", ext).into()),
         }
     }
@@ -187,6 +208,12 @@ impl Builder {
             SourceLanguage::Cpp => {
                 let mut cpp_compiler = CppIsaCompiler::new(options.target);
                 let result = cpp_compiler.compile(program);
+                (result.0, result.1, result.2, result.3, None::<()>)
+            }
+            SourceLanguage::Js => {
+                // JS uses the same ISA path as C (no vtable/this complexity)
+                let mut c_compiler = CIsaCompiler::new(options.target);
+                let result = c_compiler.compile(program);
                 (result.0, result.1, result.2, result.3, None::<()>)
             }
         };
@@ -371,6 +398,7 @@ impl Builder {
         let program = match ext {
             "c" | "h" => compile_c_to_program(&source)?,
             "cpp" | "cxx" | "cc" => compile_cpp_to_program(&source)?,
+            "js" => crate::frontend::js::compile_js_to_program(&source)?,
             _ => return Err(format!("Unknown extension: .{}", ext).into()),
         };
 

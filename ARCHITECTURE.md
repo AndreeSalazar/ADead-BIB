@@ -87,13 +87,13 @@ NSA abre binario → Google '0x506F4F53' → 0 resultados → "._." 🛸
 
 ---
 
-## Pipeline Completo v8.0
+## Pipeline Completo v9.0
 
 ```
-C99 / C11 / C++98→C++20  código fuente
+C99 / C11 / C++98→C++20 / JavaScript (JsDead-BIB)  código fuente
         │
         ▼
-[ 01 PREPROCESSOR ]    ←── preprocessor/
+[ 01 PREPROCESSOR ]    ←── preprocessor/ (C/C++) | js_lexer (JS)
   header_main.h resolution COMPLETA
   fastos.bib cache (CACHE HIT = nanosegundos)
   symbol deduplication GLOBAL
@@ -110,9 +110,10 @@ C99 / C11 / C++98→C++20  código fuente
   "undefined reference" — NUNCA
         │
         ▼
-[ 03 PARSER / AST ]    ←── frontend/c/ + frontend/cpp/
+[ 03 PARSER / AST ]    ←── frontend/c/ + frontend/cpp/ + frontend/js/
   C99 parser (c_parser.rs)
   C++98 parser (cpp_parser.rs)
+  JS parser (js_parser.rs) — JsDead-BIB implícitamente estricto
   tipos resueltos estáticamente
   macros expandidos completamente
         │
@@ -643,6 +644,9 @@ adb cc archivo.c -o output
 # Compilar C++
 adb cxx archivo.cpp -o output
 
+# Compilar JavaScript (JsDead-BIB)
+adb js archivo.js -o output
+
 # Target específico
 adb cc archivo.c --target windows   -o output.exe
 adb cc archivo.c --target linux     -o output
@@ -675,14 +679,16 @@ Test-Canon/
 ├── Cpp11/      5 tests  — C++11 features
 ├── Cpp14/      2 tests  — C++14 features
 ├── Cpp17/      2 tests  — C++17 features
-└── Cpp20/      1 test   — C++20 features
+├── Cpp20/      1 test   — C++20 features
+└── JS/         6 tests  — JsDead-BIB unit tests (lexer, parser, IR, classes, for-loops, strict ==)
 
-Total: 48 archivos — 47 compilan OK
+Total: 48 archivos C/C++ — 47 compilan OK + 6 tests JS
 1 falla intencional: C99/05_unions_memoria.c — UB Detector strict aliasing ✓
 ```
 
 ---
 
-*ADead-BIB v8.0 — 2026*  
+*ADead-BIB v9.0 — 2026*  
 *"la maquina sirve al humano — sin linker — sin UB silencioso — 16 hasta 256 bits — para siempre"*  
+*C + C++ + JavaScript → ASM directo — 3 frontends, 1 IR, 1 backend — JsDead-BIB 💀🦈*  
 *Eddi Andreé Salazar Matos — Lima, Perú 🇵🇪 — 1 dev — Binary Is Binary 💀🦈*

@@ -185,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match ext {
                 "c" | "h" => step_compile_c(input_file)?,
                 "cpp" | "cxx" | "cc" => step_compile_cpp(input_file)?,
+                "js" => step_compile_js(input_file)?,
                 _ => {
                     eprintln!("Unsupported extension '.{}' for step mode", ext);
                     std::process::exit(1);
@@ -527,6 +528,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match ext {
                 "c" | "h" => compile_c_file(input_file, &args)?,
                 "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
+                "js" => compile_js_file(input_file, &args)?,
                 _ => {
                     eprintln!("❌ Unknown command or file: {}", command);
                     eprintln!("   Use 'adb help' for usage information.");
@@ -927,6 +929,133 @@ fn compile_cpp_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std
     }
     println!("{}{}║  🏆 Sin GCC, sin LLVM, sin Clang — 100% ADead-BIB           ║{}", GREEN, BOLD, RESET);
     println!("{}{}╚════════════════════════════════════════════════════════════╝{}", GREEN, BOLD, RESET);
+    print_path_hint();
+
+    Ok(())
+}
+
+// JS logo color
+const JS_GOLD: &str = "\x1b[38;5;220m";
+
+fn print_js_banner() {
+    println!();
+    println!("{}{}╔═══════════════════════════════════════════════════════════════════════════════╗{}", JS_GOLD, BOLD, RESET);
+    println!("{}{}║{}{}       ██╗███████╗██████╗ ███████╗ █████╗ ██████╗       ██████╗ ██╗██████╗  {}║{}", JS_GOLD, BOLD, WHITE, BOLD, JS_GOLD, RESET);
+    println!("{}{}║{}{}       ██║██╔════╝██╔══██╗██╔════╝██╔══██╗██╔══██╗      ██╔══██╗██║██╔══██╗ {}║{}", JS_GOLD, BOLD, WHITE, BOLD, JS_GOLD, RESET);
+    println!("{}{}║{}{}       ██║███████╗██║  ██║█████╗  ███████║██║  ██║█████╗██████╔╝██║██████╔╝ {}║{}", JS_GOLD, BOLD, WHITE, BOLD, JS_GOLD, RESET);
+    println!("{}{}║{}{} ██   ██║╚════██║██║  ██║██╔══╝  ██╔══██║██║  ██║╚════╝██╔══██╗██║██╔══██╗ {}║{}", JS_GOLD, BOLD, WHITE, BOLD, JS_GOLD, RESET);
+    println!("{}{}║{}{} ╚█████╔╝███████║██████╔╝███████╗██║  ██║██████╔╝      ██████╔╝██║██████╔╝ {}║{}", JS_GOLD, BOLD, WHITE, BOLD, JS_GOLD, RESET);
+    println!("{}{}║{}{}  ╚════╝ ╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝       ╚═════╝ ╚═╝╚═════╝  {}║{}", JS_GOLD, BOLD, WHITE, BOLD, JS_GOLD, RESET);
+    println!("{}{}║{}                                                                           {}║{}", JS_GOLD, BOLD, DIM, JS_GOLD, RESET);
+    println!("{}{}║{}  {}Js{}Dead-{}BIB{} — JS → ASM directo — Sin Node.js, Sin V8, Sin Runtime      {}║{}", JS_GOLD, BOLD, DIM, CYAN, WHITE, CYAN, WHITE, JS_GOLD, RESET);
+    println!("{}{}║{}  \"Respetar Bits\" 💀🦈 — Brendan Eich 1995 → ASM 2026 — Lima, Perú 🇵🇪   {}║{}", JS_GOLD, BOLD, DIM, JS_GOLD, RESET);
+    println!("{}{}╚═══════════════════════════════════════════════════════════════════════════════╝{}", JS_GOLD, BOLD, RESET);
+    println!();
+}
+
+// ============================================================
+// JS COMPILATION — JsDead-BIB: JS → ASM directo
+// ============================================================
+fn compile_js_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let output_file = get_output_filename(input_file, args);
+
+    // Print beautiful JS banner
+    print_js_banner();
+
+    println!("{}{}🔨 Compiling JavaScript Source{}", BOLD, WHITE, RESET);
+    println!("   {}Source:{} {}", DIM, RESET, input_file);
+    println!("   {}Target:{} {}", DIM, RESET, output_file);
+
+    // 1. Read source
+    let source = fs::read_to_string(input_file)
+        .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
+
+    // 2. Parse JS
+    print_phase(1, "PARSER", "Analyzing JavaScript source (JsDead-BIB)");
+    let program = compile_js_to_program(&source)
+        .map_err(|e| format!("JS parse error: {}", e))?;
+
+    print_success(&format!(
+        "{}{} functions{}, {}{} structs{}",
+        GREEN, program.functions.len(), RESET,
+        CYAN, program.structs.len(), RESET,
+    ));
+
+    // UB Detection
+    print_phase(2, "UB DETECTOR", "Checking for undefined behavior");
+    let warn_ub = args.iter().any(|a| a == "--warn-ub");
+    let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
+    if warn_ub {
+        ub_detector = ub_detector.with_warn_mode();
+        print_info(&format!("{}⚠️  Warning mode{} (reports but continues)", YELLOW, RESET));
+    } else {
+        print_info(&format!("{}🛡️  Strict mode{} (stops on errors)", GREEN, RESET));
+    }
+
+    ub_detector.analyze(&program);
+    ub_detector.print_reports();
+    if !warn_ub && ub_detector.has_errors() {
+        eprintln!("{}{}❌ Error:{} Undefined Behavior detected. Compilation aborted.", RED, BOLD, RESET);
+        std::process::exit(1);
+    }
+    print_success("No undefined behavior detected");
+
+    // 3. Compile to native x86-64
+    print_phase(3, "CODEGEN", "Generating x86-64 machine code");
+    let target = determine_target(args);
+    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+    let (opcodes, data, iat_offsets, string_offsets) = compiler.compile(&program);
+    print_success(&format!("{} bytes of machine code", opcodes.len()));
+    print_info(&format!("{} bytes of data section", data.len()));
+
+    // 4. Generate binary
+    print_phase(4, "OUTPUT", "Generating executable");
+    if is_fastos_target(args) {
+        use adead_bib::output::po::PoOutput;
+        let gen = PoOutput::new();
+        match gen.generate(&opcodes, &data, &output_file) {
+            Ok(s) => println!(
+                "✅ FastOS binary: {} ({} bytes, v5.0 pipeline)",
+                output_file, s
+            ),
+            Err(e) => {
+                eprintln!("❌ FastOS generation failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        match target {
+            Target::Windows => {
+                adead_bib::backend::pe::generate_pe_with_offsets(
+                    &opcodes,
+                    &data,
+                    &output_file,
+                    &iat_offsets,
+                    &string_offsets,
+                )?;
+            }
+            Target::Linux => {
+                adead_bib::backend::elf::generate_elf(&opcodes, &data, &output_file)?;
+            }
+            Target::Raw => {
+                fs::write(&output_file, &opcodes)?;
+            }
+        }
+    }
+
+    // Final success message
+    println!();
+    println!("{}{}╔════════════════════════════════════════════════════════════╗{}", JS_GOLD, BOLD, RESET);
+    if let Ok(meta) = fs::metadata(&output_file) {
+        println!("{}{}║  ✅ JS COMPILATION SUCCESSFUL                               ║{}", JS_GOLD, BOLD, RESET);
+        println!("{}{}║  Output: {:<47} ║{}", JS_GOLD, BOLD, output_file, RESET);
+        println!("{}{}║  Size:   {:<47} ║{}", JS_GOLD, BOLD, format!("{} bytes", meta.len()), RESET);
+    } else {
+        println!("{}{}║  ✅ JS COMPILATION SUCCESSFUL                               ║{}", JS_GOLD, BOLD, RESET);
+        println!("{}{}║  Output: {:<47} ║{}", JS_GOLD, BOLD, output_file, RESET);
+    }
+    println!("{}{}║  🏆 Sin Node.js, sin V8, sin runtime — JsDead-BIB 💀🦈     ║{}", JS_GOLD, BOLD, RESET);
+    println!("{}{}╚════════════════════════════════════════════════════════════╝{}", JS_GOLD, BOLD, RESET);
     print_path_hint();
 
     Ok(())
@@ -2219,6 +2348,142 @@ fn step_compile_cpp(input_file: &str) -> Result<(), Box<dyn std::error::Error>> 
     println!();
     println!("  {} adb cxx {} -o output.exe", term::info("  build:"), input_file);
     println!("  {} adb run {}", term::info("  run:  "), input_file);
+    println!();
+
+    Ok(())
+}
+
+fn step_compile_js(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use adead_bib::cli::term;
+    use adead_bib::frontend::js::js_lexer::JsLexer;
+    use adead_bib::frontend::js::js_parser::JsParser;
+    use adead_bib::frontend::js::js_to_ir::JsToIR;
+
+    term::enable_ansi();
+
+    println!();
+    println!("{}", term::phase_header("╔══════════════════════════════════════════════════════════════╗"));
+    println!("{}", term::phase_header("║   JsDead-BIB Step Compiler — JS → ASM Deep Analysis 💀🦈    ║"));
+    println!("{}", term::phase_header("╚══════════════════════════════════════════════════════════════╝"));
+    println!("  {} {}", term::info("Source:"), input_file);
+    println!("  {} JavaScript (JsDead-BIB)", term::info("Language:"));
+    println!();
+
+    // ── Phase 0: SOURCE ─────────────────────────────────────
+    println!("{}", term::phase_bar(0, "SOURCE", "JS"));
+    let source = match fs::read_to_string(input_file) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("  {} {}", term::error_text("ERROR:"), format!("Cannot read '{}': {}", input_file, e));
+            return Err(format!("Cannot read '{}': {}", input_file, e).into());
+        }
+    };
+    let source_lines: Vec<&str> = source.lines().collect();
+    println!("  {} {} lines, {} bytes", term::ok("✓"), source_lines.len(), source.len());
+    println!();
+
+    // ── Phase 1: JS LEXER ───────────────────────────────────
+    println!("{}", term::phase_bar(1, "JS LEXER", "Tokenizer"));
+    let mut lexer = JsLexer::new(&source);
+    let (tokens, lines) = lexer.tokenize();
+    println!("  {} {} tokens generated", term::ok("✓"), tokens.len());
+
+    // Token preview
+    println!("  {} first tokens:", term::dim("  preview"));
+    let max_show = 12;
+    for (i, tok) in tokens.iter().enumerate().take(max_show) {
+        let line_num = if i < lines.len() { lines[i] } else { 0 };
+        let tok_str = format!("{:?}", tok);
+        let short = if tok_str.len() > 40 { format!("{}...", &tok_str[..37]) } else { tok_str };
+        println!("    {} {:<42} {}", term::loc(input_file, line_num, i % 80), term::token_fmt(&short), term::ok("OK"));
+    }
+    if tokens.len() > max_show + 1 {
+        println!("    {} ({} more tokens)", term::dim("..."), tokens.len() - max_show - 1);
+    }
+    println!();
+
+    // ── Phase 2: JS PARSER ──────────────────────────────────
+    println!("{}", term::phase_bar(2, "JS PARSER", "AST"));
+    let mut parser = JsParser::new(tokens.clone(), lines.clone());
+    let js_program = match parser.parse() {
+        Ok(p) => p,
+        Err(e) => {
+            println!("  {} {}", term::error_text("PARSE ERROR:"), e);
+            return Err(e.into());
+        }
+    };
+    println!("  {} {} AST nodes (top-level statements)", term::ok("✓"), js_program.stmts.len());
+
+    // Categorize statements
+    let mut func_count = 0;
+    let mut class_count = 0;
+    let mut var_count = 0;
+    let mut other_count = 0;
+    for stmt in &js_program.stmts {
+        match stmt {
+            adead_bib::frontend::js::js_ast::JsStmt::FuncDecl { .. } => func_count += 1,
+            adead_bib::frontend::js::js_ast::JsStmt::ClassDecl { .. } => class_count += 1,
+            adead_bib::frontend::js::js_ast::JsStmt::VarDecl { .. } => var_count += 1,
+            _ => other_count += 1,
+        }
+    }
+    if func_count > 0 { println!("    {} functions: {}", term::dim("  "), func_count); }
+    if class_count > 0 { println!("    {} classes: {}", term::dim("  "), class_count); }
+    if var_count > 0 { println!("    {} variables: {}", term::dim("  "), var_count); }
+    if other_count > 0 { println!("    {} other: {}", term::dim("  "), other_count); }
+    println!();
+
+    // ── Phase 3: JS → IR ────────────────────────────────────
+    println!("{}", term::phase_bar(3, "JS→IR", "Converting to ADead-BIB IR"));
+    let mut converter = JsToIR::new();
+    let program = match converter.convert(&js_program) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("  {} {}", term::error_text("IR ERROR:"), e);
+            return Err(e.into());
+        }
+    };
+    println!("  {} {} IR functions, {} IR structs", term::ok("✓"), program.functions.len(), program.structs.len());
+    for func in &program.functions {
+        println!("    {} function '{}' ({} params, {} stmts)",
+            term::dim("  "),
+            func.name,
+            func.params.len(),
+            func.body.len()
+        );
+    }
+    println!();
+
+    // ── Phase 4: UB DETECTOR ────────────────────────────────
+    println!("{}", term::phase_bar(4, "UB DETECTOR", "ANTES del optimizer"));
+    let mut ub_detector = adead_bib::UBDetector::new().with_file(input_file.to_string());
+    let reports = ub_detector.analyze(&program);
+    if reports.is_empty() {
+        println!("  {} CLEAN — 0 UB detectados", term::ok("✓"));
+    } else {
+        println!("  {} {} UB reports", term::error_text("⚠"), reports.len());
+        ub_detector.print_reports();
+    }
+    println!();
+
+    // ── Phase 5: ISA COMPILER ───────────────────────────────
+    println!("{}", term::phase_bar(5, "ISA COMPILER", "x86-64"));
+    let target = adead_bib::isa::isa_compiler::Target::Windows;
+    let mut compiler = adead_bib::isa::isa_compiler::IsaCompiler::new(target);
+    let (opcodes, data, _, _) = compiler.compile(&program);
+    println!("  {} .text: {} bytes", term::ok("✓"), opcodes.len());
+    println!("  {} .data: {} bytes", term::ok("✓"), data.len());
+    println!();
+
+    // ── Summary ─────────────────────────────────────────────
+    println!("{}", term::phase_header("╔══════════════════════════════════════════════════════════════╗"));
+    println!("{}", term::phase_header("║   ALL PHASES PASSED — JsDead-BIB → ASM Complete 💀🦈       ║"));
+    println!("{}", term::phase_header("╚══════════════════════════════════════════════════════════════╝"));
+    println!();
+    println!("  {} runtime: 0 bytes", term::ok("✓"));
+    println!("  {} GC: no existe", term::ok("✓"));
+    println!("  {} V8: no existe", term::ok("✓"));
+    println!("  {} Node.js: no existe", term::ok("✓"));
     println!();
 
     Ok(())
