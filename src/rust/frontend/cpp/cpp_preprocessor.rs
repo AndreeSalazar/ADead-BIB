@@ -184,8 +184,26 @@ impl CppPreprocessor {
                     }
 
                     // Look up C++ header declarations
-                    if let Some(declarations) = cpp_stdlib::get_cpp_header(&header_name) {
-                        let expanded = self.process(declarations);
+                    let mut decls = cpp_stdlib::get_cpp_header(&header_name).map(|s| s.to_string());
+                    
+                    // Fallback to local file lookup
+                    if decls.is_none() {
+                        if let Ok(content) = std::fs::read_to_string(&header_name) {
+                            decls = Some(content);
+                        } else if let Ok(content) = std::fs::read_to_string(&format!("include/{}", header_name)) {
+                            decls = Some(content);
+                        } else if let Ok(content) = std::fs::read_to_string(&format!("../include/{}", header_name)) {
+                            decls = Some(content);
+                        }
+                    }
+
+                    if let Some(mut declarations) = decls {
+                        // Apply ADead-Bindgen native complex translations for specific unsupported heavy lifters
+                        if header_name.contains("vulkan.h") || header_name.contains(".h") {
+                            declarations = super::ad_bindgen::AdBindgen::process_header(declarations);
+                        }
+                        
+                        let expanded = self.process(&declarations);
                         output.push_str(&expanded);
                         output.push('\n');
                     } else {

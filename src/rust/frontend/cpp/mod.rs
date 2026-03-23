@@ -31,5 +31,6 @@ pub mod cpp_parser;
 pub mod cpp_preprocessor;
 pub mod cpp_stdlib;
 pub mod cpp_to_ir;
+pub mod ad_bindgen;
 
 pub use cpp_to_ir::compile_cpp_to_program;

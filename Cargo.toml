@@ -13,6 +13,7 @@ pelite = "0.10"  # Para generar PE válidos
 # Vulkan - Para exprimir GPU con fuerza
 ash = "0.38"                    # Vulkan bindings (bajo nivel, máximo control)
 gpu-allocator = "0.27"          # Allocator de memoria GPU
+regex = "1.12.3"
 
 [lib]
 name = "adead_bib"
