@@ -294,8 +294,18 @@ pub fn check_types_compatible(left: &CType, right: &CType, op: &str) -> TypeComp
         return TypeCompatResult::Ok(CType::Float64);
     }
 
-    // BLOCKED: different integer sizes
+    // ALLOWED: signed integer widening (same sign domain, implicit widening)
+    // e.g. int32 vs int64 — safe promotion to the wider type
     if left.is_integer() && right.is_integer() && left.size_bytes() != right.size_bytes() {
+        if left.is_signed() == right.is_signed() {
+            // Same signedness → safe widening
+            let wider = if left.size_bytes() > right.size_bytes() {
+                left.clone()
+            } else {
+                right.clone()
+            };
+            return TypeCompatResult::Ok(wider);
+        }
         return TypeCompatResult::Mismatch {
             left: left.clone(),
             right: right.clone(),
@@ -630,15 +640,17 @@ mod tests {
     }
 
     #[test]
-    fn test_float_double_mismatch() {
+    fn test_float_double_widening() {
+        // float32 + float64 → allowed (same FPU domain, implicit widening to f64)
         let result = check_types_compatible(&CType::Float32, &CType::Float64, "+");
-        assert!(matches!(result, TypeCompatResult::Mismatch { .. }));
+        assert!(matches!(result, TypeCompatResult::Ok(CType::Float64)));
     }
 
     #[test]
-    fn test_int32_int64_mismatch() {
+    fn test_int32_int64_widening() {
+        // int32 + int64 → allowed (same sign domain, implicit widening to i64)
         let result = check_types_compatible(&CType::Int32, &CType::Int64, "+");
-        assert!(matches!(result, TypeCompatResult::Mismatch { .. }));
+        assert!(matches!(result, TypeCompatResult::Ok(CType::Int64)));
     }
 
     #[test]

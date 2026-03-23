@@ -2502,15 +2502,16 @@ fn print_usage(_program: &str) {
     println!("   adb build                       Compilar proyecto (lee adb.toml)");
     println!("   adb run                         Compilar y ejecutar proyecto");
     println!();
-    println!("🔨 COMPILAR C/C++:");
+    println!("🔨 COMPILAR C/C++/JS:");
     println!("   adb cc <file.c> [-o output]     Compile C99/C11");
     println!("   adb cxx <file.cpp> [-o output]  Compile C++11/14/17/20");
+    println!("   adb js <file.js> [-o output]    Compile JS (JsDead-BIB)");
     println!("     [--target boot16|boot32|fastos64|fastos128|fastos256|windows|linux|all]");
     println!("     [--warn-ub] (Warning only, don't stop on UB)");
     println!("   adb build <file> [-o output]    Auto-detect by extension");
     println!("   adb run <file>                  Build and execute");
     println!("   adb step <file>                 Step-by-step compilation view");
-    println!("   adb <file.c|file.cpp>           Direct compilation");
+    println!("   adb <file.c|.cpp|.js>           Direct compilation");
     println!();
     println!("📦 HEADERS GLOBALES:");
     println!("   adb install                     Instala headers en ~/.adead/include/");
@@ -2523,6 +2524,8 @@ fn print_usage(_program: &str) {
     println!("   adb cxx main.cpp -o app.exe     Compile main.cpp → app.exe");
     println!("   adb cc kernel.c --target fastos256 -o kernel.po");
     println!("   adb run test.c                  Compile and run test.c");
+    println!("   adb js hello.js -o hello.exe    Compile JS → native exe");
+    println!("   adb step hello.js               JS step-by-step analysis");
     println!("   adb install                     Setup global headers");
     println!();
     println!("⚡ MINIMAL BINARIES:");
@@ -2540,6 +2543,8 @@ fn print_usage(_program: &str) {
     println!("📝 SUPPORTED FEATURES:");
     println!("   C:   C99/C11, structs, pointers, arrays, printf, malloc");
     println!("   C++: C++98/11/14/17, classes, templates, namespaces, STL");
+    println!("   JS:  JsDead-BIB — classes, functions, ===, console.log");
+    println!("        Sin Node.js, sin V8, sin GC — JS directo a ASM");
     println!("   header_main.h: Un solo #include — todo disponible");
     println!();
     println!("🎯 OUTPUT TARGETS (v8.0):");
