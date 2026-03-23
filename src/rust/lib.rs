@@ -52,6 +52,7 @@ pub use bg::{BinaryGuardian, SecurityLevel, SecurityPolicy, Verdict};
 pub use frontend::ast;
 pub use frontend::c;
 pub use frontend::cpp;
+pub use frontend::js;
 pub use frontend::type_checker;
 
 // ── ISA layer re-exports ─────────────────────────────────────

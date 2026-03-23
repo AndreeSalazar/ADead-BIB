@@ -13,6 +13,7 @@ use adead_bib::backend::microvm::{self, compile_microvm, MicroOp, MicroVM};
 use adead_bib::backend::pe_tiny;
 use adead_bib::frontend::c::compile_c_to_program;
 use adead_bib::frontend::cpp::compile_cpp_to_program;
+use adead_bib::frontend::js::compile_js_to_program;
 use adead_bib::isa::isa_compiler::Target;
 use std::env;
 use std::fs;
@@ -55,6 +56,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // ============================================================
+        // JS COMPILER — JsDead-BIB: JS → ASM directo
+        // ============================================================
+        "js" | "javascript" => {
+            if args.len() < 3 {
+                eprintln!("❌ Error: Missing JavaScript source file");
+                eprintln!("   Usage: adb js <file.js> [-o output.exe]");
+                std::process::exit(1);
+            }
+            compile_js_file(&args[2], &args)?;
+        }
+
+        // ============================================================
         // BUILD — Auto-detect by extension or adb.toml project
         // ============================================================
         "build" => {
@@ -78,9 +91,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match ext {
                     "c" | "h" => compile_c_file(input_file, &args)?,
                     "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
+                    "js" => compile_js_file(input_file, &args)?,
                     _ => {
                         eprintln!("❌ Error: Unknown file extension '.{}'", ext);
-                        eprintln!("   Supported: .c, .cpp, .cxx, .cc");
+                        eprintln!("   Supported: .c, .cpp, .cxx, .cc, .js");
                         std::process::exit(1);
                     }
                 }
@@ -123,6 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match ext {
                     "c" | "h" => compile_c_file(input_file, &args)?,
                     "cpp" | "cxx" | "cc" | "hpp" | "hxx" => compile_cpp_file(input_file, &args)?,
+                    "js" => compile_js_file(input_file, &args)?,
                     _ => {
                         eprintln!("❌ Error: Unknown file extension '.{}'", ext);
                         std::process::exit(1);

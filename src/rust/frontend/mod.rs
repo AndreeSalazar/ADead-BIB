@@ -6,6 +6,7 @@
 pub mod ast;
 pub mod c;
 pub mod cpp;
+pub mod js;
 pub mod type_checker;
 pub mod types;
 
