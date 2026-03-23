@@ -70,7 +70,13 @@ impl JsToIR {
         let mut has_main = false;
 
         for stmt in &js.stmts {
-            match stmt {
+            // Unwrap export to get inner statement
+            let inner = match stmt {
+                JsStmt::Export { item } => item.as_ref(),
+                other => other,
+            };
+
+            match inner {
                 JsStmt::FuncDecl {
                     name,
                     params,
@@ -485,6 +491,11 @@ impl JsToIR {
 
             // Function/class declarations handled at top level
             JsStmt::FuncDecl { .. } | JsStmt::ClassDecl { .. } => Ok(Vec::new()),
+
+            // Module statements — pass through inner stmt for exports
+            JsStmt::Import { .. } => Ok(Vec::new()),
+            JsStmt::Export { item } => self.convert_stmt(item),
+            JsStmt::ExportDefault(_) => Ok(Vec::new()),
 
             JsStmt::ForIn { decl, iter, body } => {
                 let ir_iter = self.convert_expr(iter)?;

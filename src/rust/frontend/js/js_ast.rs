@@ -196,11 +196,32 @@ pub enum JsStmt {
         stmt: Box<JsStmt>,
     },
 
+    // Modules
+    Import {
+        items: Vec<JsImportItem>,
+        from: String,
+    },
+    Export {
+        item: Box<JsStmt>,
+    },
+    ExportDefault(JsExpr),
+
     // Line marker for error reporting
     LineMarker(usize),
 
     // Empty statement (;)
     Empty,
+}
+
+/// Import item specification
+#[derive(Debug, Clone)]
+pub enum JsImportItem {
+    /// import { name } or import { name as alias }
+    Named { name: String, alias: Option<String> },
+    /// import defaultName from "module"
+    Default(String),
+    /// import * as name from "module"
+    Namespace(String),
 }
 
 /// Switch case

@@ -104,6 +104,14 @@ impl JsParser {
         match self.peek().clone() {
             JsToken::Let | JsToken::Const | JsToken::Var => self.parse_var_decl(),
             JsToken::Function => self.parse_function_decl(),
+            JsToken::Async => {
+                // async function declaration
+                if *self.peek_at(1) == JsToken::Function {
+                    self.parse_function_decl()
+                } else {
+                    self.parse_expr_stmt()
+                }
+            }
             JsToken::Class => self.parse_class_decl(),
             JsToken::If => self.parse_if(),
             JsToken::For => self.parse_for(),
@@ -115,6 +123,8 @@ impl JsParser {
             JsToken::Throw => self.parse_throw(),
             JsToken::Try => self.parse_try_catch(),
             JsToken::Switch => self.parse_switch(),
+            JsToken::Import => self.parse_import(),
+            JsToken::Export => self.parse_export(),
             JsToken::LBrace => self.parse_block(),
             JsToken::Semicolon => {
                 self.advance();
@@ -575,6 +585,119 @@ impl JsParser {
             catch_param,
             catch_body,
             finally_body,
+        })
+    }
+
+    fn parse_import(&mut self) -> Result<JsStmt, String> {
+        self.expect(&JsToken::Import)?;
+
+        // import { a, b, c } from "module"
+        // import name from "module"  
+        // import "module"
+        if *self.peek() == JsToken::LBrace {
+            // Named imports: import { a, b } from "module"
+            self.advance(); // {
+            let mut items = Vec::new();
+            while *self.peek() != JsToken::RBrace && *self.peek() != JsToken::EOF {
+                let name = self.expect_ident()?;
+                let alias = if let JsToken::Identifier(ref s) = self.peek().clone() {
+                    if s == "as" {
+                        self.advance(); // as
+                        Some(self.expect_ident()?)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                items.push(JsImportItem::Named { name, alias });
+                if *self.peek() == JsToken::Comma {
+                    self.advance();
+                }
+            }
+            self.expect(&JsToken::RBrace)?;
+
+            // expect "from"
+            if let JsToken::From = self.peek() {
+                self.advance();
+            } else if let JsToken::Identifier(ref s) = self.peek().clone() {
+                if s == "from" {
+                    self.advance();
+                } else {
+                    return Err(format!(
+                        "JS parse error line {}: expected 'from', got {:?}",
+                        self.current_line(),
+                        self.peek()
+                    ));
+                }
+            }
+
+            let module = match self.advance() {
+                JsToken::StringLiteral(s) => s,
+                other => {
+                    return Err(format!(
+                        "JS parse error line {}: expected module string, got {:?}",
+                        self.current_line(),
+                        other
+                    ))
+                }
+            };
+            self.expect_semicolon()?;
+            Ok(JsStmt::Import {
+                items,
+                from: module,
+            })
+        } else if let JsToken::StringLiteral(module) = self.peek().clone() {
+            // Side-effect import: import "module"
+            self.advance();
+            self.expect_semicolon()?;
+            Ok(JsStmt::Import {
+                items: Vec::new(),
+                from: module,
+            })
+        } else {
+            // Default import: import name from "module"
+            let name = self.expect_ident()?;
+            if let JsToken::From = self.peek() {
+                self.advance();
+            } else if let JsToken::Identifier(ref s) = self.peek().clone() {
+                if s == "from" {
+                    self.advance();
+                }
+            }
+            let module = match self.advance() {
+                JsToken::StringLiteral(s) => s,
+                other => {
+                    return Err(format!(
+                        "JS parse error line {}: expected module string, got {:?}",
+                        self.current_line(),
+                        other
+                    ))
+                }
+            };
+            self.expect_semicolon()?;
+            Ok(JsStmt::Import {
+                items: vec![JsImportItem::Default(name)],
+                from: module,
+            })
+        }
+    }
+
+    fn parse_export(&mut self) -> Result<JsStmt, String> {
+        self.expect(&JsToken::Export)?;
+
+        // export default expr
+        if *self.peek() == JsToken::Default {
+            self.advance();
+            let expr = self.parse_expr()?;
+            self.expect_semicolon()?;
+            return Ok(JsStmt::ExportDefault(expr));
+        }
+
+        // export function/class/let/const
+        let stmt = self.parse_stmt()?;
+        Ok(JsStmt::Export {
+            item: Box::new(stmt),
         })
     }
 
