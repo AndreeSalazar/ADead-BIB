@@ -2654,8 +2654,15 @@ impl IsaCompiler {
         } else {
             self.emit_expression(expr);
 
+            // Check if variable is a string type — use %s instead of %d
+            let is_string_var = if let Expr::Variable(name) = expr {
+                matches!(self.variable_types.get(name), Some(Type::Str))
+            } else {
+                false
+            };
+
             let is_float = matches!(expr, Expr::Float(_));
-            let is_integer = matches!(
+            let is_integer = !is_string_var && matches!(
                 expr,
                 Expr::Number(_)
                     | Expr::Variable(_)

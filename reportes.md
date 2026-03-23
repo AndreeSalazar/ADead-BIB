@@ -496,22 +496,22 @@ void test_explicit_constructor() {
 ╔══════════════════════════════════════════════════════════════╗
 ║      "Respetar Bits" — ADead-BIB C/C++                       ║
 ╠══════════════════════════════════════════════════════════════╣
-║  FORTRAN 1957: tipos estrictos    ✅                          ║
-║  Ada 1983:     más estricto       ✅                          ║
-║  ADead-BIB:    el más estricto    💀                          ║
+║  FORTRAN 1957: tipos estrictos    ✅                         ║
+║  Ada 1983:     más estricto       ✅                         ║
+║  ADead-BIB:    el más estricto    💀                         ║
 ╠══════════════════════════════════════════════════════════════╣
-║  int   + int   = respeto          ✅                          ║
-║  float + float = respeto          ✅                          ║
+║  int   + int   = respeto          ✅                         ║
+║  float + float = respeto          ✅                         ║
 ║  int   + float = irrespeto        💀 BLOQUEADO               ║
 ║  signed + unsigned = irrespeto    💀 BLOQUEADO               ║
 ║  overflow silencioso = irrespeto  💀 BLOQUEADO               ║
 ║  implicit cast = irrespeto        💀 BLOQUEADO               ║
 ╠══════════════════════════════════════════════════════════════╣
-║  cast explícito = respeto         ✅                          ║
-║  mismo tipo = respeto             ✅                          ║
-║  dev consciente = respeto         ✅                          ║
+║  cast explícito = respeto         ✅                         ║
+║  mismo tipo = respeto             ✅                         ║
+║  dev consciente = respeto         ✅                         ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Binary Is Binary 💀🦈 — Lima, Perú 🇵🇪                        ║
+║  Binary Is Binary 💀🦈 — Lima, Perú 🇵🇪                      ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
