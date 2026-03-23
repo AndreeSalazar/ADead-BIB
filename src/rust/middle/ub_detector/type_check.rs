@@ -324,7 +324,18 @@ fn infer_type(expr: &Expr, env: &HashMap<String, Type>) -> Type {
         Expr::Float(_) => Type::F64,
         Expr::Bool(_) => Type::Bool,
         Expr::String(_) => Type::Str,
-        Expr::Variable(name) => env.get(name).cloned().unwrap_or(Type::Unknown),
+        Expr::Variable(name) => {
+            // Try exact match first, then try the base variable for dot-notation (e.g. "v1.x")
+            if let Some(ty) = env.get(name) {
+                ty.clone()
+            } else if let Some(dot_pos) = name.find('.') {
+                // For inlined field references like "v1.x", return Unknown (safe)
+                let _base = &name[..dot_pos];
+                Type::Unknown
+            } else {
+                Type::Unknown
+            }
+        }
         Expr::Cast { target_type, .. } => target_type.clone(),
         Expr::BinaryOp { left, right, op } => {
             let l = infer_type(left, env);

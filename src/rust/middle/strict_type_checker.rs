@@ -287,19 +287,11 @@ pub fn check_types_compatible(left: &CType, right: &CType, op: &str) -> TypeComp
         };
     }
 
-    // BLOCKED: float32 vs float64 mixing
+    // ALLOWED: float32 vs float64 mixing (same FPU domain, implicit widening)
     if (*left == CType::Float32 && *right == CType::Float64)
         || (*left == CType::Float64 && *right == CType::Float32)
     {
-        return TypeCompatResult::Mismatch {
-            left: left.clone(),
-            right: right.clone(),
-            op: op.to_string(),
-            suggestions: vec![
-                format!("(double)left {} right", op),
-                format!("(float)left {} (float)right", op),
-            ],
-        };
+        return TypeCompatResult::Ok(CType::Float64);
     }
 
     // BLOCKED: different integer sizes

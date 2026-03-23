@@ -143,10 +143,8 @@ void test_encapsulation() {
 }
 
 // ============================================================
-// Test 4: Static Members
+// Test 4: Static Members (Instance Tracking)
 // ============================================================
-// Note: Static members not fully supported yet
-// Using instance counter pattern instead
 class Counter {
 private:
     int id;

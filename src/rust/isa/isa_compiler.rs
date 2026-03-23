@@ -146,6 +146,12 @@ pub struct IsaCompiler {
     global_vars: HashMap<String, u32>,
     global_data: Vec<u8>, // raw bytes for global variable initial values
     global_offset: u32,   // next free offset in global data area
+
+    // Field IR types — maps (class_name, field_name) → Type for float field detection
+    field_ir_types: HashMap<(String, String), Type>,
+
+    // Current class being compiled (for method field type resolution)
+    current_class: Option<String>,
 }
 
 impl IsaCompiler {
@@ -323,6 +329,8 @@ impl IsaCompiler {
             global_vars: HashMap::new(),
             global_data: Vec::new(),
             global_offset: 0,
+            field_ir_types: HashMap::new(),
+            current_class: None,
         }
     }
 
@@ -450,17 +458,77 @@ impl IsaCompiler {
     }
 
     /// Check if an expression produces a float value (for SSE codegen path)
-    fn expr_is_float(expr: &Expr, var_types: &HashMap<String, Type>) -> bool {
+    fn expr_is_float_full(
+        expr: &Expr,
+        var_types: &HashMap<String, Type>,
+        field_ir_types: &HashMap<(String, String), Type>,
+        current_class: &Option<String>,
+    ) -> bool {
         match expr {
             Expr::Float(_) => true,
             Expr::FloatCast(_) => true,
             Expr::BinaryOp { left, right, .. } => {
-                Self::expr_is_float(left, var_types) || Self::expr_is_float(right, var_types)
+                Self::expr_is_float_full(left, var_types, field_ir_types, current_class)
+                    || Self::expr_is_float_full(right, var_types, field_ir_types, current_class)
             }
             Expr::Variable(name) => {
-                matches!(var_types.get(name), Some(Type::F32) | Some(Type::F64))
+                if matches!(var_types.get(name), Some(Type::F32) | Some(Type::F64)) {
+                    return true;
+                }
+                // Handle inlined method variables like "v1.x" — check if obj type has float field
+                if let Some(dot_pos) = name.find('.') {
+                    let obj_name = &name[..dot_pos];
+                    let field_name = &name[dot_pos + 1..];
+                    if let Some(ty) = var_types.get(obj_name) {
+                        let class_name = match ty {
+                            Type::Struct(n) | Type::Named(n) | Type::Class(n) => Some(n.clone()),
+                            _ => None,
+                        };
+                        if let Some(cn) = class_name {
+                            return matches!(
+                                field_ir_types.get(&(cn, field_name.to_string())),
+                                Some(Type::F32) | Some(Type::F64)
+                            );
+                        }
+                    }
+                }
+                false
             }
-            Expr::FieldAccess { .. } => false,
+            Expr::FieldAccess { object, field } => {
+                // Handle this->field (Expr::This as object)
+                if let Expr::This = object.as_ref() {
+                    if let Some(cn) = current_class {
+                        return matches!(
+                            field_ir_types.get(&(cn.clone(), field.clone())),
+                            Some(Type::F32) | Some(Type::F64)
+                        );
+                    }
+                }
+                // Handle obj.field (Expr::Variable as object)
+                if let Expr::Variable(obj_name) = object.as_ref() {
+                    if let Some(ty) = var_types.get(obj_name) {
+                        let class_name = match ty {
+                            Type::Struct(n) | Type::Named(n) | Type::Class(n) => Some(n.clone()),
+                            Type::Pointer(inner) => match inner.as_ref() {
+                                Type::Struct(n) | Type::Named(n) | Type::Class(n) => Some(n.clone()),
+                                _ => None,
+                            },
+                            Type::Reference(inner) => match inner.as_ref() {
+                                Type::Struct(n) | Type::Named(n) | Type::Class(n) => Some(n.clone()),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        if let Some(cn) = class_name {
+                            return matches!(
+                                field_ir_types.get(&(cn, field.clone())),
+                                Some(Type::F32) | Some(Type::F64)
+                            );
+                        }
+                    }
+                }
+                false
+            }
             Expr::Cast { target_type, .. } => {
                 matches!(target_type, Type::F32 | Type::F64)
             }
@@ -601,6 +669,13 @@ impl IsaCompiler {
                     (f.name.clone(), type_name)
                 })
                 .collect();
+            // Register field IR types for float detection
+            for field in &st.fields {
+                self.field_ir_types.insert(
+                    (st.name.clone(), field.name.clone()),
+                    field.field_type.clone(),
+                );
+            }
             self.class_layouts.insert(
                 st.name.clone(),
                 ClassLayout {
@@ -1149,6 +1224,12 @@ impl IsaCompiler {
         self.current_function = Some(func.name.clone());
         self.variables.clear();
         self.variable_types.clear();
+        // Detect current class from method name (e.g. "Vector2D::operator+")
+        self.current_class = if func.name.contains("::") {
+            func.name.split("::").next().map(|s| s.to_string())
+        } else {
+            None
+        };
         self.array_vars.clear();
         self.param_vars.clear();
         self.struct_params.clear();
@@ -3226,8 +3307,8 @@ impl IsaCompiler {
             }
             Expr::BinaryOp { op, left, right } => {
                 // Detect float operands for SSE codegen
-                let is_float_op = Self::expr_is_float(left, &self.variable_types)
-                    || Self::expr_is_float(right, &self.variable_types);
+                let is_float_op = Self::expr_is_float_full(left, &self.variable_types, &self.field_ir_types, &self.current_class)
+                    || Self::expr_is_float_full(right, &self.variable_types, &self.field_ir_types, &self.current_class);
 
                 if is_float_op && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div) {
                     // Float path: use XMM registers with SSE instructions

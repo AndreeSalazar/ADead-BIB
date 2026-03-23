@@ -1455,7 +1455,69 @@ impl CppToIR {
                         self.variable_types
                             .push((d.name.clone(), class_name.clone()));
 
-                        let ctor_args: Vec<CppExpr> = if let Some(ref e) = d.initializer {
+                        // Check if initializer is an operator overload expression (e.g. v1 + v2)
+                        // If so, inline the operator method which returns a ctor call,
+                        // then use those ctor args for field-by-field assignment
+                        let mut resolved_ctor_args: Option<Vec<CppExpr>> = None;
+                        if let Some(ref init_expr) = d.initializer {
+                            if let CppExpr::BinaryOp { op, left, right } = init_expr {
+                                let op_name = match op {
+                                    CppBinOp::Add => Some("operator+"),
+                                    CppBinOp::Sub => Some("operator-"),
+                                    CppBinOp::Mul => Some("operator*"),
+                                    CppBinOp::Div => Some("operator/"),
+                                    _ => None,
+                                };
+                                if let Some(method_name) = op_name {
+                                    if let CppExpr::Identifier(obj_name) = left.as_ref() {
+                                        if let Some(the_class) = self.class_for_var(obj_name) {
+                                            let method_data = self.class_method_bodies.iter()
+                                                .find(|(c, m, _, _)| c == &the_class && m == method_name)
+                                                .map(|(_, _, params, body)| (params.clone(), body.clone()));
+                                            if let Some((method_params, method_body)) = method_data {
+                                                // Find the return statement in the body (may be wrapped in block)
+                                                fn find_return(stmts: &[CppStmt]) -> Option<&CppExpr> {
+                                                    for s in stmts.iter().rev() {
+                                                        match s {
+                                                            CppStmt::Return(Some(e)) => return Some(e),
+                                                            CppStmt::Block(inner) => {
+                                                                if let Some(e) = find_return(inner) {
+                                                                    return Some(e);
+                                                                }
+                                                            }
+                                                            _ => {}
+                                                        }
+                                                    }
+                                                    None
+                                                }
+                                                if let Some(ret_expr) = find_return(&method_body) {
+                                                    let mut substituted = ret_expr.clone();
+                                                    // Substitute method params with args
+                                                    for (i, param_name) in method_params.iter().enumerate() {
+                                                        if i == 0 {
+                                                            substituted = Self::subst_param(substituted, param_name, right);
+                                                        }
+                                                    }
+                                                    // Substitute this->field with obj.field
+                                                    let class_fields_clone = self.class_fields.clone();
+                                                    substituted = Self::subst_this_in_expr(
+                                                        substituted, obj_name, &class_fields_clone, &the_class,
+                                                    );
+                                                    // Extract ctor args from the substituted constructor call
+                                                    if let CppExpr::Call { args, .. } = substituted {
+                                                        resolved_ctor_args = Some(args);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let ctor_args: Vec<CppExpr> = if let Some(args) = resolved_ctor_args {
+                            args
+                        } else if let Some(ref e) = d.initializer {
                             match e {
                                 CppExpr::Call { args, .. } => args.clone(),
                                 CppExpr::InitList(items) => items.clone(),
@@ -1989,6 +2051,59 @@ impl CppToIR {
             CppExpr::This => Ok(Expr::Variable("this".to_string())),
 
             CppExpr::BinaryOp { op, left, right } => {
+                // Check for operator overloading: if left is a class with operator+/- etc.
+                let op_method_name = match op {
+                    CppBinOp::Add => Some("operator+"),
+                    CppBinOp::Sub => Some("operator-"),
+                    CppBinOp::Mul => Some("operator*"),
+                    CppBinOp::Div => Some("operator/"),
+                    _ => None,
+                };
+                if let Some(method_name) = op_method_name {
+                    // Check if left operand is a class variable with this operator method
+                    if let CppExpr::Identifier(obj_name) = left.as_ref() {
+                        if let Some(class_name) = self.class_for_var(obj_name) {
+                            let method_data = self
+                                .class_method_bodies
+                                .iter()
+                                .find(|(cn, mn, _, _)| cn == &class_name && mn == method_name)
+                                .map(|(_, _, params, body)| (params.clone(), body.clone()));
+                            if let Some((method_params, method_body)) = method_data {
+                                // Try inline expansion: if body is single return statement
+                                let return_expr = if method_body.len() == 1 {
+                                    match &method_body[0] {
+                                        CppStmt::Return(Some(e)) => Some(e.clone()),
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                };
+                                if let Some(mut ret_expr) = return_expr {
+                                    // Substitute method params with args
+                                    for (i, param_name) in method_params.iter().enumerate() {
+                                        if i == 0 {
+                                            ret_expr = Self::subst_param(ret_expr, param_name, right);
+                                        }
+                                    }
+                                    // Substitute this->field with obj.field
+                                    let class_fields_clone = self.class_fields.clone();
+                                    ret_expr = Self::subst_this_in_expr(
+                                        ret_expr, obj_name, &class_fields_clone, &class_name,
+                                    );
+                                    return self.convert_expr(&ret_expr);
+                                }
+                                // Fallback: emit as method call
+                                let l = self.convert_expr(left)?;
+                                let r = self.convert_expr(right)?;
+                                return Ok(Expr::Call {
+                                    name: format!("{}::{}", class_name, method_name),
+                                    args: vec![l, r],
+                                });
+                            }
+                        }
+                    }
+                }
+
                 let l = self.convert_expr(left)?;
                 let r = self.convert_expr(right)?;
 
