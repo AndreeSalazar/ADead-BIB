@@ -1,37 +1,6 @@
 ; ============================================================
-; Faggin-Scale
-; FastOS v2.0 — stage2.asm (Stage 2 — Transicion Gradual)
-; Compilar: fasm boot/stage2.asm boot/stage2.bin
-;
-; Filosofia del README:
-;   "No es un salto brusco. Es un despertar gradual."
-;   "Cada paso cierra el contexto anterior antes de abrir el siguiente."
-;   "Cuando el kernel arranca, el CPU esta completamente orientado."
-;   "Sin estado fantasma. Sin contexto perdido."
-;
-; Pipeline de este archivo:
-;   [16-bit Real Mode]
-;     → Configurar segmentos + stack
-;     → Habilitar A20
-;     → Detectar memoria (INT 0x15 E820)
-;     → Cargar GDT transitoria (32-bit)
-;     → CR0.PE = 1  →  entrar a 32-bit protected
-;
-;   [32-bit Protected Mode]  ← en el MISMO archivo, sin far jump externo
-;     → Todos los selectores configurados (DS/ES/SS/FS/GS)
-;     → Stack en 0x90000
-;     → Paginacion 4-level identity map (4GB)
-;     → CR4.PAE = 1 (Physical Address Extension)
-;     → EFER.LME = 1 (Long Mode Enable)
-;     → Cargar GDT 64-bit
-;     → CR0.PG = 1  →  entrar a 64-bit long mode
-;
-;   [64-bit Long Mode]  ← en el MISMO archivo, CPU completamente orientado
-;     → RSP configurado
-;     → Todos los registros limpiados
-;     → call kernel_main  ← CPU despierto
-;
-; Cargado en: 0x1000:0x0000 = 0x10000 lineal
+; FastOS v2.0 — stage2_real.asm (REAL HARDWARE VERSION)
+; Designed to work on REAL PCs, not just QEMU
 ; ============================================================
 
 format binary
@@ -39,238 +8,130 @@ org 0x0000
 use16
 
 ; ============================================================
-; Constantes de layout de memoria
+; Memory Layout Constants
 ; ============================================================
-LOAD_LINEAR     equ 0x10000   ; Donde stage2 esta en memoria
-STACK_16        equ 0x9000    ; Stack 16-bit (SS=0, SP=0x9000)
-STACK_32        equ 0x90000   ; Stack 32-bit ESP
-STACK_64        equ 0x90000   ; Stack 64-bit RSP
-KERNEL_ENTRY    equ 0x100000  ; Kernel cargado aqui por build script
-PAGE_PML4       equ 0x70000   ; Tablas de pagina
+STAGE2_SEG      equ 0x1000    ; We're loaded at 0x1000:0x0000 = 0x10000
+STAGE2_LINEAR   equ 0x10000   ; Linear address where stage2 lives
+STACK_16        equ 0x9000    ; 16-bit stack
+STACK_32        equ 0x90000   ; 32-bit stack  
+STACK_64        equ 0x90000   ; 64-bit stack
+KERNEL_ADDR     equ 0x100000  ; Kernel loaded here (1MB)
+
+; Page tables in low memory (safe area)
+PAGE_PML4       equ 0x70000
 PAGE_PDPT       equ 0x71000
-PAGE_PD         equ 0x72000   ; PD for 0GB-1GB (512 × 2MB)
-PAGE_PD1        equ 0x73000   ; PD for 1GB-2GB
-PAGE_PD2        equ 0x74000   ; PD for 2GB-3GB
-PAGE_PD3        equ 0x75000   ; PD for 3GB-4GB (VESA FB here)
+PAGE_PD         equ 0x72000
+PAGE_PD1        equ 0x73000
+PAGE_PD2        equ 0x74000
+PAGE_PD3        equ 0x75000
 
 ; ============================================================
-; ─── FASE 1: 16-BIT REAL MODE ────────────────────────────
-; El CPU llega aqui en modo real despues de stage1.
-; No asumimos nada del estado anterior — limpiamos todo.
+; PHASE 1: 16-BIT REAL MODE
 ; ============================================================
+start16:
+    ; Save boot drive
+    mov  [boot_drive], dl
 
-stage2_start:
-
-    ; Guardar boot drive que mando stage1 en DL
-    mov  bl, dl
-
-    ; Limpiar todos los segmentos — no asumimos nada
+    ; Setup segments - we're at 0x1000:0x0000
     cli
-    mov  ax, 0x1000         ; Nuestro segmento (cargados en 0x1000:0x0000)
+    mov  ax, STAGE2_SEG
     mov  ds, ax
     mov  es, ax
-
-    ; Stack 16-bit: SS=0, SP=0x9000
     xor  ax, ax
     mov  ss, ax
     mov  sp, STACK_16
     sti
 
-    ; Re-guardar drive con DS correcto
-    mov  [boot_drive], bl
-
-    ; --- Output 16-bit via BIOS ---
-    mov  si, msg_16bit
+    ; Print startup message via BIOS
+    mov  si, msg_start
     call print16
+
+; ─── Enable A20 Line ───────────────────────────────────────
+enable_a20:
+    ; Method 1: BIOS
+    mov  ax, 0x2401
+    int  0x15
+    jnc  .a20_ok
+
+    ; Method 2: Fast A20 (port 0x92)
+    in   al, 0x92
+    test al, 0x02
+    jnz  .a20_ok
+    or   al, 0x02
+    and  al, 0xFE
+    out  0x92, al
+
+.a20_ok:
     mov  si, msg_a20
     call print16
 
-; ─── A20 Line ────────────────────────────────────────────
-; Sin A20, solo podemos acceder a 1MB. Hay que habilitarla.
-enable_a20:
-    ; Metodo 1: BIOS INT 0x15 AX=0x2401
-    mov  ax, 0x2401
-    int  0x15
-    jnc  .a20_done          ; Si CF=0, A20 OK
-
-    ; Metodo 2: Fast A20 (puerto 0x92)
-    in   al, 0x92
-    test al, 0x02
-    jnz  .a20_done          ; Ya estaba habilitado
-    or   al, 0x02
-    and  al, 0xFE           ; Asegurar que bit 0 no dispara reset
-    out  0x92, al
-
-.a20_done:
-
-; ─── Detectar Memoria (E820) ─────────────────────────────
-; INT 0x15 EAX=0xE820 — el estandar de facto para mapas de memoria
-; Guardamos el mapa en 0x2000 para que el kernel lo lea en memory_init()
+; ─── Detect Memory (E820) ──────────────────────────────────
 detect_memory:
-    mov  si, msg_mem
-    call print16
-
-    mov  ax, 0x2000         ; Buffer destino del E820 map
+    mov  ax, 0x2000
     mov  es, ax
-    xor  di, di             ; ES:DI = 0x2000:0x0000
-    xor  ebx, ebx           ; EBX=0 = primera entrada
-    mov  word [es:di], 0    ; Contador de entradas = 0
+    xor  di, di
+    xor  ebx, ebx
+    mov  word [es:di], 0
 
 .e820_loop:
-    add  di, 2              ; Espacio para el contador al inicio
+    add  di, 2
     mov  eax, 0x0000E820
-    mov  edx, 0x534D4150    ; "SMAP" signature
-    mov  ecx, 24            ; 24 bytes por entrada (con ACPI extended)
+    mov  edx, 0x534D4150
+    mov  ecx, 24
     int  0x15
-    jc   .e820_done         ; Error o fin de lista
-    cmp  eax, 0x534D4150    ; Verificar respuesta valida
+    jc   .e820_done
+    cmp  eax, 0x534D4150
     jne  .e820_done
     test ecx, ecx
     jz   .e820_done
-
-    ; Incrementar contador
     sub  di, 2
     inc  word [es:di]
     add  di, 2
-    add  di, 24             ; Siguiente entrada (24 bytes)
-
-    test ebx, ebx           ; EBX=0 significa ultima entrada
+    add  di, 24
+    test ebx, ebx
     jz   .e820_done
-    cmp  di, 240            ; Max 10 entradas (seguridad)
+    cmp  di, 240
     jb   .e820_loop
 
 .e820_done:
-    ; Restaurar ES a nuestro segmento
-    mov  ax, 0x1000
+    mov  ax, STAGE2_SEG
     mov  es, ax
-
-; ─── VESA VBE Mode Set (16-bit, requiere BIOS INT 0x10) ──
-; Intentamos 1024×768×32bpp linear (modo seguro, universal).
-; Info del modo se guarda en 0x5000 para que kernel_main() lea:
-;   [0x5000] = framebuffer physical address (uint32)
-;   [0x5004] = width  (uint32)
-;   [0x5008] = height (uint32)
-;   [0x500C] = pitch  (uint32, bytes por linea)
-; Si VESA falla → [0x5000] = 0 → kernel usa TUI fallback.
-setup_vesa:
-    mov  si, msg_vesa
+    mov  si, msg_mem
     call print16
 
-    ; Limpiar info area en caso de fallo
-    xor  ax, ax
-    mov  [ds:vesa_fb_addr], ax
-    mov  [ds:vesa_fb_addr+2], ax
-
-    ; --- Obtener VBE Controller Info ---
-    ; Buffer temporal en 0x3000:0x0000 (area libre)
-    mov  ax, 0x3000
-    mov  es, ax
-    xor  di, di
-    mov  ax, 0x4F00          ; VBE: Get Controller Info
-    int  0x10
-    cmp  ax, 0x004F          ; AX=0x004F = success
-    jne  .vesa_fail
-
-    ; --- Obtener Mode Info para 0x0118 (1024×768×32bpp) ---
-    mov  ax, 0x3000
-    mov  es, ax
-    mov  di, 256             ; Offset 256 en el buffer (no sobreescribir ctrl info)
-    mov  cx, 0x0118          ; Mode 0x118 = 1024×768×32bpp
-    mov  ax, 0x4F01          ; VBE: Get Mode Info
-    int  0x10
-    cmp  ax, 0x004F
-    jne  .vesa_fail
-
-    ; Verificar que el modo soporta linear framebuffer (bit 7 de ModeAttributes)
-    mov  ax, [es:256]        ; ModeAttributes at offset 0
-    test ax, 0x80            ; Linear framebuffer available?
-    jz   .vesa_fail
-
-    ; Verificar resolucion correcta (XResolution at offset 18, YResolution at offset 20)
-    cmp  word [es:256+18], 1024
-    jne  .vesa_fail
-    cmp  word [es:256+20], 768
-    jne  .vesa_fail
-    ; Verificar BPP (BitsPerPixel at offset 25)
-    cmp  byte [es:256+25], 32
-    jne  .vesa_fail
-
-    ; Guardar info del framebuffer en variables locales
-    ; PhysBasePtr esta en offset 40 del mode info block
-    mov  eax, [es:256+40]    ; Framebuffer physical address
-    mov  [ds:vesa_fb_addr], eax
-
-    ; Guardar width, height
-    movzx eax, word [es:256+18]
-    mov  [ds:vesa_width], eax
-    movzx eax, word [es:256+20]
-    mov  [ds:vesa_height], eax
-
-    ; BytesPerScanLine at offset 16
-    movzx eax, word [es:256+16]
-    mov  [ds:vesa_pitch], eax
-
-    ; --- Set VBE Mode 0x4118 (0x118 + 0x4000 = linear framebuffer) ---
-    mov  bx, 0x4118          ; Mode 0x118 con bit 14 = linear FB
-    mov  ax, 0x4F02          ; VBE: Set Mode
-    int  0x10
-    cmp  ax, 0x004F
-    jne  .vesa_fail
-
-    mov  si, msg_vesa_ok
-    call print16
-    jmp  .vesa_done
-
-.vesa_fail:
-    ; VESA fallo — limpiar fb_addr, kernel usara TUI
-    xor  eax, eax
-    mov  [ds:vesa_fb_addr], eax
-    mov  [ds:vesa_width], eax
-    mov  [ds:vesa_height], eax
-    mov  [ds:vesa_pitch], eax
-    mov  si, msg_vesa_fail
-    call print16
-
-.vesa_done:
-    ; Copiar VESA info a direccion fija 0x5000 (accesible por kernel)
-    ; Usamos ES=0x0500 para llegar a 0x5000 lineal
+; ─── Skip VESA for now - use VGA text mode ─────────────────
+    ; Clear VESA info (kernel will use VGA text fallback)
     mov  ax, 0x0500
     mov  es, ax
-    mov  eax, [ds:vesa_fb_addr]
-    mov  [es:0x0000], eax    ; [0x5000] = fb physical addr
-    mov  eax, [ds:vesa_width]
-    mov  [es:0x0004], eax    ; [0x5004] = width
-    mov  eax, [ds:vesa_height]
-    mov  [es:0x0008], eax    ; [0x5008] = height
-    mov  eax, [ds:vesa_pitch]
-    mov  [es:0x000C], eax    ; [0x500C] = pitch
-
-    ; Restaurar ES
-    mov  ax, 0x1000
+    xor  eax, eax
+    mov  [es:0x0000], eax    ; fb_addr = 0 = no VESA
+    mov  [es:0x0004], eax
+    mov  [es:0x0008], eax
+    mov  [es:0x000C], eax
+    mov  ax, STAGE2_SEG
     mov  es, ax
 
-; ─── GDT de Transicion (para 32-bit PM) ──────────────────
-    cli                     ; CRITICO: sin interrupciones antes de cambio de modo
-    lgdt [gdt32_desc]
+    mov  si, msg_vga
+    call print16
 
+; ─── Prepare for Protected Mode ────────────────────────────
     mov  si, msg_pm
     call print16
 
-; ─── Salto a 32-bit Protected Mode ───────────────────────
-; CR0.PE = 1. Este es el momento de la transicion.
-; NO es un far jump externo — es una transicion in-place.
+    cli                      ; CRITICAL: No interrupts during mode switch
+
+    ; Load GDT - use CS-relative address
+    lgdt [gdt32_ptr]
+
+; ─── Enter 32-bit Protected Mode ───────────────────────────
     mov  eax, cr0
-    or   eax, 0x1           ; PE bit
+    or   al, 1               ; Set PE bit
     mov  cr0, eax
 
-    ; far jump para flush del prefetch queue + cargar CS con selector 32-bit
-    ; Esta es la unica "distancia" que cruzamos — al codigo 32-bit
-    ; en el MISMO archivo (pm_start esta aqui abajo)
-    db 0x66, 0xEA                     ; far jump opcode (32-bit en contexto 16)
-    dd LOAD_LINEAR + pm_start         ; destino = pm_start en este archivo
-    dw 0x08                           ; selector CS (gdt32_code = 0x08)
+    ; Far jump to 32-bit code - flush prefetch queue
+    jmp  dword 0x08:pm_entry
 
-; ─── Helpers 16-bit ──────────────────────────────────────
+; ─── 16-bit Print Helper ───────────────────────────────────
 print16:
     lodsb
     test al, al
@@ -282,67 +143,47 @@ print16:
 .done:
     ret
 
-; ─── Datos 16-bit ────────────────────────────────────────
+; ─── 16-bit Data ───────────────────────────────────────────
 boot_drive:  db 0
-msg_16bit:   db "[16-bit] Real mode OK — A20, E820, GDT preparados", 13, 10, 0
-msg_a20:     db "[16-bit] A20 line habilitada", 13, 10, 0
-msg_mem:     db "[16-bit] Detectando memoria (E820)...", 13, 10, 0
-msg_vesa:    db "[16-bit] VESA VBE: probando 1024x768x32...", 13, 10, 0
-msg_vesa_ok: db "[16-bit] VESA VBE 1024x768x32 linear OK", 13, 10, 0
-msg_vesa_fail: db "[16-bit] VESA VBE fallo — TUI fallback", 13, 10, 0
-msg_pm:      db "[16-bit] Entrando a 32-bit Protected Mode...", 13, 10, 0
+msg_start:   db "FastOS v2.0 Stage2", 13, 10, 0
+msg_a20:     db "A20 OK", 13, 10, 0
+msg_mem:     db "E820 OK", 13, 10, 0
+msg_vga:     db "VGA text mode", 13, 10, 0
+msg_pm:      db "-> 32-bit PM", 13, 10, 0
 
-; ─── VESA VBE variables (16-bit section) ─────────────────
-vesa_fb_addr: dd 0          ; Framebuffer physical address
-vesa_width:   dd 0          ; Screen width
-vesa_height:  dd 0          ; Screen height
-vesa_pitch:   dd 0          ; Bytes per scanline
+; ─── GDT for 32-bit Protected Mode ─────────────────────────
+align 8
+gdt32_start:
+    dq 0                     ; Null descriptor
 
-; ─── GDT para 32-bit Protected Mode ──────────────────────
-; Minima y correcta. Dos descriptores: code + data.
-align 16
-gdt32:
-    ; [0x00] Descriptor nulo — obligatorio en x86
-    dq 0
+gdt32_code:                  ; 0x08: 32-bit code
+    dw 0xFFFF                ; Limit low
+    dw 0x0000                ; Base low
+    db 0x00                  ; Base mid
+    db 0x9A                  ; Access: Present, Ring 0, Code, Readable
+    db 0xCF                  ; Flags: 4K granularity, 32-bit
+    db 0x00                  ; Base high
 
-    ; [0x08] Codigo 32-bit: base=0, limit=4GB, ring 0, readable
-    ;   Limit low=0xFFFF, Base low=0, Base mid=0
-    ;   Access: P=1(present) DPL=00 S=1 Type=1010(code,read)
-    ;   Flags: G=1(4KB) DB=1(32-bit) L=0
-    ;   Limit high=0xF, Base high=0
-    dw 0xFFFF               ; Limit [15:0]
-    dw 0x0000               ; Base  [15:0]
-    db 0x00                 ; Base  [23:16]
-    db 0x9A                 ; Access: Present, DPL=0, Code, Readable
-    db 0xCF                 ; Flags: 4K gran., 32-bit + Limit[19:16]=0xF
-    db 0x00                 ; Base  [31:24]
-
-    ; [0x10] Datos 32-bit: base=0, limit=4GB, ring 0, writable
+gdt32_data:                  ; 0x10: 32-bit data
     dw 0xFFFF
     dw 0x0000
     db 0x00
-    db 0x92                 ; Access: Present, DPL=0, Data, Writable
+    db 0x92                  ; Access: Present, Ring 0, Data, Writable
     db 0xCF
     db 0x00
 gdt32_end:
 
-gdt32_desc:
-    dw gdt32_end - gdt32 - 1           ; Limit
-    dd LOAD_LINEAR + gdt32             ; Base lineal
+gdt32_ptr:
+    dw gdt32_end - gdt32_start - 1
+    dd STAGE2_LINEAR + gdt32_start
 
 ; ============================================================
-; ─── FASE 2: 32-BIT PROTECTED MODE ───────────────────────
-; El CPU llego aqui gradualmente — no aturdido.
-; Ahora configuramos todo el entorno de 32-bit ANTES
-; de transicionar a 64-bit. Cerramos el contexto 32-bit
-; completamente antes de abrir el de 64-bit.
+; PHASE 2: 32-BIT PROTECTED MODE
 ; ============================================================
-
+align 16
 use32
-pm_start:
-
-    ; Configurar TODOS los selectores de segmento data (0x10)
-    ; Si uno queda con selector 16-bit, el CPU tendra estado fantasma
+pm_entry:
+    ; Setup 32-bit segments
     mov  ax, 0x10
     mov  ds, ax
     mov  es, ax
@@ -351,59 +192,53 @@ pm_start:
     mov  ss, ax
     mov  esp, STACK_32
 
-    ; Reportar en VGA — ya estamos en 32-bit, sin BIOS
-    mov  edi, 0xB8000 + (2 * 160)     ; Fila 2
-    mov  esi, LOAD_LINEAR + msg_32bit
-    mov  ah, 0x0A                     ; Verde sobre negro
-.print32:
-    lodsb
-    test al, al
-    jz   .print32_done
-    stosw
-    jmp  .print32
-.print32_done:
+    ; === DEBUG: Write directly to VGA to prove we're in 32-bit ===
+    mov  edi, 0xB8000 + (3 * 160)
+    mov  eax, 0x0A5B         ; '[' in green
+    stosd
+    mov  eax, 0x0A33         ; '3'
+    stosd
+    mov  eax, 0x0A32         ; '2'
+    stosd
+    mov  eax, 0x0A5D         ; ']'
+    stosd
+    mov  eax, 0x0A20         ; ' '
+    stosd
+    mov  eax, 0x0A4F         ; 'O'
+    stosd
+    mov  eax, 0x0A4B         ; 'K'
+    stosd
 
-; ─── Paginacion 4-Level (Identity Map) ───────────────────
-; Necesaria para entrar a long mode.
-; Mapeamos los primeros 4GB identity (VA = PA).
-; Tablas en 0x70000-0x72FFF (area de memoria baja libre).
-
+; ─── Setup 4-Level Paging ──────────────────────────────────
 setup_paging:
-    ; Limpiar area de tablas (6 paginas = 24KB: PML4+PDPT+PD0+PD1+PD2+PD3)
+    ; Clear page table area (24KB)
     mov  edi, PAGE_PML4
     xor  eax, eax
-    mov  ecx, 0x6000 / 4    ; 24KB / 4 bytes
+    mov  ecx, 6144           ; 24KB / 4
     rep  stosd
 
-    ; PML4[0] → PDPT en PAGE_PDPT (Present + Writable)
-    mov  dword [PAGE_PML4], PAGE_PDPT + 0x3
+    ; PML4[0] -> PDPT
+    mov  dword [PAGE_PML4], PAGE_PDPT + 0x03
 
-    ; PDPT[0] → PD  for 0GB-1GB
-    ; PDPT[1] → PD1 for 1GB-2GB
-    ; PDPT[2] → PD2 for 2GB-3GB
-    ; PDPT[3] → PD3 for 3GB-4GB (VESA framebuffer lives here)
-    mov  dword [PAGE_PDPT + 0x00], PAGE_PD  + 0x3
-    mov  dword [PAGE_PDPT + 0x08], PAGE_PD1 + 0x3
-    mov  dword [PAGE_PDPT + 0x10], PAGE_PD2 + 0x3
-    mov  dword [PAGE_PDPT + 0x18], PAGE_PD3 + 0x3
+    ; PDPT entries -> PD tables (4GB identity map)
+    mov  dword [PAGE_PDPT + 0x00], PAGE_PD  + 0x03
+    mov  dword [PAGE_PDPT + 0x08], PAGE_PD1 + 0x03
+    mov  dword [PAGE_PDPT + 0x10], PAGE_PD2 + 0x03
+    mov  dword [PAGE_PDPT + 0x18], PAGE_PD3 + 0x03
 
-    ; Fill all 4 PD tables: 512 entries each × 2MB = 1GB per table
-    ; PS=1 (page size = 2MB), P=1, RW=1 → mask 0x83
-    ; Loop: for each PD table, fill 512 entries with ascending 2MB pages
-
-    ; --- PD0: 0x00000000 - 0x3FFFFFFF (0GB-1GB) ---
+    ; Fill PD0: 0x00000000 - 0x3FFFFFFF (2MB pages)
     mov  edi, PAGE_PD
-    mov  eax, 0x000083        ; First 2MB page, PS+RW+P
+    mov  eax, 0x000083       ; Present + RW + PS (2MB page)
     mov  ecx, 512
 .fill_pd0:
     mov  [edi], eax
-    mov  dword [edi+4], 0     ; High 32 bits = 0
-    add  eax, 0x200000        ; Next 2MB page
+    mov  dword [edi+4], 0
+    add  eax, 0x200000
     add  edi, 8
     dec  ecx
     jnz  .fill_pd0
 
-    ; --- PD1: 0x40000000 - 0x7FFFFFFF (1GB-2GB) ---
+    ; Fill PD1: 0x40000000 - 0x7FFFFFFF
     mov  edi, PAGE_PD1
     mov  eax, 0x40000083
     mov  ecx, 512
@@ -415,7 +250,7 @@ setup_paging:
     dec  ecx
     jnz  .fill_pd1
 
-    ; --- PD2: 0x80000000 - 0xBFFFFFFF (2GB-3GB) ---
+    ; Fill PD2: 0x80000000 - 0xBFFFFFFF
     mov  edi, PAGE_PD2
     mov  eax, 0x80000083
     mov  ecx, 512
@@ -427,7 +262,7 @@ setup_paging:
     dec  ecx
     jnz  .fill_pd2
 
-    ; --- PD3: 0xC0000000 - 0xFFFFFFFF (3GB-4GB) — VESA FB here ---
+    ; Fill PD3: 0xC0000000 - 0xFFFFFFFF
     mov  edi, PAGE_PD3
     mov  eax, 0xC0000083
     mov  ecx, 512
@@ -439,238 +274,167 @@ setup_paging:
     dec  ecx
     jnz  .fill_pd3
 
-    ; Cargar CR3 con la direccion de PML4
+    ; DEBUG: Paging setup done
+    mov  edi, 0xB8000 + (4 * 160)
+    mov  eax, 0x0E50         ; 'P' yellow
+    stosd
+    mov  eax, 0x0E41         ; 'A'
+    stosd
+    mov  eax, 0x0E47         ; 'G'
+    stosd
+    mov  eax, 0x0E45         ; 'E'
+    stosd
+
+    ; Load CR3 with PML4 address
     mov  eax, PAGE_PML4
     mov  cr3, eax
 
-; ─── Habilitar PAE (Physical Address Extension) ──────────
-; Requerido ANTES de habilitar Long Mode
+    ; Enable PAE (required for long mode)
     mov  eax, cr4
-    or   eax, 0x20          ; PAE bit (bit 5)
+    or   eax, 0x20           ; PAE bit
     mov  cr4, eax
 
-; ─── Habilitar Long Mode en EFER MSR ─────────────────────
-; Extended Feature Enable Register
-    mov  ecx, 0xC0000080    ; EFER MSR numero
+    ; Enable Long Mode in EFER MSR
+    mov  ecx, 0xC0000080     ; EFER MSR
     rdmsr
-    or   eax, 0x100         ; LME bit (Long Mode Enable)
+    or   eax, 0x100          ; LME bit
     wrmsr
 
-; ─── Cargar GDT 64-bit ───────────────────────────────────
-; Antes de habilitar paginacion, cargo la GDT 64-bit.
-; Esto evita cualquier problema de selector en la transicion.
-    lgdt [LOAD_LINEAR + gdt64_desc]
+    ; Load 64-bit GDT
+    lgdt [STAGE2_LINEAR + gdt64_ptr]
 
-    mov  edi, 0xB8000 + (3 * 160)
-    mov  esi, LOAD_LINEAR + msg_64bit
-    mov  ah, 0x0B
-.print64info:
-    lodsb
-    test al, al
-    jz   .print64info_done
-    stosw
-    jmp  .print64info
-.print64info_done:
-
-; ─── Habilitar Paginacion → Activa Long Mode ─────────────
-; Este es el momento exacto de transicion 32→64.
-; Una vez que PG=1 con LME=1 → el CPU entra en Long Mode.
+    ; Enable paging -> activates long mode
     mov  eax, cr0
-    or   eax, 0x80000000    ; PG bit (Paging Enable)
+    or   eax, 0x80000000     ; PG bit
     mov  cr0, eax
 
-    ; far jump para activar el descriptor 64-bit en CS
-    ; PM_START y LM_START estan en el mismo archivo — no hay salto externo
-    db 0xEA                             ; far jump opcode
-    dd LOAD_LINEAR + lm_start           ; destino = lm_start (64-bit code)
-    dw 0x08                             ; selector CS 64-bit (gdt64_code = 0x08)
+    ; Far jump to 64-bit code
+    jmp  0x08:lm_entry
 
-; ─── Datos 32-bit ────────────────────────────────────────
-msg_32bit: db "[32-bit] Protected Mode OK — PAE, paginacion, LME preparados", 0
-msg_64bit: db "[32-bit] Paginacion activa — entrando a 64-bit Long Mode...", 0
+; ─── 32-bit Data ───────────────────────────────────────────
+align 8
+gdt64_start:
+    dq 0                     ; Null
 
-; ─── GDT para 64-bit Long Mode ───────────────────────────
-; En 64-bit, base/limit son ignorados para code/data.
-; Solo el bit L=1 importa para marcar como 64-bit code.
-align 16
-gdt64:
-    ; [0x00] Descriptor nulo
-    dq 0
-
-    ; [0x08] Codigo 64-bit: L=1 (bit 53), P=1, DPL=0
-    ;   Flags byte: 0x20 = L bit set (64-bit code)
-    ;   Access byte: 0x9A = Present, DPL=0, Code, Readable
-    dw 0x0000               ; Limit (ignorado en 64-bit)
-    dw 0x0000               ; Base  (ignorado)
-    db 0x00
-    db 0x9A                 ; Access: Present, DPL=0, Code
-    db 0x20                 ; Flags: L=1 (64-bit), G=0
-    db 0x00
-
-    ; [0x10] Datos 64-bit
+gdt64_code:                  ; 0x08: 64-bit code
     dw 0x0000
     dw 0x0000
     db 0x00
-    db 0x92                 ; Access: Present, DPL=0, Data, Writable
+    db 0x9A                  ; Present, Ring 0, Code
+    db 0x20                  ; L=1 (64-bit), G=0
+    db 0x00
+
+gdt64_data:                  ; 0x10: 64-bit data
+    dw 0x0000
+    dw 0x0000
+    db 0x00
+    db 0x92                  ; Present, Ring 0, Data
     db 0x00
     db 0x00
 gdt64_end:
 
-gdt64_desc:
-    dw gdt64_end - gdt64 - 1
-    dq LOAD_LINEAR + gdt64              ; Base como QWORD (64-bit descriptor)
+gdt64_ptr:
+    dw gdt64_end - gdt64_start - 1
+    dq STAGE2_LINEAR + gdt64_start
 
 ; ============================================================
-; ─── FASE 3: 64-BIT LONG MODE ────────────────────────────
-; El CPU llego aqui GRADUALMENTE.
-; 16-bit real → 32-bit protected → 64-bit long mode.
-; Cada fase cerro su contexto correctamente.
-;
-; Aqui el CPU esta COMPLETAMENTE ORIENTADO.
-; Sin estado fantasma. Sin contexto perdido.
-; C solo dirige lo que ya existe.
+; PHASE 3: 64-BIT LONG MODE
 ; ============================================================
-
+align 16
 use64
-lm_start:
-
-    ; Configurar segmentos 64-bit
-    ; En long mode, DS/ES/SS son ignorados (base=0),
-    ; pero deben tener el selector correcto
+lm_entry:
+    ; Setup 64-bit segments
     mov  ax, 0x10
     mov  ds, ax
     mov  es, ax
     mov  fs, ax
     mov  gs, ax
     mov  ss, ax
-
-    ; Stack 64-bit
     mov  rsp, STACK_64
 
-    ; ─── Reportar 64-bit ──────────────────────────────────
-    mov  rdi, 0xB8000 + (4 * 160)     ; Fila 4
-    mov  rsi, LOAD_LINEAR + msg_lm
-    mov  ah, 0x0E                     ; Amarillo
-.print_lm:
-    lodsb
-    test al, al
-    jz   .print_lm_done
+    ; DEBUG: Write [64] to VGA
+    mov  rdi, 0xB8000 + (5 * 160)
+    mov  rax, 0x0B5B         ; '[' cyan
     stosw
-    jmp  .print_lm
-.print_lm_done:
+    mov  rax, 0x0B36         ; '6'
+    stosw
+    mov  rax, 0x0B34         ; '4'
+    stosw
+    mov  rax, 0x0B5D         ; ']'
+    stosw
+    mov  rax, 0x0B20         ; ' '
+    stosw
+    mov  rax, 0x0B4F         ; 'O'
+    stosw
+    mov  rax, 0x0B4B         ; 'K'
+    stosw
 
-; ─── FASE 3a: SSE ACTIVATION (128-bit XMM) ─────────────
-; El OS DEBE habilitar SSE explicitamente o faulteara.
-; CR0: limpiar EM (bit 2), setear MP (bit 1)
-; CR4: setear OSFXSR (bit 9) y OSXMMEXCPT (bit 10)
-enable_sse:
+; ─── Enable SSE ────────────────────────────────────────────
     mov  rax, cr0
-    and  ax, 0xFFFB              ; Clear CR0.EM (bit 2) — no x87 emulation
-    or   ax, 0x0002              ; Set CR0.MP (bit 1) — monitor coprocessor
+    and  ax, 0xFFFB          ; Clear EM
+    or   ax, 0x0002          ; Set MP
     mov  cr0, rax
 
     mov  rax, cr4
-    or   ax, 0x0200              ; CR4.OSFXSR (bit 9) — enable FXSAVE/FXRSTOR
-    or   ax, 0x0400              ; CR4.OSXMMEXCPT (bit 10) — SSE exceptions
+    or   ax, 0x0600          ; OSFXSR + OSXMMEXCPT
     mov  cr4, rax
 
-    ; Reportar SSE activo
-    mov  rdi, 0xB8000 + (5 * 160)     ; Fila 5
-    mov  rsi, LOAD_LINEAR + msg_sse
-    mov  ah, 0x0A                     ; Verde
-.print_sse:
-    lodsb
-    test al, al
-    jz   .print_sse_done
-    stosw
-    jmp  .print_sse
-.print_sse_done:
-
-; ─── FASE 3b: AVX2 DETECTION + ACTIVATION (256-bit YMM) ─
-; Primero verificar que el CPU soporta OSXSAVE (CPUID.1:ECX bit 27)
-; Luego verificar AVX2 (CPUID.7:EBX bit 5)
-detect_avx2:
-    ; Check OSXSAVE support (CPUID leaf 1, ECX bit 27)
-    mov  eax, 1
-    cpuid
-    test ecx, 0x08000000        ; OSXSAVE available? (bit 27)
-    jz   .no_avx2                ; No OSXSAVE → skip AVX2
-
-    ; Check AVX support (CPUID leaf 1, ECX bit 28)
-    test ecx, 0x10000000         ; AVX available? (bit 28)
-    jz   .no_avx2
-
-    ; Check AVX2 (CPUID leaf 7, sub-leaf 0, EBX bit 5)
-    mov  eax, 7
-    xor  ecx, ecx
-    cpuid
-    test ebx, 0x20               ; AVX2? (bit 5)
-    jz   .no_avx2
-
-    ; ─── Enable OSXSAVE in CR4 ────────────────────────────
-    mov  rax, cr4
-    or   rax, 0x40000            ; CR4.OSXSAVE (bit 18)
-    mov  cr4, rax
-
-    ; ─── Set XCR0: enable X87 (bit 0) + SSE (bit 1) + AVX (bit 2) ───
-    xor  rcx, rcx                ; XCR0 = extended control register 0
-    xgetbv                        ; Read current XCR0 into EDX:EAX
-    or   eax, 0x07               ; Set bits 0,1,2 = X87 + SSE + AVX
-    xsetbv                        ; Write back to XCR0
-
-    ; ─── Clean YMM state ──────────────────────────────────
-    vzeroupper                    ; Reset upper 128 bits of all YMM regs
-
-    ; Reportar AVX2 256-bit activo
-    mov  rdi, 0xB8000 + (6 * 160)     ; Fila 6
-    mov  rsi, LOAD_LINEAR + msg_avx2
-    mov  ah, 0x0B                     ; Cyan
-.print_avx2:
-    lodsb
-    test al, al
-    jz   .avx2_done
-    stosw
-    jmp  .print_avx2
-
-.no_avx2:
-    ; CPU no soporta AVX2 — reportar y continuar (SSE sigue activo)
+    ; DEBUG: SSE OK
     mov  rdi, 0xB8000 + (6 * 160)
-    mov  rsi, LOAD_LINEAR + msg_no_avx2
-    mov  ah, 0x0C                     ; Rojo
-.print_no_avx2:
-    lodsb
-    test al, al
-    jz   .avx2_done
+    mov  rax, 0x0A53         ; 'S' green
     stosw
-    jmp  .print_no_avx2
+    mov  rax, 0x0A53         ; 'S'
+    stosw
+    mov  rax, 0x0A45         ; 'E'
+    stosw
 
-.avx2_done:
-
-; ─── Mover el Kernel a 0x100000 ──────────────────────────
-    ; El script `build64.ps1` concatena `kernel.bin` despues de `stage2.bin`.
-    ; Como stage2 ocupa 16KB (0x4000) y fue cargado en 0x10000, 
-    ; el kernel esta en 0x10000 + 0x4000 = 0x14000.
-    ; Movemos 64KB desde 0x14000 a 0x100000.
+; ─── Copy Kernel to 0x100000 ───────────────────────────────
+    ; Kernel is at 0x14000 (after 16KB stage2)
     mov  rsi, 0x14000
-    mov  rdi, KERNEL_ENTRY
-    mov  rcx, 8192              ; 65536 bytes / 8 = 8192 QWORDs
+    mov  rdi, KERNEL_ADDR
+    mov  rcx, 8192           ; 64KB / 8
     cld
-    rep movsq
+    rep  movsq
 
-; ─── Prefetch kernel a L1 cache ──────────────────────────
-    ; Anclamos las primeras paginas del kernel en L1 data cache
-    ; para que kernel_main() arranque sin cache misses
-    mov  rax, KERNEL_ENTRY
-    prefetcht0 [rax]
-    prefetcht0 [rax + 64]
-    prefetcht0 [rax + 128]
-    prefetcht0 [rax + 192]
-    prefetcht0 [rax + 256]
-    prefetcht0 [rax + 320]
-    prefetcht0 [rax + 384]
-    prefetcht0 [rax + 448]
+    ; DEBUG: Kernel copied
+    mov  rdi, 0xB8000 + (7 * 160)
+    mov  rax, 0x0E4B         ; 'K' yellow
+    stosw
+    mov  rax, 0x0E45         ; 'E'
+    stosw
+    mov  rax, 0x0E52         ; 'R'
+    stosw
+    mov  rax, 0x0E4E         ; 'N'
+    stosw
+    mov  rax, 0x0E45         ; 'E'
+    stosw
+    mov  rax, 0x0E4C         ; 'L'
+    stosw
 
-    ; Limpiar todos los registros de proposito general
+    ; Verify kernel exists
+    mov  rax, KERNEL_ADDR
+    mov  eax, [rax]
+    test eax, eax
+    jz   .no_kernel
+
+    ; DEBUG: Jumping to kernel
+    mov  rdi, 0xB8000 + (8 * 160)
+    mov  rax, 0x0A4A         ; 'J' green
+    stosw
+    mov  rax, 0x0A55         ; 'U'
+    stosw
+    mov  rax, 0x0A4D         ; 'M'
+    stosw
+    mov  rax, 0x0A50         ; 'P'
+    stosw
+
+    ; Disable interrupts and mask PIC
+    cli
+    mov  al, 0xFF
+    out  0x21, al
+    out  0xA1, al
+
+    ; Clear registers
     xor  rax, rax
     xor  rbx, rbx
     xor  rcx, rcx
@@ -678,8 +442,8 @@ detect_avx2:
     xor  rsi, rsi
     xor  rdi, rdi
     xor  rbp, rbp
-    xor  r8,  r8
-    xor  r9,  r9
+    xor  r8, r8
+    xor  r9, r9
     xor  r10, r10
     xor  r11, r11
     xor  r12, r12
@@ -687,79 +451,35 @@ detect_avx2:
     xor  r14, r14
     xor  r15, r15
 
-    ; Reportar salto al kernel
-    mov  rdi, 0xB8000 + (7 * 160)     ; Fila 7
-    mov  rsi, LOAD_LINEAR + msg_kernel_jump
-    mov  ah, 0x0A
-.print_kj:
-    lodsb
-    test al, al
-    jz   .print_kj_done
-    stosw
-    jmp  .print_kj
-.print_kj_done:
-
-    ; ─── Verificar que el kernel existe en 0x100000 ──────
-    mov  rax, KERNEL_ENTRY
-    mov  eax, [rax]
-    test eax, eax
-    jz   .no_kernel
-
-    ; ─── Deshabilitar interrupts antes de kernel ──────────
-    ; No hay IDT configurada — cualquier IRQ causa triple fault.
-    ; Mascarar TODAS las IRQs del PIC y CLI.
-    cli
-    mov  al, 0xFF
-    out  0x21, al           ; Mask all master PIC IRQs
-    out  0xA1, al           ; Mask all slave PIC IRQs
-
-    ; ─── LLAMAR AL KERNEL ─────────────────────────────────
-    ; El CPU esta DESPIERTO — 16→32→64→SSE→AVX2 (256-bit YMM)
-    ; Gradual, sin aturdir. Cada capability fue activada en orden.
-    ; Interrupts deshabilitadas — kernel debe configurar IDT antes de STI.
-    mov  rax, KERNEL_ENTRY
+    ; CALL KERNEL
+    mov  rax, KERNEL_ADDR
     call rax
 
-    ; Si kernel_main() retorna (nunca deberia):
-    jmp  .kernel_returned
+    ; If kernel returns (shouldn't)
+    jmp  .halt
 
 .no_kernel:
-    mov  rdi, 0xB8000 + (8 * 160)
-    mov  rsi, LOAD_LINEAR + msg_no_kernel
-    mov  ah, 0x0C
-.print_nk:
-    lodsb
-    test al, al
-    jz   .halt
+    ; No kernel found - show error
+    mov  rdi, 0xB8000 + (9 * 160)
+    mov  rax, 0x0C4E         ; 'N' red
     stosw
-    jmp  .print_nk
-
-.kernel_returned:
-    mov  rdi, 0xB8000 + (8 * 160)
-    mov  rsi, LOAD_LINEAR + msg_returned
-    mov  ah, 0x0C
-.print_ret:
-    lodsb
-    test al, al
-    jz   .halt
+    mov  rax, 0x0C4F         ; 'O'
     stosw
-    jmp  .print_ret
+    mov  rax, 0x0C20         ; ' '
+    stosw
+    mov  rax, 0x0C4B         ; 'K'
+    stosw
+    mov  rax, 0x0C45         ; 'E'
+    stosw
+    mov  rax, 0x0C52         ; 'R'
+    stosw
+    mov  rax, 0x0C4E         ; 'N'
+    stosw
 
 .halt:
     cli
-.halt_loop:
     hlt
-    jmp  .halt_loop
+    jmp  .halt
 
-; ─── Datos 64-bit ────────────────────────────────────────
-msg_lm:          db "[64-bit] Long Mode ACTIVO", 0
-msg_sse:         db "[SSE]    XMM 128-bit activo (CR0.MP CR4.OSFXSR)", 0
-msg_avx2:        db "[AVX2]   YMM 256-bit activo (OSXSAVE + XCR0 + vzeroupper)", 0
-msg_no_avx2:     db "[AVX2]   No soportado por CPU — SSE 128-bit OK", 0
-msg_kernel_jump: db "[BOOT]   Kernel prefetched L1 — call kernel_main()", 0
-msg_no_kernel:   db "[PANIC]  Kernel no encontrado en 0x100000 — Halt", 0
-msg_returned:    db "[PANIC]  kernel_main() retorno — sistema detenido", 0
-
-; ─── Padding a 16KB ──────────────────────────────────────
-; El build script espera que stage2 tenga 16KB (32 sectores)
+; ─── Padding to 16KB ───────────────────────────────────────
 times 16384 - ($ - $$) db 0

@@ -46,6 +46,22 @@ void kernel_main(void) {
     int desktop_mode; int tbar_p;
     int dx; int dy;
 
+    /* ================================================================
+     * PHASE -2: IMMEDIATE VGA DEBUG (Row 11) - First thing kernel does!
+     * This proves kernel_main() was called successfully.
+     * ================================================================ */
+    p = 0xB8000 + 11 * 160;
+    /* ">>> KERNEL ALIVE <<<" in bright green */
+    __store16(p, 0, 0x0A3E); __store16(p, 2, 0x0A3E); __store16(p, 4, 0x0A3E);
+    __store16(p, 6, 0x0A20);
+    __store16(p, 8, 0x0A4B); __store16(p, 10, 0x0A45); __store16(p, 12, 0x0A52);
+    __store16(p, 14, 0x0A4E); __store16(p, 16, 0x0A45); __store16(p, 18, 0x0A4C);
+    __store16(p, 20, 0x0A20);
+    __store16(p, 22, 0x0A41); __store16(p, 24, 0x0A4C); __store16(p, 26, 0x0A49);
+    __store16(p, 28, 0x0A56); __store16(p, 30, 0x0A45);
+    __store16(p, 32, 0x0A20);
+    __store16(p, 34, 0x0A3C); __store16(p, 36, 0x0A3C); __store16(p, 38, 0x0A3C);
+
     __cli();
 
     /* ================================================================
