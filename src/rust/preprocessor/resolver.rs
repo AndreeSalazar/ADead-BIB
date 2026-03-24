@@ -95,6 +95,13 @@ impl HeaderResolver {
         // Se sirven desde las librerias internas en vez del filesystem.
         // Esto elimina el mensaje "unknown header" para todo el kernel FastOS.
         let fastos_builtin = match basename {
+            // ADead-BIB Native Render Libraries (Ash-BIB)
+            "ad_window.hpp" | "ad_window.h" | "ad_window" => {
+                Some(crate::stdlib::cpp::fastos_window::generate_window_hpp())
+            }
+            "ad_vulkan.hpp" | "ad_vulkan.h" | "ad_vulkan" | "vulkan.h" => {
+                Some(crate::stdlib::cpp::fastos_vulkan::generate_vulkan_hpp())
+            }
             // API completa del kernel
             "kernel.h" | "fastos.h" | "bg_guardian.h" | "bg_hash.h" => {
                 Some(crate::stdlib::c::fastos_kernel::generate_kernel_h())

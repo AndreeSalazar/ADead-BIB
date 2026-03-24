@@ -23,5 +23,13 @@ path = "src/rust/lib.rs"
 name = "adb"
 path = "src/rust/main.rs"
 
+[[bin]]
+name = "cuda_test"
+path = "src/rust/cuda_test.rs"
+
+[[bin]]
+name = "cuda_test_v2"
+path = "src/rust/cuda_test_v2.rs"
+
 # ADead-BIB es 100% Rust - No requiere dependencias de C++
 

@@ -7,9 +7,8 @@
 // Autor: Eddi Andreé Salazar Matos
 // Fecha: Marzo 2026
 
-#include "ad_std_window.hpp"
-#include "ad_std_vulkan.hpp"
-#include "ad_std_vulkan_loader.cpp"
+#include <ad_window.hpp>
+#include <ad_vulkan.hpp>
 
 extern "C" {
     int printf(const char*, ...);

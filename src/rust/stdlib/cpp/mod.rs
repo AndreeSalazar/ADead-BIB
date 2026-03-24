@@ -7,6 +7,8 @@
 // ============================================================
 
 pub mod fastos_iostream;
+pub mod fastos_window;
+pub mod fastos_vulkan;
 pub mod fastos_vector;
 pub mod fastos_string_cpp;
 pub mod fastos_map;

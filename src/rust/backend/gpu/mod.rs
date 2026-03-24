@@ -35,7 +35,8 @@
 pub mod hex;
 
 // === Backends por target ===
-pub mod cuda; // CUDA/PTX - Solo NVIDIA
+pub mod cuda; // CUDA/PTX - Solo NVIDIA (legacy)
+pub mod cudead; // CUDead-BIB - GPU Compiler Nativo sin NVCC
 pub mod hip;
 pub mod spirv; // SPIR-V (Vulkan/OpenCL) - Todas las GPUs
 pub mod vulkan; // Runtime Vulkan // HIP (AMD ROCm + HIP-CPU fallback)
@@ -66,3 +67,9 @@ pub use hip::cuda_to_hip::{translate_cuda_file, CudaToHipTranslator};
 pub use hip::{detect_hip_backend, get_device_info, HipBackend, HipDeviceInfo};
 pub use hip::{print_hip_info, HipCodeGen, HipKernel};
 pub use hip::{Dim3, HipCpuConfig, HipCpuRuntime, SendPtr, ThreadIdx};
+
+// Re-exports CUDead-BIB (GPU Compiler Nativo)
+pub use cudead::{
+    CudeadCompiler, CudeadConfig, CudeadError, CudeadOutput,
+    GpuArch, CUDEAD_VERSION,
+};

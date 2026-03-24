@@ -1,4 +1,5 @@
-#ifndef AD_STD_WINDOW_HPP
+pub fn generate_window_hpp() -> String { 
+    r#"#ifndef AD_STD_WINDOW_HPP
 #define AD_STD_WINDOW_HPP
 
 // Declaraciones nativas de Win32 limpias sin <windows.h>
@@ -150,3 +151,6 @@ void ad_window_destroy(WindowInfo* win) {
 }
 
 #endif
+"#.
+    to_string()
+}
