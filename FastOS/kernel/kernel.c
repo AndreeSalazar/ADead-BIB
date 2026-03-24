@@ -358,33 +358,24 @@ void kernel_main(void) {
     i = 1; while (i < 37) { __store16(0xB8000, 8 * 160 + 4 + i * 2, 0x1FCD); i = i + 1; }
     __store16(0xB8000, 8 * 160 + 4 + 37 * 2, 0x1FBC); /* ╝ */
 
-    /* --- Shell Window (rows 10-22, cols 2-77) --- */
-    /* Top border: ╔══ Shell ══╗ */
-    p = 0xB8000 + 10 * 160 + 4;
-    __store16(p, 0, 0x1FC9); /* ╔ */
-    i = 1; while (i < 75) { __store16(0xB8000, 10 * 160 + 4 + i * 2, 0x1FCD); i = i + 1; }
-    __store16(0xB8000, 10 * 160 + 4 + 75 * 2, 0x1FBB); /* ╗ */
-    /* Title " Shell " at col offset 33 */
-    p = 0xB8000 + 10 * 160 + 4 + 33 * 2;
-    __store16(p, 0, 0x1E20); __store16(p, 2, 0x1E53); __store16(p, 4, 0x1E68);
-    __store16(p, 6, 0x1E65); __store16(p, 8, 0x1E6C); __store16(p, 10, 0x1E6C);
-    __store16(p, 12, 0x1E20);
+    /* --- Terminal Window (rows 10-23) --- Clean CMD style */
+    /* Header bar: white on blue */
+    p = 0xB8000 + 10 * 160;
+    i = 0; while (i < 80) { __store16(p, i * 2, 0x1F20); i = i + 1; }
+    /* " FastOS Terminal " */
+    __store16(p, 2, 0x1F46); __store16(p, 4, 0x1F61); __store16(p, 6, 0x1F73);
+    __store16(p, 8, 0x1F74); __store16(p, 10, 0x1F4F); __store16(p, 12, 0x1F53);
+    __store16(p, 14, 0x1F20); __store16(p, 16, 0x1F54); __store16(p, 18, 0x1F65);
+    __store16(p, 20, 0x1F72); __store16(p, 22, 0x1F6D); __store16(p, 24, 0x1F69);
+    __store16(p, 26, 0x1F6E); __store16(p, 28, 0x1F61); __store16(p, 30, 0x1F6C);
 
-    /* Rows 11-21: ║ ... (empty with borders) ... ║ */
+    /* Terminal area: rows 11-23 - black background, light gray text (0x07) */
     dy = 11;
-    while (dy < 22) {
-        p = 0xB8000 + dy * 160 + 4;
-        __store16(p, 0, 0x1FBA); /* ║ left */
-        i = 1; while (i < 75) { __store16(0xB8000, dy * 160 + 4 + i * 2, 0x1020); i = i + 1; }
-        __store16(0xB8000, dy * 160 + 4 + 75 * 2, 0x1FBA); /* ║ right */
+    while (dy < 24) {
+        p = 0xB8000 + dy * 160;
+        i = 0; while (i < 80) { __store16(p, i * 2, 0x0720); i = i + 1; }
         dy = dy + 1;
     }
-
-    /* Bottom border: ╚══...══╝ */
-    p = 0xB8000 + 22 * 160 + 4;
-    __store16(p, 0, 0x1FC8); /* ╚ */
-    i = 1; while (i < 75) { __store16(0xB8000, 22 * 160 + 4 + i * 2, 0x1FCD); i = i + 1; }
-    __store16(0xB8000, 22 * 160 + 4 + 75 * 2, 0x1FBC); /* ╝ */
 
     /* --- Row 24: Taskbar (white on dark gray = 0x70) --- */
     p = 0xB8000 + 24 * 160;
@@ -442,10 +433,13 @@ void kernel_main(void) {
      * PHASE 6b: VGA Text TUI Shell (fallback when no VESA)
      * ================================================================ */
     srow = 11;
-    p = 0xB8000 + srow * 160 + 8; /* col 4 inside window = offset 4+4=8 */
-    __store16(p, 0, 0x0F3E);
-    __store16(p, 2, 0x0F20);
-    cursor = srow * 160 + 12; /* col 6 inside window */
+    p = 0xB8000 + srow * 160; /* Clean terminal - start at col 0 */
+    /* "C:\FastOS> " prompt */
+    __store16(p, 0, 0x0F43); __store16(p, 2, 0x0F3A); __store16(p, 4, 0x0F5C);
+    __store16(p, 6, 0x0F46); __store16(p, 8, 0x0F61); __store16(p, 10, 0x0F73);
+    __store16(p, 12, 0x0F74); __store16(p, 14, 0x0F4F); __store16(p, 16, 0x0F53);
+    __store16(p, 18, 0x0A3E); __store16(p, 20, 0x0720);
+    cursor = srow * 160 + 22; /* After "C:\FastOS> " (11 chars = 22 bytes) */
     clen = 0;
     c0=0; c1=0; c2=0; c3=0; c4=0; c5=0;
 
@@ -518,8 +512,17 @@ void kernel_main(void) {
                         __store16(p,18,0x0772);__store16(p,20,0x0773);
                         __store16(p,22,0x0769);__store16(p,24,0x076F);
                         __store16(p,26,0x076E);
-                        /* "bg      Binary Guardian" */
+                        /* "cuda    NVIDIA RTX (CUDead)" */
                         p=0xB8000+(orow+7)*160+8;
+                        __store16(p,0,0x0F63);__store16(p,2,0x0F75);
+                        __store16(p,4,0x0F64);__store16(p,6,0x0F61);
+                        __store16(p,14,0x0A4E);__store16(p,16,0x0A56);
+                        __store16(p,18,0x0A49);__store16(p,20,0x0A44);
+                        __store16(p,22,0x0A49);__store16(p,24,0x0A41);
+                        __store16(p,26,0x1020);__store16(p,28,0x0A52);
+                        __store16(p,30,0x0A54);__store16(p,32,0x0A58);
+                        /* "bg      Binary Guardian" */
+                        p=0xB8000+(orow+8)*160+8;
                         __store16(p,0,0x0F62);__store16(p,2,0x0F67);
                         __store16(p,14,0x0742);__store16(p,16,0x0769);
                         __store16(p,18,0x076E);__store16(p,20,0x0761);
@@ -735,12 +738,130 @@ void kernel_main(void) {
                         srow = orow + n + 1;
                     }}}}
 
-                    /* clear — clear shell window interior only */
+                    /* cuda — GPU info (NVIDIA RTX detection via PCI) */
+                    /* c=99 u=117 d=100 a=97 */
+                    if(c0==99){if(c1==117){if(c2==100){if(c3==97){if(c4==0){
+                        p=0xB8000+orow*160;
+                        /* "CUDead-BIB GPU Scan" */
+                        __store16(p,0,0x0E43);__store16(p,2,0x0E55);
+                        __store16(p,4,0x0E44);__store16(p,6,0x0E65);
+                        __store16(p,8,0x0E61);__store16(p,10,0x0E64);
+                        __store16(p,12,0x0E2D);__store16(p,14,0x0E42);
+                        __store16(p,16,0x0E49);__store16(p,18,0x0E42);
+                        __store16(p,20,0x1020);
+                        __store16(p,22,0x0F47);__store16(p,24,0x0F50);
+                        __store16(p,26,0x0F55);__store16(p,28,0x1020);
+                        __store16(p,30,0x0F53);__store16(p,32,0x0F63);
+                        __store16(p,34,0x0F61);__store16(p,36,0x0F6E);
+                        /* Scan PCI for NVIDIA (0x10DE) */
+                        n = 1;
+                        pci_dev = 0;
+                        while (pci_dev < 32) {
+                            pci_addr = 0x80000000 | (pci_dev << 11);
+                            __outl(0xCF8, pci_addr);
+                            pci_val = __inl(0xCFC);
+                            pci_vendor = pci_val & 0xFFFF;
+                            pci_device = (pci_val >> 16) & 0xFFFF;
+                            if (pci_vendor == 0x10DE) {
+                                /* Found NVIDIA GPU */
+                                p = 0xB8000 + (orow + n) * 160;
+                                /* "NVIDIA RTX" */
+                                __store16(p,0,0x0A4E);__store16(p,2,0x0A56);
+                                __store16(p,4,0x0A49);__store16(p,6,0x0A44);
+                                __store16(p,8,0x0A49);__store16(p,10,0x0A41);
+                                __store16(p,12,0x1020);
+                                __store16(p,14,0x0F52);__store16(p,16,0x0F54);
+                                __store16(p,18,0x0F58);__store16(p,20,0x1020);
+                                /* Device ID */
+                                hexval=pci_device;
+                                nibble=(hexval>>12)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
+                                __store16(p,22,0x0B00|ch);
+                                nibble=(hexval>>8)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
+                                __store16(p,24,0x0B00|ch);
+                                nibble=(hexval>>4)&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
+                                __store16(p,26,0x0B00|ch);
+                                nibble=hexval&0xF;if(nibble<10){ch=48+nibble;}if(nibble>9){ch=55+nibble;}
+                                __store16(p,28,0x0B00|ch);
+                                /* Line 2: BAR0/BAR1 info */
+                                p = 0xB8000 + (orow + n + 1) * 160;
+                                /* " BAR0: MMIO  BAR1: VRAM" */
+                                __store16(p,0,0x0742);__store16(p,2,0x0741);
+                                __store16(p,4,0x0752);__store16(p,6,0x0730);
+                                __store16(p,8,0x073A);__store16(p,10,0x1020);
+                                __store16(p,12,0x0F4D);__store16(p,14,0x0F4D);
+                                __store16(p,16,0x0F49);__store16(p,18,0x0F4F);
+                                __store16(p,20,0x1020);__store16(p,22,0x1020);
+                                __store16(p,24,0x0742);__store16(p,26,0x0741);
+                                __store16(p,28,0x0752);__store16(p,30,0x0731);
+                                __store16(p,32,0x073A);__store16(p,34,0x1020);
+                                __store16(p,36,0x0A56);__store16(p,38,0x0A52);
+                                __store16(p,40,0x0A41);__store16(p,42,0x0A4D);
+                                /* Line 3: CUDead-BIB status */
+                                p = 0xB8000 + (orow + n + 2) * 160;
+                                /* " CUDead-BIB: Ready (no nvcc)" */
+                                __store16(p,0,0x0E43);__store16(p,2,0x0E55);
+                                __store16(p,4,0x0E44);__store16(p,6,0x0E65);
+                                __store16(p,8,0x0E61);__store16(p,10,0x0E64);
+                                __store16(p,12,0x0E2D);__store16(p,14,0x0E42);
+                                __store16(p,16,0x0E49);__store16(p,18,0x0E42);
+                                __store16(p,20,0x0E3A);__store16(p,22,0x1020);
+                                __store16(p,24,0x0A52);__store16(p,26,0x0A65);
+                                __store16(p,28,0x0A61);__store16(p,30,0x0A64);
+                                __store16(p,32,0x0A79);
+                                /* Line 4: sm_86 info */
+                                p = 0xB8000 + (orow + n + 3) * 160;
+                                /* " Arch: sm_86 (Ampere)" */
+                                __store16(p,0,0x0741);__store16(p,2,0x0772);
+                                __store16(p,4,0x0763);__store16(p,6,0x0768);
+                                __store16(p,8,0x073A);__store16(p,10,0x1020);
+                                __store16(p,12,0x0F73);__store16(p,14,0x0F6D);
+                                __store16(p,16,0x0F5F);__store16(p,18,0x0F38);
+                                __store16(p,20,0x0F36);__store16(p,22,0x1020);
+                                __store16(p,24,0x0728);__store16(p,26,0x0A41);
+                                __store16(p,28,0x0A6D);__store16(p,30,0x0A70);
+                                __store16(p,32,0x0A65);__store16(p,34,0x0A72);
+                                __store16(p,36,0x0A65);__store16(p,38,0x0729);
+                                n = n + 5;
+                                pci_dev = 32; /* Found, exit loop */
+                            }
+                            pci_dev = pci_dev + 1;
+                        }
+                        if (n == 1) {
+                            /* No NVIDIA GPU found - show QEMU info */
+                            p = 0xB8000 + (orow + 1) * 160;
+                            /* "No NVIDIA GPU (QEMU emulation)" */
+                            __store16(p,0,0x0C4E);__store16(p,2,0x0C6F);
+                            __store16(p,4,0x1020);__store16(p,6,0x0C4E);
+                            __store16(p,8,0x0C56);__store16(p,10,0x0C49);
+                            __store16(p,12,0x0C44);__store16(p,14,0x0C49);
+                            __store16(p,16,0x0C41);__store16(p,18,0x1020);
+                            __store16(p,20,0x0C47);__store16(p,22,0x0C50);
+                            __store16(p,24,0x0C55);
+                            /* Line 2: "Run on real HW with RTX" */
+                            p = 0xB8000 + (orow + 2) * 160;
+                            __store16(p,0,0x0752);__store16(p,2,0x0775);
+                            __store16(p,4,0x076E);__store16(p,6,0x1020);
+                            __store16(p,8,0x076F);__store16(p,10,0x076E);
+                            __store16(p,12,0x1020);__store16(p,14,0x0772);
+                            __store16(p,16,0x0765);__store16(p,18,0x0761);
+                            __store16(p,20,0x076C);__store16(p,22,0x1020);
+                            __store16(p,24,0x0748);__store16(p,26,0x0757);
+                            __store16(p,28,0x1020);__store16(p,30,0x0777);
+                            __store16(p,32,0x0769);__store16(p,34,0x0774);
+                            __store16(p,36,0x0768);__store16(p,38,0x1020);
+                            __store16(p,40,0x0A52);__store16(p,42,0x0A54);
+                            __store16(p,44,0x0A58);
+                            n = 3;
+                        }
+                        srow = orow + n + 1;
+                    }}}}}
+
+                    /* clear — clear terminal (cls) */
                     if(c0==99){if(c1==108){if(c2==101){if(c3==97){if(c4==114){
                         dy = 11;
-                        while (dy < 22) {
-                            i = 1; while (i < 75) {
-                                __store16(0xB8000, dy * 160 + 4 + i * 2, 0x1020);
+                        while (dy < 24) {
+                            i = 0; while (i < 80) {
+                                __store16(0xB8000, dy * 160 + i * 2, 0x0720);
                                 i = i + 1;
                             }
                             dy = dy + 1;
@@ -947,12 +1068,12 @@ void kernel_main(void) {
                         srow = orow + 6;
                     }}}}}}
 
-                    /* Scroll reset — clear shell window interior */
-                    if (srow > 21) {
+                    /* Scroll reset — clear terminal */
+                    if (srow > 23) {
                         dy = 11;
-                        while (dy < 22) {
-                            i = 1; while (i < 75) {
-                                __store16(0xB8000, dy * 160 + 4 + i * 2, 0x1020);
+                        while (dy < 24) {
+                            i = 0; while (i < 80) {
+                                __store16(0xB8000, dy * 160 + i * 2, 0x0720);
                                 i = i + 1;
                             }
                             dy = dy + 1;
@@ -960,11 +1081,13 @@ void kernel_main(void) {
                         srow = 11;
                     }
 
-                    /* New prompt inside shell window (col 4 = offset 8) */
-                    p = 0xB8000 + srow * 160 + 8;
-                    __store16(p, 0, 0x0F3E);
-                    __store16(p, 2, 0x0F20);
-                    cursor = srow * 160 + 12;
+                    /* New prompt - CMD style C:\FastOS> */
+                    p = 0xB8000 + srow * 160;
+                    __store16(p, 0, 0x0F43); __store16(p, 2, 0x0F3A); __store16(p, 4, 0x0F5C);
+                    __store16(p, 6, 0x0F46); __store16(p, 8, 0x0F61); __store16(p, 10, 0x0F73);
+                    __store16(p, 12, 0x0F74); __store16(p, 14, 0x0F4F); __store16(p, 16, 0x0F53);
+                    __store16(p, 18, 0x0A3E); __store16(p, 20, 0x0720);
+                    cursor = srow * 160 + 22;
                     clen = 0;
                     c0=0; c1=0; c2=0; c3=0; c4=0; c5=0;
                 }
@@ -974,7 +1097,7 @@ void kernel_main(void) {
                     if (clen > 0) {
                         clen = clen - 1;
                         cursor = cursor - 2;
-                        __store16(0xB8000, cursor, 0x1020);
+                        __store16(0xB8000, cursor, 0x0720);
                         if(clen==0){c0=0;} if(clen==1){c1=0;}
                         if(clen==2){c2=0;} if(clen==3){c3=0;}
                         if(clen==4){c4=0;} if(clen==5){c5=0;}

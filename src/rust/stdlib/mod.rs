@@ -13,6 +13,7 @@
 pub mod header_main;
 pub mod c;
 pub mod cpp;
+pub mod gpu;
 
 #[cfg(test)]
 mod integration_tests;

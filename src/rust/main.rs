@@ -358,32 +358,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "cuda" => {
-            use adead_bib::backend::gpu::cuda;
+            // CUDead-BIB v3.0 — Direct RTX access via nvcuda.dll
+            // NO CUDA TOOLKIT. NO NVCC. JUST DRIVER.
+            use adead_bib::backend::gpu::cudead::CudeadCompiler;
 
-            let op = args.get(2).map(|s| s.as_str()).unwrap_or("vectoradd");
-            let size: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(1024);
+            let op = args.get(2).map(|s| s.as_str()).unwrap_or("info");
 
-            println!("🔥 ADead-BIB + CUDA Code Generator");
-            println!("   Operation: {}", op);
-            println!("   Size: {}", size);
+            println!("🔥 CUDead-BIB v3.0 — RTX Direct Access");
+            println!("   Sin CUDA Toolkit — Sin NVCC — Solo Driver");
             println!();
 
-            let code = match op {
-                "matmul" => cuda::generate_matmul_benchmark(size),
-                "benchmark" | "bench" => cuda::generate_full_benchmark(),
-                _ => cuda::generate_adead_cuda_test(size),
-            };
-
-            let output_path = format!("CUDA/ADead_Generated/adead_{}.cu", op);
-            fs::create_dir_all("CUDA/ADead_Generated").ok();
-            match fs::write(&output_path, &code) {
-                Ok(_) => {
-                    println!("✅ CUDA code generated: {}", output_path);
-                    println!("   Lines: {}", code.lines().count());
+            match op {
+                "info" | "detect" => {
+                    println!("📊 GPU Detection via nvcuda.dll");
+                    println!("   Run: cargo run --bin cuda_test_v2");
                     println!();
-                    println!("📋 To compile: nvcc {} -o {}.exe", output_path, op);
+                    println!("   Supported architectures:");
+                    println!("   - Turing (sm_75): RTX 20xx");
+                    println!("   - Ampere (sm_86): RTX 30xx ← Tu RTX 3060");
+                    println!("   - Ada (sm_89): RTX 40xx");
                 }
-                Err(e) => eprintln!("❌ Failed to write CUDA code: {}", e),
+                "test" | "vectoradd" => {
+                    println!("🧪 VectorAdd Test");
+                    println!("   Run: cargo run --bin cuda_test_v2");
+                    println!();
+                    println!("   This will:");
+                    println!("   1. Load nvcuda.dll");
+                    println!("   2. Detect RTX 3060 (sm_86, 28 SMs, 12GB)");
+                    println!("   3. JIT compile PTX kernel");
+                    println!("   4. Execute vectorAdd on 1M elements");
+                    println!("   5. Verify results");
+                }
+                "compile" => {
+                    let source = args.get(3).map(|s| s.as_str()).unwrap_or("example.cu");
+                    println!("🔧 Compiling: {}", source);
+                    
+                    let compiler = CudeadCompiler::new();
+                    match std::fs::read_to_string(source) {
+                        Ok(code) => {
+                            match compiler.compile(&code) {
+                                Ok(output) => {
+                                    println!("✅ Compilation successful!");
+                                    println!("   PTX size: {} bytes", output.ptx.len());
+                                    println!("   Kernels: {:?}", output.kernels);
+                                    
+                                    // Save PTX
+                                    let ptx_path = source.replace(".cu", ".ptx");
+                                    if let Err(e) = std::fs::write(&ptx_path, &output.ptx) {
+                                        eprintln!("❌ Failed to write PTX: {}", e);
+                                    } else {
+                                        println!("   Output: {}", ptx_path);
+                                    }
+                                }
+                                Err(e) => eprintln!("❌ Compilation failed: {:?}", e),
+                            }
+                        }
+                        Err(e) => eprintln!("❌ Failed to read {}: {}", source, e),
+                    }
+                }
+                _ => {
+                    println!("📋 CUDead-BIB Commands:");
+                    println!("   adb cuda info      - Show GPU info");
+                    println!("   adb cuda test      - Run vectorAdd test");
+                    println!("   adb cuda compile <file.cu> - Compile CUDA file");
+                    println!();
+                    println!("🧪 Direct test:");
+                    println!("   cargo run --bin cuda_test_v2");
+                }
             }
         }
 

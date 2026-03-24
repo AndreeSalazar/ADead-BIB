@@ -35,7 +35,7 @@
 pub mod hex;
 
 // === Backends por target ===
-pub mod cuda; // CUDA/PTX - Solo NVIDIA (legacy)
+// pub mod cuda; // CUDA/PTX - Solo NVIDIA (legacy) - REPLACED by cudead
 pub mod cudead; // CUDead-BIB - GPU Compiler Nativo sin NVCC
 pub mod hip;
 pub mod spirv; // SPIR-V (Vulkan/OpenCL) - Todas las GPUs
