@@ -368,7 +368,7 @@ lm64_start:
     mov  eax, 0x80000000
     cpuid
     cmp  eax, 0x80000004
-    jb   .final
+    jb   .load_kernel
 
     mov  rdi, cpu_buf
     mov  eax, 0x80000002
@@ -401,23 +401,77 @@ lm64_start:
     call vga64
 
     ; ══════════════════════════════════════════
-    ; FINAL BANNER
+    ; LOAD KERNEL FROM DISK TO 0x100000 (1MB)
     ; ══════════════════════════════════════════
-.final:
+    ; The kernel binary sits on disk starting at sector 33
+    ; (sectors 0=MBR, 1-32=stage2). We load 128 sectors (64KB)
+    ; to physical address 0x100000 using a 16-bit real mode
+    ; trampoline is NOT possible from long mode. Instead, stage2
+    ; already loaded enough sectors via MBR. We must rely on the
+    ; boot image layout: MBR(1) + Stage2(32) + Kernel(128+).
+    ;
+    ; The MBR boot.asm currently loads 32 sectors (16KB) for stage2.
+    ; We need to modify boot.asm to also load the kernel, OR we
+    ; load it here using a different approach.
+    ;
+    ; STRATEGY: The build script concatenates:
+    ;   MBR (512B) + Stage2 (16KB) + Kernel (at offset 0x4200)
+    ; MBR loads everything from sector 1 onward to 0x1000.
+    ; Stage2 occupies 0x1000-0x4FFF (16KB).
+    ; Kernel data lands at 0x5000+ in real mode memory.
+    ; Here in long mode we copy it to 0x100000.
+    ;
+    ; BETTER APPROACH: Increase MBR read count to load more sectors
+    ; to a buffer, then copy kernel to 0x100000 here.
+    ; For now: kernel is pre-loaded by MBR at 0x1000+16384 = 0x5000
+    ; We copy it to 0x100000.
+    ;
+    ; NOTE: boot.asm reads 32 sectors (16KB) starting at sector 1.
+    ; Stage2 is ~16KB, so kernel must be loaded separately.
+    ; We'll increase MBR to read 160 sectors (80KB total) into 0x1000.
+    ; Stage2 = first 16KB (0x1000-0x4FFF)
+    ; Kernel = next 64KB (0x5000-0x14FFF), copy to 0x100000.
+.load_kernel:
     mov  rdi, 0xB8000 + (15 * 160)
-    mov  rsi, v_line
-    mov  ah, 0x0F
+    mov  rsi, v_load
+    mov  ah, 0x0E
     call vga64
 
-    mov  rdi, 0xB8000 + (16 * 160) + 10
-    mov  rsi, v_rdy
+    ; Copy kernel from staging area (0x5000) to 0x100000
+    ; Copy 64KB (enough for initial kernel)
+    mov  rsi, 0x5000          ; Source: kernel loaded by MBR after stage2
+    mov  rdi, 0x100000        ; Destination: 1MB mark
+    mov  rcx, 8192            ; 8192 qwords = 64KB
+    rep  movsq
+
+    mov  rdi, 0xB8000 + (15 * 160) + 40
+    mov  rsi, v_ok64
     mov  ah, 0x0A
     call vga64
 
-    mov  rdi, 0xB8000 + (17 * 160)
-    mov  rsi, v_line
+    ; ══════════════════════════════════════════
+    ; SAVE BOOT INFO FOR KERNEL
+    ; ══════════════════════════════════════════
+    ; Store E820 map pointer and boot_drive at known location 0x500
+    ; (safe area in low memory, not used by anything)
+    ; [0x500] = E820 map address (0x8000)
+    ; [0x508] = boot drive number
+    ; [0x510] = AVX2 flag (1=available)
+    mov  qword [0x500], 0x8000      ; E820 map location
+    mov  byte  [0x510], 1           ; AVX2 (set to 0 if .no_avx2 path)
+
+    ; ══════════════════════════════════════════
+    ; JUMP TO KERNEL ENTRY POINT AT 0x100000
+    ; ══════════════════════════════════════════
+    mov  rdi, 0xB8000 + (16 * 160)
+    mov  rsi, v_jmp
     mov  ah, 0x0F
     call vga64
+
+    ; Jump to kernel! RSP already set to 0x90000
+    ; RDI = pointer to boot info struct (0x500)
+    mov  rdi, 0x500
+    jmp  0x100000
 
 .halt:
     cli
@@ -441,8 +495,9 @@ v_avx2:   db "[256] AVX2 CONFIRMED (Zen3 Ryzen5)", 0
 v_noavx:  db "[!!] AVX NOT AVAILABLE", 0
 v_noavx2: db "[!!] AVX2 NOT AVAILABLE", 0
 v_cpu:    db "CPU: ", 0
-v_line:   db "========================================", 0
-v_rdy:    db ">>> FASTOS v2.0 READY (256-bit) <<<", 0
+v_load:   db "[BOOT] Loading kernel...", 0
+v_ok64:   db "OK", 0
+v_jmp:    db "[BOOT] Jumping to kernel @ 0x100000", 0
 
 cpu_buf:  times 49 db 0
 

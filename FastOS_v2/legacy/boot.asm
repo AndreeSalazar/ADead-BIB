@@ -42,13 +42,13 @@ mbr_start:
     cmp  bx, 0xAA55
     jne  .chs
 
-    ; LBA read with retry
+    ; LBA read with retry — load 160 sectors (80KB: 32 stage2 + 128 kernel)
     mov  byte [retries], 3
 .lba:
     mov  si, dap
     mov  byte [si],   0x10
     mov  byte [si+1], 0
-    mov  word [si+2], 32       ; 16KB
+    mov  word [si+2], 160      ; 80KB = stage2(16KB) + kernel(64KB)
     mov  word [si+4], 0x1000
     mov  word [si+6], 0
     mov  dword [si+8], 1
@@ -68,7 +68,7 @@ mbr_start:
     mov  byte [retries], 3
 .chs_r:
     mov  ah, 0x02
-    mov  al, 32
+    mov  al, 63               ; CHS max sectors per track (safe limit)
     mov  ch, 0
     mov  cl, 2
     mov  dh, 0
