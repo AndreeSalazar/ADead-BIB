@@ -6,5 +6,6 @@
 // ============================================================
 
 pub mod fastos_gpu;
+pub mod opengl;
 
 pub use fastos_gpu::*;

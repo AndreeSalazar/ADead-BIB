@@ -50,8 +50,9 @@ pub use types::*;
 pub use constants::*;
 
 /// OpenGL version enum
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum GLVersion {
+    #[default]
     GL10,
     GL11,
     GL12,
