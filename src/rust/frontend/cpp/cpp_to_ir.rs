@@ -963,8 +963,16 @@ impl CppToIR {
                 Type::Reference(Box::new(self.convert_type(inner)))
             }
             CppType::Array(inner, size) => Type::Array(Box::new(self.convert_type(inner)), *size),
+            // FIX — agregar ESTO antes del fallback:
             CppType::Named(name) | CppType::Class(name) | CppType::Struct(name) => {
-                Type::Named(name.clone())
+                // Resolver typedef alias primero
+                if let Some((_, aliased_type)) = self.type_aliases
+                    .iter()
+                    .find(|(n, _)| n == name)
+                {
+                    return self.convert_type(aliased_type); // recursivo, limpio
+                }
+                Type::Named(name.clone()) // fallback si no es typedef
             }
             CppType::Enum(_) => Type::I32,
             CppType::StdString => Type::Str,
