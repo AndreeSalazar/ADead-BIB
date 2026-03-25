@@ -1263,7 +1263,7 @@ impl IsaCompiler {
                     let off = self.stack_offset;
                     off
                 } else {
-                    16 + ((i - 4) as i32 * 8)
+                    48 + ((i - 4) as i32 * 8)
                 };
                 self.variables.insert(param.name.clone(), param_offset);
                 self.variable_types
@@ -2785,6 +2785,10 @@ impl IsaCompiler {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Imm8(32),
         });
+        
+        // Guarantee DF=0 before Windows DLL calls (x64 ABI strict requirement)
+        self.ir.emit(ADeadOp::Cld);
+
         self.ir.emit(ADeadOp::CallIAT { iat_rva });
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP),
@@ -4852,18 +4856,40 @@ impl IsaCompiler {
         let reg_args = total_args.min(4);
         let stack_args = if total_args > 4 { total_args - 4 } else { 0 };
 
-        // Phase 1: Push stack args (5+) in REVERSE order onto stack
-        // These will sit above the shadow space after we allocate it
+        // Pre-allocate the ENTIRE call frame upfront (MSVC-style).
+        // This includes 32 bytes shadow space + space for stack args.
+        // Must be 16-byte aligned.
+        let total_stack = (stack_args * 8) + 32;
+        let frame_size = (total_stack + 15) & !15;
+        
+        if frame_size > 0 {
+            self.ir.emit(ADeadOp::Sub {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm32(frame_size as i32),
+            });
+        }
+
+        // Phase 1: Place stack args 5+ at [RSP+32], [RSP+40], etc. using Store64
         if stack_args > 0 {
-            for i in (4..total_args).rev() {
+            for i in 4..total_args {
                 self.emit_expression(&args[i]);
-                self.ir.emit(ADeadOp::Push {
+                let offset = 32 + ((i - 4) * 8) as i32;
+                // Store RAX to [RSP + offset] using Mov
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Mem {
+                        base: Reg::RSP,
+                        disp: offset,
+                    },
                     src: Operand::Reg(Reg::RAX),
                 });
             }
         }
 
-        // Phase 2: Evaluate register args (1-4), push to stack temporarily
+        // Phase 2: Evaluate register args (1-4) into shadow space slots
+        // IMPORTANT: We must NOT use push/pop here because that would shift RSP
+        // and corrupt the stack args we already placed at [RSP+32], [RSP+40], etc.
+        // Instead, store each evaluated arg into the shadow space slots [RSP+0..24]
+        // then load them into the final registers.
         for i in 0..reg_args {
             let arg = &args[i];
             // Check if argument is a struct variable with real layout - pass by reference
@@ -4878,7 +4904,12 @@ impl IsaCompiler {
                                     disp: offset,
                                 },
                             });
-                            self.ir.emit(ADeadOp::Push {
+                            // Store into shadow space slot
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Mem {
+                                    base: Reg::RSP,
+                                    disp: (i * 8) as i32,
+                                },
                                 src: Operand::Reg(Reg::RAX),
                             });
                             continue;
@@ -4888,15 +4919,28 @@ impl IsaCompiler {
             }
             // Normal argument: evaluate expression
             self.emit_expression(arg);
-            self.ir.emit(ADeadOp::Push {
+            // Store result into shadow space slot [RSP + i*8]
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Mem {
+                    base: Reg::RSP,
+                    disp: (i * 8) as i32,
+                },
                 src: Operand::Reg(Reg::RAX),
             });
         }
 
-        // Phase 3: Pop register args into arg registers (reverse order)
+        // Phase 3: Load register args from shadow space into arg registers
+        // We load in reverse order so that RCX (slot 0) is loaded last,
+        // since earlier loads don't clobber later slots.
         for i in (0..reg_args).rev() {
             let dst = self.arg_register(i);
-            self.ir.emit(ADeadOp::Pop { dst });
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(dst),
+                src: Operand::Mem {
+                    base: Reg::RSP,
+                    disp: (i * 8) as i32,
+                },
+            });
         }
 
         // Check if this is an IAT-imported function (printf, scanf, malloc, free, Win32, DX12...)
@@ -4914,48 +4958,39 @@ impl IsaCompiler {
             }
         };
         if let Some(iat_func) = iat_name {
-            // For IAT calls with >4 args, we need custom shadow space handling
-            // because the stack args are already above RSP
-            if stack_args > 0 {
-                // Allocate shadow space (32 bytes) below the stack args
-                self.ir.emit(ADeadOp::Sub {
-                    dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm8(32),
-                });
-                // Emit the call directly (not through emit_call_iat which adds its own shadow)
-                let assumed_idata_rva: u32 = 0x2000;
-                let idata_result = iat_registry::build_idata(assumed_idata_rva, &[]);
-                let slot = iat_registry::slot_for_function(iat_func)
-                    .unwrap_or_else(|| panic!("IAT function not found: {}", iat_func));
-                let iat_rva = idata_result.slot_to_iat_rva[slot];
-                self.ir.emit(ADeadOp::CallIAT { iat_rva });
-                // Clean up: shadow space + stack args
-                let cleanup = 32 + (stack_args as i32 * 8);
+            // Frame already allocated above. Just emit the call.
+            let assumed_idata_rva: u32 = 0x2000;
+            let idata_result = iat_registry::build_idata(assumed_idata_rva, &[]);
+            let slot = iat_registry::slot_for_function(iat_func)
+                .unwrap_or_else(|| panic!("IAT function not found: {}", iat_func));
+            let iat_rva = idata_result.slot_to_iat_rva[slot];
+            
+            // Guarantee DF=0 before Windows DLL calls (x64 ABI strict requirement)
+            self.ir.emit(ADeadOp::Cld);
+
+            self.ir.emit(ADeadOp::CallIAT { iat_rva });
+            // Clean up the pre-allocated frame
+            if frame_size > 0 {
                 self.ir.emit(ADeadOp::Add {
                     dst: Operand::Reg(Reg::RSP),
-                    src: Operand::Imm32(cleanup),
+                    src: Operand::Imm32(frame_size as i32),
                 });
-            } else {
-                self.emit_call_iat(iat_func);
             }
             return;
         }
 
-        // Shadow space
-        self.ir.emit(ADeadOp::Sub {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
-        });
+        // Non-IAT: frame already allocated above.
+        // Guarantee DF=0 before Windows DLL calls (x64 ABI strict requirement)
+        self.ir.emit(ADeadOp::Cld);
 
-        // Call usando label de la función, o indirecto si es function pointer
+        // Call using label or function pointer
         if let Some(func) = self.functions.get(name) {
             let label = func.label;
             self.ir.emit(ADeadOp::Call {
                 target: CallTarget::Relative(label),
             });
         } else if self.variables.contains_key(name) {
-            // Function pointer: load pointer from variable, call through R10
-            // (R10 is volatile and not used for args in Windows x64 ABI)
+            // Function pointer: load pointer from local variable, call through R10
             let offset = self.variables[name];
             self.ir.emit(ADeadOp::Mov {
                 dst: Operand::Reg(Reg::R10),
@@ -4967,17 +5002,38 @@ impl IsaCompiler {
             self.ir.emit(ADeadOp::Call {
                 target: CallTarget::Register(Reg::R10),
             });
+        } else if self.global_vars.contains_key(name) {
+            // Function pointer: load pointer from global variable, call through R10
+            if let Some(addr) = self.get_global_address(name) {
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::R10),
+                    src: Operand::Imm64(addr),
+                });
+                // Read pointer value from memory
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::R10),
+                    src: Operand::Mem {
+                        base: Reg::R10,
+                        disp: 0,
+                    },
+                });
+                self.ir.emit(ADeadOp::Call {
+                    target: CallTarget::Register(Reg::R10),
+                });
+            }
         } else {
             self.ir.emit(ADeadOp::Call {
                 target: CallTarget::Name(name.to_string()),
             });
         }
 
-        // Restaurar stack
-        self.ir.emit(ADeadOp::Add {
-            dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
-        });
+        // Restore stack
+        if frame_size > 0 {
+            self.ir.emit(ADeadOp::Add {
+                dst: Operand::Reg(Reg::RSP),
+                src: Operand::Imm32(frame_size as i32),
+            });
+        }
     }
 
     fn emit_input(&mut self) {

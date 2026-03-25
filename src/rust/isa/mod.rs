@@ -649,6 +649,9 @@ pub enum ADeadOp {
     /// NOP — No operation
     Nop,
 
+    /// CLD — Clear Direction Flag (DF=0)
+    Cld,
+
     /// Escape hatch: bytes crudos para casos no cubiertos.
     /// Usar solo cuando no existe una variante tipada equivalente.
     RawBytes(Vec<u8>),
@@ -783,6 +786,7 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::MovsdLoad { dst, base, disp } => write!(f, "movsd {}, [{}{:+}]", dst, base, disp),
             ADeadOp::Label(label) => write!(f, "{}:", label),
             ADeadOp::Nop => write!(f, "nop"),
+            ADeadOp::Cld => write!(f, "cld"),
             ADeadOp::RawBytes(bytes) => {
                 write!(f, "db ")?;
                 for (i, b) in bytes.iter().enumerate() {

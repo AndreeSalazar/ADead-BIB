@@ -74,9 +74,55 @@ pub const IAT_ENTRIES: &[IatEntry] = &[
     IatEntry { dll: "dxgi.dll",     name: "CreateDXGIFactory2",   slot_index: 45 },
     // msvcrt.dll extras (slot 46)
     IatEntry { dll: "msvcrt.dll",   name: "memcpy",               slot_index: 46 },
+    // user32.dll extras (slots 47-48) — missing Win32 functions
+    IatEntry { dll: "user32.dll",   name: "RegisterClassA",       slot_index: 47 },
+    IatEntry { dll: "user32.dll",   name: "DestroyWindow",        slot_index: 48 },
+    // kernel32.dll extras (slots 49-50) — DLL loading
+    IatEntry { dll: "kernel32.dll", name: "LoadLibraryA",         slot_index: 49 },
+    IatEntry { dll: "kernel32.dll", name: "GetProcAddress",       slot_index: 50 },
+    // gdi32.dll extras (slots 51-53) — OpenGL pixel format
+    IatEntry { dll: "gdi32.dll",    name: "ChoosePixelFormat",    slot_index: 51 },
+    IatEntry { dll: "gdi32.dll",    name: "SetPixelFormat",       slot_index: 52 },
+    IatEntry { dll: "gdi32.dll",    name: "SwapBuffers",          slot_index: 53 },
+    // opengl32.dll (slots 54-85) — GL 1.0-1.1 core functions
+    IatEntry { dll: "opengl32.dll", name: "wglCreateContext",     slot_index: 54 },
+    IatEntry { dll: "opengl32.dll", name: "wglDeleteContext",     slot_index: 55 },
+    IatEntry { dll: "opengl32.dll", name: "wglMakeCurrent",       slot_index: 56 },
+    IatEntry { dll: "opengl32.dll", name: "wglGetProcAddress",    slot_index: 57 },
+    IatEntry { dll: "opengl32.dll", name: "glEnable",             slot_index: 58 },
+    IatEntry { dll: "opengl32.dll", name: "glDisable",            slot_index: 59 },
+    IatEntry { dll: "opengl32.dll", name: "glClearColor",         slot_index: 60 },
+    IatEntry { dll: "opengl32.dll", name: "glClear",              slot_index: 61 },
+    IatEntry { dll: "opengl32.dll", name: "glViewport",           slot_index: 62 },
+    IatEntry { dll: "opengl32.dll", name: "glDepthFunc",          slot_index: 63 },
+    IatEntry { dll: "opengl32.dll", name: "glMatrixMode",         slot_index: 64 },
+    IatEntry { dll: "opengl32.dll", name: "glLoadIdentity",       slot_index: 65 },
+    IatEntry { dll: "opengl32.dll", name: "glTranslatef",         slot_index: 66 },
+    IatEntry { dll: "opengl32.dll", name: "glRotatef",            slot_index: 67 },
+    IatEntry { dll: "opengl32.dll", name: "glMultMatrixf",        slot_index: 68 },
+    IatEntry { dll: "opengl32.dll", name: "glBegin",              slot_index: 69 },
+    IatEntry { dll: "opengl32.dll", name: "glEnd",                slot_index: 70 },
+    IatEntry { dll: "opengl32.dll", name: "glVertex3f",           slot_index: 71 },
+    IatEntry { dll: "opengl32.dll", name: "glColor3f",            slot_index: 72 },
+    IatEntry { dll: "opengl32.dll", name: "glNormal3f",           slot_index: 73 },
+    IatEntry { dll: "opengl32.dll", name: "glShadeModel",         slot_index: 74 },
+    IatEntry { dll: "opengl32.dll", name: "glHint",               slot_index: 75 },
+    IatEntry { dll: "opengl32.dll", name: "glGetString",          slot_index: 76 },
+    IatEntry { dll: "opengl32.dll", name: "glGetError",           slot_index: 77 },
+    IatEntry { dll: "opengl32.dll", name: "glFlush",              slot_index: 78 },
+    IatEntry { dll: "opengl32.dll", name: "glFinish",             slot_index: 79 },
+    IatEntry { dll: "opengl32.dll", name: "glDepthMask",          slot_index: 80 },
+    IatEntry { dll: "opengl32.dll", name: "glBlendFunc",          slot_index: 81 },
+    IatEntry { dll: "opengl32.dll", name: "glCullFace",           slot_index: 82 },
+    IatEntry { dll: "opengl32.dll", name: "glFrontFace",          slot_index: 83 },
+    IatEntry { dll: "opengl32.dll", name: "glColor4f",            slot_index: 84 },
+    IatEntry { dll: "opengl32.dll", name: "glVertex2f",           slot_index: 85 },
+    IatEntry { dll: "opengl32.dll", name: "glScalef",             slot_index: 86 },
+    IatEntry { dll: "user32.dll",   name: "GetDC",                slot_index: 87 },
+    IatEntry { dll: "user32.dll",   name: "ReleaseDC",            slot_index: 88 },
 ];
 
-pub const IAT_SLOT_COUNT: usize = 47;
+pub const IAT_SLOT_COUNT: usize = 89;
 
 /// Get the unique DLL names in order of first appearance
 pub fn dll_names() -> Vec<&'static str> {

@@ -102,6 +102,9 @@ impl HeaderResolver {
             "ad_vulkan.hpp" | "ad_vulkan.h" | "ad_vulkan" | "vulkan.h" => {
                 Some(crate::stdlib::cpp::fastos_vulkan::generate_vulkan_hpp())
             }
+            "ad_opengl.hpp" | "ad_opengl.h" | "ad_opengl" | "gl.h" | "GL/gl.h" => {
+                Some(crate::stdlib::cpp::fastos_opengl::generate_opengl_hpp())
+            }
             // API completa del kernel
             "kernel.h" | "fastos.h" | "bg_guardian.h" | "bg_hash.h" => {
                 Some(crate::stdlib::c::fastos_kernel::generate_kernel_h())

@@ -288,6 +288,7 @@ impl Encoder {
             ADeadOp::OutDword { port, src: _ } => self.encode_out_dword(port),
             ADeadOp::Shr { dst, amount } => self.encode_shr(dst, *amount),
             ADeadOp::BitwiseNot { dst } => self.encode_bitwise_not(dst),
+            ADeadOp::Cld => self.emit(&[0xFC]),
             ADeadOp::ShlCl { dst } => self.encode_shl_cl(dst),
             ADeadOp::ShrCl { dst } => self.encode_shr_cl(dst),
             ADeadOp::LeaLabel { dst, label } => {
@@ -815,18 +816,23 @@ impl Encoder {
         let (base_idx, base_ext) = reg_index(base);
         let rex = self.rex_wrxb(true, reg_ext, base_ext);
         let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4; // RSP or R12
         if disp == 0 && base_idx != 5 {
             // [base] — mod=00 (but RBP(5) always needs disp8)
             let modrm = self.modrm(0, reg_idx, base_idx);
             self.emit(&[rex, opcode, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
         } else if fits_i8 {
             // [base+disp8] — mod=01 (saves 3 bytes vs disp32!)
             let modrm = self.modrm(1, reg_idx, base_idx);
-            self.emit(&[rex, opcode, modrm, disp as u8]);
+            self.emit(&[rex, opcode, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
         } else {
             // [base+disp32] — mod=10
             let modrm = self.modrm(2, reg_idx, base_idx);
             self.emit(&[rex, opcode, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);
         }
     }
@@ -839,6 +845,8 @@ impl Encoder {
         let (base_idx, base_ext) = reg_index(base);
         let rex = self.rex_wrxb(false, reg_ext, base_ext);
         let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4; // RSP or R12
+
         if disp == 0 && base_idx != 5 {
             let modrm = self.modrm(0, reg_idx, base_idx);
             if rex != 0x40 {
@@ -846,13 +854,16 @@ impl Encoder {
             } else {
                 self.emit(&[0x66, 0x89, modrm]);
             }
+            if requires_sib { self.emit(&[0x24]); }
         } else if fits_i8 {
             let modrm = self.modrm(1, reg_idx, base_idx);
             if rex != 0x40 {
-                self.emit(&[0x66, rex, 0x89, modrm, disp as u8]);
+                self.emit(&[0x66, rex, 0x89, modrm]);
             } else {
-                self.emit(&[0x66, 0x89, modrm, disp as u8]);
+                self.emit(&[0x66, 0x89, modrm]);
             }
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
         } else {
             let modrm = self.modrm(2, reg_idx, base_idx);
             if rex != 0x40 {
@@ -860,6 +871,7 @@ impl Encoder {
             } else {
                 self.emit(&[0x66, 0x89, modrm]);
             }
+            if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);
         }
     }
@@ -873,6 +885,8 @@ impl Encoder {
         // REX.W = false → 32-bit operand size
         let rex = self.rex_wrxb(false, reg_ext, base_ext);
         let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4; // RSP or R12
+
         if disp == 0 && base_idx != 5 {
             let modrm = self.modrm(0, reg_idx, base_idx);
             if rex != 0x40 {
@@ -880,13 +894,16 @@ impl Encoder {
             } else {
                 self.emit(&[0x89, modrm]); // no REX needed
             }
+            if requires_sib { self.emit(&[0x24]); }
         } else if fits_i8 {
             let modrm = self.modrm(1, reg_idx, base_idx);
             if rex != 0x40 {
-                self.emit(&[rex, 0x89, modrm, disp as u8]);
+                self.emit(&[rex, 0x89, modrm]);
             } else {
-                self.emit(&[0x89, modrm, disp as u8]);
+                self.emit(&[0x89, modrm]);
             }
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
         } else {
             let modrm = self.modrm(2, reg_idx, base_idx);
             if rex != 0x40 {
@@ -894,6 +911,7 @@ impl Encoder {
             } else {
                 self.emit(&[0x89, modrm]);
             }
+            if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);
         }
     }
@@ -903,12 +921,16 @@ impl Encoder {
         let (base_idx, base_ext) = reg_index(base);
         let rex = self.rex_wrxb(true, false, base_ext);
         let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4;
         if fits_i8 {
             let modrm = self.modrm(1, reg_field, base_idx);
-            self.emit(&[rex, opcode, modrm, disp as u8]);
+            self.emit(&[rex, opcode, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
         } else {
             let modrm = self.modrm(2, reg_field, base_idx);
             self.emit(&[rex, opcode, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);
         }
     }

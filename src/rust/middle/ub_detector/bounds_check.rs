@@ -43,9 +43,12 @@ fn check_stmt_bounds(
         Stmt::LineMarker(l) => {
             *current_line = *l;
         }
-        Stmt::VarDecl { name, var_type, .. } => {
+        Stmt::VarDecl { name, var_type, value, .. } => {
             if let Type::Array(_, Some(size)) = var_type {
                 arrays.insert(name.clone(), *size as i64);
+            }
+            if let Some(val) = value {
+                check_expr_bounds(val, func_name, reports, arrays, current_line);
             }
         }
         Stmt::IndexAssign { object, index, .. } => {
@@ -87,9 +90,7 @@ fn check_stmt_bounds(
         Stmt::Assign { value, .. } => {
             check_expr_bounds(value, func_name, reports, arrays, current_line);
         }
-        Stmt::VarDecl { value: Some(val), .. } => {
-            check_expr_bounds(val, func_name, reports, arrays, current_line);
-        }
+
         Stmt::Expr(expr) | Stmt::Print(expr) | Stmt::Println(expr) | Stmt::PrintNum(expr) => {
             check_expr_bounds(expr, func_name, reports, arrays, current_line);
         }
