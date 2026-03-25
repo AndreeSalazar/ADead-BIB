@@ -1,6 +1,6 @@
 //! # ADead-BIB OpenGL Module
 //! 
-//! Complete OpenGL implementation from 1.0 to 4.6 (final version)
+//! Complete OpenGL implementation from 1.0 to 4.6 + ADead v4.7 extensions
 //! Based on Khronos canonical specifications.
 //! 
 //! ## Versions Supported:
@@ -8,6 +8,7 @@
 //! - OpenGL 2.0, 2.1
 //! - OpenGL 3.0, 3.1, 3.2, 3.3
 //! - OpenGL 4.0, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6 (FINAL - July 2017)
+//! - ADead v4.7 — Universal Shader Bridge (GLSL + SPIR-V + HLSL + PTX)
 //! 
 //! ## Design Philosophy:
 //! - Zero-cost abstractions
@@ -15,6 +16,7 @@
 //! - State batching optimization
 //! - Draw call coalescing
 //! - No runtime overhead
+//! - Any shader format → OpenGL (v4.7)
 
 pub mod types;
 pub mod constants_gl1x;
@@ -44,6 +46,7 @@ pub mod gl46;
 pub mod glsl;
 pub mod optimizer;
 pub mod loader;
+pub mod shader_bridge;
 
 // Re-export everything for convenience
 pub use types::*;
