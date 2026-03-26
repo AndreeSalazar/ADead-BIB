@@ -1,5 +1,5 @@
 [package]
-name = "adev-driver"
+name = "adeb-driver"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,15 +13,15 @@ name = "adB"
 path = "src/main.rs"
 
 [dependencies]
-adev-core = { workspace = true }
-adev-frontend-c = { path = "../adev-frontend-c" }
-adev-frontend-cpp = { path = "../adev-frontend-cpp" }
-adev-frontend-cuda = { path = "../adev-frontend-cuda", optional = true }
-adev-middle = { path = "../adev-middle" }
-adev-backend-x64 = { path = "../adev-backend-x64" }
-adev-backend-gpu = { path = "../adev-backend-gpu", optional = true }
-adev-bg = { path = "../adev-bg" }
-adev-stdlib = { path = "../adev-stdlib" }
+adeb-core = { workspace = true }
+adeb-frontend-c = { path = "../adeb-frontend-c" }
+adeb-frontend-cpp = { path = "../adeb-frontend-cpp" }
+adeb-frontend-cuda = { path = "../adeb-frontend-cuda", optional = true }
+adeb-middle = { path = "../adeb-middle" }
+adeb-backend-x64 = { path = "../adeb-backend-x64" }
+adeb-backend-gpu = { path = "../adeb-backend-gpu", optional = true }
+adeb-bg = { path = "../adeb-bg" }
+adeb-stdlib = { path = "../adeb-stdlib" }
 
 clap = { workspace = true, features = ["derive"] }
 colored = { workspace = true }
@@ -32,5 +32,5 @@ anyhow = { workspace = true }
 
 [features]
 default = ["cuda", "gpu"]
-cuda = ["adev-frontend-cuda"]
-gpu = ["adev-backend-gpu"]
+cuda = ["adeb-frontend-cuda"]
+gpu = ["adeb-backend-gpu"]

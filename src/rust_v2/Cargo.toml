@@ -18,7 +18,7 @@ resolver = "2"
 version = "7.0.0"
 edition = "2021"
 authors = ["ADead-BIB Team"]
-license = "MIT OR Apache-2.0"
+license = "Techne (τέχνη)"
 repository = "https://github.com/AndreeSalazar/ADead-BIB"
 rust-version = "1.70"
 
@@ -37,9 +37,9 @@ indicatif = "0.17"
 # Parallelism
 rayon = "1.8"
 
-# GPU (optional features)
-wgpu = { version = "0.18", optional = true }
-ash = { version = "0.37", optional = true }
+# GPU (features enabled in individual crates)
+wgpu = { version = "0.18" }
+ash = { version = "0.37" }
 
 # Internal crates
 adeb-core = { path = "crates/adeb-core" }

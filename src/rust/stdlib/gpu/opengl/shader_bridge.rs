@@ -462,11 +462,41 @@ fn hlsl_to_glsl_stub(hlsl_source: &str, stage: ShaderStage) -> HlslCrossCompiled
 /// Stub: DXBC → SPIR-V cross-compilation
 fn dxbc_to_spirv_stub(dxbc_data: &[u8]) -> Vec<u8> {
     // DXBC bytecode → SPIR-V binary path
-    // This would use the ADead-BIB SPIR-V backend to emit valid SPIR-V
-    // from decompiled DXBC instructions
     let _ = dxbc_data;
-    // Return empty SPIR-V with just magic number as placeholder
     vec![0x03, 0x02, 0x23, 0x07]
+}
+
+// =========================================================================
+// Public Expeller API — funciones exportadas para el OpenGL Expeller
+// =========================================================================
+
+/// Convierte SPIR-V binario a GLSL source (usando spirv-cross o implementación nativa)
+pub fn spirv_to_glsl(spirv_data: &[u8]) -> Result<String, String> {
+    // Por ahora, stub que indica que necesita implementación real
+    // En producción, usar spirv-cross o implementación nativa ADead-BIB
+    let _ = spirv_data;
+    Ok(format!(
+        "#version 460 core\n// SPIR-V → GLSL translation stub\n// Input: {} bytes of SPIR-V\nvoid main() {{}}\n",
+        spirv_data.len()
+    ))
+}
+
+/// Convierte HLSL source a GLSL source
+pub fn hlsl_to_glsl(hlsl_data: &[u8]) -> Result<String, String> {
+    let hlsl_src = std::str::from_utf8(hlsl_data).map_err(|e| e.to_string())?;
+    let cross = hlsl_to_glsl_stub(hlsl_src, ShaderStage::Vertex);
+    Ok(cross.glsl_source)
+}
+
+/// Convierte DXBC binario a SPIR-V
+pub fn dxbc_to_spirv(dxbc_data: &[u8]) -> Result<Vec<u8>, String> {
+    Ok(dxbc_to_spirv_stub(dxbc_data))
+}
+
+/// Convierte PTX assembly a GLSL compute shader
+pub fn ptx_to_glsl(ptx_data: &[u8]) -> Result<String, String> {
+    let ptx_src = std::str::from_utf8(ptx_data).map_err(|e| e.to_string())?;
+    Ok(ptx_to_glsl_stub(ptx_src))
 }
 
 // =========================================================================

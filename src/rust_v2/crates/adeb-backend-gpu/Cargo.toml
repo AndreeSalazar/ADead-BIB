@@ -1,0 +1,25 @@
+[package]
+name = "adeb-backend-gpu"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "ADead-BIB GPU backend - CUDA, Vulkan, SPIR-V, WGSL codegen"
+
+[dependencies]
+adeb-core = { workspace = true }
+adeb-middle = { workspace = true }
+
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+
+# Optional GPU dependencies (enabled by features)
+wgpu = { workspace = true, optional = true }
+ash = { workspace = true, optional = true }
+
+[features]
+default = []
+vulkan = ["ash"]
+wgpu = ["dep:wgpu"]

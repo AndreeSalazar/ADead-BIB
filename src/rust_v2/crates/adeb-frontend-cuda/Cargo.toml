@@ -1,0 +1,13 @@
+[package]
+name = "adeb-frontend-cuda"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "ADead-BIB CUDA Frontend - PTX/Compute Shader support"
+
+[dependencies]
+adeb-core = { workspace = true }
+thiserror = { workspace = true }

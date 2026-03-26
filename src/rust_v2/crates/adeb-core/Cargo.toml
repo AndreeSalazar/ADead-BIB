@@ -1,5 +1,5 @@
 [package]
-name = "adev-core"
+name = "adeb-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
