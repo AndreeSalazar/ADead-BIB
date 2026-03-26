@@ -1,0 +1,36 @@
+[package]
+name = "adev-driver"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "ADead-BIB CLI driver and build orchestration"
+
+[[bin]]
+name = "adB"
+path = "src/main.rs"
+
+[dependencies]
+adev-core = { workspace = true }
+adev-frontend-c = { path = "../adev-frontend-c" }
+adev-frontend-cpp = { path = "../adev-frontend-cpp" }
+adev-frontend-cuda = { path = "../adev-frontend-cuda", optional = true }
+adev-middle = { path = "../adev-middle" }
+adev-backend-x64 = { path = "../adev-backend-x64" }
+adev-backend-gpu = { path = "../adev-backend-gpu", optional = true }
+adev-bg = { path = "../adev-bg" }
+adev-stdlib = { path = "../adev-stdlib" }
+
+clap = { workspace = true, features = ["derive"] }
+colored = { workspace = true }
+indicatif = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+
+[features]
+default = ["cuda", "gpu"]
+cuda = ["adev-frontend-cuda"]
+gpu = ["adev-backend-gpu"]
