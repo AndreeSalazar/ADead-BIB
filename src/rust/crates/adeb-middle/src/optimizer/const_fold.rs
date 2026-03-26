@@ -13,7 +13,7 @@
 //   - Double negation: --x → x, !!x → x (when bool)
 // ============================================================
 
-use crate::frontend::ast::*;
+use crate::optimizer::ast_types::*;
 
 pub struct ConstFolder;
 

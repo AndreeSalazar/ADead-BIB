@@ -1,4 +1,4 @@
-use crate::frontend::ast::*;
+use crate::optimizer::ast_types::*;
 
 #[derive(Debug, Clone)]
 pub enum BranchPattern {

@@ -2,7 +2,7 @@
 // Constant Propagation — Variables constantes inlineadas
 // ============================================================
 
-use crate::frontend::ast::*;
+use crate::optimizer::ast_types::*;
 use std::collections::HashMap;
 
 pub struct ConstPropagator;

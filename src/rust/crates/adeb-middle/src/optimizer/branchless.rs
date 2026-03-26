@@ -1,5 +1,5 @@
 use super::branch_detector::BranchPattern;
-use crate::frontend::ast::*;
+use crate::optimizer::ast_types::*;
 
 pub struct BranchlessTransformer;
 

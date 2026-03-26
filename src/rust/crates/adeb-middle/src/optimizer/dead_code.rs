@@ -4,7 +4,7 @@
 // SIN explotar UB — diferencia critica con GCC
 // ============================================================
 
-use crate::frontend::ast::*;
+use crate::optimizer::ast_types::*;
 
 pub struct DeadCodeEliminator;
 

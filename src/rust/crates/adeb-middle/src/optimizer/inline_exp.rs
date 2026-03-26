@@ -5,7 +5,7 @@
 // Sin overhead de call/ret.
 // ============================================================
 
-use crate::frontend::ast::{Function, Program};
+use crate::optimizer::ast_types::{Function, Program};
 
 /// Threshold: funciones con menos de este numero de statements se inlinean
 const INLINE_THRESHOLD: usize = 5;

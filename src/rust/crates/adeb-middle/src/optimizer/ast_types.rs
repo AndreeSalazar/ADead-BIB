@@ -28,12 +28,25 @@ pub enum BitwiseOp {
     And, Or, Xor, Shl, Shr,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmpOp {
+    Eq, Ne, Lt, Le, Gt, Ge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg, Not,
+}
+
 #[derive(Debug, Clone)]
 pub enum Stmt {
     VarDecl { name: String, var_type: Option<String>, value: Option<Expr> },
     Assign { name: String, value: Expr },
-    If { condition: Expr, then_branch: Vec<Stmt>, else_branch: Option<Vec<Stmt>> },
+    If { condition: Expr, then_body: Vec<Stmt>, else_body: Option<Vec<Stmt>> },
     While { condition: Expr, body: Vec<Stmt> },
+    DoWhile { body: Vec<Stmt>, condition: Expr },
+    For { var: String, start: Expr, end: Expr, body: Vec<Stmt> },
     Print(Expr),
     Return(Option<Expr>),
+    Pass,
 }
