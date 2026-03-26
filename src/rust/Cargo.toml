@@ -1,0 +1,48 @@
+[workspace]
+members = [
+    "crates/adeb-core",
+    "crates/adeb-frontend-c",
+    "crates/adeb-frontend-cpp",
+    "crates/adeb-frontend-cuda",
+    "crates/adeb-middle",
+    "crates/adeb-backend-x64",
+    "crates/adeb-backend-gpu",
+    "crates/adeb-platform",
+    "crates/adeb-bg",
+    "crates/adeb-stdlib",
+    "crates/ADead-BIB-Main",
+]
+resolver = "2"
+
+[workspace.package]
+version = "7.0.0"
+edition = "2021"
+authors = ["ADead-BIB Team"]
+license = "Techne (τέχνη)"
+repository = "https://github.com/AndreeSalazar/ADead-BIB"
+rust-version = "1.70"
+
+[workspace.dependencies]
+# Core dependencies
+thiserror = "1.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.0"
+indicatif = "0.17"
+
+# Parallelism
+rayon = "1.8"
+
+# GPU (features enabled in individual crates)
+wgpu = { version = "0.19" }
+ash = { version = "0.37" }
+
+# Internal crates
+adeb-core = { path = "crates/adeb-core" }
+adeb-middle = { path = "crates/adeb-middle" }
+adeb-backend-x64 = { path = "crates/adeb-backend-x64" }
+adeb-platform = { path = "crates/adeb-platform" }
