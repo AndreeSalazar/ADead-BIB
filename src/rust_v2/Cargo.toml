@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "crates/adev-core",
-    "crates/adev-frontend-c",
-    "crates/adev-frontend-cpp",
-    "crates/adev-frontend-cuda",
-    "crates/adev-middle",
-    "crates/adev-backend-x64",
-    "crates/adev-backend-gpu",
-    "crates/adev-platform",
-    "crates/adev-bg",
-    "crates/adev-stdlib",
-    "crates/adev-driver",
+    "crates/adeb-core",
+    "crates/adeb-frontend-c",
+    "crates/adeb-frontend-cpp",
+    "crates/adeb-frontend-cuda",
+    "crates/adeb-middle",
+    "crates/adeb-backend-x64",
+    "crates/adeb-backend-gpu",
+    "crates/adeb-platform",
+    "crates/adeb-bg",
+    "crates/adeb-stdlib",
+    "crates/adeb-driver",
 ]
 resolver = "2"
 
