@@ -8,7 +8,8 @@ pub mod ub_detector;
 pub mod strict_type_checker;
 pub mod optimizer;
 
-// Re-exports
-pub use ir::{Program, Function, BasicBlock, Type, Expr, Stmt, ADeadOp, Reg, Operand};
-pub use passes::transform;
+// Re-exports — SSA IR types
+pub use ir::{Module, Function, BasicBlock, Type, Value, ValueId, Constant};
+pub use ir::{Instruction, Opcode, BinaryOp, CastOp, CompareOp};
+pub use ir::{IRBuilder, GlobalVariable};
 pub use ub_detector::{UBDetector, UBReport};

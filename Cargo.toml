@@ -15,21 +15,5 @@ ash = "0.38"                    # Vulkan bindings (bajo nivel, máximo control)
 gpu-allocator = "0.27"          # Allocator de memoria GPU
 regex = "1.12.3"
 
-[lib]
-name = "adead_bib"
-path = "src/rust_v2/crates/ADead-BIB-Main/src/lib.rs"
-
-[[bin]]
-name = "adb"
-path = "src/rust_v2/crates/ADead-BIB-Main/src/main.rs"
-
-[[bin]]
-name = "cuda_test"
-path = "src/rust_v2/crates/ADead-BIB-Main/src/cuda_test.rs"
-
-[[bin]]
-name = "cuda_test_v2"
-path = "src/rust_v2/crates/ADead-BIB-Main/src/cuda_test_v2.rs"
-
 # ADead-BIB es 100% Rust - No requiere dependencias de C++
 

@@ -11,13 +11,40 @@
 pub mod opengl_global;
 pub mod types;
 pub mod glsl;
-pub mod loader;
 pub mod optimizer;
 pub mod shader_bridge;
 
+// OpenGL version modules (GL 1.0 — 4.6)
+pub mod gl10;
+pub mod gl11;
+pub mod gl12;
+pub mod gl13;
+pub mod gl14;
+pub mod gl15;
+pub mod gl20;
+pub mod gl21;
+pub mod gl30;
+pub mod gl31;
+pub mod gl32;
+pub mod gl33;
+pub mod gl40;
+pub mod gl41;
+pub mod gl42;
+pub mod gl43;
+pub mod gl44;
+pub mod gl45;
+pub mod gl46;
+
+// Constants (per-version)
+pub mod constants_gl1x;
+pub mod constants_gl2x;
+pub mod constants_gl3x;
+pub mod constants_gl4x;
+
+pub mod loader;
+
 // Re-export consolidado
 pub use opengl_global::*;
-pub use opengl_global::constants;
 pub use types::*;
 
 // GLVersion y configuración mantenidos del archivo original

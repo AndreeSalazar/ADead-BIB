@@ -227,6 +227,7 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "fastos_errno.h" => Some(HEADER_ERRNO),
         "fastos_limits.h" => Some(HEADER_LIMITS),
         "fastos_types.h" => Some(HEADER_STDINT),
+        "fastos_ctype.h" => Some(HEADER_CTYPE),
 
         _ => None,
     }
@@ -244,6 +245,7 @@ pub fn is_known_c_symbol(name: &str) -> bool {
     use crate::stdlib::c::fastos_errno;
     use crate::stdlib::c::fastos_limits;
     use crate::stdlib::c::fastos_types;
+    use crate::stdlib::c::fastos_ctype;
 
     fastos_stdio::is_stdio_symbol(name)
         || fastos_stdlib::is_stdlib_symbol(name)
@@ -254,6 +256,7 @@ pub fn is_known_c_symbol(name: &str) -> bool {
         || fastos_errno::is_errno_symbol(name)
         || fastos_limits::is_limits_symbol(name)
         || fastos_types::is_types_symbol(name)
+        || fastos_ctype::is_ctype_symbol(name)
 }
 
 /// Resolve a fastos header name to its origin module.
@@ -269,6 +272,7 @@ pub fn resolve_fastos_header(name: &str) -> Option<&'static str> {
         "errno.h" | "fastos_errno.h" => Some("fastos_errno"),
         "limits.h" | "fastos_limits.h" => Some("fastos_limits"),
         "stdint.h" | "stddef.h" | "stdbool.h" | "fastos_types.h" => Some("fastos_types"),
+        "ctype.h" | "fastos_ctype.h" => Some("fastos_ctype"),
         "header_main.h" => Some("header_main"),
         _ => None,
     }

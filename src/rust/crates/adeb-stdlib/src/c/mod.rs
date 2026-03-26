@@ -20,6 +20,7 @@ pub mod fastos_assert;
 pub mod fastos_errno;
 pub mod fastos_limits;
 pub mod fastos_types;
+pub mod fastos_ctype;   // ctype.h → isalpha, isdigit, toupper, tolower... (C99 §7.4)
 
 // ── FastOS Kernel (ADead-BIB v7.1) ──────────────────────────
 pub mod fastos_kernel;  // kernel.h, fastos.h → kprintf, kmalloc, process_t, KERNEL_PANIC...
