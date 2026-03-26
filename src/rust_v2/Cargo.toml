@@ -42,7 +42,7 @@ wgpu = { version = "0.18", optional = true }
 ash = { version = "0.37", optional = true }
 
 # Internal crates
-adev-core = { path = "crates/adev-core" }
-adev-middle = { path = "crates/adev-middle" }
-adev-backend-x64 = { path = "crates/adev-backend-x64" }
-adev-platform = { path = "crates/adev-platform" }
+adeb-core = { path = "crates/adeb-core" }
+adeb-middle = { path = "crates/adeb-middle" }
+adeb-backend-x64 = { path = "crates/adeb-backend-x64" }
+adeb-platform = { path = "crates/adeb-platform" }
