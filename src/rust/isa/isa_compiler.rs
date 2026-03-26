@@ -4932,6 +4932,10 @@ impl IsaCompiler {
         // Phase 3: Load register args from shadow space into arg registers
         // We load in reverse order so that RCX (slot 0) is loaded last,
         // since earlier loads don't clobber later slots.
+        //
+        // Windows x64 ABI: float/double args go in XMM0-XMM3 at the SAME
+        // positional slot as RCX/RDX/R8/R9. We also load the GPR because
+        // variadic functions (printf) read from GPRs.
         for i in (0..reg_args).rev() {
             let dst = self.arg_register(i);
             self.ir.emit(ADeadOp::Mov {
@@ -4941,6 +4945,30 @@ impl IsaCompiler {
                     disp: (i * 8) as i32,
                 },
             });
+
+            // Check if this argument is a float/double expression
+            let arg = &args[i];
+            let is_float_arg = Self::expr_is_float_full(
+                arg,
+                &self.variable_types,
+                &self.field_ir_types,
+                &self.current_class,
+            );
+            if is_float_arg && i < 4 {
+                // Also load into XMM register for float calling convention
+                let xmm_dst = match i {
+                    0 => Reg::XMM0,
+                    1 => Reg::XMM1,
+                    2 => Reg::XMM2,
+                    3 => Reg::XMM3,
+                    _ => Reg::XMM0,
+                };
+                // MovQ: move 64-bit value from GPR to XMM
+                self.ir.emit(ADeadOp::MovQ {
+                    dst: xmm_dst,
+                    src: dst,
+                });
+            }
         }
 
         // Check if this is an IAT-imported function (printf, scanf, malloc, free, Win32, DX12...)
