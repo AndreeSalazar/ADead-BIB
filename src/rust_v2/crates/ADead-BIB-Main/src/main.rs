@@ -1983,7 +1983,7 @@ fn step_compile_c(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── FINAL SUMMARY ───────────────────────────────────────
     println!("{}", term::phase_header("╔══════════════════════════════════════════════════════════════╗"));
-    println!("{}", term::phase_header("║   Step Compilation Complete ✅                              ║"));
+    println!("{}", term::phase_header("║   Step Compilation Complete ✅                               ║"));
     println!("{}", term::phase_header("╚══════════════════════════════════════════════════════════════╝"));
     println!("  {} 7/7 phases completed successfully", term::ok("✓ ALL PHASES PASSED"));
     println!("  {} adb cc {} -o output.exe", term::info("  build:"), input_file);
@@ -2538,7 +2538,7 @@ fn step_compile_js(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Summary ─────────────────────────────────────────────
     println!("{}", term::phase_header("╔══════════════════════════════════════════════════════════════╗"));
-    println!("{}", term::phase_header("║   ALL PHASES PASSED — JsDead-BIB → ASM Complete 💀🦈       ║"));
+    println!("{}", term::phase_header("║   ALL PHASES PASSED — JsDead-BIB → ASM Complete 💀🦈        ║"));
     println!("{}", term::phase_header("╚══════════════════════════════════════════════════════════════╝"));
     println!();
     println!("  {} runtime: 0 bytes", term::ok("✓"));

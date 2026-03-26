@@ -10,7 +10,7 @@ members = [
     "crates/adeb-platform",
     "crates/adeb-bg",
     "crates/adeb-stdlib",
-    "crates/adeb-driver",
+    "crates/ADead-BIB-Main",
 ]
 resolver = "2"
 
