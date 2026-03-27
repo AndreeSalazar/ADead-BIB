@@ -25,6 +25,7 @@ La stdlib de C está implementada internamente en Rust como registros de símbol
 | `fastos_errno.rs` | `<errno.h>` | — | — | — | 38 códigos | ✅ Completo |
 | `fastos_limits.rs` | `<limits.h>` | — | — | — | 20 | ✅ Completo |
 | `fastos_types.rs` | `<stdint.h>` `<stddef.h>` `<stdbool.h>` | — | 4 (bool) | 28 + 7 | — | ✅ Completo |
+| `fastos_ctype.rs` | `<ctype.h>` | 16 | 8 | — | — | ✅ Completo |
 
 ### 1.2 Módulos de Plataforma / FastOS
 
@@ -38,8 +39,8 @@ La stdlib de C está implementada internamente en Rust como registros de símbol
 
 | Categoría | Total |
 |---|---|
-| **Funciones C estándar** | **150+** |
-| **Macros** | **24+** |
+| **Funciones C estándar** | **166+** |
+| **Macros** | **32+** |
 | **Tipos** | **45+** |
 | **Constantes / Códigos de error** | **72+** |
 | **Builtins del compilador** | **22** |
@@ -67,6 +68,7 @@ El frontend C (`adeb-frontend-c/stdlib.rs`) resuelve **80+ headers** organizados
 | `<stdint.h>` | `fastos_types.rs` | ✅ |
 | `<stddef.h>` | `fastos_types.rs` | ✅ |
 | `<stdbool.h>` | `fastos_types.rs` | ✅ |
+| `<ctype.h>` | `fastos_ctype.rs` | ✅ |
 
 ### 2.2 Headers POSIX
 
@@ -108,7 +110,6 @@ El frontend C (`adeb-frontend-c/stdlib.rs`) resuelve **80+ headers** organizados
 
 | Header | Estado |
 |---|---|
-| `<ctype.h>` | ⚠️ En `compiler_extensions`, sin módulo dedicado |
 | `<stdarg.h>` | ⚠️ Parcial en `fastos_asm.rs` |
 | `<wchar.h>` | ⚠️ En `compiler_extensions` |
 | `<wctype.h>` | ⚠️ En `compiler_extensions` |
@@ -127,7 +128,6 @@ Para lograr conformidad completa con los estándares **C99** y **C11**, los sigu
 
 | Header faltante | Funciones principales | Situación actual | Impacto |
 |---|---|---|---|
-| **`<ctype.h>`** | `isalpha`, `isdigit`, `isalnum`, `isspace`, `toupper`, `tolower`, `ispunct`, `isupper`, `islower`, `isxdigit`, `iscntrl`, `isprint`, `isgraph` | ⚠️ Existe en `compiler_extensions` pero **NO** como módulo `fastos_ctype.rs` dedicado | 🔴 **Crítico** — usado en casi todo parser y procesamiento de texto |
 | **`<stdarg.h>`** | `va_list`, `va_start`, `va_end`, `va_arg`, `va_copy` | ⚠️ Parcialmente cubierto en `fastos_asm.rs` builtins | 🔴 **Crítico** — requerido para funciones variádicas |
 | **`<float.h>`** | `FLT_MAX`, `FLT_MIN`, `FLT_EPSILON`, `DBL_MAX`, `DBL_MIN`, `DBL_EPSILON`, `FLT_DIG`, `DBL_DIG`, `FLT_RADIX`, `LDBL_MAX`, etc. | ❌ No existe `fastos_float.rs` | 🟡 **Alto** — necesario para código numérico portable |
 | **`<inttypes.h>`** | `PRId8`, `PRId16`, `PRId32`, `PRId64`, `PRIu8`, `PRIu16`, `PRIu32`, `PRIu64`, `PRIx32`, `PRIx64`, `SCNd32`, `SCNu64`, `imaxabs`, `imaxdiv`, `strtoimax`, `strtoumax` | ⚠️ Parcial — tipos compartidos con `<stdint.h>`, pero **faltan macros de formato** (`PRI*`, `SCN*`) | 🟡 **Alto** — código portable usa `PRIu64` extensivamente |
@@ -156,9 +156,9 @@ Para lograr conformidad completa con los estándares **C99** y **C11**, los sigu
 
 | Estándar | Total headers | ✅ Implementados | ⚠️ Parcial | ❌ Faltantes |
 |---|---|---|---|---|
-| **C99** | 24 | 11 | 6 | 7 |
+| **C99** | 24 | 12 | 5 | 7 |
 | **C11 extras** | 5 | 0 | 2 | 3 |
-| **Total** | **29** | **11** | **8** | **10** |
+| **Total** | **29** | **12** | **7** | **10** |
 
 ---
 
@@ -200,7 +200,7 @@ El frontend mapea 80+ headers de librerías externas, pero la mayoría son resol
 
 | # | Tarea | Esfuerzo | Justificación |
 |---|---|---|---|
-| 1 | Crear `fastos_ctype.rs` con las 13 funciones `is*` + `toupper`/`tolower` | 🟢 Bajo | Usado en prácticamente todo código C que procesa texto |
+| ~~1~~ | ~~Crear `fastos_ctype.rs`~~ | ✅ **Hecho** | **Ya implementado:** 16 funciones, 8 macros, lookup table O(1), tests completos |
 | 2 | Crear `fastos_float.rs` con ~15 constantes (`FLT_MAX`, `DBL_EPSILON`, etc.) | 🟢 Bajo | Solo son constantes, trivial de implementar |
 | 3 | Crear `fastos_iso646.rs` con 11 macros de operadores alternativos | 🟢 Trivial | Son solo `#define and &&` etc. |
 | 4 | Completar `<inttypes.h>` con macros `PRI*` y `SCN*` en `fastos_types.rs` o módulo nuevo | 🟢 Bajo | Macros de formato para printf/scanf portable |
@@ -242,7 +242,7 @@ El frontend mapea 80+ headers de librerías externas, pero la mayoría son resol
 
 | Área | Implementado | Total requerido | Cobertura | Estado |
 |---|---|---|---|---|
-| **Headers C99** | 11 de 24 | 24 | **45.8%** | ⚠️ |
+| **Headers C99** | 12 de 24 | 24 | **50%** | ⚠️ |
 | **Headers C11 extra** | 0 de 5 | 5 | **0%** | ❌ |
 | **Headers parciales** (en `compiler_extensions`) | 8 | — | — | ⚠️ |
 | **Funciones implementadas** | 150+ | ~250 (C99 completo) | **~60%** | ⚠️ |
@@ -262,7 +262,7 @@ El frontend mapea 80+ headers de librerías externas, pero la mayoría son resol
 | 📏 Límites (limits) | ✅ **85%** | 20 constantes |
 | ⚠️ Errores (errno) | ✅ **85%** | 38 códigos de error |
 | ✅ Asserts | ✅ **100%** | assert + static_assert |
-| 🔠 Clasificación de chars (ctype) | ⚠️ **40%** | Existe pero sin módulo dedicado |
+| 🔠 Clasificación de chars (ctype) | ✅ **100%** | 16 funciones (12 C99 + 4 POSIX), 8 macros, lookup table O(1) |
 | 📐 Límites flotantes (float) | ❌ **0%** | Completamente ausente |
 | 📡 Señales (signal) | ❌ **0%** | Completamente ausente |
 | 🌍 Locale | ❌ **0%** | Completamente ausente |
@@ -274,7 +274,7 @@ El frontend mapea 80+ headers de librerías externas, pero la mayoría son resol
 ```
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║   COBERTURA C99:  ████████████████░░░░░░░░░░  ~60%       ║
+║   COBERTURA C99:  █████████████████░░░░░░░░░  ~65%       ║
 ║   COBERTURA C11:  ██████████░░░░░░░░░░░░░░░░  ~40%       ║
 ║   HEADERS EXT:    ████░░░░░░░░░░░░░░░░░░░░░░  ~15%       ║
 ║   BUILTINS GCC:   ████████████████████░░░░░░  ~75%       ║
@@ -290,10 +290,10 @@ El frontend mapea 80+ headers de librerías externas, pero la mayoría son resol
 | **¿Puede compilar "Hello World"?** | ✅ Sí |
 | **¿Puede compilar programas C simples?** | ✅ Sí |
 | **¿Puede compilar proyectos C medianos?** | ⚠️ Depende de headers usados |
-| **¿Conformidad C99 completa?** | ❌ No — faltan 13 headers |
+| **¿Conformidad C99 completa?** | ❌ No — faltan 12 headers |
 | **¿Conformidad C11 completa?** | ❌ No — faltan 5 headers adicionales |
 | **¿Viable para FastOS?** | ✅ Sí — los módulos de plataforma están sólidos |
 
 ---
 
-> **Conclusión:** La stdlib de ADead-BIB cubre los módulos **más usados** de C con solidez (stdio, stdlib, string, math, time). La brecha principal está en headers de uso menos frecuente pero necesarios para conformidad completa (ctype como módulo dedicado, float.h, signal.h, locale.h, setjmp.h, fenv.h). Las **Fases 1 y 2** de las recomendaciones llevarían la cobertura C99 a ~85-90%, lo cual cubriría la gran mayoría del código C del mundo real.
+> **Conclusión:** La stdlib de ADead-BIB cubre los módulos **más usados** de C con solidez (stdio, stdlib, string, math, time, **ctype**). Con `fastos_ctype.rs` completado (16 funciones, 8 macros, lookup table O(1), tests), la cobertura C99 sube a ~65%. La brecha principal está en headers como float.h, signal.h, locale.h, setjmp.h, fenv.h y stdarg.h dedicado. Las **Fases 1 y 2** de las recomendaciones llevarían la cobertura C99 a ~85-90%, cubriendo la gran mayoría del código C del mundo real.
