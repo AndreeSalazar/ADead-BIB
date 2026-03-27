@@ -1,4 +1,20 @@
-use crate::runtime::cpu_detect::CPUFeatures;
+/// CPU feature detection for SIMD code generation
+#[derive(Debug, Clone, Copy)]
+pub struct CPUFeatures {
+    pub has_sse2: bool,
+    pub has_avx2: bool,
+    pub has_avx512f: bool,
+}
+
+impl CPUFeatures {
+    pub fn detect() -> Self {
+        Self {
+            has_sse2: true,    // x86_64 always has SSE2
+            has_avx2: false,
+            has_avx512f: false,
+        }
+    }
+}
 
 pub struct SIMDGenerator {
     features: CPUFeatures,

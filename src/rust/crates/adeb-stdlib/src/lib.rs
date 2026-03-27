@@ -1,7 +1,9 @@
 //! ADead-BIB Standard Library
 //!
-//! Librería estándar para GPU, I/O, y utilidades.
+//! Librería estándar para C, C++, GPU, I/O, y utilidades.
 
+pub mod c;
+pub mod cpp;
 pub mod gpu;
 
 pub use gpu::*;

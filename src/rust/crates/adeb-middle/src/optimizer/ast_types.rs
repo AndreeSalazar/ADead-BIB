@@ -1,15 +1,30 @@
 //! Stub types for optimizer compatibility
 
 #[derive(Debug, Clone)]
+pub struct Function {
+    pub name: String,
+    pub params: Vec<String>,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Program {
+    pub functions: Vec<Function>,
+    pub statements: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Number(i64),
     Float(f64),
     Bool(bool),
     String(String),
     Identifier(String),
+    Variable(String),
     BinaryOp { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
-    Comparison { op: String, left: Box<Expr>, right: Box<Expr> },
-    Ternary { cond: Box<Expr>, then_branch: Box<Expr>, else_branch: Box<Expr> },
+    UnaryOp { op: UnaryOp, expr: Box<Expr> },
+    Comparison { op: CmpOp, left: Box<Expr>, right: Box<Expr> },
+    Ternary { condition: Box<Expr>, then_expr: Box<Expr>, else_expr: Box<Expr> },
     BitwiseOp { op: BitwiseOp, left: Box<Expr>, right: Box<Expr> },
     BitwiseNot(Box<Expr>),
     Call { name: String, args: Vec<Expr> },
@@ -23,9 +38,11 @@ pub enum BinaryOp {
     Add, Sub, Mul, Div, Mod,
 }
 
+pub type BinOp = BinaryOp;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BitwiseOp {
-    And, Or, Xor, Shl, Shr,
+    And, Or, Xor, LeftShift, RightShift,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +64,9 @@ pub enum Stmt {
     DoWhile { body: Vec<Stmt>, condition: Expr },
     For { var: String, start: Expr, end: Expr, body: Vec<Stmt> },
     Print(Expr),
+    Println(Expr),
+    PrintNum(Expr),
+    Expr(Expr),
     Return(Option<Expr>),
     Pass,
 }

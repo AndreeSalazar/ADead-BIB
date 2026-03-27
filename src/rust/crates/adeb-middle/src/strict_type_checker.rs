@@ -121,29 +121,9 @@ impl CType {
         matches!(self, CType::Pointer(_))
     }
 
-    /// Convert from frontend Type to CType
-    pub fn from_frontend_type(t: &crate::frontend::types::Type) -> Self {
-        use crate::frontend::types::Type;
-        match t {
-            Type::I8 => CType::Int8,
-            Type::I16 => CType::Int16,
-            Type::I32 => CType::Int32,
-            Type::I64 => CType::Int64,
-            Type::U8 => CType::UInt8,
-            Type::U16 => CType::UInt16,
-            Type::U32 => CType::UInt32,
-            Type::U64 => CType::UInt64,
-            Type::F32 => CType::Float32,
-            Type::F64 => CType::Float64,
-            Type::Bool => CType::Bool,
-            Type::Void => CType::Void,
-            Type::Pointer(inner) => CType::Pointer(Box::new(CType::from_frontend_type(inner))),
-            Type::Array(inner, Some(n)) => CType::Array(Box::new(CType::from_frontend_type(inner)), *n),
-            Type::Array(inner, None) => CType::Pointer(Box::new(CType::from_frontend_type(inner))),
-            Type::Struct(name) | Type::Class(name) | Type::Named(name) => CType::Struct(name.clone()),
-            _ => CType::Unknown,
-        }
-    }
+    // Convert from frontend Type to CType
+    // NOTE: Requires adeb-frontend-c integration — disabled until frontend is linked
+    // pub fn from_frontend_type(t: &crate::frontend::types::Type) -> Self { ... }
 }
 
 impl fmt::Display for CType {
