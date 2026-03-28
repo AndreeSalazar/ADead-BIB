@@ -1,299 +1,311 @@
-# 📋 Reporte Completo: Frontend C y Stdlib C de ADead-BIB
+# 📋 Reporte Actualizado: Implementación del lenguaje C en ADead-BIB
 
-> **Fecha:** 26 de Marzo de 2026  
-> **Proyecto:** ADead-BIB — Compilador Rust → C99/C11/C++/JS → código máquina (sin linker externo)  
-> **Componentes analizados:**  
-> - `src/rust/crates/adeb-stdlib/src/c/` — Stdlib C implementada en Rust  
-> - `src/rust/crates/adeb-frontend-c/` — Frontend C (lexer, parser, resolución de headers)
+> **Fecha:** 28 de Marzo de 2026  
+> **Proyecto:** ADead-BIB — compilador en Rust con frontend C/C++ y backend nativo x64  
+> **Ámbito de este reporte:** estado real del compilador C, stdlib/header mapping, transparencia del pipeline y próximos hitos
 
 ---
 
-## 1. 📦 Estado Actual de la Stdlib C
+## 1. Resumen ejecutivo
 
-La stdlib de C está implementada internamente en Rust como registros de símbolos. Cada módulo `fastos_*.rs` registra funciones, macros, tipos y constantes que el compilador resuelve sin necesidad de archivos `.h` reales ni de un linker externo.
+El soporte de C en ADead-BIB ya no está en una etapa “demo”: hoy existe un pipeline C funcional que cubre preprocesado, análisis léxico, parsing recursivo descendente, lowering a IR propio y compilación a binario PE x64. Además, el compilador ya expone un **modo `step` / `-step`** que permite inspeccionar internamente cada fase relevante del pipeline.
 
-### 1.1 Módulos Estándar de C
+### Estado general
 
-| Módulo | Header equivalente | Funciones | Macros | Tipos | Constantes | Estado |
-|---|---|---|---|---|---|---|
-| `fastos_stdio.rs` | `<stdio.h>` | 27 | 10 | 2 | — | ✅ Completo |
-| `fastos_stdlib.rs` | `<stdlib.h>` | 23 | 5 | 3 | — | ✅ Completo |
-| `fastos_string.rs` | `<string.h>` | 23 | — | — | — | ✅ Completo |
-| `fastos_math.rs` | `<math.h>` | 40+ | — | — | 14 | ✅ Completo |
-| `fastos_time.rs` | `<time.h>` | 14 | 3 | 5 | — | ✅ Completo |
-| `fastos_assert.rs` | `<assert.h>` | — | 2 | — | — | ✅ Completo |
-| `fastos_errno.rs` | `<errno.h>` | — | — | — | 38 códigos | ✅ Completo |
-| `fastos_limits.rs` | `<limits.h>` | — | — | — | 20 | ✅ Completo |
-| `fastos_types.rs` | `<stdint.h>` `<stddef.h>` `<stdbool.h>` | — | 4 (bool) | 28 + 7 | — | ✅ Completo |
-| `fastos_ctype.rs` | `<ctype.h>` | 16 | 8 | — | — | ✅ Completo |
-
-### 1.2 Módulos de Plataforma / FastOS
-
-| Módulo | Propósito | Elementos | Estado |
-|---|---|---|---|
-| `fastos_kernel.rs` | API del kernel FastOS | `kprintf`, `kmalloc`, scheduler, BG, etc. | ✅ Funcional |
-| `fastos_io.rs` | I/O x86-64 de bajo nivel | `inb`/`outb`, `cli`/`sti`, registros CR, GDT/IDT | ✅ Funcional |
-| `fastos_asm.rs` | Soporte `__builtin_*` y compatibilidad GCC | 22 builtins, 32 atributos GCC, 13 tipos de compilador, 22 macros de compatibilidad | ✅ Funcional |
-
-### 1.3 Resumen de Conteo
-
-| Categoría | Total |
-|---|---|
-| **Funciones C estándar** | **166+** |
-| **Macros** | **32+** |
-| **Tipos** | **45+** |
-| **Constantes / Códigos de error** | **72+** |
-| **Builtins del compilador** | **22** |
-| **Atributos GCC** | **32** |
-| **Macros de compatibilidad** | **22** |
-
----
-
-## 2. 📂 Headers C Soportados
-
-El frontend C (`adeb-frontend-c/stdlib.rs`) resuelve **80+ headers** organizados en las siguientes categorías:
-
-### 2.1 Headers Estándar C99/C11
-
-| Header | Resolución | Estado |
+| Área | Estado actual | Observación |
 |---|---|---|
-| `<stdio.h>` | `fastos_stdio.rs` | ✅ |
-| `<stdlib.h>` | `fastos_stdlib.rs` | ✅ |
-| `<string.h>` | `fastos_string.rs` | ✅ |
-| `<math.h>` | `fastos_math.rs` | ✅ |
-| `<time.h>` | `fastos_time.rs` | ✅ |
-| `<assert.h>` | `fastos_assert.rs` | ✅ |
-| `<errno.h>` | `fastos_errno.rs` | ✅ |
-| `<limits.h>` | `fastos_limits.rs` | ✅ |
-| `<stdint.h>` | `fastos_types.rs` | ✅ |
-| `<stddef.h>` | `fastos_types.rs` | ✅ |
-| `<stdbool.h>` | `fastos_types.rs` | ✅ |
-| `<ctype.h>` | `fastos_ctype.rs` | ✅ |
+| Preprocesador C | ✅ Funcional | Resuelve headers, macros y condicionales básicos |
+| Lexer C | ✅ Funcional | Produce tokens con línea de origen |
+| Parser C | ✅ Funcional | Soporta funciones, structs, enums, typedefs, arrays, punteros y control de flujo |
+| Snapshot semántico | ✅ Disponible | El modo `step` muestra símbolos recolectados del AST |
+| Lowering a IR | ✅ Funcional | Convierte AST C a `Program` interno |
+| Backend x64 | ✅ Funcional | Genera código y binarios PE |
+| Transparencia interna | ✅ Disponible | `step` muestra preprocesado, tokens, AST, símbolos, IR y resumen backend |
+| Conformidad C99/C11 completa | ⚠️ Parcial | Amplia cobertura de headers, pero no conformidad total de semántica/runtime |
 
-### 2.2 Headers POSIX
+### Hitos recientes alcanzados
 
-| Header | Estado |
-|---|---|
-| `<unistd.h>` | ⚠️ Resolución mapeada |
-| `<pthread.h>` | ⚠️ Resolución mapeada |
-| `<sys/types.h>` | ⚠️ Resolución mapeada |
-| `<sys/stat.h>` | ⚠️ Resolución mapeada |
-| `<fcntl.h>` | ⚠️ Resolución mapeada |
-| `<dirent.h>` | ⚠️ Resolución mapeada |
-
-### 2.3 Headers de Red / Networking
-
-| Header | Estado |
-|---|---|
-| `<sys/socket.h>` | ⚠️ Resolución mapeada |
-| `<netinet/in.h>` | ⚠️ Resolución mapeada |
-| `<arpa/inet.h>` | ⚠️ Resolución mapeada |
-| `<netdb.h>` | ⚠️ Resolución mapeada |
-
-### 2.4 Headers de Librerías Externas
-
-| Categoría | Headers | Estado |
-|---|---|---|
-| **Compresión** | `<zlib.h>`, `<bzlib.h>`, `<lzma.h>` | ⚠️ Mapeados |
-| **Imágenes** | `<png.h>`, `<jpeglib.h>`, `<gif_lib.h>`, `<webp/*.h>` | ⚠️ Mapeados |
-| **Audio** | `<portaudio.h>`, `<sndfile.h>`, `<vorbis/*.h>` | ⚠️ Mapeados |
-| **GPU** | `<GL/gl.h>`, `<vulkan/vulkan.h>`, `<cuda.h>` | ⚠️ Mapeados |
-| **Fuentes** | `<ft2build.h>`, `<freetype/*.h>` | ⚠️ Mapeados |
-| **Bases de datos** | `<sqlite3.h>`, `<mysql.h>`, `<libpq-fe.h>` | ⚠️ Mapeados |
-| **Seguridad** | `<openssl/*.h>` | ⚠️ Mapeados |
-| **Input** | `<SDL2/SDL.h>`, `<X11/*.h>` | ⚠️ Mapeados |
-| **Multimedia** | `<libavcodec/*.h>`, `<libavformat/*.h>` | ⚠️ Mapeados |
-| **XML/JSON** | `<libxml/*.h>`, `<json-c/*.h>`, `<cJSON.h>` | ⚠️ Mapeados |
-| **Windows/MSVC** | `<windows.h>`, `<conio.h>`, `<direct.h>` | ⚠️ Mapeados |
-
-### 2.5 Headers C99/C11 Extra
-
-| Header | Estado |
-|---|---|
-| `<stdarg.h>` | ⚠️ Parcial en `fastos_asm.rs` |
-| `<wchar.h>` | ⚠️ En `compiler_extensions` |
-| `<wctype.h>` | ⚠️ En `compiler_extensions` |
-| `<complex.h>` | ⚠️ En `compiler_extensions` |
-| `<tgmath.h>` | ⚠️ En `compiler_extensions` |
-| `<uchar.h>` | ⚠️ En `compiler_extensions` |
-| `<inttypes.h>` | ⚠️ Parcial (comparte con `stdint.h`) |
+1. ✅ Corrección del parser para miembros anónimos `struct/union` estilo C11
+2. ✅ Endurecimiento del preprocesador para no expandir macros dentro de strings y comentarios
+3. ✅ Integración de pruebas reales usando los archivos de `Test_c`
+4. ✅ Implementación de modo `step` en la CLI del compilador C
+5. ✅ Visualización fase por fase: preprocesado, tokens, AST, símbolos, IR y preview del backend
+6. ✅ Suite del frontend C validada con **78 tests en verde**
 
 ---
 
-## 3. ❌ Librerías que FALTAN para C99/C11 Completo
+## 2. Arquitectura actual del compilador C
 
-Para lograr conformidad completa con los estándares **C99** y **C11**, los siguientes headers carecen de un módulo `fastos_*.rs` dedicado o están completamente ausentes:
+El camino efectivo de compilación C hoy es:
 
-### 3.1 Prioridad Alta — Uso frecuente en código C real
-
-| Header faltante | Funciones principales | Situación actual | Impacto |
-|---|---|---|---|
-| **`<stdarg.h>`** | `va_list`, `va_start`, `va_end`, `va_arg`, `va_copy` | ⚠️ Parcialmente cubierto en `fastos_asm.rs` builtins | 🔴 **Crítico** — requerido para funciones variádicas |
-| **`<float.h>`** | `FLT_MAX`, `FLT_MIN`, `FLT_EPSILON`, `DBL_MAX`, `DBL_MIN`, `DBL_EPSILON`, `FLT_DIG`, `DBL_DIG`, `FLT_RADIX`, `LDBL_MAX`, etc. | ❌ No existe `fastos_float.rs` | 🟡 **Alto** — necesario para código numérico portable |
-| **`<inttypes.h>`** | `PRId8`, `PRId16`, `PRId32`, `PRId64`, `PRIu8`, `PRIu16`, `PRIu32`, `PRIu64`, `PRIx32`, `PRIx64`, `SCNd32`, `SCNu64`, `imaxabs`, `imaxdiv`, `strtoimax`, `strtoumax` | ⚠️ Parcial — tipos compartidos con `<stdint.h>`, pero **faltan macros de formato** (`PRI*`, `SCN*`) | 🟡 **Alto** — código portable usa `PRIu64` extensivamente |
-
-### 3.2 Prioridad Media — Uso moderado
-
-| Header faltante | Funciones principales | Situación actual | Impacto |
-|---|---|---|---|
-| **`<signal.h>`** | `signal`, `raise`, `SIG_DFL`, `SIG_IGN`, `SIG_ERR`, `SIGABRT`, `SIGFPE`, `SIGILL`, `SIGINT`, `SIGSEGV`, `SIGTERM`, `sig_atomic_t` | ❌ No existe `fastos_signal.rs` | 🟡 Necesario para manejo de señales y código robusto |
-| **`<locale.h>`** | `setlocale`, `localeconv`, `struct lconv`, `LC_ALL`, `LC_COLLATE`, `LC_CTYPE`, `LC_MONETARY`, `LC_NUMERIC`, `LC_TIME` | ❌ No existe `fastos_locale.rs` | 🟡 Requerido para internacionalización |
-| **`<setjmp.h>`** | `setjmp`, `longjmp`, `jmp_buf` | ❌ No existe `fastos_setjmp.rs` | 🟡 Usado para manejo de errores no-local y excepciones en C |
-| **`<wchar.h>`** | `wprintf`, `wscanf`, `wcslen`, `wcscpy`, `wcscat`, `wcscmp`, `wmemcpy`, `wmemset`, `mbrtowc`, `wcrtomb`, `wint_t`, `mbstate_t` | ⚠️ En `compiler_extensions`, sin módulo dedicado | 🟡 Soporte Unicode/wide characters |
-| **`<wctype.h>`** | `iswalpha`, `iswdigit`, `iswspace`, `towupper`, `towlower`, `wctrans`, `wctype` | ⚠️ En `compiler_extensions`, sin módulo dedicado | 🟡 Clasificación de wide characters |
-
-### 3.3 Prioridad Baja — Uso especializado
-
-| Header faltante | Funciones principales | Situación actual | Impacto |
-|---|---|---|---|
-| **`<fenv.h>`** | `feclearexcept`, `fegetexceptflag`, `feraiseexcept`, `fesetexceptflag`, `fetestexcept`, `fegetround`, `fesetround`, `fegetenv`, `fesetenv`, `FE_DIVBYZERO`, `FE_INEXACT`, `FE_INVALID`, `FE_OVERFLOW`, `FE_UNDERFLOW`, `FE_TONEAREST`, `FE_DOWNWARD`, `FE_UPWARD`, `FE_TOWARDZERO` | ❌ **Completamente ausente** | 🟢 Especializado — control de punto flotante IEEE 754 |
-| **`<complex.h>`** | `cabs`, `carg`, `creal`, `cimag`, `conj`, `cexp`, `clog`, `cpow`, `csqrt`, `csin`, `ccos`, `ctan`, `_Complex`, `_Complex_I`, `I` | ⚠️ En `compiler_extensions`, sin módulo dedicado | 🟢 Aritmética compleja — uso nicho |
-| **`<tgmath.h>`** | Macros type-generic que despachan a `<math.h>` y `<complex.h>` | ⚠️ En `compiler_extensions`, sin módulo dedicado | 🟢 Conveniencia — depende de `<complex.h>` |
-| **`<iso646.h>`** | `and`, `or`, `not`, `xor`, `bitand`, `bitor`, `compl`, `and_eq`, `or_eq`, `xor_eq`, `not_eq` | ❌ **Completamente ausente** | 🟢 Trivial — solo defines de operadores alternativos |
-| **`<uchar.h>`** (C11) | `char16_t`, `char32_t`, `mbrtoc16`, `c16rtomb`, `mbrtoc32`, `c32rtomb` | ⚠️ En `compiler_extensions`, sin módulo dedicado | 🟢 Unicode C11 — uso raro |
-
-### 3.4 Tabla Resumen de Headers C99/C11
-
-| Estándar | Total headers | ✅ Implementados | ⚠️ Parcial | ❌ Faltantes |
-|---|---|---|---|---|
-| **C99** | 24 | 12 | 5 | 7 |
-| **C11 extras** | 5 | 0 | 2 | 3 |
-| **Total** | **29** | **12** | **7** | **10** |
-
----
-
-## 4. 📚 Librerías Externas Faltantes para Objetivo FastOS
-
-El frontend mapea 80+ headers de librerías externas, pero la mayoría son resoluciones de nombre sin implementación completa de símbolos. Estado por categoría:
-
-### 4.1 Estado de Implementación de Stubs Externos
-
-| Categoría | Headers mapeados | Stubs con símbolos | Estado |
-|---|---|---|---|
-| **POSIX Core** | `unistd.h`, `pthread.h`, `sys/*.h`, `fcntl.h`, `dirent.h` | ⚠️ Parcial | Necesita implementación para FastOS |
-| **Networking** | `socket.h`, `netinet/*.h`, `arpa/*.h`, `netdb.h` | ⚠️ Parcial | Stack TCP/IP pendiente |
-| **Compresión** | `zlib.h`, `bzlib.h`, `lzma.h` | ❌ Solo mapeo | Requiere implementación interna o binding |
-| **Imágenes** | `png.h`, `jpeglib.h`, `gif_lib.h`, `webp/*.h` | ❌ Solo mapeo | Decoders pendientes |
-| **Audio** | `portaudio.h`, `sndfile.h`, `vorbis/*.h` | ❌ Solo mapeo | Driver de audio pendiente |
-| **GPU/Gráficos** | `GL/gl.h`, `vulkan/vulkan.h`, `cuda.h` | ⚠️ Parcial (CUDA avanzado) | Rendering pipeline pendiente |
-| **Fuentes** | `ft2build.h`, `freetype/*.h` | ❌ Solo mapeo | Font rasterizer pendiente |
-| **Bases de datos** | `sqlite3.h`, `mysql.h`, `libpq-fe.h` | ❌ Solo mapeo | Motor SQLite embebido sería ideal |
-| **Seguridad** | `openssl/*.h` | ❌ Solo mapeo | Crypto básico pendiente |
-| **Input/Windowing** | `SDL2/*.h`, `X11/*.h` | ❌ Solo mapeo | FastOS tiene su propio sistema |
-| **Multimedia** | `libavcodec/*.h`, `libavformat/*.h` | ❌ Solo mapeo | Codecs pendientes |
-| **Datos** | `libxml/*.h`, `json-c/*.h`, `cJSON.h` | ❌ Solo mapeo | Parsers pendientes |
-| **Windows** | `windows.h`, `conio.h`, `direct.h` | ⚠️ Parcial | Compatibilidad Windows |
-
-### 4.2 Prioridad para FastOS
-
-1. 🔴 **POSIX Core** — Fundamental para ejecutar programas C existentes
-2. 🔴 **Networking** — Stack TCP/IP necesario para cualquier conectividad
-3. 🟡 **GPU/Gráficos** — Ya hay trabajo en CUDA/DirectX12/OpenGL en el proyecto
-4. 🟡 **Compresión** — zlib es ubicuo (PNG, HTTP gzip, etc.)
-5. 🟢 **El resto** — Implementar según demanda de aplicaciones target
-
----
-
-## 5. 🎯 Recomendaciones de Mejora
-
-### Fase 1 — Conformidad C99 Básica (Prioridad Inmediata)
-
-| # | Tarea | Esfuerzo | Justificación |
-|---|---|---|---|
-| ~~1~~ | ~~Crear `fastos_ctype.rs`~~ | ✅ **Hecho** | **Ya implementado:** 16 funciones, 8 macros, lookup table O(1), tests completos |
-| 2 | Crear `fastos_float.rs` con ~15 constantes (`FLT_MAX`, `DBL_EPSILON`, etc.) | 🟢 Bajo | Solo son constantes, trivial de implementar |
-| 3 | Crear `fastos_iso646.rs` con 11 macros de operadores alternativos | 🟢 Trivial | Son solo `#define and &&` etc. |
-| 4 | Completar `<inttypes.h>` con macros `PRI*` y `SCN*` en `fastos_types.rs` o módulo nuevo | 🟢 Bajo | Macros de formato para printf/scanf portable |
-| 5 | Dedicar módulo `fastos_stdarg.rs` para `va_list`/`va_start`/`va_end`/`va_arg` | 🟡 Medio | Crítico para funciones variádicas; actualmente disperso |
-
-### Fase 2 — Conformidad C99 Completa
-
-| # | Tarea | Esfuerzo | Justificación |
-|---|---|---|---|
-| 6 | Crear `fastos_signal.rs` con manejo de señales básico | 🟡 Medio | 12 señales + `signal()` + `raise()` |
-| 7 | Crear `fastos_locale.rs` con stub de locale | 🟡 Medio | Mínimo: `setlocale` retornando `"C"` |
-| 8 | Crear `fastos_setjmp.rs` con `setjmp`/`longjmp` | 🔴 Alto | Requiere manipulación de stack x86-64 |
-| 9 | Crear `fastos_wchar.rs` con funciones wide-char | 🔴 Alto | ~50 funciones, soporte Unicode real |
-| 10 | Crear `fastos_wctype.rs` con clasificación wide-char | 🟡 Medio | Depende de `<wchar.h>` |
-
-### Fase 3 — Conformidad C11 y Extras
-
-| # | Tarea | Esfuerzo | Justificación |
-|---|---|---|---|
-| 11 | Crear `fastos_complex.rs` con aritmética compleja | 🔴 Alto | ~30 funciones de números complejos |
-| 12 | Crear `fastos_tgmath.rs` con macros type-generic | 🟡 Medio | Despacho a math.h/complex.h |
-| 13 | Crear `fastos_fenv.rs` con entorno de punto flotante | 🔴 Alto | Control IEEE 754, requiere instrucciones x87/SSE |
-| 14 | Crear `fastos_uchar.rs` con tipos Unicode C11 | 🟡 Medio | `char16_t`, `char32_t`, conversiones |
-
-### Fase 4 — Librerías Externas para FastOS
-
-| # | Tarea | Esfuerzo |
-|---|---|---|
-| 15 | Implementar stubs POSIX funcionales (`unistd.h`, `pthread.h`) | 🔴 Muy Alto |
-| 16 | Implementar stack de red básico | 🔴 Muy Alto |
-| 17 | Integrar zlib embebido | 🟡 Medio |
-| 18 | Implementar decodificadores de imagen básicos (PNG, BMP) | 🔴 Alto |
-
----
-
-## 6. 📊 Resumen de Cobertura
-
-### 6.1 Cobertura del Estándar C
-
-| Área | Implementado | Total requerido | Cobertura | Estado |
-|---|---|---|---|---|
-| **Headers C99** | 12 de 24 | 24 | **50%** | ⚠️ |
-| **Headers C11 extra** | 0 de 5 | 5 | **0%** | ❌ |
-| **Headers parciales** (en `compiler_extensions`) | 8 | — | — | ⚠️ |
-| **Funciones implementadas** | 150+ | ~250 (C99 completo) | **~60%** | ⚠️ |
-| **Macros y constantes** | 96+ | ~140 | **~69%** | ⚠️ |
-| **Tipos definidos** | 45+ | ~60 | **~75%** | ⚠️ |
-
-### 6.2 Cobertura por Categoría Funcional
-
-| Categoría | Cobertura | Notas |
-|---|---|---|
-| 🖨️ I/O (stdio) | ✅ **95%** | Completo — printf, scanf, FILE ops |
-| 🧮 Matemáticas (math) | ✅ **95%** | 40+ funciones, 14 constantes |
-| 🔤 Strings (string) | ✅ **95%** | 23 funciones — cobertura completa |
-| 💾 Memoria (stdlib) | ✅ **90%** | malloc, free, realloc, calloc + utilidades |
-| ⏰ Tiempo (time) | ✅ **90%** | 14 funciones, tipos completos |
-| 🔢 Tipos enteros (stdint/stddef) | ✅ **90%** | 28 tipos + 7 stddef |
-| 📏 Límites (limits) | ✅ **85%** | 20 constantes |
-| ⚠️ Errores (errno) | ✅ **85%** | 38 códigos de error |
-| ✅ Asserts | ✅ **100%** | assert + static_assert |
-| 🔠 Clasificación de chars (ctype) | ✅ **100%** | 16 funciones (12 C99 + 4 POSIX), 8 macros, lookup table O(1) |
-| 📐 Límites flotantes (float) | ❌ **0%** | Completamente ausente |
-| 📡 Señales (signal) | ❌ **0%** | Completamente ausente |
-| 🌍 Locale | ❌ **0%** | Completamente ausente |
-| ↩️ Saltos no-locales (setjmp) | ❌ **0%** | Completamente ausente |
-| 🌊 Entorno FP (fenv) | ❌ **0%** | Completamente ausente |
-
-### 6.3 Cobertura Global Estimada
-
-```
-╔═══════════════════════════════════════════════════════════╗
-║                                                           ║
-║   COBERTURA C99:  █████████████████░░░░░░░░░  ~65%       ║
-║   COBERTURA C11:  ██████████░░░░░░░░░░░░░░░░  ~40%       ║
-║   HEADERS EXT:    ████░░░░░░░░░░░░░░░░░░░░░░  ~15%       ║
-║   BUILTINS GCC:   ████████████████████░░░░░░  ~75%       ║
-║   PLATAFORMA:     ██████████████████████████  ~95%       ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
+```text
+source.c
+  → CPreprocessor
+  → CLexer
+  → CParser
+  → CTranslationUnit
+  → CToIR
+  → Program
+  → IsaCompiler x64
+  → PE/Windows binary
 ```
 
-### 6.4 Veredicto
+### Componentes principales
 
-| Métrica | Valor |
-|---|---|
-| **¿Puede compilar "Hello World"?** | ✅ Sí |
-| **¿Puede compilar programas C simples?** | ✅ Sí |
-| **¿Puede compilar proyectos C medianos?** | ⚠️ Depende de headers usados |
-| **¿Conformidad C99 completa?** | ❌ No — faltan 12 headers |
-| **¿Conformidad C11 completa?** | ❌ No — faltan 5 headers adicionales |
-| **¿Viable para FastOS?** | ✅ Sí — los módulos de plataforma están sólidos |
+| Componente | Ubicación | Estado | Rol |
+|---|---|---|---|
+| Preprocesador | `adeb-frontend-c/src/preprocessor.rs` | ✅ | `#include`, `#define`, `#if/#ifdef/#ifndef` y expansión de macros |
+| Lexer | `adeb-frontend-c/src/parse/lexer.rs` | ✅ | Tokenización de C |
+| Parser | `adeb-frontend-c/src/parse/parser.rs` | ✅ | AST C completo de alto nivel |
+| AST C | `adeb-frontend-c/src/ast.rs` | ✅ | Representación de tipos, expresiones, statements y top-level |
+| Lowering C → IR | `adeb-frontend-c/src/lower/to_ir.rs` | ✅ | Conversión a `Program` interno |
+| IR / middle-end | `adeb-middle` | ✅ | Infraestructura de IR y optimización |
+| Backend x64 | `adeb-backend-x64` | ✅ | Generación de máquina/PE |
+| Driver CLI | `ADead-BIB-Main/src/main.rs` | ✅ | Orquestación y modo paso a paso |
+
+### Transparencia interna: modo `step`
+
+El compilador ya no se comporta como caja negra cuando se invoca en modo de inspección:
+
+```bash
+adB step Test_c/01_ctype_basic.c
+adB cc Test_c/01_ctype_basic.c -step
+adB run Test_c/01_ctype_basic.c -step
+```
+
+El modo `step` muestra:
+
+1. **Preprocessor**  
+   - headers resueltos  
+   - fuente preprocesada completa
+2. **Lexical Analysis**  
+   - lista de tokens  
+   - línea de origen de cada token
+3. **Syntactic Analysis**  
+   - `CTranslationUnit` completo
+4. **Semantic Analysis**  
+   - snapshot de símbolos recolectados  
+   - funciones, prototipos, globals, typedefs, structs, enums  
+   - detección simple de duplicados
+5. **IR Generation**  
+   - `Program` intermedio completo
+6. **Code Generation**  
+   - tamaño de secciones  
+   - offsets relevantes  
+   - preview hexadecimal de código y datos
+
+### Limitación actual del modo `step`
+
+La fase “semántica” mostrada hoy es una **vista estructural del AST y símbolos** derivada del frontend C. Es extremadamente útil para depuración y trazabilidad, pero aún no equivale a un verificador semántico C completo con todas las reglas formales de compatibilidad, scopes y conversiones del estándar.
 
 ---
 
-> **Conclusión:** La stdlib de ADead-BIB cubre los módulos **más usados** de C con solidez (stdio, stdlib, string, math, time, **ctype**). Con `fastos_ctype.rs` completado (16 funciones, 8 macros, lookup table O(1), tests), la cobertura C99 sube a ~65%. La brecha principal está en headers como float.h, signal.h, locale.h, setjmp.h, fenv.h y stdarg.h dedicado. Las **Fases 1 y 2** de las recomendaciones llevarían la cobertura C99 a ~85-90%, cubriendo la gran mayoría del código C del mundo real.
+## 3. Soporte actual del frontend C
+
+### 3.1 Características ya soportadas
+
+| Categoría | Estado | Detalle |
+|---|---|---|
+| Funciones | ✅ | definiciones y prototipos |
+| Variables globales | ✅ | con y sin inicializador |
+| Tipos primitivos | ✅ | `char`, `short`, `int`, `long`, `long long`, `float`, `double`, `_Bool` |
+| Calificadores | ✅ | `const`, `volatile`, `signed`, `unsigned` |
+| Punteros | ✅ | punteros simples y múltiples |
+| Arrays | ✅ | arrays con tamaño y sin tamaño |
+| Structs | ✅ | structs regulares y miembros anónimos soportados |
+| Enums | ✅ | enumeraciones con valores explícitos |
+| Typedef | ✅ | alias de tipos |
+| Expresiones | ✅ | binarias, unarias, casts, llamadas, ternario |
+| Control de flujo | ✅ | `if`, `else`, `for`, `while`, `do-while`, `switch`, `break`, `continue`, `return` |
+| Inicialización básica | ✅ | inicializadores sencillos y por llaves en varios casos |
+| Literales | ✅ | enteros, flotantes, chars, strings, hexadecimales |
+| Preprocesado básico | ✅ | `#include`, macros objeto y función, `#if` simples |
+| Compatibilidad de extensiones | ⚠️ | parte de GCC/MSVC está stubbeada o tolerada |
+
+### 3.2 Casos límite ya cubiertos por pruebas
+
+| Caso | Estado |
+|---|---|
+| `ctype.h` básico | ✅ |
+| `ctype.h` extendido | ✅ |
+| Uso real de `ctype` en loops/parser mini-real | ✅ |
+| Casos límite ASCII/NUL/DEL/EOF | ✅ |
+| `printf` con formatos básicos | ✅ |
+| `do-while`, `switch`, punteros, casts, `sizeof`, enums, typedefs | ✅ |
+| Globales no inicializadas | ✅ |
+| Arrays y expresiones compuestas | ✅ |
+| Structs anidados / múltiples | ✅ |
+
+### 3.3 Mejoras recientes del frontend
+
+| Mejora | Impacto |
+|---|---|
+| Miembros anónimos `struct/union` | Mayor cercanía a C11 real |
+| Expansión de macros segura | Evita reemplazos incorrectos en strings y comentarios |
+| Macro función con espacio antes de `(` | Mayor tolerancia a código C del mundo real |
+| Fixtures reales `Test_c/*.c` | Pruebas de integración más representativas |
+
+---
+
+## 4. Estado actual de headers y stdlib C
+
+El frontend C resuelve actualmente **107 entradas de headers** en `stdlib.rs`. Esto incluye biblioteca estándar, sistema, POSIX, red, multimedia, GPU, compatibilidad Windows y varios stubs externos.
+
+### 4.1 Headers estándar C mapeados directamente
+
+| Header | Estado real |
+|---|---|
+| `<stdio.h>` | ✅ Mapeado |
+| `<stdlib.h>` | ✅ Mapeado |
+| `<string.h>` | ✅ Mapeado |
+| `<strings.h>` | ✅ Mapeado |
+| `<math.h>` | ✅ Mapeado |
+| `<ctype.h>` | ✅ Mapeado |
+| `<stdint.h>` | ✅ Mapeado |
+| `<inttypes.h>` | ✅ Mapeado al mismo bloque base que `stdint.h` |
+| `<stdbool.h>` | ✅ Mapeado |
+| `<stddef.h>` | ✅ Mapeado |
+| `<stdarg.h>` | ✅ Mapeado |
+| `<limits.h>` | ✅ Mapeado |
+| `<float.h>` | ✅ Mapeado |
+| `<errno.h>` | ✅ Mapeado |
+| `<assert.h>` | ✅ Mapeado |
+| `<signal.h>` | ✅ Mapeado |
+| `<setjmp.h>` | ✅ Mapeado |
+| `<time.h>` | ✅ Mapeado |
+| `<locale.h>` | ✅ Mapeado |
+
+### 4.2 Headers C adicionales resueltos vía `compiler_extensions`
+
+| Header | Estado |
+|---|---|
+| `<complex.h>` | ⚠️ Stub / extensión |
+| `<wchar.h>` | ⚠️ Stub / extensión |
+| `<wctype.h>` | ⚠️ Stub / extensión |
+| `<uchar.h>` | ⚠️ Stub / extensión |
+| `<tgmath.h>` | ⚠️ Stub / extensión |
+
+### 4.3 Interpretación correcta de “soporte”
+
+Es importante distinguir dos niveles:
+
+| Nivel | Significado |
+|---|---|
+| **Header resuelto** | El preprocesador puede inyectar definiciones, tipos, macros o prototipos para que el parsing avance |
+| **Soporte completo del estándar** | El compilador implementa semántica, lowering, runtime y comportamiento observable equivalentes al estándar |
+
+Hoy ADead-BIB tiene **muy buen avance en resolución de headers** y **cobertura útil de frontend**, pero eso **no implica** que todos esos headers estén implementados con semántica y runtime completos.
+
+---
+
+## 5. Qué ya está sólido
+
+### 5.1 Zonas maduras
+
+| Área | Estado | Nota |
+|---|---|---|
+| `stdio` / `stdlib` / `string` / `math` / `time` | ✅ Fuerte | buena base para ejemplos y programas medianos |
+| `ctype` | ✅ Muy sólido | 16 funciones, 8 macros, lookup table O(1), fixtures dedicados |
+| Resolución de headers | ✅ Fuerte | gran cobertura nominal |
+| Lowering a IR | ✅ Fuerte | amplio set de tests |
+| Backend x64 PE | ✅ Operativo | genera binarios válidos |
+| Inspección paso a paso | ✅ Nueva capacidad clave | permite auditar el compilador internamente |
+
+### 5.2 Validación actual
+
+| Validación | Resultado |
+|---|---|
+| `cargo test -p adeb-frontend-c` | ✅ 78 tests OK |
+| `cargo check -p adeb-frontend-c` | ✅ OK |
+| `cargo check -p adeb-middle` | ✅ OK |
+| `cargo check -p adeb-backend-x64` | ✅ OK |
+
+---
+
+## 6. Pendientes reales para hablar de “C completo”
+
+### 6.1 Pendientes del lenguaje
+
+| Área | Estado | Pendiente |
+|---|---|---|
+| Scope y semántica C formal | ⚠️ Parcial | tabla de símbolos canónica, resolución completa de nombres y reglas de scope |
+| Conversión aritmética usual | ⚠️ Parcial | reglas completas de promotions/conversions |
+| Variádicas | ⚠️ Parcial | `stdarg` está mapeado, pero falta soporte más profundo de semántica/runtime |
+| `setjmp/longjmp` real | ⚠️ Stub | falta implementación real de comportamiento |
+| Señales / locale | ⚠️ Stub | mapeo disponible, runtime incompleto |
+| Floating environment | ❌ Ausente | `fenv.h` sigue fuera |
+| `iso646.h` | ❌ Ausente | trivial, pero todavía no mapeado |
+| Wide-char / Unicode C | ⚠️ Parcial | headers presentes como stubs, soporte incompleto |
+| Complejos / type-generic math | ⚠️ Parcial | stubs presentes, comportamiento incompleto |
+
+### 6.2 Pendientes de plataforma y ecosistema
+
+| Área | Estado actual |
+|---|---|
+| POSIX funcional | ⚠️ Muchos headers, poca implementación real |
+| Networking real | ⚠️ Headers presentes, stack funcional pendiente |
+| Multimedia / imágenes / audio | ⚠️ Mayormente stubs |
+| Librerías externas grandes | ⚠️ Resueltas nominalmente, no integradas de forma plena |
+| Portabilidad más allá de PE/x64 | ⚠️ Pipeline C validado sobre ruta x64/PE |
+
+---
+
+## 7. Cobertura estimada actualizada
+
+Estas cifras deben leerse como **estimaciones operativas**, no como certificación formal del estándar.
+
+### 7.1 Cobertura por dimensión
+
+| Dimensión | Estimación | Comentario |
+|---|---|---|
+| Parsing de C usado en código real pequeño/mediano | **Alta** | suficiente para ejemplos y varias pruebas no triviales |
+| Resolución nominal de headers C/POSIX/ext | **Alta** | 107 headers mapeados |
+| Semántica C estricta y completa | **Media-baja** | faltan reglas formales y casos avanzados |
+| Runtime/ABI de toda la stdlib declarada | **Media-baja** | muchos headers son stubs o prototipos |
+| Transparencia y depuración interna | **Alta** | nuevo modo `step` reduce opacidad del pipeline |
+
+### 7.2 Veredicto práctico
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Compila programas C simples? | ✅ Sí |
+| ¿Compila programas medianos con subconjunto razonable del lenguaje? | ✅ Sí, dependiendo de headers y constructs usados |
+| ¿Tiene visibilidad interna del pipeline? | ✅ Sí, ahora con `step` |
+| ¿Es ya un compilador C99/C11 completamente conforme? | ❌ No todavía |
+| ¿Está mucho más cerca de una base seria de compilador C? | ✅ Sí |
+
+---
+
+## 8. Hoja de ruta recomendada
+
+### Fase A — Semántica real de C
+
+1. Construir tabla de símbolos jerárquica por scope
+2. Registrar tipos efectivos por expresión y statement
+3. Validar conversiones implícitas, promotions y punteros
+4. Exponer esa semántica también en el modo `step`
+
+### Fase B — Completar headers críticos
+
+1. `fenv.h`
+2. `iso646.h`
+3. `stdarg` más profundo
+4. `wchar.h` / `wctype.h` con soporte real
+5. `complex.h` / `tgmath.h`
+
+### Fase C — Runtime y ecosistema
+
+1. POSIX utilizable
+2. Networking funcional
+3. `zlib` y librerías base muy usadas
+4. mayor robustez en ABI y tests end-to-end de binarios
+
+---
+
+## 9. Conclusión
+
+ADead-BIB ya dispone de un **frontend C útil, extensible y verificable**, con capacidad real de compilar, bajar a IR y generar binarios nativos. El progreso reciente más importante no es solo soporte sintáctico: también se ha ganado **observabilidad** del compilador gracias al nuevo modo `step`, que vuelve explícitas las transformaciones internas del pipeline.
+
+La principal brecha restante no es ya “arrancar el compilador”, sino **cerrar la distancia entre parsing funcional y conformidad completa del lenguaje C**, sobre todo en semántica rigurosa, runtime de headers declarados y soporte real de bibliotecas del ecosistema.
+
+En términos prácticos: **ADead-BIB ya no es una caja negra ni un parser experimental; es una base de compilador C seria, pero todavía no un C99/C11 completo certificado.**
