@@ -15,6 +15,7 @@ pub struct CParser {
     pos: usize,
     /// Known typedef names so we can recognize them as type starters
     typedef_names: std::collections::HashSet<String>,
+    anonymous_struct_fields: Vec<CStructField>,
 }
 
 impl CParser {
@@ -24,6 +25,7 @@ impl CParser {
             lines,
             pos: 0,
             typedef_names: std::collections::HashSet::new(),
+            anonymous_struct_fields: Vec::new(),
         }
     }
 
@@ -647,10 +649,18 @@ impl CParser {
     fn parse_struct_fields(&mut self) -> Result<Vec<CStructField>, String> {
         let mut fields = Vec::new();
         while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
+            if !self.anonymous_struct_fields.is_empty() {
+                fields.append(&mut self.anonymous_struct_fields);
+                continue;
+            }
             let save = self.pos;
             match self.parse_one_struct_field() {
                 Ok(Some(f)) => fields.push(f),
-                Ok(None) => { /* anonymous fields were flattened via extend */ }
+                Ok(None) => {
+                    if !self.anonymous_struct_fields.is_empty() {
+                        fields.append(&mut self.anonymous_struct_fields);
+                    }
+                }
                 Err(_) => {
                     // Resilient: skip unparseable field to next ;
                     self.pos = save;
@@ -702,11 +712,7 @@ impl CParser {
                 self.expect(&CToken::RBrace)?;
                 if *self.current() == CToken::Semicolon {
                     self.advance();
-                    // Flatten anonymous members — we can't return them directly,
-                    // so return None and the caller doesn't push anything.
-                    // Actually we need the caller to know about them.
-                    // Use a different approach: return first inner field, push rest via Err trick
-                    // Simpler: just return None and skip (fields already collected by recursive call)
+                    self.anonymous_struct_fields.extend(inner_fields);
                     return Ok(None);
                 } else if let CToken::Identifier(fname) = self.current().clone() {
                     self.advance();
@@ -1862,8 +1868,8 @@ impl CParser {
 
 #[cfg(test)]
 mod tests {
-    use super::super::c_lexer::CLexer;
     use super::*;
+    use crate::c_lexer::CLexer;
 
     fn parse_c(code: &str) -> CTranslationUnit {
         let (tokens, lines) = CLexer::new(code).tokenize();
@@ -1908,6 +1914,31 @@ mod tests {
             CTopLevel::StructDef { name, fields } => {
                 assert_eq!(name, "Point");
                 assert_eq!(fields.len(), 2);
+            }
+            _ => panic!("Expected struct definition"),
+        }
+    }
+
+    #[test]
+    fn test_anonymous_struct_members_are_flattened() {
+        let unit = parse_c(
+            r#"
+            struct Packet {
+                int tag;
+                struct {
+                    int size;
+                    int flags;
+                };
+            };
+        "#,
+        );
+
+        match &unit.declarations[0] {
+            CTopLevel::StructDef { fields, .. } => {
+                assert_eq!(fields.len(), 3);
+                assert_eq!(fields[0].name, "tag");
+                assert_eq!(fields[1].name, "size");
+                assert_eq!(fields[2].name, "flags");
             }
             _ => panic!("Expected struct definition"),
         }

@@ -45,6 +45,7 @@ impl CPreprocessor {
         let mut skip_mode = false;
         let mut skip_depth: i32 = 0;
         let mut skip_else_ok = false;
+        let mut in_block_comment = false;
 
         for (i, line) in source.lines().enumerate() {
             let source_line = i + 1;
@@ -188,7 +189,7 @@ impl CPreprocessor {
                 output.push('\n');
             } else {
                 // Expand macros in regular code lines
-                let expanded = self.expand_macros(line);
+                let expanded = self.expand_macros_preserving_literals(line, &mut in_block_comment);
                 output.push_str(&expanded);
                 output.push('\n');
             }
@@ -289,6 +290,91 @@ impl CPreprocessor {
         result
     }
 
+    fn expand_macros_preserving_literals(
+        &self,
+        line: &str,
+        in_block_comment: &mut bool,
+    ) -> String {
+        if self.macros.is_empty() {
+            return line.to_string();
+        }
+
+        let chars: Vec<char> = line.chars().collect();
+        let mut result = String::with_capacity(line.len());
+        let mut code_chunk = String::new();
+        let mut i = 0;
+
+        while i < chars.len() {
+            if *in_block_comment {
+                if chars[i] == '*' && i + 1 < chars.len() && chars[i + 1] == '/' {
+                    result.push(chars[i]);
+                    result.push(chars[i + 1]);
+                    *in_block_comment = false;
+                    i += 2;
+                } else {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+                continue;
+            }
+
+            if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '/' {
+                if !code_chunk.is_empty() {
+                    result.push_str(&self.expand_macros(&code_chunk));
+                    code_chunk.clear();
+                }
+                result.extend(chars[i..].iter());
+                break;
+            }
+
+            if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+                if !code_chunk.is_empty() {
+                    result.push_str(&self.expand_macros(&code_chunk));
+                    code_chunk.clear();
+                }
+                result.push(chars[i]);
+                result.push(chars[i + 1]);
+                *in_block_comment = true;
+                i += 2;
+                continue;
+            }
+
+            if chars[i] == '"' || chars[i] == '\'' {
+                if !code_chunk.is_empty() {
+                    result.push_str(&self.expand_macros(&code_chunk));
+                    code_chunk.clear();
+                }
+
+                let quote = chars[i];
+                result.push(quote);
+                i += 1;
+                while i < chars.len() {
+                    let ch = chars[i];
+                    result.push(ch);
+                    i += 1;
+                    if ch == '\\' && i < chars.len() {
+                        result.push(chars[i]);
+                        i += 1;
+                        continue;
+                    }
+                    if ch == quote {
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            code_chunk.push(chars[i]);
+            i += 1;
+        }
+
+        if !code_chunk.is_empty() {
+            result.push_str(&self.expand_macros(&code_chunk));
+        }
+
+        result
+    }
+
     /// Replace whole-word occurrences of `name` with `value`
     fn replace_whole_word(&self, text: &str, name: &str, value: &str) -> String {
         let mut result = String::with_capacity(text.len());
@@ -336,7 +422,10 @@ impl CPreprocessor {
                 && &chars[i..i + name_chars.len()] == name_chars.as_slice()
             {
                 let before_ok = i == 0 || !chars[i - 1].is_alphanumeric() && chars[i - 1] != '_';
-                let after_idx = i + name_chars.len();
+                let mut after_idx = i + name_chars.len();
+                while after_idx < chars.len() && chars[after_idx].is_ascii_whitespace() {
+                    after_idx += 1;
+                }
                 if before_ok && after_idx < chars.len() && chars[after_idx] == '(' {
                     // Extract arguments
                     if let Some((args, end_pos)) = self.extract_macro_args(&chars, after_idx) {
@@ -472,5 +561,33 @@ mod tests {
         assert!(result.contains("printf"));
         assert!(result.contains("malloc"));
         assert!(result.contains("strlen"));
+    }
+
+    #[test]
+    fn test_macro_expansion_skips_strings_and_comments() {
+        let mut pp = CPreprocessor::new();
+        let source = r#"
+            #define VALUE 42
+            const char *msg = "VALUE";
+            int x = VALUE; // VALUE
+            /* VALUE */
+        "#;
+        let result = pp.process(source);
+
+        assert!(result.contains(r#""VALUE""#));
+        assert!(result.contains("int x = 42; // VALUE"));
+        assert!(result.contains("/* VALUE */"));
+    }
+
+    #[test]
+    fn test_function_macro_allows_space_before_paren() {
+        let mut pp = CPreprocessor::new();
+        let source = r#"
+            #define ADD(a, b) ((a) + (b))
+            int x = ADD (1, 2);
+        "#;
+        let result = pp.process(source);
+
+        assert!(result.contains("int x = (((1) + (2)));"));
     }
 }

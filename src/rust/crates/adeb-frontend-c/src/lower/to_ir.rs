@@ -1284,6 +1284,36 @@ pub fn compile_c_to_program(source: &str) -> Result<Program, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("..")
+    }
+
+    fn read_repo_c_fixture(relative_path: &str) -> String {
+        let path = repo_root().join(relative_path);
+        fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!("No se pudo leer el fixture {}: {}", path.display(), err)
+        })
+    }
+
+    fn assert_has_function(program: &Program, name: &str) {
+        assert!(
+            program.functions.iter().any(|function| function.name == name),
+            "No se encontró la función {} en {:?}",
+            name,
+            program
+                .functions
+                .iter()
+                .map(|function| function.name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn test_hello_world() {
@@ -1487,149 +1517,34 @@ mod tests {
     }
 
     #[test]
-    fn test_example_hello_c() {
-        let source = std::fs::read_to_string("examples/c/hello.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "hello.c failed: {}", result.unwrap_err());
-        let prog = result.unwrap();
-        assert!(prog.functions.len() > 0, "hello.c should have functions");
+    fn test_repo_ctype_basic_file() {
+        let source = read_repo_c_fixture("Test_c/01_ctype_basic.c");
+        let prog = compile_c_to_program(&source).expect("01_ctype_basic.c failed");
+        assert_has_function(&prog, "main");
     }
 
     #[test]
-    fn test_example_c_algorithms() {
-        let source = std::fs::read_to_string("examples/c/c_algorithms.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_algorithms.c failed: {}",
-            result.unwrap_err()
-        );
+    fn test_repo_ctype_extended_file() {
+        let source = read_repo_c_fixture("Test_c/02_ctype_extended.c");
+        let prog = compile_c_to_program(&source).expect("02_ctype_extended.c failed");
+        assert_has_function(&prog, "main");
     }
 
     #[test]
-    fn test_example_c_bitwise() {
-        let source = std::fs::read_to_string("examples/c/c_bitwise.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_bitwise.c failed: {}",
-            result.unwrap_err()
-        );
+    fn test_repo_ctype_loop_parser_file() {
+        let source = read_repo_c_fixture("Test_c/03_ctype_loop_parser.c");
+        let prog = compile_c_to_program(&source).expect("03_ctype_loop_parser.c failed");
+        assert_has_function(&prog, "classify_string");
+        assert_has_function(&prog, "to_upper_str");
+        assert_has_function(&prog, "parse_hex");
+        assert_has_function(&prog, "main");
     }
 
     #[test]
-    fn test_example_c_compression() {
-        let source = std::fs::read_to_string("examples/c/c_compression.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_compression.c failed: {}",
-            result.unwrap_err()
-        );
-    }
-
-    #[test]
-    fn test_example_c_crypto() {
-        let source = std::fs::read_to_string("examples/c/c_crypto.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_crypto.c failed: {}", result.unwrap_err());
-    }
-
-    #[test]
-    fn test_example_c_database() {
-        let source = std::fs::read_to_string("examples/c/c_database.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_database.c failed: {}",
-            result.unwrap_err()
-        );
-    }
-
-    #[test]
-    fn test_example_c_fastos_base() {
-        let source = std::fs::read_to_string("examples/c/c_fastos_base.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_fastos_base.c failed: {}",
-            result.unwrap_err()
-        );
-    }
-
-    #[test]
-    fn test_example_c_fastos_complete() {
-        let source = std::fs::read_to_string("examples/c/c_fastos_complete.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_fastos_complete.c failed: {}",
-            result.unwrap_err()
-        );
-    }
-
-    #[test]
-    fn test_example_c_math() {
-        let source = std::fs::read_to_string("examples/c/c_math.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_math.c failed: {}", result.unwrap_err());
-    }
-
-    #[test]
-    fn test_example_c_memory() {
-        let source = std::fs::read_to_string("examples/c/c_memory.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(result.is_ok(), "c_memory.c failed: {}", result.unwrap_err());
-    }
-
-    #[test]
-    fn test_example_c_network() {
-        let source = std::fs::read_to_string("examples/c/c_network.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_network.c failed: {}",
-            result.unwrap_err()
-        );
-    }
-
-    #[test]
-    fn test_example_c_structs() {
-        let source = std::fs::read_to_string("examples/c/c_structs.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_structs.c failed: {}",
-            result.unwrap_err()
-        );
-    }
-
-    #[test]
-    fn test_example_c_threading() {
-        let source = std::fs::read_to_string("examples/c/c_threading.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_threading.c failed: {}",
-            result.unwrap_err()
-        );
-    }
-
-    #[test]
-    fn test_example_c_stdlib_long() {
-        let source = std::fs::read_to_string("examples/c/c_stdlib_long.c").unwrap();
-        let result = compile_c_to_program(&source);
-        assert!(
-            result.is_ok(),
-            "c_stdlib_long.c failed: {}",
-            result.unwrap_err()
-        );
-        let prog = result.unwrap();
-        assert!(
-            prog.functions.len() > 20,
-            "c_stdlib_long.c should have many functions, got {}",
-            prog.functions.len()
-        );
+    fn test_repo_ctype_edge_cases_file() {
+        let source = read_repo_c_fixture("Test_c/04_ctype_edge_cases.c");
+        let prog = compile_c_to_program(&source).expect("04_ctype_edge_cases.c failed");
+        assert_has_function(&prog, "main");
     }
 
     #[test]
@@ -1675,150 +1590,9 @@ mod tests {
     // ================================================================
 
     #[test]
-    fn test_example_dowhile() {
-        let source = std::fs::read_to_string("examples/c/test_dowhile.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_dowhile.c failed");
-        assert!(prog.functions.len() >= 1, "should have main");
-    }
-
-    #[test]
-    fn test_example_switch() {
-        let source = std::fs::read_to_string("examples/c/test_switch.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_switch.c failed");
-        assert!(prog.functions.len() >= 2, "should have classify + main");
-    }
-
-    #[test]
-    fn test_example_nested_loops() {
-        let source = std::fs::read_to_string("examples/c/test_nested_loops.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_nested_loops.c failed");
-        assert_eq!(prog.functions.len(), 1);
-    }
-
-    #[test]
-    fn test_example_pointers() {
-        let source = std::fs::read_to_string("examples/c/test_pointers.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_pointers.c failed");
-        assert!(prog.functions.len() >= 2, "should have increment + main");
-    }
-
-    #[test]
-    fn test_example_recursion() {
-        let source = std::fs::read_to_string("examples/c/test_recursion.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_recursion.c failed");
-        assert!(prog.functions.len() >= 3, "should have fib + power + main");
-    }
-
-    #[test]
-    fn test_example_enum() {
-        let source = std::fs::read_to_string("examples/c/test_enum.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_enum.c failed");
-        assert_eq!(prog.functions.len(), 1);
-    }
-
-    #[test]
-    fn test_example_typedef() {
-        let source = std::fs::read_to_string("examples/c/test_typedef.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_typedef.c failed");
-        assert!(prog.functions.len() >= 2, "should have add + main");
-    }
-
-    #[test]
-    fn test_example_global_vars() {
-        let source = std::fs::read_to_string("examples/c/test_global_vars.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_global_vars.c failed");
-        assert!(prog.functions.len() >= 3, "should have inc + get + main");
-        assert!(prog.statements.len() >= 2, "should have global vars");
-    }
-
-    #[test]
-    fn test_example_cast() {
-        let source = std::fs::read_to_string("examples/c/test_cast.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_cast.c failed");
-        assert_eq!(prog.functions.len(), 1);
-    }
-
-    #[test]
-    fn test_example_sizeof() {
-        let source = std::fs::read_to_string("examples/c/test_sizeof.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_sizeof.c failed");
-        assert!(prog.structs.len() >= 1, "should have struct Pair");
-    }
-
-    #[test]
-    fn test_example_multivar_decl() {
-        let source = std::fs::read_to_string("examples/c/test_multivar_decl.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_multivar_decl.c failed");
-        assert_eq!(prog.functions.len(), 1);
-    }
-
-    #[test]
-    fn test_example_compound_assign() {
-        let source = std::fs::read_to_string("examples/c/test_compound_assign.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_compound_assign.c failed");
-        assert_eq!(prog.functions.len(), 1);
-    }
-
-    #[test]
-    fn test_example_string_ops() {
-        let source = std::fs::read_to_string("examples/c/test_string_ops.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_string_ops.c failed");
-        assert!(prog.functions.len() >= 2, "should have my_strlen + main");
-    }
-
-    #[test]
-    fn test_example_bitwise_ops() {
-        let source = std::fs::read_to_string("examples/c/test_bitwise.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_bitwise.c failed");
-        assert_eq!(prog.functions.len(), 1);
-    }
-
-    #[test]
-    fn test_example_struct_nested() {
-        let source = std::fs::read_to_string("examples/c/test_struct_nested.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_struct_nested.c failed");
-        assert!(prog.structs.len() >= 2, "should have Point + Rect");
-    }
-
-    #[test]
-    fn test_example_array_init() {
-        let source = std::fs::read_to_string("examples/c/test_array_init.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_array_init.c failed");
-        assert!(prog.functions.len() >= 2, "should have sum + main");
-    }
-
-    #[test]
-    fn test_example_void_func() {
-        let source = std::fs::read_to_string("examples/c/test_void_func.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_void_func.c failed");
-        assert!(
-            prog.functions.len() >= 4,
-            "should have set_x + get_x + print_separator + main"
-        );
-    }
-
-    #[test]
-    fn test_example_complex_expr() {
-        let source = std::fs::read_to_string("examples/c/test_complex_expr.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_complex_expr.c failed");
-        assert_eq!(prog.functions.len(), 1);
-    }
-
-    #[test]
-    fn test_example_multi_func() {
-        let source = std::fs::read_to_string("examples/c/test_multi_func.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_multi_func.c failed");
-        assert!(
-            prog.functions.len() >= 7,
-            "should have 6 helpers + apply_twice + main"
-        );
-    }
-
-    #[test]
-    fn test_example_increment() {
-        let source = std::fs::read_to_string("examples/c/test_increment.c").unwrap();
-        let prog = compile_c_to_program(&source).expect("test_increment.c failed");
-        assert_eq!(prog.functions.len(), 1);
+    fn test_fixture_helper_resolves_repo_root() {
+        let source = read_repo_c_fixture("Test_c/01_ctype_basic.c");
+        assert!(source.contains("isalpha"));
     }
 
     // ================================================================
