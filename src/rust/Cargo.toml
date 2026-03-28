@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "crates/adeb-core",
-    "crates/adeb-frontend-c",
-    "crates/adeb-frontend-cpp",
-    "crates/adeb-frontend-cuda",
-    "crates/adeb-middle",
-    "crates/adeb-backend-x64",
-    "crates/adeb-backend-gpu",
-    "crates/adeb-platform",
-    "crates/adeb-bg",
-    "crates/adeb-stdlib",
-    "crates/ADead-BIB-Main",
+    "crates/app/ADead-BIB-Main",
+    "crates/frontend/c/adeb-frontend-c",
+    "crates/frontend/cpp/adeb-frontend-cpp",
+    "crates/frontend/cuda/adeb-frontend-cuda",
+    "crates/middle/adeb-middle",
+    "crates/backend/cpu/adeb-backend-x64",
+    "crates/backend/gpu/adeb-backend-gpu",
+    "crates/shared/adeb-core",
+    "crates/shared/adeb-platform",
+    "crates/shared/adeb-stdlib",
+    "crates/security/adeb-bg",
 ]
 resolver = "2"
 
@@ -42,7 +42,13 @@ wgpu = { version = "0.19" }
 ash = { version = "0.37" }
 
 # Internal crates
-adeb-core = { path = "crates/adeb-core" }
-adeb-middle = { path = "crates/adeb-middle" }
-adeb-backend-x64 = { path = "crates/adeb-backend-x64" }
-adeb-platform = { path = "crates/adeb-platform" }
+adeb-core = { path = "crates/shared/adeb-core" }
+adeb-frontend-c = { path = "crates/frontend/c/adeb-frontend-c" }
+adeb-frontend-cpp = { path = "crates/frontend/cpp/adeb-frontend-cpp" }
+adeb-frontend-cuda = { path = "crates/frontend/cuda/adeb-frontend-cuda" }
+adeb-middle = { path = "crates/middle/adeb-middle" }
+adeb-backend-x64 = { path = "crates/backend/cpu/adeb-backend-x64" }
+adeb-backend-gpu = { path = "crates/backend/gpu/adeb-backend-gpu" }
+adeb-platform = { path = "crates/shared/adeb-platform" }
+adeb-bg = { path = "crates/security/adeb-bg" }
+adeb-stdlib = { path = "crates/shared/adeb-stdlib" }

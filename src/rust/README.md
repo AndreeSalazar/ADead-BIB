@@ -27,31 +27,29 @@ src/rust/
 └── toolchain/     # 8 items
 ```
 
-### Nueva (src/rust_v2/) - Workspace Organizado
+### Nueva (src/rust/) - Workspace Organizado por dominios
 ```
-src/rust_v2/
+src/rust/
 ├── Cargo.toml           # Workspace root
 ├── crates/              # Crates independientes
-│   ├── adev-core/       # Core types, diagnostics, symbols
-│   ├── adev-frontend-c/      # Compilador C completo
-│   ├── adev-frontend-cpp/    # Compilador C++ completo
-│   ├── adev-frontend-cuda/   # Compilador CUDA/HIP
-│   ├── adev-middle/          # IR + optimizaciones
-│   ├── adev-backend-x64/     # Backend x86-64
-│   ├── adev-backend-gpu/     # Backends GPU
-│   ├── adev-platform/        # PE/ELF/Mach-O
-│   ├── adev-bg/              # Binary Guardian
-│   ├── adev-stdlib/          # stdlib headers
-│   └── adev-driver/          # CLI + driver
-├── tools/               # Utilidades externas
-│   ├── adev-lsp/        # Language Server
-│   ├── adev-fmt/        # Formatter
-│   └── adev-analyze/    # Static analysis
-├── testdata/            # Datos de prueba
-│   ├── c99-canon/
-│   ├── cpp98-canon/
-│   ├── cuda-samples/
-│   └── js-samples/
+│   ├── app/
+│   │   └── ADead-BIB-Main/           # CLI + driver
+│   ├── frontend/
+│   │   ├── c/adeb-frontend-c/        # Compilador C completo
+│   │   ├── cpp/adeb-frontend-cpp/    # Compilador C++ completo
+│   │   ├── cuda/adeb-frontend-cuda/  # Compilador CUDA/HIP
+│   │   └── js/                       # Espacio reservado para JS
+│   ├── middle/
+│   │   └── adeb-middle/              # IR + análisis + UB + optimizaciones
+│   ├── backend/
+│   │   ├── cpu/adeb-backend-x64/     # Backend x86-64
+│   │   └── gpu/adeb-backend-gpu/     # Backends GPU
+│   ├── shared/
+│   │   ├── adeb-core/                # Core types, diagnostics, symbols
+│   │   ├── adeb-platform/            # PE/ELF/Po
+│   │   └── adeb-stdlib/              # stdlib headers
+│   └── security/
+│       └── adeb-bg/                  # Binary Guardian
 └── resources/           # Datos estáticos
     └── errors.json
 ```
@@ -71,16 +69,16 @@ cargo build --workspace  # 11 crates en paralelo
 
 ### 2. **Caching por Módulo**
 ```
-crates/adev-frontend-c/    # Cache independiente
-crates/adev-backend-x64/     # No se invalida si cambia frontend
+crates/frontend/c/adeb-frontend-c/      # Cache independiente
+crates/backend/cpu/adeb-backend-x64/    # No se invalida si cambia frontend
 ```
 
 ### 3. **Features Condicionales**
 ```toml
 [features]
 default = ["cuda", "gpu"]
-cuda = ["adev-frontend-cuda"]
-gpu = ["adev-backend-gpu"]
+cuda = ["adeb-frontend-cuda"]
+gpu = ["adeb-backend-gpu"]
 ```
 ```bash
 cargo build --no-default-features  # Solo CPU
@@ -89,36 +87,36 @@ cargo build --features cuda       # + CUDA
 
 ### 4. **Testing Co-localizado**
 ```
-crates/adev-frontend-c/
+crates/frontend/c/adeb-frontend-c/
 ├── src/
 └── tests/
     └── canon/          # C99 Canon tests aquí
 
 # Ejecutar solo tests de C
-cargo test -p adev-frontend-c
+cargo test -p adeb-frontend-c
 ```
 
 ### 5. **Separación Frontend/Lenguaje**
 
 | Lenguaje | Antes | Después |
 |----------|-------|---------|
-| C | `frontend/c/` | `adev-frontend-c/` (crate) |
-| C++ | `frontend/cpp/` | `adev-frontend-cpp/` (crate) |
-| CUDA | `backend/gpu/cudead/` | `adev-frontend-cuda/` (crate) |
-| JS | `frontend/js/` | `adev-frontend-js/` (futuro) |
+| C | `frontend/c/` | `crates/frontend/c/adeb-frontend-c/` |
+| C++ | `frontend/cpp/` | `crates/frontend/cpp/adeb-frontend-cpp/` |
+| CUDA | `backend/gpu/cudead/` | `crates/frontend/cuda/adeb-frontend-cuda/` |
+| JS | `frontend/js/` | `crates/frontend/js/` (reservado) |
 
 ### 6. **API Pública Clara**
 
 ```rust
-// En adev-core/src/lib.rs
+// En adeb-core/src/lib.rs
 pub mod diagnostics;
 pub mod source;
 pub mod symbols;
 
-// En adev-driver/src/main.rs
-use adev_core::diagnostics::Diagnostic;
-use adev_frontend_c::Compiler as CCompiler;
-use adev_frontend_cpp::Compiler as CppCompiler;
+// En ADead-BIB-Main/src/main.rs
+use adeb_core::diagnostics::Diagnostic;
+use adeb_frontend_c::CLexer;
+use adeb_frontend_cpp::compile_cpp_to_program;
 ```
 
 ---
@@ -150,10 +148,10 @@ use adev_frontend_cpp::Compiler as CppCompiler;
 cargo build --workspace
 
 # Build solo C frontend
-cargo build -p adev-frontend-c
+cargo build -p adeb-frontend-c
 
 # Tests de C
- cargo test -p adev-frontend-c
+cargo test -p adeb-frontend-c
 
 # Release con todas las features
 cargo build --release --all-features
@@ -171,35 +169,33 @@ cargo doc --workspace --open
 
 1. ✅ Crear estructura de carpetas
 2. ✅ Crear Cargo.toml de workspace
-3. ✅ Copiar archivos principales
-4. ⏳ Actualizar imports en cada archivo
-5. ⏳ Mover tests a ubicaciones co-localizadas
-6. ⏳ Crear re-exports en lib.rs de cada crate
-7. ⏳ Verificar compilación
-8. ⏳ Migrar de src/rust a src/rust_v2
+3. ✅ Mover crates a dominios dedicados
+4. ✅ Actualizar paths del workspace y dependencias internas
+5. ✅ Reservar carpeta específica para JS
+6. ✅ Reubicar middle y ub_detector por dominio
+7. ⏳ Expandir tests e integración co-localizada por lenguaje
+8. ⏳ Verificar workspace completo y crates opcionales
 
 ---
 
 ## Arquitectura de Dependencias
 
 ```
-adev-driver (CLI)
-    ├── adev-core
-    ├── adev-frontend-c
-    ├── adev-frontend-cpp
-    ├── adev-frontend-cuda (optional)
-    ├── adev-middle
-    ├── adev-backend-x64
-    ├── adev-backend-gpu (optional)
-    ├── adev-platform
-    ├── adev-bg
-    └── adev-stdlib
+ADead-BIB-Main (app/CLI)
+    ├── adeb-core
+    ├── adeb-frontend-c
+    ├── adeb-frontend-cpp (optional)
+    ├── adeb-frontend-cuda (optional)
+    ├── adeb-middle
+    ├── adeb-backend-x64
+    ├── adeb-backend-gpu (optional)
+    ├── adeb-bg
+    └── adeb-stdlib
 
-adev-frontend-c → adev-core, adev-middle
-adev-middle → adev-core
-adev-backend-x64 → adev-core, adev-middle
-adev-platform → adev-core
-adev-bg → adev-core
+adeb-frontend-c → adeb-core, adeb-middle
+adeb-middle → adeb-core
+adeb-backend-x64 → adeb-core, adeb-middle, adeb-platform
+adeb-bg → adeb-core
 ```
 
 ## Resumen

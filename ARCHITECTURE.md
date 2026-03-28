@@ -93,7 +93,7 @@ NSA abre binario → Google '0x506F4F53' → 0 resultados → "._." 🛸
 C99 / C11 / C++98→C++20 / JavaScript (JsDead-BIB)  código fuente
         │
         ▼
-[ 01 PREPROCESSOR ]    ←── preprocessor/ (C/C++) | js_lexer (JS)
+[ 01 PREPROCESSOR ]    ←── crates/shared/adeb-core/src/preprocessor/ + frontends por lenguaje
   header_main.h resolution COMPLETA
   fastos.bib cache (CACHE HIT = nanosegundos)
   symbol deduplication GLOBAL
@@ -101,7 +101,7 @@ C99 / C11 / C++98→C++20 / JavaScript (JsDead-BIB)  código fuente
   tree shaking preparation
         │
         ▼
-[ 02 LINKER ELIMINATOR ] ←── preprocessor/resolver.rs
+[ 02 LINKER ELIMINATOR ] ←── crates/shared/adeb-core/src/preprocessor/resolver.rs
   Sin .o intermedios — NUNCA
   Sin ld/lld/link.exe — NUNCA
   Unity build automático
@@ -110,7 +110,7 @@ C99 / C11 / C++98→C++20 / JavaScript (JsDead-BIB)  código fuente
   "undefined reference" — NUNCA
         │
         ▼
-[ 03 PARSER / AST ]    ←── frontend/c/ + frontend/cpp/ + frontend/js/
+[ 03 PARSER / AST ]    ←── crates/frontend/c/ + crates/frontend/cpp/ + crates/frontend/cuda/ + crates/frontend/js/
   C99 parser (c_parser.rs)
   C++98 parser (cpp_parser.rs)
   JS parser (js_parser.rs) — JsDead-BIB implícitamente estricto
@@ -118,21 +118,21 @@ C99 / C11 / C++98→C++20 / JavaScript (JsDead-BIB)  código fuente
   macros expandidos completamente
         │
         ▼
-[ 04 IR — ADeadOp ]    ←── middle/ir/
+[ 04 IR — ADeadOp ]    ←── crates/middle/adeb-middle/src/ir/
   AST → operaciones abstractas SSA-form
   tipos explícitos en cada instrucción
   BasicBlocks — sin ambigüedad semántica
   pdp11_heritage.rs — fundación histórica
         │
         ▼
-[ 05 UB DETECTOR ]     ←── middle/ub_detector/ ★ ÚNICO EN EL MUNDO
+[ 05 UB DETECTOR ]     ←── crates/middle/adeb-middle/src/ub_detector/ ★ ÚNICO EN EL MUNDO
   21 tipos de UB detectados
   ANTES del optimizer — cobertura 100% garantizada
   GCC/LLVM lo hacen DESPUÉS → UB escapa ❌
   ADead-BIB: ANTES → ningún UB puede escapar ✓
         │
         ▼
-[ 06 OPTIMIZER ]       ←── optimizer/
+[ 06 OPTIMIZER ]       ←── crates/middle/adeb-middle/src/optimizer/
   Dead code elimination
   Constant folding / propagation
   SIMD code generation
@@ -140,14 +140,14 @@ C99 / C11 / C++98→C++20 / JavaScript (JsDead-BIB)  código fuente
   SIN explotar UB — nunca
         │
         ▼
-[ 07 REGISTER ALLOCATOR ] ←── isa/reg_alloc.rs
+[ 07 REGISTER ALLOCATOR ] ←── crates/backend/cpu/adeb-backend-x64/src/isa/reg_alloc.rs
   TempAllocator (fast path)
   LinearScanAllocator (liveness analysis)
   13 registros físicos x86-64
   Spill automático — stack alignment 16-byte
         │
         ▼
-[ 08 BIT RESOLVER ]    ←── isa/bit_resolver.rs  ★ NUEVO v8.0
+[ 08 BIT RESOLVER ]    ←── crates/backend/cpu/adeb-backend-x64/src/isa/bit_resolver.rs  ★ NUEVO v8.0
   --target decide: 16 / 64 / 128 / 256 bits
   SoaOptimizer: detecta patrones array[8] float
   YmmAllocator: asigna YMM0-YMM15
@@ -155,21 +155,21 @@ C99 / C11 / C++98→C++20 / JavaScript (JsDead-BIB)  código fuente
   AlignEnforcer: 32B alignment automático
         │
         ▼
-[ 09 ISA COMPILER ]    ←── isa/
+[ 09 ISA COMPILER ]    ←── crates/backend/cpu/adeb-backend-x64/src/isa/
   c_isa.rs + cpp_isa.rs
   encoder.rs → bytes x86-64 directos
   vtable / this / constructors (C++)
   layout / sizeof / alignment exacto (C)
         │
         ▼
-[ 10 BG STAMP ]        ←── bg/
+[ 10 BG STAMP ]        ←── crates/security/adeb-bg/src/
   Binary Guardian pre-firma el binario
   Po magic 0x506F4F53 verify
   BG en 256-bit = 8x velocidad vs exploit 64-bit
   5 capas de protección natural
         │
         ▼
-[ 11 OUTPUT DIRECTO ]  ←── output/
+[ 11 OUTPUT DIRECTO ]  ←── crates/shared/adeb-platform/src/
   Sin linker externo — NUNCA
   pe.rs / elf.rs / po.rs
   Po v8.0 header 32 bytes
@@ -242,7 +242,7 @@ SoA<float, 8> positions_y;
 ## BIT RESOLVER — Nuevo v8.0
 
 ```rust
-// isa/bit_resolver.rs — NUEVO v8.0
+// crates/backend/cpu/adeb-backend-x64/src/isa/bit_resolver.rs — NUEVO v8.0
 // No existe en ningún otro compilador del mundo
 
 pub enum BitTarget {
@@ -272,11 +272,11 @@ pub struct BitResolver {
 
 | Archivo | Descripción |
 |---------|-------------|
-| `isa/bit_resolver.rs` | Core — decide 16/64/128/256 según target |
-| `isa/soa_optimizer.rs` | Detecta patrones SoA en IR |
-| `isa/ymm_allocator.rs` | Asigna YMM0-YMM15 — liveness YMM |
-| `isa/vex_emitter.rs` | Genera VEX prefix C4/C5 — instrucciones 256-bit |
-| `output/po.rs` (v8.0) | Po header 32 bytes — sections 256-bit |
+| `crates/backend/cpu/adeb-backend-x64/src/isa/bit_resolver.rs` | Core — decide 16/64/128/256 según target |
+| `crates/backend/cpu/adeb-backend-x64/src/isa/soa_optimizer.rs` | Detecta patrones SoA en IR |
+| `crates/backend/cpu/adeb-backend-x64/src/isa/ymm_allocator.rs` | Asigna YMM0-YMM15 — liveness YMM |
+| `crates/backend/cpu/adeb-backend-x64/src/isa/vex_emitter.rs` | Genera VEX prefix C4/C5 — instrucciones 256-bit |
+| `crates/shared/adeb-platform/src/po.rs` (v8.0) | Po header 32 bytes — sections 256-bit |
 
 ---
 
@@ -313,78 +313,43 @@ pub struct BitResolver {
 
 ---
 
-## Estructura de Directorios v8.0
+## Estructura de Directorios v9.1
 
 ```
 src/rust/
-├── lib.rs
-├── main.rs                       # CLI: adb cc/cxx/build/run/step
-├── builder.rs                    # Orquestador pipeline completo
-│
-├── cli/
-│   └── term.rs                   # ANSI colors, phase bars
-│
-├── preprocessor/                 # SIN CMake SIN Linker NUNCA
-│   ├── resolver.rs               # LINKER ELIMINATOR
-│   ├── dedup.rs                  # Symbol deduplication global
-│   └── expander.rs               # C++17→C++98 (34 features)
-│
-├── stdlib/
-│   ├── header_main.rs            # header_main.h — hereda TODO
-│   ├── c/                        # C99 — 21 headers completos
-│   └── cpp/                      # C++ — 10 módulos
-│
-├── frontend/
-│   ├── c/                        # C99 frontend completo
-│   └── cpp/                      # C++98 frontend completo
-│
-├── middle/
-│   ├── ir/                       # ADeadOp SSA-form
-│   ├── ub_detector/              # 21 tipos UB — ÚNICO MUNDO ★
-│   ├── analysis/                 # CFG, Dominators, Loops
-│   ├── lowering/                 # AST → IR
-│   └── passes/                   # Optimization passes
-│
-├── optimizer/
-│
-├── isa/
-│   ├── bit_resolver.rs           # ★ NUEVO v8.0 — 16/64/128/256
-│   ├── soa_optimizer.rs          # ★ NUEVO v8.0 — SoA detection
-│   ├── ymm_allocator.rs          # ★ NUEVO v8.0 — YMM0-YMM15
-│   ├── vex_emitter.rs            # ★ NUEVO v8.0 — VEX prefix C4/C5
-│   ├── reg_alloc.rs
-│   ├── encoder.rs
-│   └── compiler/
-│
-├── output/
-│   ├── pe.rs                     # Windows PE x64
-│   ├── elf.rs                    # Linux ELF
-│   └── po.rs                     # ★ Po v8.0 — 32 bytes header
-│
-├── backend/
-│   ├── cpu/
-│   │   ├── pe.rs / elf.rs / flat_binary.rs
-│   │   ├── fastos_format.rs      # Po format handler
-│   │   └── os_codegen.rs         # 16/32/64-bit mode codegen
-│   └── gpu/
-│       ├── vulkan_runtime.rs
-│       ├── spirv/
-│       └── cuda/ + hip/
-│
-├── bg/                           # Binary Guardian
-│   ├── analyzer.rs               # BG 256-bit — 8x speed
-│   ├── arch_map.rs
-│   ├── capability.rs
-│   └── policy.rs
-│
-├── runtime/
-│   ├── cpu_detect.rs             # SSE/AVX/AVX2 detection
-│   └── dispatcher.rs
-│
-└── toolchain/
-    ├── gcc_compat.rs
-    ├── msvc_compat.rs
-    └── cpp_name_mangler.rs
+├── Cargo.toml
+├── resources/
+│   └── errors.json
+└── crates/
+    ├── app/
+    │   └── ADead-BIB-Main/                      # CLI, build, step mode
+    ├── frontend/
+    │   ├── c/
+    │   │   └── adeb-frontend-c/                # frontend C
+    │   ├── cpp/
+    │   │   └── adeb-frontend-cpp/              # frontend C++
+    │   ├── cuda/
+    │   │   └── adeb-frontend-cuda/             # frontend CUDA/HIP
+    │   └── js/                                 # reservado para frontend JS
+    ├── middle/
+    │   └── adeb-middle/
+    │       └── src/
+    │           ├── analysis/
+    │           ├── ir/
+    │           ├── optimizer/
+    │           ├── passes.rs
+    │           └── ub_detector/
+    ├── backend/
+    │   ├── cpu/
+    │   │   └── adeb-backend-x64/               # ISA, reg alloc, bit resolver
+    │   └── gpu/
+    │       └── adeb-backend-gpu/               # Vulkan, SPIR-V, CUDA runtime
+    ├── shared/
+    │   ├── adeb-core/                          # AST, diagnostics, symbols, preprocessor
+    │   ├── adeb-platform/                      # PE, ELF, Po
+    │   └── adeb-stdlib/                        # stdlib C/C++/GPU
+    └── security/
+        └── adeb-bg/                            # Binary Guardian
 ```
 
 ---

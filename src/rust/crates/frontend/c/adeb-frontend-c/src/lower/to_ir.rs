@@ -1293,12 +1293,31 @@ mod tests {
             .join("..")
             .join("..")
             .join("..")
+            .join("..")
+            .join("..")
     }
 
     fn read_repo_c_fixture(relative_path: &str) -> String {
-        let path = repo_root().join(relative_path);
-        fs::read_to_string(&path).unwrap_or_else(|err| {
-            panic!("No se pudo leer el fixture {}: {}", path.display(), err)
+        let root = repo_root();
+        let primary = root.join(relative_path);
+        if let Ok(source) = fs::read_to_string(&primary) {
+            return source;
+        }
+
+        let fallback = match relative_path {
+            path if path.starts_with("tests/c/fixtures/") => {
+                root.join(path.replacen("tests/c/fixtures/", "Test_c/", 1))
+            }
+            _ => primary.clone(),
+        };
+
+        fs::read_to_string(&fallback).unwrap_or_else(|err| {
+            panic!(
+                "No se pudo leer el fixture {} ni el fallback {}: {}",
+                primary.display(),
+                fallback.display(),
+                err
+            )
         })
     }
 
@@ -1518,21 +1537,21 @@ mod tests {
 
     #[test]
     fn test_repo_ctype_basic_file() {
-        let source = read_repo_c_fixture("Test_c/01_ctype_basic.c");
+        let source = read_repo_c_fixture("tests/c/fixtures/01_ctype_basic.c");
         let prog = compile_c_to_program(&source).expect("01_ctype_basic.c failed");
         assert_has_function(&prog, "main");
     }
 
     #[test]
     fn test_repo_ctype_extended_file() {
-        let source = read_repo_c_fixture("Test_c/02_ctype_extended.c");
+        let source = read_repo_c_fixture("tests/c/fixtures/02_ctype_extended.c");
         let prog = compile_c_to_program(&source).expect("02_ctype_extended.c failed");
         assert_has_function(&prog, "main");
     }
 
     #[test]
     fn test_repo_ctype_loop_parser_file() {
-        let source = read_repo_c_fixture("Test_c/03_ctype_loop_parser.c");
+        let source = read_repo_c_fixture("tests/c/fixtures/03_ctype_loop_parser.c");
         let prog = compile_c_to_program(&source).expect("03_ctype_loop_parser.c failed");
         assert_has_function(&prog, "classify_string");
         assert_has_function(&prog, "to_upper_str");
@@ -1542,7 +1561,7 @@ mod tests {
 
     #[test]
     fn test_repo_ctype_edge_cases_file() {
-        let source = read_repo_c_fixture("Test_c/04_ctype_edge_cases.c");
+        let source = read_repo_c_fixture("tests/c/fixtures/04_ctype_edge_cases.c");
         let prog = compile_c_to_program(&source).expect("04_ctype_edge_cases.c failed");
         assert_has_function(&prog, "main");
     }
@@ -1591,7 +1610,7 @@ mod tests {
 
     #[test]
     fn test_fixture_helper_resolves_repo_root() {
-        let source = read_repo_c_fixture("Test_c/01_ctype_basic.c");
+        let source = read_repo_c_fixture("tests/c/fixtures/01_ctype_basic.c");
         assert!(source.contains("isalpha"));
     }
 

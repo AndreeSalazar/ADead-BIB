@@ -26,12 +26,12 @@ La estructura actual del repositorio ya contiene los bloques fundamentales corre
 
 | Bloque | Estado | Función |
 |---|---|---|
-| `src/rust/crates/adeb-frontend-c/` | ✅ | frontend C del compilador |
-| `src/rust/crates/adeb-stdlib/src/c/` | ✅ | módulos lógicos de stdlib C |
-| `src/rust/crates/adeb-middle/` | ✅ | IR, passes y validación intermedia |
-| `src/rust/crates/adeb-backend-x64/` | ✅ | backend nativo para salida PE/x64 |
-| `src/rust/crates/ADead-BIB-Main/` | ✅ | CLI, driver y modo `step` |
-| `Test_c/` | ✅ | suite de pruebas C e integración |
+| `src/rust/crates/frontend/c/adeb-frontend-c/` | ✅ | frontend C del compilador |
+| `src/rust/crates/shared/adeb-stdlib/src/c/` | ✅ | módulos lógicos de stdlib C |
+| `src/rust/crates/middle/adeb-middle/` | ✅ | IR, passes y validación intermedia |
+| `src/rust/crates/backend/cpu/adeb-backend-x64/` | ✅ | backend nativo para salida PE/x64 |
+| `src/rust/crates/app/ADead-BIB-Main/` | ✅ | CLI, driver y modo `step` |
+| `tests/c/` | ✅ | suite de pruebas C e integración |
 | `FastOS_v2/kernel/` | ✅ | código C real de sistema operativo / runtime |
 | `docs/` | ✅ | documentación técnica del ecosistema C |
 
@@ -55,12 +55,14 @@ ADead-BIB/
 ├── docs/
 │   └── reportes_C.md
 │
-├── Test_c/
-│   ├── 01_ctype_basic.c
-│   ├── 02_ctype_extended.c
-│   ├── 03_ctype_loop_parser.c
-│   ├── 04_ctype_edge_cases.c
-│   └── README.md
+├── tests/
+│   └── c/
+│       ├── README.md
+│       └── fixtures/
+│           ├── 01_ctype_basic.c
+│           ├── 02_ctype_extended.c
+│           ├── 03_ctype_loop_parser.c
+│           └── 04_ctype_edge_cases.c
 │
 ├── FastOS_v2/
 │   ├── kernel/
@@ -95,93 +97,35 @@ ADead-BIB/
 │       ├── resources/
 │       │   └── errors.json
 │       └── crates/
-│           ├── ADead-BIB-Main/
-│           │   ├── Cargo.toml
-│           │   └── src/
-│           │       ├── cli/
-│           │       │   ├── mod.rs
-│           │       │   └── term.rs
-│           │       ├── builder.rs
-│           │       └── main.rs
-│           │
-│           ├── adeb-core/
-│           │   ├── Cargo.toml
-│           │   └── src/
-│           │       ├── ast.rs
-│           │       ├── diagnostics.rs
-│           │       ├── source.rs
-│           │       ├── symbols.rs
-│           │       ├── types.rs
-│           │       ├── preprocessor/
-│           │       ├── runtime/
-│           │       └── toolchain/
-│           │
-│           ├── adeb-frontend-c/
-│           │   ├── Cargo.toml
-│           │   └── src/
-│           │       ├── lower/
-│           │       │   └── to_ir.rs
-│           │       ├── parse/
-│           │       │   ├── lexer.rs
-│           │       │   └── parser.rs
-│           │       ├── ast.rs
-│           │       ├── c_mod.rs
-│           │       ├── compiler_extensions.rs
-│           │       ├── lib.rs
-│           │       ├── preprocessor.rs
-│           │       └── stdlib.rs
-│           │
-│           ├── adeb-middle/
-│           │   ├── Cargo.toml
-│           │   └── src/
-│           │       ├── ir/
-│           │       ├── optimizer/
-│           │       ├── lib.rs
-│           │       ├── passes.rs
-│           │       ├── strict_type_checker.rs
-│           │       └── ub_detector.rs
-│           │
-│           ├── adeb-backend-x64/
-│           │   ├── Cargo.toml
-│           │   └── src/
-│           │       ├── isa/
-│           │       │   ├── compiler/
-│           │       │   ├── c_isa.rs
-│           │       │   ├── codegen.rs
-│           │       │   ├── encoder.rs
-│           │       │   ├── isa_compiler.rs
-│           │       │   └── optimizer.rs
-│           │       └── lib.rs
-│           │
-│           ├── adeb-platform/
-│           │   ├── Cargo.toml
-│           │   └── src/
-│           │       ├── arch.rs
-│           │       ├── elf.rs
-│           │       ├── pe.rs
-│           │       └── os.rs
-│           │
-│           └── adeb-stdlib/
-│               ├── Cargo.toml
-│               └── src/
-│                   ├── c/
-│                   │   ├── fastos_asm.rs
-│                   │   ├── fastos_assert.rs
-│                   │   ├── fastos_ctype.rs
-│                   │   ├── fastos_errno.rs
-│                   │   ├── fastos_io.rs
-│                   │   ├── fastos_kernel.rs
-│                   │   ├── fastos_limits.rs
-│                   │   ├── fastos_math.rs
-│                   │   ├── fastos_stdio.rs
-│                   │   ├── fastos_stdlib.rs
-│                   │   ├── fastos_string.rs
-│                   │   ├── fastos_time.rs
-│                   │   ├── fastos_types.rs
-│                   │   └── mod.rs
-│                   ├── cpp/
-│                   ├── gpu/
-│                   └── lib.rs
+│           ├── app/
+│           │   └── ADead-BIB-Main/
+│           ├── frontend/
+│           │   ├── c/
+│           │   │   └── adeb-frontend-c/
+│           │   ├── cpp/
+│           │   │   └── adeb-frontend-cpp/
+│           │   ├── cuda/
+│           │   │   └── adeb-frontend-cuda/
+│           │   └── js/
+│           ├── middle/
+│           │   └── adeb-middle/
+│           │       └── src/
+│           │           ├── analysis/
+│           │           ├── ir/
+│           │           ├── optimizer/
+│           │           ├── passes.rs
+│           │           └── ub_detector/
+│           ├── backend/
+│           │   ├── cpu/
+│           │   │   └── adeb-backend-x64/
+│           │   └── gpu/
+│           │       └── adeb-backend-gpu/
+│           ├── shared/
+│           │   ├── adeb-core/
+│           │   ├── adeb-platform/
+│           │   └── adeb-stdlib/
+│           └── security/
+│               └── adeb-bg/
 │
 ├── Cargo.toml
 ├── ARCHITECTURE.md
@@ -203,7 +147,7 @@ ADead-BIB/
 
 | Carpeta | Propósito |
 |---|---|
-| `Test_c/` | fixtures y pruebas funcionales del compilador C, enfocados en headers, parsing y regresiones |
+| `tests/c/` | fixtures y pruebas funcionales del compilador C, enfocados en headers, parsing y regresiones |
 
 ### 4.3 Código C real de plataforma
 
@@ -218,33 +162,33 @@ ADead-BIB/
 
 | Carpeta | Propósito |
 |---|---|
-| `src/rust/crates/adeb-frontend-c/` | frontend C: preprocesado, lexer, parser, AST y lowering |
-| `src/rust/crates/adeb-frontend-c/src/parse/` | análisis léxico y sintáctico |
-| `src/rust/crates/adeb-frontend-c/src/lower/` | traducción del AST C al IR interno |
+| `src/rust/crates/frontend/c/adeb-frontend-c/` | frontend C: preprocesado, lexer, parser, AST y lowering |
+| `src/rust/crates/frontend/c/adeb-frontend-c/src/parse/` | análisis léxico y sintáctico |
+| `src/rust/crates/frontend/c/adeb-frontend-c/src/lower/` | traducción del AST C al IR interno |
 
 ### 4.5 Infraestructura compartida del compilador
 
 | Carpeta | Propósito |
 |---|---|
-| `src/rust/crates/adeb-core/` | tipos base, AST compartido, símbolos, diagnósticos y toolchain helpers |
-| `src/rust/crates/adeb-middle/` | IR, optimizaciones, chequeos estrictos y detección de UB |
-| `src/rust/crates/adeb-backend-x64/` | selección de instrucciones, codegen, encoder y backend nativo |
-| `src/rust/crates/adeb-platform/` | formatos de salida y soporte de plataforma (`PE`, `ELF`, etc.) |
+| `src/rust/crates/shared/adeb-core/` | tipos base, AST compartido, símbolos, diagnósticos y toolchain helpers |
+| `src/rust/crates/middle/adeb-middle/` | IR, optimizaciones, chequeos estrictos y detección de UB |
+| `src/rust/crates/backend/cpu/adeb-backend-x64/` | selección de instrucciones, codegen, encoder y backend nativo |
+| `src/rust/crates/shared/adeb-platform/` | formatos de salida y soporte de plataforma (`PE`, `ELF`, etc.) |
 
 ### 4.6 Biblioteca estándar y catálogos C
 
 | Carpeta | Propósito |
 |---|---|
-| `src/rust/crates/adeb-stdlib/src/c/` | módulos lógicos de stdlib C y runtime asociado |
-| `src/rust/crates/adeb-frontend-c/src/stdlib.rs` | resolución de headers e inyección de prototipos/definiciones para el frontend |
-| `src/rust/crates/adeb-frontend-c/src/compiler_extensions.rs` | compatibilidad GCC/MSVC y headers especiales/extensiones |
+| `src/rust/crates/shared/adeb-stdlib/src/c/` | módulos lógicos de stdlib C y runtime asociado |
+| `src/rust/crates/frontend/c/adeb-frontend-c/src/stdlib.rs` | resolución de headers e inyección de prototipos/definiciones para el frontend |
+| `src/rust/crates/frontend/c/adeb-frontend-c/src/compiler_extensions.rs` | compatibilidad GCC/MSVC y headers especiales/extensiones |
 
 ### 4.7 Driver y CLI
 
 | Carpeta | Propósito |
 |---|---|
-| `src/rust/crates/ADead-BIB-Main/` | entrypoint del compilador, comandos CLI, modo `step`, build driver |
-| `src/rust/crates/ADead-BIB-Main/src/cli/` | utilidades de terminal, formato y salida de inspección |
+| `src/rust/crates/app/ADead-BIB-Main/` | entrypoint del compilador, comandos CLI, modo `step`, build driver |
+| `src/rust/crates/app/ADead-BIB-Main/src/cli/` | utilidades de terminal, formato y salida de inspección |
 
 ---
 
@@ -261,22 +205,22 @@ La estructura real del repositorio es válida, pero para documentarla profesiona
 ### Capa 2 — Código C objetivo y runtime
 
 - `FastOS_v2/`
-- `Test_c/`
+- `tests/c/`
 
 ### Capa 3 — Implementación del compilador
 
-- `src/rust/crates/adeb-frontend-c/`
-- `src/rust/crates/adeb-core/`
-- `src/rust/crates/adeb-middle/`
-- `src/rust/crates/adeb-backend-x64/`
-- `src/rust/crates/adeb-platform/`
-- `src/rust/crates/ADead-BIB-Main/`
+- `src/rust/crates/frontend/c/adeb-frontend-c/`
+- `src/rust/crates/shared/adeb-core/`
+- `src/rust/crates/middle/adeb-middle/`
+- `src/rust/crates/backend/cpu/adeb-backend-x64/`
+- `src/rust/crates/shared/adeb-platform/`
+- `src/rust/crates/app/ADead-BIB-Main/`
 
 ### Capa 4 — Biblioteca estándar y headers
 
-- `src/rust/crates/adeb-stdlib/src/c/`
-- `src/rust/crates/adeb-frontend-c/src/stdlib.rs`
-- `src/rust/crates/adeb-frontend-c/src/compiler_extensions.rs`
+- `src/rust/crates/shared/adeb-stdlib/src/c/`
+- `src/rust/crates/frontend/c/adeb-frontend-c/src/stdlib.rs`
+- `src/rust/crates/frontend/c/adeb-frontend-c/src/compiler_extensions.rs`
 
 Esta organización es la más conveniente porque separa:
 
@@ -296,7 +240,7 @@ Esta organización es la más conveniente porque separa:
 |---|---|---|
 | Módulos Rust del compilador | `kebab-case` con prefijo de dominio | `adeb-frontend-c`, `adeb-backend-x64` |
 | Submódulos internos | nombre corto y semántico | `parse`, `lower`, `optimizer`, `isa` |
-| Fixtures/tests C | carpeta temática corta | `Test_c` |
+| Fixtures/tests C | jerarquía por dominio y propósito | `tests/c/fixtures` |
 | Código C de plataforma | nombre de producto o subsistema | `FastOS_v2`, `kernel`, `include`, `lib` |
 
 ### 6.2 Archivos
@@ -327,10 +271,10 @@ Los siguientes archivos existen y son necesarios para un mantenimiento correcto 
 |---|---|---|
 | `Cargo.toml` | raíz del repo | configuración general del proyecto principal |
 | `src/rust/Cargo.toml` | workspace Rust | define el workspace de crates del compilador |
-| `src/rust/crates/ADead-BIB-Main/Cargo.toml` | driver CLI | binario `adB` y dependencias del pipeline |
-| `src/rust/crates/adeb-frontend-c/Cargo.toml` | frontend C | dependencias del frontend (`adeb-core`, `adeb-middle`) |
-| `src/rust/crates/adeb-stdlib/Cargo.toml` | stdlib | catálogo de stdlib C/C++ |
-| `src/rust/crates/adeb-backend-x64/Cargo.toml` | backend | backend nativo x64 |
+| `src/rust/crates/app/ADead-BIB-Main/Cargo.toml` | driver CLI | binario `adB` y dependencias del pipeline |
+| `src/rust/crates/frontend/c/adeb-frontend-c/Cargo.toml` | frontend C | dependencias del frontend (`adeb-core`, `adeb-middle`) |
+| `src/rust/crates/shared/adeb-stdlib/Cargo.toml` | stdlib | catálogo de stdlib C/C++ |
+| `src/rust/crates/backend/cpu/adeb-backend-x64/Cargo.toml` | backend | backend nativo x64 |
 | `FastOS_v2/Makefile` | build C/ASM del kernel | build principal estilo Unix |
 | `FastOS_v2/build.ps1` | build Windows | automatización en PowerShell |
 | `FastOS_v2/kernel.ld` | linker script | layout del kernel/binario |
@@ -357,12 +301,12 @@ Estas carpetas no son obligatorias hoy, pero son las extensiones más naturales 
 | Objetivo | Ruta relativa |
 |---|---|
 | Reporte C | `docs/reportes_C.md` |
-| Test básico de `ctype` | `Test_c/01_ctype_basic.c` |
-| Frontend C | `src/rust/crates/adeb-frontend-c/src/` |
-| Parser C | `src/rust/crates/adeb-frontend-c/src/parse/parser.rs` |
-| Lowering C a IR | `src/rust/crates/adeb-frontend-c/src/lower/to_ir.rs` |
-| Stdlib C lógica | `src/rust/crates/adeb-stdlib/src/c/` |
-| Driver CLI | `src/rust/crates/ADead-BIB-Main/src/main.rs` |
+| Test básico de `ctype` | `tests/c/fixtures/01_ctype_basic.c` |
+| Frontend C | `src/rust/crates/frontend/c/adeb-frontend-c/src/` |
+| Parser C | `src/rust/crates/frontend/c/adeb-frontend-c/src/parse/parser.rs` |
+| Lowering C a IR | `src/rust/crates/frontend/c/adeb-frontend-c/src/lower/to_ir.rs` |
+| Stdlib C lógica | `src/rust/crates/shared/adeb-stdlib/src/c/` |
+| Driver CLI | `src/rust/crates/app/ADead-BIB-Main/src/main.rs` |
 | Kernel headers | `FastOS_v2/kernel/include/` |
 | Librería C del kernel | `FastOS_v2/kernel/lib/` |
 
@@ -370,11 +314,11 @@ Estas carpetas no son obligatorias hoy, pero son las extensiones más naturales 
 
 | Objetivo | Ruta relativa |
 |---|---|
-| Frontend C | `crates/adeb-frontend-c/src/` |
-| Stdlib C | `crates/adeb-stdlib/src/c/` |
-| Backend x64 | `crates/adeb-backend-x64/src/` |
-| Driver CLI | `crates/ADead-BIB-Main/src/` |
-| Fixture C | `../../Test_c/01_ctype_basic.c` |
+| Frontend C | `crates/frontend/c/adeb-frontend-c/src/` |
+| Stdlib C | `crates/shared/adeb-stdlib/src/c/` |
+| Backend x64 | `crates/backend/cpu/adeb-backend-x64/src/` |
+| Driver CLI | `crates/app/ADead-BIB-Main/src/` |
+| Fixture C | `../../tests/c/fixtures/01_ctype_basic.c` |
 
 ### 8.3 Desde `FastOS_v2/`
 
@@ -404,18 +348,18 @@ Validación realizada contra los `Cargo.toml` reales del repositorio:
 
 | Referencia lógica | Ubicación validada | Estado |
 |---|---|---|
-| Módulos `fastos_*` de C | `src/rust/crates/adeb-stdlib/src/c/` | ✅ |
-| Resolución de headers C | `src/rust/crates/adeb-frontend-c/src/stdlib.rs` | ✅ |
-| Extensiones GCC/MSVC y headers especiales | `src/rust/crates/adeb-frontend-c/src/compiler_extensions.rs` | ✅ |
-| AST / lexer / parser / lowering C | `src/rust/crates/adeb-frontend-c/src/` | ✅ |
-| IR / optimizadores | `src/rust/crates/adeb-middle/src/` | ✅ |
-| Generación x64 | `src/rust/crates/adeb-backend-x64/src/` | ✅ |
+| Módulos `fastos_*` de C | `src/rust/crates/shared/adeb-stdlib/src/c/` | ✅ |
+| Resolución de headers C | `src/rust/crates/frontend/c/adeb-frontend-c/src/stdlib.rs` | ✅ |
+| Extensiones GCC/MSVC y headers especiales | `src/rust/crates/frontend/c/adeb-frontend-c/src/compiler_extensions.rs` | ✅ |
+| AST / lexer / parser / lowering C | `src/rust/crates/frontend/c/adeb-frontend-c/src/` | ✅ |
+| IR / optimizadores | `src/rust/crates/middle/adeb-middle/src/` | ✅ |
+| Generación x64 | `src/rust/crates/backend/cpu/adeb-backend-x64/src/` | ✅ |
 
 ### 9.3 Referencias de código C real y pruebas
 
 | Área | Ubicación validada | Estado |
 |---|---|---|
-| Fixtures de regresión | `Test_c/` | ✅ |
+| Fixtures de regresión | `tests/c/fixtures/` | ✅ |
 | Código C de kernel | `FastOS_v2/kernel/*.c` | ✅ |
 | Headers de kernel | `FastOS_v2/kernel/include/` | ✅ |
 | Librerías auxiliares C del kernel | `FastOS_v2/kernel/lib/` | ✅ |
@@ -440,16 +384,21 @@ La estructura actual es buena; la estructura objetivo profesional para crecer si
 
 ```text
 docs/                  → documentación y reportes
-Test_c/                → tests y fixtures C
+tests/c/               → tests y fixtures C
 FastOS_v2/             → código C real del sistema
 src/rust/crates/
-  ADead-BIB-Main/      → CLI y driver
-  adeb-core/           → tipos base y símbolos
-  adeb-frontend-c/     → frontend C
-  adeb-middle/         → IR y optimización
-  adeb-backend-x64/    → backend nativo
-  adeb-platform/       → formatos de salida
-  adeb-stdlib/         → stdlib y catálogos C
+  app/ADead-BIB-Main/                  → CLI y driver
+  frontend/c/adeb-frontend-c/          → frontend C
+  frontend/cpp/adeb-frontend-cpp/      → frontend C++
+  frontend/cuda/adeb-frontend-cuda/    → frontend CUDA
+  frontend/js/                         → reservado para frontend JS
+  middle/adeb-middle/                  → IR, análisis, UB detector y optimización
+  backend/cpu/adeb-backend-x64/        → backend nativo
+  backend/gpu/adeb-backend-gpu/        → backend GPU
+  shared/adeb-core/                    → tipos base y símbolos
+  shared/adeb-platform/                → formatos de salida
+  shared/adeb-stdlib/                  → stdlib y catálogos C
+  security/adeb-bg/                    → Binary Guardian
 ```
 
 ### Razones por las que esta estructura es correcta
@@ -473,7 +422,7 @@ src/rust/crates/
 4. Mantener todos los módulos de soporte C dentro de `adeb-frontend-c` o `adeb-stdlib`, nunca repartidos arbitrariamente
 5. Centralizar nuevas referencias de headers en una sola capa de resolución
 6. Documentar toda carpeta nueva en `docs/reportes_C.md`
-7. Añadir tests de regresión en `Test_c/` para cada nuevo header, extensión o bug corregido
+7. Añadir tests de regresión en `tests/c/fixtures/` para cada nuevo header, extensión o bug corregido
 
 ---
 

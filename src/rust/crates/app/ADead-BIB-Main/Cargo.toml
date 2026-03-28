@@ -14,14 +14,14 @@ path = "src/main.rs"
 
 [dependencies]
 adeb-core = { workspace = true }
-adeb-frontend-c = { path = "../adeb-frontend-c" }
-adeb-frontend-cpp = { path = "../adeb-frontend-cpp", optional = true }
-adeb-frontend-cuda = { path = "../adeb-frontend-cuda", optional = true }
-adeb-middle = { path = "../adeb-middle" }
-adeb-backend-x64 = { path = "../adeb-backend-x64" }
-adeb-backend-gpu = { path = "../adeb-backend-gpu", optional = true }
-adeb-bg = { path = "../adeb-bg" }
-adeb-stdlib = { path = "../adeb-stdlib" }
+adeb-frontend-c = { workspace = true }
+adeb-frontend-cpp = { workspace = true, optional = true }
+adeb-frontend-cuda = { workspace = true, optional = true }
+adeb-middle = { workspace = true }
+adeb-backend-x64 = { workspace = true }
+adeb-backend-gpu = { workspace = true, optional = true }
+adeb-bg = { workspace = true }
+adeb-stdlib = { workspace = true }
 
 clap = { workspace = true, features = ["derive"] }
 colored = { workspace = true }
