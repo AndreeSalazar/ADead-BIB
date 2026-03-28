@@ -45,6 +45,14 @@ pub enum CToken {
     Bool, // _Bool / bool
     Complex, // _Complex
 
+    // C11 Keywords
+    Alignas,       // _Alignas
+    Alignof,       // _Alignof
+    StaticAssert,  // _Static_assert
+    Generic,       // _Generic
+    Noreturn,      // _Noreturn
+    ThreadLocal,   // _Thread_local
+
     // Identifiers and literals
     Identifier(String),
     IntLiteral(i64),
@@ -495,6 +503,12 @@ impl CLexer {
                     "while" => CToken::While,
                     "_Bool" | "bool" => CToken::Bool,
                     "_Complex" => CToken::Complex,
+                    "_Alignas" | "alignas" => CToken::Alignas,
+                    "_Alignof" => CToken::Alignof,
+                    "_Static_assert" | "static_assert" => CToken::StaticAssert,
+                    "_Generic" => CToken::Generic,
+                    "_Noreturn" | "noreturn" => CToken::Noreturn,
+                    "_Thread_local" | "thread_local" => CToken::ThreadLocal,
                     "NULL" | "nullptr" => CToken::Identifier("NULL".to_string()),
                     _ => CToken::Identifier(ident),
                 }
@@ -796,6 +810,18 @@ mod tests {
         assert_eq!(lexer.next_token(), CToken::RShift);
         assert_eq!(lexer.next_token(), CToken::AndAnd);
         assert_eq!(lexer.next_token(), CToken::OrOr);
+    }
+
+    #[test]
+    fn test_c11_keywords() {
+        let mut lexer = CLexer::new("_Alignas _Alignof _Static_assert _Generic _Noreturn _Thread_local");
+        assert_eq!(lexer.next_token(), CToken::Alignas);
+        assert_eq!(lexer.next_token(), CToken::Alignof);
+        assert_eq!(lexer.next_token(), CToken::StaticAssert);
+        assert_eq!(lexer.next_token(), CToken::Generic);
+        assert_eq!(lexer.next_token(), CToken::Noreturn);
+        assert_eq!(lexer.next_token(), CToken::ThreadLocal);
+        assert_eq!(lexer.next_token(), CToken::Eof);
     }
 
     #[test]

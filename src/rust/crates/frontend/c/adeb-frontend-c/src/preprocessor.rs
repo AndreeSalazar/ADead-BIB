@@ -17,7 +17,7 @@ enum Macro {
     /// #define NAME value
     Object(String),
     /// #define NAME(a,b) body
-    Function { params: Vec<String>, body: String },
+    Function { params: Vec<String>, body: String, variadic: bool },
 }
 
 pub struct CPreprocessor {
@@ -31,16 +31,27 @@ pub struct CPreprocessor {
 
 impl CPreprocessor {
     pub fn new() -> Self {
+        let mut macros = HashMap::new();
+        // Standard predefined macros
+        macros.insert("__STDC__".to_string(), Macro::Object("1".to_string()));
+        macros.insert("__STDC_VERSION__".to_string(), Macro::Object("201112L".to_string()));
+        macros.insert("__ADEAD_BIB__".to_string(), Macro::Object("1".to_string()));
+        macros.insert("__x86_64__".to_string(), Macro::Object("1".to_string()));
+        macros.insert("__LP64__".to_string(), Macro::Object("1".to_string()));
+
         Self {
             included: HashSet::new(),
             prologue_injected: false,
-            macros: HashMap::new(),
+            macros,
         }
     }
 
     /// Process C source code, resolving #include directives
     /// Returns preprocessed source with declarations injected
     pub fn process(&mut self, source: &str) -> String {
+        // Phase 0: splice backslash-newline continuations (C99 §5.1.1.2/1)
+        let source = source.replace("\\\n", "");
+
         let mut output = String::new();
         let mut skip_mode = false;
         let mut skip_depth: i32 = 0;
@@ -77,6 +88,23 @@ impl CPreprocessor {
                     skip_depth = 0;
                     // But we need to mark that the next #else/#elif should skip
                     skip_else_ok = false;
+                } else if trimmed.starts_with("#elif ") && skip_depth == 1 && skip_else_ok {
+                    let cond = trimmed[6..].trim();
+                    let active = if cond == "0" {
+                        false
+                    } else if cond == "1" {
+                        true
+                    } else if cond.starts_with("defined(") {
+                        let name = cond.trim_start_matches("defined(").trim_end_matches(')');
+                        self.macros.contains_key(name)
+                    } else {
+                        self.macros.contains_key(cond)
+                    };
+                    if active {
+                        skip_mode = false;
+                        skip_depth = 0;
+                        skip_else_ok = false;
+                    }
                 }
                 output.push('\n');
                 continue;
@@ -93,6 +121,14 @@ impl CPreprocessor {
             // Handle #else when not skipping (we were in the true branch, now skip)
             if trimmed == "#else" || trimmed.starts_with("#else ") || trimmed.starts_with("#else/")
             {
+                skip_mode = true;
+                skip_depth = 1;
+                skip_else_ok = false;
+                output.push('\n');
+                continue;
+            }
+            // Handle #elif when not skipping (we were in the true branch, skip rest)
+            if trimmed.starts_with("#elif ") {
                 skip_mode = true;
                 skip_depth = 1;
                 skip_else_ok = false;
@@ -232,14 +268,18 @@ impl CPreprocessor {
                 let after_name = &rest[paren_pos..];
                 if let Some(close) = after_name.find(')') {
                     let params_str = &after_name[1..close];
-                    let params: Vec<String> = params_str
+                    let mut params: Vec<String> = params_str
                         .split(',')
                         .map(|p| p.trim().to_string())
                         .filter(|p| !p.is_empty())
                         .collect();
+                    let variadic = params.last().map(|p| p == "...").unwrap_or(false);
+                    if variadic {
+                        params.pop();
+                    }
                     let body = after_name[close + 1..].trim().to_string();
                     self.macros
-                        .insert(name.to_string(), Macro::Function { params, body });
+                        .insert(name.to_string(), Macro::Function { params, body, variadic });
                     return;
                 }
             }
@@ -278,8 +318,8 @@ impl CPreprocessor {
                         // Replace whole-word occurrences only
                         result = self.replace_whole_word(&result, name, value);
                     }
-                    Macro::Function { params, body } => {
-                        result = self.expand_function_macro(&result, name, params, body);
+                    Macro::Function { params, body, variadic } => {
+                        result = self.expand_function_macro(&result, name, params, body, *variadic);
                     }
                 }
             }
@@ -410,6 +450,7 @@ impl CPreprocessor {
         name: &str,
         params: &[String],
         body: &str,
+        variadic: bool,
     ) -> String {
         let mut result = String::new();
         let chars: Vec<char> = text.chars().collect();
@@ -431,11 +472,37 @@ impl CPreprocessor {
                     if let Some((args, end_pos)) = self.extract_macro_args(&chars, after_idx) {
                         // Substitute parameters in body
                         let mut expanded = body.to_string();
+
+                        // Handle # stringification: #param → "arg"
+                        for (pi, param) in params.iter().enumerate() {
+                            if pi < args.len() {
+                                let pattern = format!("#{}", param);
+                                let replacement = format!("\"{}\"", args[pi].replace('\\', "\\\\").replace('"', "\\\""));
+                                expanded = expanded.replace(&pattern, &replacement);
+                            }
+                        }
+
                         for (pi, param) in params.iter().enumerate() {
                             if pi < args.len() {
                                 expanded = self.replace_whole_word(&expanded, param, &args[pi]);
                             }
                         }
+
+                        // Handle __VA_ARGS__ for variadic macros
+                        if variadic {
+                            let va_args = if args.len() > params.len() {
+                                args[params.len()..].join(", ")
+                            } else {
+                                String::new()
+                            };
+                            expanded = expanded.replace("__VA_ARGS__", &va_args);
+                        }
+
+                        // Handle ## token pasting
+                        expanded = expanded.replace(" ## ", "");
+                        expanded = expanded.replace("## ", "");
+                        expanded = expanded.replace(" ##", "");
+
                         // Wrap in parentheses for safety
                         result.push('(');
                         result.push_str(&expanded);
@@ -589,5 +656,50 @@ mod tests {
         let result = pp.process(source);
 
         assert!(result.contains("int x = (((1) + (2)));"));
+    }
+
+    #[test]
+    fn test_elif_handling() {
+        let mut pp = CPreprocessor::new();
+        let source = r#"
+#define MODE 2
+#if MODE == 1
+int x = 1;
+#elif MODE == 2
+int x = 2;
+#else
+int x = 3;
+#endif
+"#;
+        // Note: our #if doesn't evaluate == expressions yet,
+        // but #elif structure should not crash
+        let result = pp.process(source);
+        assert!(!result.contains("#elif"));
+    }
+
+    #[test]
+    fn test_line_continuation() {
+        let mut pp = CPreprocessor::new();
+        let source = "#define LONG_MACRO \\\n    value\nint x = LONG_MACRO;\n";
+        let result = pp.process(source);
+        assert!(result.contains("int x = value;"));
+    }
+
+    #[test]
+    fn test_predefined_macros() {
+        let mut pp = CPreprocessor::new();
+        let source = "int stdc = __STDC__;\nint adead = __ADEAD_BIB__;\n";
+        let result = pp.process(source);
+        assert!(result.contains("int stdc = 1;"));
+        assert!(result.contains("int adead = 1;"));
+    }
+
+    #[test]
+    fn test_variadic_macro() {
+        let mut pp = CPreprocessor::new();
+        let source = "#define LOG(fmt, ...) my_log(fmt, __VA_ARGS__)\nLOG(msg, 1, 2, 3);\n";
+        let result = pp.process(source);
+        assert!(result.contains("my_log"));
+        assert!(result.contains("1, 2, 3"));
     }
 }

@@ -55,6 +55,9 @@ impl CToIR {
                 CTopLevel::StructDef { name, fields } => {
                     program.structs.push(self.convert_struct(name, fields));
                 }
+                CTopLevel::UnionDef { name, fields } => {
+                    program.structs.push(self.convert_struct(name, fields));
+                }
                 CTopLevel::EnumDef { name: _, values } => {
                     self.collect_enum_constants(values);
                 }
@@ -95,7 +98,10 @@ impl CToIR {
                         let var_type =
                             self.resolve_declarator_type(type_spec, &decl_item.derived_type);
                         let init_val = if let Some(ref init) = decl_item.initializer {
-                            Some(self.convert_expr(init)?)
+                            match init {
+                                CInitializer::Expr(expr) => Some(self.convert_expr(expr)?),
+                                CInitializer::List(_) => None, // TODO: lower list initializers
+                            }
                         } else {
                             None
                         };
@@ -137,6 +143,8 @@ impl CToIR {
             CType::Pointer(inner) => Type::Pointer(Box::new(self.convert_type(inner))),
             CType::Array(inner, size) => Type::Array(Box::new(self.convert_type(inner)), *size),
             CType::Struct(name) => Type::Struct(name.clone()),
+            CType::Union(name) => Type::Struct(name.clone()), // unions lowered as structs for now
+            CType::LongDouble => Type::F64,                   // approximate long double as f64
             CType::Enum(_) => Type::I32,
             CType::Typedef(name) => {
                 if let Some((_, original)) = self.typedefs.iter().find(|(n, _)| n == name) {
@@ -228,7 +236,10 @@ impl CToIR {
                     for decl in declarators {
                         let var_type = self.resolve_declarator_type(type_spec, &decl.derived_type);
                         let init_val = if let Some(ref init) = decl.initializer {
-                            self.convert_expr(init).ok()
+                            match init {
+                                CInitializer::Expr(expr) => self.convert_expr(expr).ok(),
+                                CInitializer::List(_) => None, // TODO: lower list initializers
+                            }
                         } else {
                             None
                         };
@@ -329,7 +340,10 @@ impl CToIR {
                     let var_type = self.resolve_declarator_type(type_spec, &decl.derived_type);
 
                     let init_val = if let Some(ref init) = decl.initializer {
-                        Some(self.convert_expr(init)?)
+                        match init {
+                            CInitializer::Expr(expr) => Some(self.convert_expr(expr)?),
+                            CInitializer::List(_) => None, // TODO: lower list initializers
+                        }
                     } else {
                         None
                     };
@@ -2094,5 +2108,255 @@ mod tests {
         )
         .unwrap();
         assert_eq!(prog.structs.len(), 3);
+    }
+
+    // ================================================================
+    // C99/C11 IMPROVEMENTS — Long lists, unions, multidim, C11
+    // ================================================================
+
+    #[test]
+    fn test_long_initializer_list_100() {
+        let items: Vec<String> = (0..100).map(|i| i.to_string()).collect();
+        let code = format!(
+            "int main() {{ int arr[100] = {{{}}}; return arr[0]; }}",
+            items.join(", ")
+        );
+        let prog = compile_c_to_program(&code).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_long_initializer_list_1000() {
+        let items: Vec<String> = (0..1000).map(|i| i.to_string()).collect();
+        let code = format!(
+            "int main() {{ int arr[1000] = {{{}}}; return arr[0]; }}",
+            items.join(", ")
+        );
+        let prog = compile_c_to_program(&code).unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_multidimensional_array() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int m[3][3] = {{1,2,3}, {4,5,6}, {7,8,9}};
+                return m[0][0];
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_union_basic() {
+        let prog = compile_c_to_program(
+            r#"
+            union Value {
+                int i;
+                float f;
+                char c;
+            };
+            int main() {
+                union Value v;
+                v.i = 42;
+                return v.i;
+            }
+        "#,
+        )
+        .unwrap();
+        assert!(prog.structs.len() >= 1);
+    }
+
+    #[test]
+    fn test_long_double_type() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                long double x = 3.14;
+                long double y = 2.71;
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_static_assert_top_level() {
+        let prog = compile_c_to_program(
+            r#"
+            _Static_assert(1, "this should pass");
+            int main() { return 0; }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_static_assert_in_function() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                _Static_assert(1, "ok");
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_nested_initializer_list() {
+        let prog = compile_c_to_program(
+            r#"
+            struct Point { int x; int y; };
+            int main() {
+                struct Point pts[3] = {{1,2}, {3,4}, {5,6}};
+                return pts[0].x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_string_array_init() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                char msg[] = "Hello, World!";
+                char buf[256] = "test";
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_designated_initializer_basic() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int arr[10] = {[0] = 100, [5] = 200, [9] = 300};
+                return arr[5];
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_struct_designated_init() {
+        let prog = compile_c_to_program(
+            r#"
+            struct Config {
+                int width;
+                int height;
+                int depth;
+            };
+            int main() {
+                struct Config cfg = {.width = 1920, .height = 1080, .depth = 32};
+                return cfg.width;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_alignof_expression() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int a = _Alignof(int);
+                int b = _Alignof(double);
+                return a + b;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_complex_real_world_pattern() {
+        let prog = compile_c_to_program(
+            r#"
+            #include <stdio.h>
+            #include <stdlib.h>
+            #include <string.h>
+
+            struct Entry {
+                int key;
+                char name[32];
+            };
+
+            int find_entry(struct Entry *entries, int count, int key) {
+                for (int i = 0; i < count; i++) {
+                    if (entries[i].key == key) {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            int main() {
+                struct Entry table[4] = {
+                    {1, "alpha"},
+                    {2, "beta"},
+                    {3, "gamma"},
+                    {4, "delta"}
+                };
+                int idx = find_entry(table, 4, 3);
+                printf("Found at index: %d\n", idx);
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert!(prog.functions.len() >= 2);
+        assert_has_function(&prog, "find_entry");
+        assert_has_function(&prog, "main");
+    }
+
+    #[test]
+    fn test_preprocessor_variadic_macro() {
+        let prog = compile_c_to_program(
+            r#"
+            #define MY_ASSERT(cond, ...) do { if (!(cond)) return 1; } while(0)
+            int main() {
+                int x = 42;
+                MY_ASSERT(x > 0, "x must be positive");
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_predefined_stdc_macro() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int x = __STDC__;
+                return x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
     }
 }

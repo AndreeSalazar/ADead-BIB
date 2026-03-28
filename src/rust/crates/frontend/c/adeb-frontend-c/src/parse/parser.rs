@@ -111,7 +111,10 @@ impl CParser {
             | CToken::Typedef
             | CToken::Bool
             | CToken::Complex
-            | CToken::Union => true,
+            | CToken::Union
+            | CToken::Alignas
+            | CToken::Noreturn
+            | CToken::ThreadLocal => true,
             CToken::Identifier(name) => self.typedef_names.contains(name),
             _ => false,
         }
@@ -149,6 +152,14 @@ impl CParser {
                 }
                 CToken::Const => {
                     self.advance();
+                }
+                CToken::Noreturn | CToken::ThreadLocal | CToken::Alignas => {
+                    self.advance();
+                    // Skip _Alignas(expr) or _Alignas(type)
+                    if matches!(self.current(), CToken::LParen) {
+                        self.advance();
+                        self.skip_balanced_parens();
+                    }
                 }
                 _ => break,
             }
@@ -194,7 +205,7 @@ impl CParser {
                 } else if self.eat(&CToken::Int) {
                     CType::Long
                 } else if self.eat(&CToken::Double) {
-                    CType::Double // long double → treat as double
+                    CType::LongDouble // long double — proper type
                 } else {
                     CType::Long
                 }
@@ -225,7 +236,7 @@ impl CParser {
             CToken::Union => {
                 self.advance();
                 let name = self.expect_identifier()?;
-                CType::Struct(name) // treat union as struct for IR
+                CType::Union(name)
             }
             CToken::Enum => {
                 self.advance();
@@ -283,6 +294,9 @@ impl CParser {
                             self.typedef_names.insert(new_name.clone());
                         }
                         CTopLevel::StructDef { name, .. } => {
+                            self.typedef_names.insert(name.clone());
+                        }
+                        CTopLevel::UnionDef { name, .. } => {
                             self.typedef_names.insert(name.clone());
                         }
                         CTopLevel::EnumDef { name, .. } => {
@@ -375,7 +389,7 @@ impl CParser {
         }
 
         // Struct definition: struct Name { ... };
-        if *self.current() == CToken::Struct || *self.current() == CToken::Union {
+        if *self.current() == CToken::Struct {
             if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
                 if self.tokens.get(self.pos + 2) == Some(&CToken::LBrace) {
                     return self.parse_struct_def();
@@ -390,6 +404,28 @@ impl CParser {
                     return self.parse_enum_def();
                 }
             }
+        }
+
+        // Union definition: union Name { ... };
+        if *self.current() == CToken::Union {
+            if let Some(CToken::Identifier(_)) = self.tokens.get(self.pos + 1) {
+                if self.tokens.get(self.pos + 2) == Some(&CToken::LBrace) {
+                    return self.parse_union_def();
+                }
+            }
+        }
+
+        // _Static_assert(expr, "msg");
+        if *self.current() == CToken::StaticAssert {
+            self.advance();
+            self.expect(&CToken::LParen)?;
+            let _expr = self.parse_expression()?;
+            self.expect(&CToken::Comma)?;
+            let _msg = self.parse_expression()?;
+            self.expect(&CToken::RParen)?;
+            self.expect(&CToken::Semicolon)?;
+            // Silently accept — compile-time assertions aren't emitted
+            return self.parse_top_level();
         }
 
         // Function or global variable: type name ...
@@ -447,32 +483,43 @@ impl CParser {
     }
 
     fn parse_declarator_rest(&mut self, name: String) -> Result<CDeclarator, String> {
-        // Check for array: name[N]
-        let derived = if *self.current() == CToken::LBracket {
-            self.advance();
-            let size = if *self.current() != CToken::RBracket {
-                if let CToken::IntLiteral(n) = self.current().clone() {
-                    self.advance();
-                    Some(n as usize)
+        // Check for array: name[N] or multi-dimensional name[N][M]...
+        let derived = {
+            let mut d: Option<CDerivedType> = None;
+            let mut dims: Vec<Option<usize>> = Vec::new();
+            while *self.current() == CToken::LBracket {
+                self.advance();
+                let size = if *self.current() != CToken::RBracket {
+                    if let CToken::IntLiteral(n) = self.current().clone() {
+                        self.advance();
+                        Some(n as usize)
+                    } else {
+                        // Skip complex size expressions
+                        while *self.current() != CToken::RBracket && *self.current() != CToken::Eof {
+                            self.advance();
+                        }
+                        None
+                    }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
-            self.expect(&CToken::RBracket)?;
-            Some(CDerivedType::Array(size, None))
-        } else {
-            None
+                };
+                self.expect(&CToken::RBracket)?;
+                dims.push(size);
+            }
+            // Build nested Array types from innermost to outermost
+            for size in dims.into_iter().rev() {
+                d = Some(CDerivedType::Array(size, d.map(Box::new)));
+            }
+            d
         };
 
         let init = if self.eat(&CToken::Assign) {
             if *self.current() == CToken::LBrace {
                 // Brace-enclosed initializer list: = { expr, expr, ... }
                 // C11: supports designated initializers: .field = val, [idx] = val
-                Some(self.parse_brace_init()?)
+                Some(CInitializer::Expr(self.parse_brace_init()?))
             } else {
-                Some(self.parse_assign_expr()?)
+                Some(CInitializer::Expr(self.parse_assign_expr()?))
             }
         } else {
             None
@@ -482,6 +529,7 @@ impl CParser {
             name,
             derived_type: derived,
             initializer: init,
+            full_type: None,
         })
     }
 
@@ -630,6 +678,17 @@ impl CParser {
                 }
             }
         }
+    }
+
+    fn parse_union_def(&mut self) -> Result<CTopLevel, String> {
+        self.advance(); // skip union
+        let name = self.expect_identifier()?;
+        self.typedef_names.insert(name.clone());
+        self.expect(&CToken::LBrace)?;
+        let fields = self.parse_struct_fields()?;
+        self.expect(&CToken::RBrace)?;
+        self.expect(&CToken::Semicolon)?;
+        Ok(CTopLevel::UnionDef { name, fields })
     }
 
     fn parse_struct_def(&mut self) -> Result<CTopLevel, String> {
@@ -1143,6 +1202,16 @@ impl CParser {
                 self.expect(&CToken::Semicolon)?;
                 Ok(CStmt::Goto(label))
             }
+            CToken::StaticAssert => {
+                self.advance();
+                self.expect(&CToken::LParen)?;
+                let _expr = self.parse_expression()?;
+                self.expect(&CToken::Comma)?;
+                let _msg = self.parse_expression()?;
+                self.expect(&CToken::RParen)?;
+                self.expect(&CToken::Semicolon)?;
+                Ok(CStmt::Empty)
+            }
             CToken::Semicolon => {
                 self.advance();
                 Ok(CStmt::Empty)
@@ -1615,6 +1684,18 @@ impl CParser {
                     Ok(CExpr::SizeofExpr(Box::new(expr)))
                 }
             }
+            CToken::Alignof => {
+                self.advance();
+                if *self.current() == CToken::LParen && self.is_type_at_next() {
+                    self.advance(); // skip (
+                    let ty = self.parse_type()?;
+                    self.expect(&CToken::RParen)?;
+                    Ok(CExpr::SizeofType(ty)) // reuse sizeof — alignment is backend concern
+                } else {
+                    let expr = self.parse_unary()?;
+                    Ok(CExpr::SizeofExpr(Box::new(expr)))
+                }
+            }
             CToken::LParen if self.is_cast() => {
                 self.advance(); // skip (
                 let mut ty = self.parse_type()?;
@@ -1917,6 +1998,46 @@ mod tests {
             }
             _ => panic!("Expected struct definition"),
         }
+    }
+
+    #[test]
+    fn test_multidimensional_array() {
+        let unit = parse_c("int main() { int m[3][3]; return m[0][0]; }");
+        assert_eq!(unit.declarations.len(), 1);
+    }
+
+    #[test]
+    fn test_union_definition() {
+        let unit = parse_c("union Value { int i; float f; char c; };");
+        assert_eq!(unit.declarations.len(), 1);
+        match &unit.declarations[0] {
+            CTopLevel::UnionDef { name, fields } => {
+                assert_eq!(name, "Value");
+                assert_eq!(fields.len(), 3);
+            }
+            _ => panic!("Expected union definition"),
+        }
+    }
+
+    #[test]
+    fn test_static_assert() {
+        let unit = parse_c(r#"
+            _Static_assert(sizeof(int) == 4, "int must be 4 bytes");
+            int main() { return 0; }
+        "#);
+        assert!(unit.declarations.len() >= 1);
+    }
+
+    #[test]
+    fn test_long_initializer_list() {
+        let mut items = String::new();
+        for i in 0..1000 {
+            if i > 0 { items.push_str(", "); }
+            items.push_str(&i.to_string());
+        }
+        let code = format!("int main() {{ int arr[1000] = {{{}}}; return arr[0]; }}", items);
+        let unit = parse_c(&code);
+        assert_eq!(unit.declarations.len(), 1);
     }
 
     #[test]

@@ -18,6 +18,8 @@ pub enum CType {
     Pointer(Box<CType>),              // T*
     Array(Box<CType>, Option<usize>), // T[N] or T[]
     Struct(String),                   // struct name
+    Union(String),                    // union name
+    LongDouble,                       // long double
     Enum(String),                     // enum name
     Typedef(String),                  // typedef'd name
     Function {
@@ -115,6 +117,35 @@ pub enum CExpr {
 
     // NULL
     Null,
+}
+
+/// C99/C11 Initializer — first-class representation for aggregate initialization
+#[derive(Debug, Clone)]
+pub enum CInitializer {
+    /// Simple expression initializer: = expr
+    Expr(CExpr),
+    /// Brace-enclosed list: = { entries... }
+    List(Vec<CInitEntry>),
+}
+
+/// One entry in an initializer list, optionally with designators
+#[derive(Debug, Clone)]
+pub struct CInitEntry {
+    /// Designator chain: .field, [idx], or nested .a.b[3]
+    pub designators: Vec<CDesignator>,
+    /// The value being assigned
+    pub value: CInitializer,
+}
+
+/// C99/C11 Designator for designated initializers
+#[derive(Debug, Clone)]
+pub enum CDesignator {
+    /// .field_name
+    Field(String),
+    /// [index_expr]
+    Index(CExpr),
+    /// [low ... high] (GNU extension)
+    Range(CExpr, CExpr),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -248,7 +279,8 @@ pub struct CSwitchCase {
 pub struct CDeclarator {
     pub name: String,
     pub derived_type: Option<CDerivedType>, // pointer/array modifications
-    pub initializer: Option<CExpr>,
+    pub initializer: Option<CInitializer>,
+    pub full_type: Option<CType>,          // resolved full type
 }
 
 /// Type modifications on declarators
@@ -288,6 +320,12 @@ pub enum CTopLevel {
         fields: Vec<CStructField>,
     },
 
+    // Union definition
+    UnionDef {
+        name: String,
+        fields: Vec<CStructField>,
+    },
+
     // Enum definition
     EnumDef {
         name: String,
@@ -313,6 +351,18 @@ pub struct CParam {
 pub struct CStructField {
     pub field_type: CType,
     pub name: String,
+}
+
+/// Storage class and specifiers for declarations
+#[derive(Debug, Clone, Default)]
+pub struct CDeclSpecifiers {
+    pub is_static: bool,
+    pub is_extern: bool,
+    pub is_inline: bool,
+    pub is_register: bool,
+    pub is_noreturn: bool,        // _Noreturn
+    pub is_thread_local: bool,    // _Thread_local
+    pub align: Option<usize>,     // _Alignas(N)
 }
 
 /// Complete C translation unit (a .c file)
