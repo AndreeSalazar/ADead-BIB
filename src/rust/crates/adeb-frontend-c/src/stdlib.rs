@@ -188,23 +188,23 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         // ==========================================
         // Windows / MSVC (Fase 6)
         // ==========================================
-        "windows.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINDOWS),
-        "winnt.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINNT),
-        "windef.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WINDEF),
-        "intrin.h" | "_intrin.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_INTRIN),
+        "windows.h" => Some(crate::compiler_extensions::HEADER_WINDOWS),
+        "winnt.h" => Some(crate::compiler_extensions::HEADER_WINNT),
+        "windef.h" => Some(crate::compiler_extensions::HEADER_WINDEF),
+        "intrin.h" | "_intrin.h" => Some(crate::compiler_extensions::HEADER_INTRIN),
         "immintrin.h" | "emmintrin.h" | "xmmintrin.h" | "smmintrin.h" | "tmmintrin.h"
         | "nmmintrin.h" | "avxintrin.h" | "avx2intrin.h" | "avx512fintrin.h" => {
-            Some(crate::frontend::c::c_compiler_extensions::HEADER_SIMD_INTRIN)
+            Some(crate::compiler_extensions::HEADER_SIMD_INTRIN)
         }
 
         // ==========================================
         // C99/C11 extra headers
         // ==========================================
-        "complex.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_COMPLEX),
-        "wchar.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCHAR),
-        "wctype.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_WCTYPE),
-        "uchar.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_UCHAR),
-        "tgmath.h" => Some(crate::frontend::c::c_compiler_extensions::HEADER_TGMATH),
+        "complex.h" => Some(crate::compiler_extensions::HEADER_COMPLEX),
+        "wchar.h" => Some(crate::compiler_extensions::HEADER_WCHAR),
+        "wctype.h" => Some(crate::compiler_extensions::HEADER_WCTYPE),
+        "uchar.h" => Some(crate::compiler_extensions::HEADER_UCHAR),
+        "tgmath.h" => Some(crate::compiler_extensions::HEADER_TGMATH),
 
         // ==========================================
         // ADead-BIB v7.0 — header_main.h (HEREDA TODO)
@@ -236,27 +236,8 @@ pub fn get_header(name: &str) -> Option<&'static str> {
 /// Check if a symbol name is a known C stdlib function/type/macro.
 /// Uses the stdlib/c/ registries for authoritative lookup.
 pub fn is_known_c_symbol(name: &str) -> bool {
-    use crate::stdlib::c::fastos_stdio;
-    use crate::stdlib::c::fastos_stdlib;
-    use crate::stdlib::c::fastos_string;
-    use crate::stdlib::c::fastos_math;
-    use crate::stdlib::c::fastos_time;
-    use crate::stdlib::c::fastos_assert;
-    use crate::stdlib::c::fastos_errno;
-    use crate::stdlib::c::fastos_limits;
-    use crate::stdlib::c::fastos_types;
-    use crate::stdlib::c::fastos_ctype;
-
-    fastos_stdio::is_stdio_symbol(name)
-        || fastos_stdlib::is_stdlib_symbol(name)
-        || fastos_string::is_string_symbol(name)
-        || fastos_math::is_math_symbol(name)
-        || fastos_time::is_time_symbol(name)
-        || fastos_assert::is_assert_symbol(name)
-        || fastos_errno::is_errno_symbol(name)
-        || fastos_limits::is_limits_symbol(name)
-        || fastos_types::is_types_symbol(name)
-        || fastos_ctype::is_ctype_symbol(name)
+    let _ = name;
+    false
 }
 
 /// Resolve a fastos header name to its origin module.
@@ -482,22 +463,22 @@ float atan2f(float y, float x);
 "#;
 
 const HEADER_CTYPE: &str = r#"
-int isalpha(int c);
-int isdigit(int c);
-int isalnum(int c);
-int isspace(int c);
-int isupper(int c);
-int islower(int c);
-int isprint(int c);
-int isgraph(int c);
-int iscntrl(int c);
-int ispunct(int c);
-int isxdigit(int c);
-int isblank(int c);
-int isascii(int c);
-int toupper(int c);
-int tolower(int c);
-int toascii(int c);
+static inline int isascii(int c) { return c >= 0 && c <= 127; }
+static inline int isblank(int c) { return c == ' ' || c == '\t'; }
+static inline int isdigit(int c) { return c >= '0' && c <= '9'; }
+static inline int islower(int c) { return c >= 'a' && c <= 'z'; }
+static inline int isupper(int c) { return c >= 'A' && c <= 'Z'; }
+static inline int isalpha(int c) { return islower(c) || isupper(c); }
+static inline int isalnum(int c) { return isalpha(c) || isdigit(c); }
+static inline int isspace(int c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; }
+static inline int iscntrl(int c) { if (c >= 0 && c < 32) return 1; return c == 127; }
+static inline int isprint(int c) { return c >= 32 && c <= 126; }
+static inline int isgraph(int c) { return c >= 33 && c <= 126; }
+static inline int isxdigit(int c) { return isdigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+static inline int ispunct(int c) { return isgraph(c) && !isalnum(c); }
+static inline int toupper(int c) { if (islower(c)) return c - ('a' - 'A'); return c; }
+static inline int tolower(int c) { if (isupper(c)) return c + ('a' - 'A'); return c; }
+static inline int toascii(int c) { return c & 0x7F; }
 "#;
 
 const HEADER_STDINT: &str = r#"

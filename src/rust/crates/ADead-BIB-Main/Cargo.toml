@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 adeb-core = { workspace = true }
 adeb-frontend-c = { path = "../adeb-frontend-c" }
-adeb-frontend-cpp = { path = "../adeb-frontend-cpp" }
+adeb-frontend-cpp = { path = "../adeb-frontend-cpp", optional = true }
 adeb-frontend-cuda = { path = "../adeb-frontend-cuda", optional = true }
 adeb-middle = { path = "../adeb-middle" }
 adeb-backend-x64 = { path = "../adeb-backend-x64" }
@@ -31,6 +31,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 
 [features]
-default = ["cuda", "gpu"]
+default = []
 cuda = ["adeb-frontend-cuda"]
 gpu = ["adeb-backend-gpu"]
+cpp = ["adeb-frontend-cpp"]

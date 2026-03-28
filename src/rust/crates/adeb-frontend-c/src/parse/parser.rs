@@ -6,8 +6,8 @@
 //           pointers, arrays, expressions with full precedence
 // ============================================================
 
-use super::c_ast::*;
-use super::c_lexer::CToken;
+use crate::c_ast::*;
+use crate::c_lexer::CToken;
 
 pub struct CParser {
     tokens: Vec<CToken>,

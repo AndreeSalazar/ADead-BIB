@@ -12,7 +12,7 @@
 //        assignment expressions, NULL handling.
 // ============================================================
 
-use super::c_ast::*;
+use crate::c_ast::*;
 use crate::frontend::ast::{
     self, BinOp, BitwiseOp, CmpOp, Expr, Function, FunctionAttributes, Param, Program,
     ProgramAttributes, Stmt, Struct, StructField, UnaryOp,
@@ -926,14 +926,14 @@ impl CToIR {
             CExpr::FloatLiteral(f) => Ok(Expr::Float(*f)),
             CExpr::StringLiteral(s) => Ok(Expr::String(s.clone())),
             CExpr::CharLiteral(c) => Ok(Expr::Number(*c as i64)),
-            CExpr::Null => Ok(Expr::Nullptr),
+            CExpr::Null => Ok(Expr::Null),
 
             CExpr::Identifier(name) => {
                 // Check enum constants
                 if let Some((_, val)) = self.enum_constants.iter().find(|(n, _)| n == name) {
                     Ok(Expr::Number(*val))
                 } else if name == "NULL" || name == "nullptr" {
-                    Ok(Expr::Nullptr)
+                    Ok(Expr::Null)
                 } else if name == "true" || name == "TRUE" {
                     Ok(Expr::Bool(true))
                 } else if name == "false" || name == "FALSE" {
@@ -1089,7 +1089,7 @@ impl CToIR {
                             let size = self.convert_expr(size_arg)?;
                             Ok(Expr::Malloc(Box::new(size)))
                         } else {
-                            Ok(Expr::Nullptr)
+                            Ok(Expr::Null)
                         }
                     }
                     "realloc" => {
@@ -1101,7 +1101,7 @@ impl CToIR {
                                 new_size: Box::new(size),
                             })
                         } else {
-                            Ok(Expr::Nullptr)
+                            Ok(Expr::Null)
                         }
                     }
                     "sizeof" => {
@@ -1252,7 +1252,7 @@ impl CToIR {
     fn default_value(&self, cty: &CType) -> Expr {
         match cty {
             CType::Float | CType::Double => Expr::Float(0.0),
-            CType::Pointer(_) => Expr::Nullptr,
+            CType::Pointer(_) => Expr::Null,
             CType::Bool => Expr::Bool(false),
             _ => Expr::Number(0),
         }
@@ -1262,9 +1262,9 @@ impl CToIR {
 /// Convenience: parse C source → ADead-BIB Program in one call
 /// Full pipeline: Preprocessor → Lexer → Parser → IR
 pub fn compile_c_to_program(source: &str) -> Result<Program, String> {
-    use super::c_lexer::CLexer;
-    use super::c_parser::CParser;
-    use super::c_preprocessor::CPreprocessor;
+    use crate::c_lexer::CLexer;
+    use crate::c_parser::CParser;
+    use crate::c_preprocessor::CPreprocessor;
 
     // Phase 1: Preprocess — resolve #include, skip #define/#ifdef
     let mut preprocessor = CPreprocessor::new();

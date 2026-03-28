@@ -2783,7 +2783,7 @@ impl IsaCompiler {
 
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
+            src: Operand::Imm8(40),
         });
         
         // Guarantee DF=0 before Windows DLL calls (x64 ABI strict requirement)
@@ -2792,7 +2792,7 @@ impl IsaCompiler {
         self.ir.emit(ADeadOp::CallIAT { iat_rva });
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP),
-            src: Operand::Imm8(32),
+            src: Operand::Imm8(40),
         });
     }
 
@@ -3668,7 +3668,7 @@ impl IsaCompiler {
                     });
                 }
             }
-            Expr::Nullptr | Expr::Null => {
+            Expr::Null => {
                 self.ir.emit(ADeadOp::Xor {
                     dst: Reg::RAX,
                     src: Reg::RAX,

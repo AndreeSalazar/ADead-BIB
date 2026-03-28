@@ -268,7 +268,7 @@ impl IsaCompiler {
                     dst: Operand::Reg(Reg::RAX),
                 });
             }
-            Expr::Nullptr | Expr::Null => {
+            Expr::Null => {
                 self.ir.emit(ADeadOp::Xor {
                     dst: Reg::RAX,
                     src: Reg::RAX,
