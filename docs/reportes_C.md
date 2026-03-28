@@ -1,311 +1,493 @@
-# 📋 Reporte Actualizado: Implementación del lenguaje C en ADead-BIB
+# 📋 Reporte C: estructura de carpetas, organización y validación de referencias
 
 > **Fecha:** 28 de Marzo de 2026  
-> **Proyecto:** ADead-BIB — compilador en Rust con frontend C/C++ y backend nativo x64  
-> **Ámbito de este reporte:** estado real del compilador C, stdlib/header mapping, transparencia del pipeline y próximos hitos
+> **Proyecto:** ADead-BIB  
+> **Objetivo del documento:** definir una estructura lógica, escalable y mantenible para todo el ecosistema C del repositorio, validando carpetas, configuración, dependencias y rutas relevantes
 
 ---
 
-## 1. Resumen ejecutivo
+## 1. Alcance
 
-El soporte de C en ADead-BIB ya no está en una etapa “demo”: hoy existe un pipeline C funcional que cubre preprocesado, análisis léxico, parsing recursivo descendente, lowering a IR propio y compilación a binario PE x64. Además, el compilador ya expone un **modo `step` / `-step`** que permite inspeccionar internamente cada fase relevante del pipeline.
+Este documento cubre el **ecosistema C completo del repositorio**, no solo el frontend del compilador. En ADead-BIB, el “proyecto C” está distribuido entre:
 
-### Estado general
+- el **compilador C** implementado en Rust
+- la **stdlib C / catálogos de símbolos y headers**
+- los **tests y fixtures C**
+- el **código C del kernel y runtime de FastOS**
+- la **documentación técnica y archivos de build**
 
-| Área | Estado actual | Observación |
+Esto significa que la estructura profesional del proyecto debe contemplar tanto las carpetas de código C consumido por el compilador como las carpetas del compilador que implementan soporte para C.
+
+---
+
+## 2. Resumen ejecutivo
+
+La estructura actual del repositorio ya contiene los bloques fundamentales correctos, pero estaban dispersos en la documentación previa. A nivel organizativo, los componentes C necesarios hoy son:
+
+| Bloque | Estado | Función |
 |---|---|---|
-| Preprocesador C | ✅ Funcional | Resuelve headers, macros y condicionales básicos |
-| Lexer C | ✅ Funcional | Produce tokens con línea de origen |
-| Parser C | ✅ Funcional | Soporta funciones, structs, enums, typedefs, arrays, punteros y control de flujo |
-| Snapshot semántico | ✅ Disponible | El modo `step` muestra símbolos recolectados del AST |
-| Lowering a IR | ✅ Funcional | Convierte AST C a `Program` interno |
-| Backend x64 | ✅ Funcional | Genera código y binarios PE |
-| Transparencia interna | ✅ Disponible | `step` muestra preprocesado, tokens, AST, símbolos, IR y resumen backend |
-| Conformidad C99/C11 completa | ⚠️ Parcial | Amplia cobertura de headers, pero no conformidad total de semántica/runtime |
+| `src/rust/crates/adeb-frontend-c/` | ✅ | frontend C del compilador |
+| `src/rust/crates/adeb-stdlib/src/c/` | ✅ | módulos lógicos de stdlib C |
+| `src/rust/crates/adeb-middle/` | ✅ | IR, passes y validación intermedia |
+| `src/rust/crates/adeb-backend-x64/` | ✅ | backend nativo para salida PE/x64 |
+| `src/rust/crates/ADead-BIB-Main/` | ✅ | CLI, driver y modo `step` |
+| `Test_c/` | ✅ | suite de pruebas C e integración |
+| `FastOS_v2/kernel/` | ✅ | código C real de sistema operativo / runtime |
+| `docs/` | ✅ | documentación técnica del ecosistema C |
 
-### Hitos recientes alcanzados
+La recomendación principal es **mantener esta separación por dominio**:
 
-1. ✅ Corrección del parser para miembros anónimos `struct/union` estilo C11
-2. ✅ Endurecimiento del preprocesador para no expandir macros dentro de strings y comentarios
-3. ✅ Integración de pruebas reales usando los archivos de `Test_c`
-4. ✅ Implementación de modo `step` en la CLI del compilador C
-5. ✅ Visualización fase por fase: preprocesado, tokens, AST, símbolos, IR y preview del backend
-6. ✅ Suite del frontend C validada con **78 tests en verde**
+1. **frontend C**
+2. **stdlib y headers**
+3. **middle-end y backend**
+4. **tests C**
+5. **código C del sistema / runtime**
+6. **documentación y build**
 
 ---
 
-## 2. Arquitectura actual del compilador C
+## 3. Jerarquía completa de directorios relevantes para C
 
-El camino efectivo de compilación C hoy es:
+La siguiente jerarquía recoge las carpetas necesarias del repositorio para un proyecto C serio dentro de ADead-BIB, usando la estructura real encontrada y organizada por responsabilidad.
 
 ```text
-source.c
-  → CPreprocessor
-  → CLexer
-  → CParser
-  → CTranslationUnit
-  → CToIR
-  → Program
-  → IsaCompiler x64
-  → PE/Windows binary
+ADead-BIB/
+├── docs/
+│   └── reportes_C.md
+│
+├── Test_c/
+│   ├── 01_ctype_basic.c
+│   ├── 02_ctype_extended.c
+│   ├── 03_ctype_loop_parser.c
+│   ├── 04_ctype_edge_cases.c
+│   └── README.md
+│
+├── FastOS_v2/
+│   ├── kernel/
+│   │   ├── include/
+│   │   │   ├── hal.h
+│   │   │   └── kernel.h
+│   │   ├── lib/
+│   │   │   ├── printf.c
+│   │   │   └── string.c
+│   │   ├── gdt.c
+│   │   ├── heap.c
+│   │   ├── idt.c
+│   │   ├── kernel.c
+│   │   ├── keyboard.c
+│   │   ├── pic.c
+│   │   ├── pmm.c
+│   │   ├── scheduler.c
+│   │   ├── shell.c
+│   │   ├── timer.c
+│   │   ├── vga.c
+│   │   └── vmm.c
+│   ├── legacy/
+│   │   ├── boot.asm
+│   │   └── stage2.asm
+│   ├── Makefile
+│   ├── build.ps1
+│   └── kernel.ld
+│
+├── src/
+│   └── rust/
+│       ├── Cargo.toml
+│       ├── resources/
+│       │   └── errors.json
+│       └── crates/
+│           ├── ADead-BIB-Main/
+│           │   ├── Cargo.toml
+│           │   └── src/
+│           │       ├── cli/
+│           │       │   ├── mod.rs
+│           │       │   └── term.rs
+│           │       ├── builder.rs
+│           │       └── main.rs
+│           │
+│           ├── adeb-core/
+│           │   ├── Cargo.toml
+│           │   └── src/
+│           │       ├── ast.rs
+│           │       ├── diagnostics.rs
+│           │       ├── source.rs
+│           │       ├── symbols.rs
+│           │       ├── types.rs
+│           │       ├── preprocessor/
+│           │       ├── runtime/
+│           │       └── toolchain/
+│           │
+│           ├── adeb-frontend-c/
+│           │   ├── Cargo.toml
+│           │   └── src/
+│           │       ├── lower/
+│           │       │   └── to_ir.rs
+│           │       ├── parse/
+│           │       │   ├── lexer.rs
+│           │       │   └── parser.rs
+│           │       ├── ast.rs
+│           │       ├── c_mod.rs
+│           │       ├── compiler_extensions.rs
+│           │       ├── lib.rs
+│           │       ├── preprocessor.rs
+│           │       └── stdlib.rs
+│           │
+│           ├── adeb-middle/
+│           │   ├── Cargo.toml
+│           │   └── src/
+│           │       ├── ir/
+│           │       ├── optimizer/
+│           │       ├── lib.rs
+│           │       ├── passes.rs
+│           │       ├── strict_type_checker.rs
+│           │       └── ub_detector.rs
+│           │
+│           ├── adeb-backend-x64/
+│           │   ├── Cargo.toml
+│           │   └── src/
+│           │       ├── isa/
+│           │       │   ├── compiler/
+│           │       │   ├── c_isa.rs
+│           │       │   ├── codegen.rs
+│           │       │   ├── encoder.rs
+│           │       │   ├── isa_compiler.rs
+│           │       │   └── optimizer.rs
+│           │       └── lib.rs
+│           │
+│           ├── adeb-platform/
+│           │   ├── Cargo.toml
+│           │   └── src/
+│           │       ├── arch.rs
+│           │       ├── elf.rs
+│           │       ├── pe.rs
+│           │       └── os.rs
+│           │
+│           └── adeb-stdlib/
+│               ├── Cargo.toml
+│               └── src/
+│                   ├── c/
+│                   │   ├── fastos_asm.rs
+│                   │   ├── fastos_assert.rs
+│                   │   ├── fastos_ctype.rs
+│                   │   ├── fastos_errno.rs
+│                   │   ├── fastos_io.rs
+│                   │   ├── fastos_kernel.rs
+│                   │   ├── fastos_limits.rs
+│                   │   ├── fastos_math.rs
+│                   │   ├── fastos_stdio.rs
+│                   │   ├── fastos_stdlib.rs
+│                   │   ├── fastos_string.rs
+│                   │   ├── fastos_time.rs
+│                   │   ├── fastos_types.rs
+│                   │   └── mod.rs
+│                   ├── cpp/
+│                   ├── gpu/
+│                   └── lib.rs
+│
+├── Cargo.toml
+├── ARCHITECTURE.md
+├── README.md
+└── .gitignore
 ```
 
-### Componentes principales
+---
 
-| Componente | Ubicación | Estado | Rol |
-|---|---|---|---|
-| Preprocesador | `adeb-frontend-c/src/preprocessor.rs` | ✅ | `#include`, `#define`, `#if/#ifdef/#ifndef` y expansión de macros |
-| Lexer | `adeb-frontend-c/src/parse/lexer.rs` | ✅ | Tokenización de C |
-| Parser | `adeb-frontend-c/src/parse/parser.rs` | ✅ | AST C completo de alto nivel |
-| AST C | `adeb-frontend-c/src/ast.rs` | ✅ | Representación de tipos, expresiones, statements y top-level |
-| Lowering C → IR | `adeb-frontend-c/src/lower/to_ir.rs` | ✅ | Conversión a `Program` interno |
-| IR / middle-end | `adeb-middle` | ✅ | Infraestructura de IR y optimización |
-| Backend x64 | `adeb-backend-x64` | ✅ | Generación de máquina/PE |
-| Driver CLI | `ADead-BIB-Main/src/main.rs` | ✅ | Orquestación y modo paso a paso |
+## 4. Definición clara de cada carpeta
 
-### Transparencia interna: modo `step`
+### 4.1 Documentación
 
-El compilador ya no se comporta como caja negra cuando se invoca en modo de inspección:
+| Carpeta | Propósito |
+|---|---|
+| `docs/` | documentación técnica, reportes de estado, decisiones de arquitectura y guías de mantenimiento |
 
-```bash
-adB step Test_c/01_ctype_basic.c
-adB cc Test_c/01_ctype_basic.c -step
-adB run Test_c/01_ctype_basic.c -step
+### 4.2 Tests y muestras C
+
+| Carpeta | Propósito |
+|---|---|
+| `Test_c/` | fixtures y pruebas funcionales del compilador C, enfocados en headers, parsing y regresiones |
+
+### 4.3 Código C real de plataforma
+
+| Carpeta | Propósito |
+|---|---|
+| `FastOS_v2/kernel/` | código C de kernel y runtime bare-metal |
+| `FastOS_v2/kernel/include/` | headers públicos/compartidos del kernel |
+| `FastOS_v2/kernel/lib/` | utilidades C reusables de bajo nivel |
+| `FastOS_v2/legacy/` | arranque heredado y piezas de compatibilidad temprana |
+
+### 4.4 Núcleo del compilador C
+
+| Carpeta | Propósito |
+|---|---|
+| `src/rust/crates/adeb-frontend-c/` | frontend C: preprocesado, lexer, parser, AST y lowering |
+| `src/rust/crates/adeb-frontend-c/src/parse/` | análisis léxico y sintáctico |
+| `src/rust/crates/adeb-frontend-c/src/lower/` | traducción del AST C al IR interno |
+
+### 4.5 Infraestructura compartida del compilador
+
+| Carpeta | Propósito |
+|---|---|
+| `src/rust/crates/adeb-core/` | tipos base, AST compartido, símbolos, diagnósticos y toolchain helpers |
+| `src/rust/crates/adeb-middle/` | IR, optimizaciones, chequeos estrictos y detección de UB |
+| `src/rust/crates/adeb-backend-x64/` | selección de instrucciones, codegen, encoder y backend nativo |
+| `src/rust/crates/adeb-platform/` | formatos de salida y soporte de plataforma (`PE`, `ELF`, etc.) |
+
+### 4.6 Biblioteca estándar y catálogos C
+
+| Carpeta | Propósito |
+|---|---|
+| `src/rust/crates/adeb-stdlib/src/c/` | módulos lógicos de stdlib C y runtime asociado |
+| `src/rust/crates/adeb-frontend-c/src/stdlib.rs` | resolución de headers e inyección de prototipos/definiciones para el frontend |
+| `src/rust/crates/adeb-frontend-c/src/compiler_extensions.rs` | compatibilidad GCC/MSVC y headers especiales/extensiones |
+
+### 4.7 Driver y CLI
+
+| Carpeta | Propósito |
+|---|---|
+| `src/rust/crates/ADead-BIB-Main/` | entrypoint del compilador, comandos CLI, modo `step`, build driver |
+| `src/rust/crates/ADead-BIB-Main/src/cli/` | utilidades de terminal, formato y salida de inspección |
+
+---
+
+## 5. Estructura lógica y profesional recomendada
+
+La estructura real del repositorio es válida, pero para documentarla profesionalmente conviene agruparla en capas:
+
+### Capa 1 — Producto y documentación
+
+- `docs/`
+- `README.md`
+- `ARCHITECTURE.md`
+
+### Capa 2 — Código C objetivo y runtime
+
+- `FastOS_v2/`
+- `Test_c/`
+
+### Capa 3 — Implementación del compilador
+
+- `src/rust/crates/adeb-frontend-c/`
+- `src/rust/crates/adeb-core/`
+- `src/rust/crates/adeb-middle/`
+- `src/rust/crates/adeb-backend-x64/`
+- `src/rust/crates/adeb-platform/`
+- `src/rust/crates/ADead-BIB-Main/`
+
+### Capa 4 — Biblioteca estándar y headers
+
+- `src/rust/crates/adeb-stdlib/src/c/`
+- `src/rust/crates/adeb-frontend-c/src/stdlib.rs`
+- `src/rust/crates/adeb-frontend-c/src/compiler_extensions.rs`
+
+Esta organización es la más conveniente porque separa:
+
+1. **el compilador**
+2. **las bibliotecas soportadas**
+3. **el código C real**
+4. **la documentación**
+5. **la validación**
+
+---
+
+## 6. Convenciones de nomenclatura
+
+### 6.1 Carpetas
+
+| Tipo | Convención | Ejemplo |
+|---|---|---|
+| Módulos Rust del compilador | `kebab-case` con prefijo de dominio | `adeb-frontend-c`, `adeb-backend-x64` |
+| Submódulos internos | nombre corto y semántico | `parse`, `lower`, `optimizer`, `isa` |
+| Fixtures/tests C | carpeta temática corta | `Test_c` |
+| Código C de plataforma | nombre de producto o subsistema | `FastOS_v2`, `kernel`, `include`, `lib` |
+
+### 6.2 Archivos
+
+| Tipo | Convención | Ejemplo |
+|---|---|---|
+| Archivos C | `snake_case.c` | `scheduler.c`, `keyboard.c` |
+| Headers C | `snake_case.h` | `kernel.h`, `hal.h` |
+| Módulos Rust | `snake_case.rs` | `preprocessor.rs`, `strict_type_checker.rs` |
+| Tests C ordenados | prefijo numérico + área + caso | `01_ctype_basic.c` |
+| Configuración | nombre estándar de herramienta | `Cargo.toml`, `Makefile`, `kernel.ld` |
+
+### 6.3 Reglas recomendadas
+
+1. Usar `snake_case` en archivos C y Rust
+2. Reservar prefijos numéricos solo para fixtures ordenados
+3. Mantener `include/` exclusivamente para headers públicos
+4. Mantener `lib/` para implementaciones C reutilizables, no para headers
+5. Separar archivos de plataforma (`kernel`, `boot`, `linker`) de tests y fixtures
+
+---
+
+## 7. Archivos de configuración requeridos
+
+Los siguientes archivos existen y son necesarios para un mantenimiento correcto del ecosistema C del proyecto:
+
+| Archivo | Ubicación | Propósito |
+|---|---|---|
+| `Cargo.toml` | raíz del repo | configuración general del proyecto principal |
+| `src/rust/Cargo.toml` | workspace Rust | define el workspace de crates del compilador |
+| `src/rust/crates/ADead-BIB-Main/Cargo.toml` | driver CLI | binario `adB` y dependencias del pipeline |
+| `src/rust/crates/adeb-frontend-c/Cargo.toml` | frontend C | dependencias del frontend (`adeb-core`, `adeb-middle`) |
+| `src/rust/crates/adeb-stdlib/Cargo.toml` | stdlib | catálogo de stdlib C/C++ |
+| `src/rust/crates/adeb-backend-x64/Cargo.toml` | backend | backend nativo x64 |
+| `FastOS_v2/Makefile` | build C/ASM del kernel | build principal estilo Unix |
+| `FastOS_v2/build.ps1` | build Windows | automatización en PowerShell |
+| `FastOS_v2/kernel.ld` | linker script | layout del kernel/binario |
+| `.gitignore` | raíz | exclusión de binarios, builds y artefactos |
+
+### Configuración adicional recomendada
+
+Si el proyecto C de FastOS crece, la estructura soporta incorporar sin romper la jerarquía:
+
+- `FastOS_v2/tests/`
+- `FastOS_v2/tools/`
+- `FastOS_v2/scripts/`
+- `FastOS_v2/config/`
+- `FastOS_v2/docs/`
+
+Estas carpetas no son obligatorias hoy, pero son las extensiones más naturales siguiendo mejores prácticas.
+
+---
+
+## 8. Ejemplos de rutas relativas
+
+### 8.1 Desde la raíz del repositorio
+
+| Objetivo | Ruta relativa |
+|---|---|
+| Reporte C | `docs/reportes_C.md` |
+| Test básico de `ctype` | `Test_c/01_ctype_basic.c` |
+| Frontend C | `src/rust/crates/adeb-frontend-c/src/` |
+| Parser C | `src/rust/crates/adeb-frontend-c/src/parse/parser.rs` |
+| Lowering C a IR | `src/rust/crates/adeb-frontend-c/src/lower/to_ir.rs` |
+| Stdlib C lógica | `src/rust/crates/adeb-stdlib/src/c/` |
+| Driver CLI | `src/rust/crates/ADead-BIB-Main/src/main.rs` |
+| Kernel headers | `FastOS_v2/kernel/include/` |
+| Librería C del kernel | `FastOS_v2/kernel/lib/` |
+
+### 8.2 Desde `src/rust/`
+
+| Objetivo | Ruta relativa |
+|---|---|
+| Frontend C | `crates/adeb-frontend-c/src/` |
+| Stdlib C | `crates/adeb-stdlib/src/c/` |
+| Backend x64 | `crates/adeb-backend-x64/src/` |
+| Driver CLI | `crates/ADead-BIB-Main/src/` |
+| Fixture C | `../../Test_c/01_ctype_basic.c` |
+
+### 8.3 Desde `FastOS_v2/`
+
+| Objetivo | Ruta relativa |
+|---|---|
+| Header principal | `kernel/include/kernel.h` |
+| Biblioteca auxiliar | `kernel/lib/printf.c` |
+| Linker script | `kernel.ld` |
+| Build script PowerShell | `build.ps1` |
+
+---
+
+## 9. Validación de dependencias y bibliotecas
+
+### 9.1 Dependencias entre crates del pipeline C
+
+Validación realizada contra los `Cargo.toml` reales del repositorio:
+
+| Componente | Dependencias validadas | Estado |
+|---|---|---|
+| `adeb-frontend-c` | `adeb-core`, `adeb-middle` | ✅ |
+| `adeb-stdlib` | `adeb-core` | ✅ |
+| `adeb-backend-x64` | `adeb-core`, `adeb-middle`, `adeb-platform` | ✅ |
+| `ADead-BIB-Main` | `adeb-frontend-c`, `adeb-middle`, `adeb-backend-x64`, `adeb-stdlib`, `adeb-core` | ✅ |
+
+### 9.2 Referencias de bibliotecas C internas
+
+| Referencia lógica | Ubicación validada | Estado |
+|---|---|---|
+| Módulos `fastos_*` de C | `src/rust/crates/adeb-stdlib/src/c/` | ✅ |
+| Resolución de headers C | `src/rust/crates/adeb-frontend-c/src/stdlib.rs` | ✅ |
+| Extensiones GCC/MSVC y headers especiales | `src/rust/crates/adeb-frontend-c/src/compiler_extensions.rs` | ✅ |
+| AST / lexer / parser / lowering C | `src/rust/crates/adeb-frontend-c/src/` | ✅ |
+| IR / optimizadores | `src/rust/crates/adeb-middle/src/` | ✅ |
+| Generación x64 | `src/rust/crates/adeb-backend-x64/src/` | ✅ |
+
+### 9.3 Referencias de código C real y pruebas
+
+| Área | Ubicación validada | Estado |
+|---|---|---|
+| Fixtures de regresión | `Test_c/` | ✅ |
+| Código C de kernel | `FastOS_v2/kernel/*.c` | ✅ |
+| Headers de kernel | `FastOS_v2/kernel/include/` | ✅ |
+| Librerías auxiliares C del kernel | `FastOS_v2/kernel/lib/` | ✅ |
+| Configuración de build del kernel | `FastOS_v2/Makefile`, `FastOS_v2/build.ps1`, `FastOS_v2/kernel.ld` | ✅ |
+
+### 9.4 Interpretación de la validación
+
+La validación confirma que:
+
+1. las carpetas y archivos clave **existen**
+2. las dependencias entre crates del pipeline C están **declaradas**
+3. las bibliotecas y módulos C están **ubicados de forma coherente**
+4. las rutas de tests, kernel, frontend, stdlib y backend son **consistentes**
+
+No debe confundirse esta validación con soporte funcional total del estándar C: aquí se valida la **organización y referencia estructural**, no la cobertura semántica completa.
+
+---
+
+## 10. Estructura objetivo recomendada para escalabilidad
+
+La estructura actual es buena; la estructura objetivo profesional para crecer sin deuda debería mantenerse así:
+
+```text
+docs/                  → documentación y reportes
+Test_c/                → tests y fixtures C
+FastOS_v2/             → código C real del sistema
+src/rust/crates/
+  ADead-BIB-Main/      → CLI y driver
+  adeb-core/           → tipos base y símbolos
+  adeb-frontend-c/     → frontend C
+  adeb-middle/         → IR y optimización
+  adeb-backend-x64/    → backend nativo
+  adeb-platform/       → formatos de salida
+  adeb-stdlib/         → stdlib y catálogos C
 ```
 
-El modo `step` muestra:
+### Razones por las que esta estructura es correcta
 
-1. **Preprocessor**  
-   - headers resueltos  
-   - fuente preprocesada completa
-2. **Lexical Analysis**  
-   - lista de tokens  
-   - línea de origen de cada token
-3. **Syntactic Analysis**  
-   - `CTranslationUnit` completo
-4. **Semantic Analysis**  
-   - snapshot de símbolos recolectados  
-   - funciones, prototipos, globals, typedefs, structs, enums  
-   - detección simple de duplicados
-5. **IR Generation**  
-   - `Program` intermedio completo
-6. **Code Generation**  
-   - tamaño de secciones  
-   - offsets relevantes  
-   - preview hexadecimal de código y datos
-
-### Limitación actual del modo `step`
-
-La fase “semántica” mostrada hoy es una **vista estructural del AST y símbolos** derivada del frontend C. Es extremadamente útil para depuración y trazabilidad, pero aún no equivale a un verificador semántico C completo con todas las reglas formales de compatibilidad, scopes y conversiones del estándar.
+| Criterio | Cumplimiento |
+|---|---|
+| Modularidad | ✅ separa frontend, stdlib, middle-end y backend |
+| Escalabilidad | ✅ permite crecer por crate y por dominio |
+| Mantenibilidad | ✅ cada capa tiene una responsabilidad clara |
+| Reusabilidad | ✅ tests, kernel y stdlib no se mezclan con CLI |
+| Profesionalismo | ✅ sigue separación por subsistema, no por “archivos sueltos” |
+| Portabilidad | ✅ permite convivir con build C tradicional y pipeline Rust |
 
 ---
 
-## 3. Soporte actual del frontend C
+## 11. Reglas de mantenimiento recomendadas
 
-### 3.1 Características ya soportadas
-
-| Categoría | Estado | Detalle |
-|---|---|---|
-| Funciones | ✅ | definiciones y prototipos |
-| Variables globales | ✅ | con y sin inicializador |
-| Tipos primitivos | ✅ | `char`, `short`, `int`, `long`, `long long`, `float`, `double`, `_Bool` |
-| Calificadores | ✅ | `const`, `volatile`, `signed`, `unsigned` |
-| Punteros | ✅ | punteros simples y múltiples |
-| Arrays | ✅ | arrays con tamaño y sin tamaño |
-| Structs | ✅ | structs regulares y miembros anónimos soportados |
-| Enums | ✅ | enumeraciones con valores explícitos |
-| Typedef | ✅ | alias de tipos |
-| Expresiones | ✅ | binarias, unarias, casts, llamadas, ternario |
-| Control de flujo | ✅ | `if`, `else`, `for`, `while`, `do-while`, `switch`, `break`, `continue`, `return` |
-| Inicialización básica | ✅ | inicializadores sencillos y por llaves en varios casos |
-| Literales | ✅ | enteros, flotantes, chars, strings, hexadecimales |
-| Preprocesado básico | ✅ | `#include`, macros objeto y función, `#if` simples |
-| Compatibilidad de extensiones | ⚠️ | parte de GCC/MSVC está stubbeada o tolerada |
-
-### 3.2 Casos límite ya cubiertos por pruebas
-
-| Caso | Estado |
-|---|---|
-| `ctype.h` básico | ✅ |
-| `ctype.h` extendido | ✅ |
-| Uso real de `ctype` en loops/parser mini-real | ✅ |
-| Casos límite ASCII/NUL/DEL/EOF | ✅ |
-| `printf` con formatos básicos | ✅ |
-| `do-while`, `switch`, punteros, casts, `sizeof`, enums, typedefs | ✅ |
-| Globales no inicializadas | ✅ |
-| Arrays y expresiones compuestas | ✅ |
-| Structs anidados / múltiples | ✅ |
-
-### 3.3 Mejoras recientes del frontend
-
-| Mejora | Impacto |
-|---|---|
-| Miembros anónimos `struct/union` | Mayor cercanía a C11 real |
-| Expansión de macros segura | Evita reemplazos incorrectos en strings y comentarios |
-| Macro función con espacio antes de `(` | Mayor tolerancia a código C del mundo real |
-| Fixtures reales `Test_c/*.c` | Pruebas de integración más representativas |
+1. No mezclar fixtures C en carpetas del compilador
+2. No colocar headers públicos dentro de `lib/`
+3. No colocar archivos de build del kernel dentro del workspace Rust
+4. Mantener todos los módulos de soporte C dentro de `adeb-frontend-c` o `adeb-stdlib`, nunca repartidos arbitrariamente
+5. Centralizar nuevas referencias de headers en una sola capa de resolución
+6. Documentar toda carpeta nueva en `docs/reportes_C.md`
+7. Añadir tests de regresión en `Test_c/` para cada nuevo header, extensión o bug corregido
 
 ---
 
-## 4. Estado actual de headers y stdlib C
+## 12. Conclusión
 
-El frontend C resuelve actualmente **107 entradas de headers** en `stdlib.rs`. Esto incluye biblioteca estándar, sistema, POSIX, red, multimedia, GPU, compatibilidad Windows y varios stubs externos.
+La estructura actual del ecosistema C de ADead-BIB ya dispone de los bloques esenciales para un proyecto profesional:
 
-### 4.1 Headers estándar C mapeados directamente
+- compilador C modular
+- stdlib y resolución de headers
+- middle-end y backend separados
+- tests C dedicados
+- código C real de plataforma
+- documentación y build scripts en ubicaciones coherentes
 
-| Header | Estado real |
-|---|---|
-| `<stdio.h>` | ✅ Mapeado |
-| `<stdlib.h>` | ✅ Mapeado |
-| `<string.h>` | ✅ Mapeado |
-| `<strings.h>` | ✅ Mapeado |
-| `<math.h>` | ✅ Mapeado |
-| `<ctype.h>` | ✅ Mapeado |
-| `<stdint.h>` | ✅ Mapeado |
-| `<inttypes.h>` | ✅ Mapeado al mismo bloque base que `stdint.h` |
-| `<stdbool.h>` | ✅ Mapeado |
-| `<stddef.h>` | ✅ Mapeado |
-| `<stdarg.h>` | ✅ Mapeado |
-| `<limits.h>` | ✅ Mapeado |
-| `<float.h>` | ✅ Mapeado |
-| `<errno.h>` | ✅ Mapeado |
-| `<assert.h>` | ✅ Mapeado |
-| `<signal.h>` | ✅ Mapeado |
-| `<setjmp.h>` | ✅ Mapeado |
-| `<time.h>` | ✅ Mapeado |
-| `<locale.h>` | ✅ Mapeado |
+La mejora principal aportada por este reporte es dejar explícita una **jerarquía completa, validada y escalable**, con propósito por carpeta, convención de nombres, archivos de configuración y rutas relativas de referencia.
 
-### 4.2 Headers C adicionales resueltos vía `compiler_extensions`
-
-| Header | Estado |
-|---|---|
-| `<complex.h>` | ⚠️ Stub / extensión |
-| `<wchar.h>` | ⚠️ Stub / extensión |
-| `<wctype.h>` | ⚠️ Stub / extensión |
-| `<uchar.h>` | ⚠️ Stub / extensión |
-| `<tgmath.h>` | ⚠️ Stub / extensión |
-
-### 4.3 Interpretación correcta de “soporte”
-
-Es importante distinguir dos niveles:
-
-| Nivel | Significado |
-|---|---|
-| **Header resuelto** | El preprocesador puede inyectar definiciones, tipos, macros o prototipos para que el parsing avance |
-| **Soporte completo del estándar** | El compilador implementa semántica, lowering, runtime y comportamiento observable equivalentes al estándar |
-
-Hoy ADead-BIB tiene **muy buen avance en resolución de headers** y **cobertura útil de frontend**, pero eso **no implica** que todos esos headers estén implementados con semántica y runtime completos.
-
----
-
-## 5. Qué ya está sólido
-
-### 5.1 Zonas maduras
-
-| Área | Estado | Nota |
-|---|---|---|
-| `stdio` / `stdlib` / `string` / `math` / `time` | ✅ Fuerte | buena base para ejemplos y programas medianos |
-| `ctype` | ✅ Muy sólido | 16 funciones, 8 macros, lookup table O(1), fixtures dedicados |
-| Resolución de headers | ✅ Fuerte | gran cobertura nominal |
-| Lowering a IR | ✅ Fuerte | amplio set de tests |
-| Backend x64 PE | ✅ Operativo | genera binarios válidos |
-| Inspección paso a paso | ✅ Nueva capacidad clave | permite auditar el compilador internamente |
-
-### 5.2 Validación actual
-
-| Validación | Resultado |
-|---|---|
-| `cargo test -p adeb-frontend-c` | ✅ 78 tests OK |
-| `cargo check -p adeb-frontend-c` | ✅ OK |
-| `cargo check -p adeb-middle` | ✅ OK |
-| `cargo check -p adeb-backend-x64` | ✅ OK |
-
----
-
-## 6. Pendientes reales para hablar de “C completo”
-
-### 6.1 Pendientes del lenguaje
-
-| Área | Estado | Pendiente |
-|---|---|---|
-| Scope y semántica C formal | ⚠️ Parcial | tabla de símbolos canónica, resolución completa de nombres y reglas de scope |
-| Conversión aritmética usual | ⚠️ Parcial | reglas completas de promotions/conversions |
-| Variádicas | ⚠️ Parcial | `stdarg` está mapeado, pero falta soporte más profundo de semántica/runtime |
-| `setjmp/longjmp` real | ⚠️ Stub | falta implementación real de comportamiento |
-| Señales / locale | ⚠️ Stub | mapeo disponible, runtime incompleto |
-| Floating environment | ❌ Ausente | `fenv.h` sigue fuera |
-| `iso646.h` | ❌ Ausente | trivial, pero todavía no mapeado |
-| Wide-char / Unicode C | ⚠️ Parcial | headers presentes como stubs, soporte incompleto |
-| Complejos / type-generic math | ⚠️ Parcial | stubs presentes, comportamiento incompleto |
-
-### 6.2 Pendientes de plataforma y ecosistema
-
-| Área | Estado actual |
-|---|---|
-| POSIX funcional | ⚠️ Muchos headers, poca implementación real |
-| Networking real | ⚠️ Headers presentes, stack funcional pendiente |
-| Multimedia / imágenes / audio | ⚠️ Mayormente stubs |
-| Librerías externas grandes | ⚠️ Resueltas nominalmente, no integradas de forma plena |
-| Portabilidad más allá de PE/x64 | ⚠️ Pipeline C validado sobre ruta x64/PE |
-
----
-
-## 7. Cobertura estimada actualizada
-
-Estas cifras deben leerse como **estimaciones operativas**, no como certificación formal del estándar.
-
-### 7.1 Cobertura por dimensión
-
-| Dimensión | Estimación | Comentario |
-|---|---|---|
-| Parsing de C usado en código real pequeño/mediano | **Alta** | suficiente para ejemplos y varias pruebas no triviales |
-| Resolución nominal de headers C/POSIX/ext | **Alta** | 107 headers mapeados |
-| Semántica C estricta y completa | **Media-baja** | faltan reglas formales y casos avanzados |
-| Runtime/ABI de toda la stdlib declarada | **Media-baja** | muchos headers son stubs o prototipos |
-| Transparencia y depuración interna | **Alta** | nuevo modo `step` reduce opacidad del pipeline |
-
-### 7.2 Veredicto práctico
-
-| Pregunta | Respuesta |
-|---|---|
-| ¿Compila programas C simples? | ✅ Sí |
-| ¿Compila programas medianos con subconjunto razonable del lenguaje? | ✅ Sí, dependiendo de headers y constructs usados |
-| ¿Tiene visibilidad interna del pipeline? | ✅ Sí, ahora con `step` |
-| ¿Es ya un compilador C99/C11 completamente conforme? | ❌ No todavía |
-| ¿Está mucho más cerca de una base seria de compilador C? | ✅ Sí |
-
----
-
-## 8. Hoja de ruta recomendada
-
-### Fase A — Semántica real de C
-
-1. Construir tabla de símbolos jerárquica por scope
-2. Registrar tipos efectivos por expresión y statement
-3. Validar conversiones implícitas, promotions y punteros
-4. Exponer esa semántica también en el modo `step`
-
-### Fase B — Completar headers críticos
-
-1. `fenv.h`
-2. `iso646.h`
-3. `stdarg` más profundo
-4. `wchar.h` / `wctype.h` con soporte real
-5. `complex.h` / `tgmath.h`
-
-### Fase C — Runtime y ecosistema
-
-1. POSIX utilizable
-2. Networking funcional
-3. `zlib` y librerías base muy usadas
-4. mayor robustez en ABI y tests end-to-end de binarios
-
----
-
-## 9. Conclusión
-
-ADead-BIB ya dispone de un **frontend C útil, extensible y verificable**, con capacidad real de compilar, bajar a IR y generar binarios nativos. El progreso reciente más importante no es solo soporte sintáctico: también se ha ganado **observabilidad** del compilador gracias al nuevo modo `step`, que vuelve explícitas las transformaciones internas del pipeline.
-
-La principal brecha restante no es ya “arrancar el compilador”, sino **cerrar la distancia entre parsing funcional y conformidad completa del lenguaje C**, sobre todo en semántica rigurosa, runtime de headers declarados y soporte real de bibliotecas del ecosistema.
-
-En términos prácticos: **ADead-BIB ya no es una caja negra ni un parser experimental; es una base de compilador C seria, pero todavía no un C99/C11 completo certificado.**
+En su estado actual, la estructura es **modular, mantenible y apta para crecer**, siempre que se preserve esta separación de responsabilidades y se continúe documentando cualquier nueva carpeta o dependencia del ecosistema C.
