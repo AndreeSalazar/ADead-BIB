@@ -56,7 +56,7 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
         // ── C Compiler ──────────────────────────────────
         "cc" | "c" => {
             let request = parse_request(args, Language::C)?;
-            c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode)?;
+            c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?;
             Ok(ExitCode::SUCCESS)
         }
 
@@ -86,11 +86,11 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let request = parse_request(args, Language::Auto)?;
             let lang = detect_language(&request.input_file);
             match lang {
-                Language::C => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode)?,
+                Language::C => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
                 Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, request.step_mode)?,
                 Language::Cuda => cuda_driver::compile_cuda_file(&request.input_file, &request.output_file, request.step_mode)?,
                 Language::Js => js_driver::compile_js_file(&request.input_file, &request.output_file, request.step_mode)?,
-                Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode)?,
+                Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
             }
             run_executable(&request.output_file)
         }
@@ -100,7 +100,7 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let request = parse_request_step(args)?;
             let lang = detect_language(&request.input_file);
             match lang {
-                Language::C | Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, true)?,
+                Language::C | Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, true, request.strict)?,
                 Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, true)?,
                 Language::Cuda => cuda_driver::compile_cuda_file(&request.input_file, &request.output_file, true)?,
                 Language::Js => js_driver::compile_js_file(&request.input_file, &request.output_file, true)?,
@@ -124,8 +124,9 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
                     input_file: args[1].clone(),
                     output_file: default_output_filename(&args[1]),
                     step_mode: args.iter().any(|a| a == "-step" || a == "--step"),
+                    strict: args.iter().any(|a| a == "-Wstrict" || a == "--strict"),
                 };
-                c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode)?;
+                c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, args.iter().any(|a| a == "-Wstrict" || a == "--strict"))?;
                 Ok(ExitCode::SUCCESS)
             } else {
                 print_usage(&args[0]);
@@ -151,6 +152,7 @@ struct CompileRequest {
     input_file: String,
     output_file: String,
     step_mode: bool,
+    strict: bool,
 }
 
 // ── Argument parsing ────────────────────────────────────────
@@ -163,6 +165,7 @@ fn parse_request(
     let mut input_file: Option<String> = None;
     let mut output_file: Option<String> = None;
     let mut step_mode = false;
+    let mut strict = false;
     let mut i = 2;
 
     while i < args.len() {
@@ -176,6 +179,10 @@ fn parse_request(
             }
             "-step" | "--step" => {
                 step_mode = true;
+                i += 1;
+            }
+            "-Wstrict" | "--strict" => {
+                strict = true;
                 i += 1;
             }
             flag if flag.starts_with('-') => {
@@ -202,6 +209,7 @@ fn parse_request(
         input_file,
         output_file,
         step_mode,
+        strict,
     })
 }
 
@@ -272,6 +280,7 @@ fn print_usage(bin: &str) {
     println!("OPTIONS:");
     println!("  -o <output>       Output file (default: <basename>.exe)");
     println!("  -step, --step     Enable step mode (show all phases)");
+    println!("  -Wstrict          Strict C mode: bit-widths enforced, all UB = error");
     println!();
     println!("EXAMPLES:");
     println!("  {} cc hello.c                   Compile hello.c -> hello.exe", bin);
@@ -357,7 +366,7 @@ mod tests {
 
     #[test]
     fn c_pipeline_through_driver() {
-        let result = c_driver::compile_c_pipeline("int main() { return 0; }");
+        let result = c_driver::compile_c_pipeline("int main() { return 0; }", false);
         assert!(result.is_ok());
         let art = result.unwrap();
         assert_eq!(art.program.functions.len(), 1);
@@ -366,7 +375,7 @@ mod tests {
 
     #[test]
     fn c_driver_ub_detects_div_zero() {
-        let result = c_driver::compile_c_pipeline("int main() { int x = 10 / 0; return x; }").unwrap();
+        let result = c_driver::compile_c_pipeline("int main() { int x = 10 / 0; return x; }", false).unwrap();
         assert!(result.ub_report.has_errors());
     }
 
@@ -375,7 +384,14 @@ mod tests {
         let result = c_driver::compile_c_pipeline(r#"
             #include <stdio.h>
             int main() { printf("%d %d", 1); return 0; }
-        "#).unwrap();
+        "#, false).unwrap();
         assert!(result.ub_report.has_warnings());
+    }
+
+    #[test]
+    fn parse_request_strict() {
+        let args = str_args(&["adB", "cc", "demo.c", "-Wstrict"]);
+        let request = parse_request(&args, Language::C).unwrap();
+        assert!(request.strict);
     }
 }

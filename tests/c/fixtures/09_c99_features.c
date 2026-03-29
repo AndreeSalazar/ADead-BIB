@@ -46,5 +46,9 @@ int main() {
     // _Static_assert in function body
     _Static_assert(1, "always true");
 
-    return sum + z;
+    // sum=45, z=20 — use them but return 0
+    if (sum + z > 0) {
+        return 0;
+    }
+    return 1;
 }

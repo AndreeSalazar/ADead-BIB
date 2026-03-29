@@ -104,7 +104,7 @@ impl UBReport {
 // ── Pipeline ────────────────────────────────────────────────
 
 /// Full C compilation pipeline: source → preprocessor → lexer → parser → semantic → UB → IR
-pub fn compile_c_pipeline(source: &str) -> Result<CPipelineArtifacts, String> {
+pub fn compile_c_pipeline(source: &str, strict: bool) -> Result<CPipelineArtifacts, String> {
     // Phase 0: Preprocess
     let mut preprocessor = CPreprocessor::new();
     let preprocessed = preprocessor.process(source);
@@ -121,7 +121,18 @@ pub fn compile_c_pipeline(source: &str) -> Result<CPipelineArtifacts, String> {
     let semantic = collect_semantic_snapshot(&unit);
 
     // Phase 4: UB Detection (on AST, before lowering)
-    let ub_report = detect_ub_in_ast(&unit);
+    let mut ub_report = detect_ub_in_ast(&unit);
+
+    // Phase 4b: Strict mode — additional bit-width & type safety checks
+    if strict {
+        detect_strict_violations(&unit, &mut ub_report);
+        // In strict mode, promote all warnings to errors
+        for w in &mut ub_report.warnings {
+            if w.severity == "warning" {
+                w.severity = "error";
+            }
+        }
+    }
 
     // Phase 5: Lower to IR
     let mut lower = CToIR::new();
@@ -144,15 +155,20 @@ pub fn compile_c_file(
     input_file: &str,
     output_file: &str,
     step_mode: bool,
+    strict: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("  ADead-BIB C Compiler v8.0");
+    if strict {
+        println!("  ADead-BIB C Compiler v8.0 [STRICT MODE]");
+    } else {
+        println!("  ADead-BIB C Compiler v8.0");
+    }
     println!("   Source: {}", input_file);
     println!("   Target: {}", output_file);
 
     let source = fs::read_to_string(input_file)
         .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
 
-    let pipeline = compile_c_pipeline(&source).map_err(|e| format!("C pipeline error: {}", e))?;
+    let pipeline = compile_c_pipeline(&source, strict).map_err(|e| format!("C pipeline error: {}", e))?;
 
     if step_mode {
         print_step_mode(input_file, &source, &pipeline);
@@ -212,11 +228,223 @@ pub fn compile_c_file(
     println!("   Build complete: {} ({} bytes)", output_file, meta.len());
     println!("   Post-build validation OK");
 
+    if strict && pipeline.ub_report.has_errors() {
+        eprintln!("   STRICT MODE: compilation aborted — {} UB error(s) found", 
+            pipeline.ub_report.warnings.iter().filter(|w| w.severity == "error").count());
+        return Err("Strict mode: UB detected, refusing to emit binary".into());
+    }
+
     if pipeline.ub_report.has_errors() {
         eprintln!("   UB errors detected — binary may exhibit undefined behavior");
     }
 
     Ok(())
+}
+
+// ── Strict Mode: Bit-Width & Type Safety ─────────────────────
+
+fn detect_strict_violations(unit: &CTranslationUnit, report: &mut UBReport) {
+    use adeb_frontend_c::ast::{CExpr, CBinOp, CAssignOp, CStmt};
+
+    for decl in &unit.declarations {
+        if let CTopLevel::FunctionDef { name, body, .. } = decl {
+            for stmt in body {
+                check_stmt_strict(report, name, stmt);
+            }
+        }
+    }
+}
+
+fn check_stmt_strict(report: &mut UBReport, func: &str, stmt: &adeb_frontend_c::ast::CStmt) {
+    use adeb_frontend_c::ast::{CStmt, CExpr, CType};
+
+    match stmt {
+        CStmt::VarDecl { type_spec, declarators, .. } => {
+            for d in declarators {
+                // Check: assigning a large literal to a small type
+                if let Some(adeb_frontend_c::ast::CInitializer::Expr(expr)) = &d.initializer {
+                    check_bit_width_init(report, func, type_spec, &d.derived_type, expr);
+                    check_expr_strict(report, func, expr);
+                }
+            }
+        }
+        CStmt::Expr(expr) | CStmt::Return(Some(expr)) => {
+            check_expr_strict(report, func, expr);
+        }
+        CStmt::If { condition, then_body, else_body } => {
+            check_expr_strict(report, func, condition);
+            check_stmt_strict(report, func, then_body);
+            if let Some(eb) = else_body { check_stmt_strict(report, func, eb); }
+        }
+        CStmt::While { condition, body } | CStmt::DoWhile { body, condition } => {
+            check_expr_strict(report, func, condition);
+            check_stmt_strict(report, func, body);
+        }
+        CStmt::For { init, condition, update, body } => {
+            if let Some(i) = init { check_stmt_strict(report, func, i); }
+            if let Some(c) = condition { check_expr_strict(report, func, c); }
+            if let Some(u) = update { check_expr_strict(report, func, u); }
+            check_stmt_strict(report, func, body);
+        }
+        CStmt::Switch { expr, cases } => {
+            check_expr_strict(report, func, expr);
+            for case in cases {
+                for s in &case.body { check_stmt_strict(report, func, s); }
+            }
+        }
+        CStmt::Block(stmts) => {
+            for s in stmts { check_stmt_strict(report, func, s); }
+        }
+        _ => {}
+    }
+}
+
+fn check_expr_strict(report: &mut UBReport, func: &str, expr: &adeb_frontend_c::ast::CExpr) {
+    use adeb_frontend_c::ast::{CExpr, CBinOp};
+
+    match expr {
+        // Signed integer overflow from literal arithmetic
+        CExpr::BinaryOp { op: CBinOp::Add, left, right, .. } => {
+            if let (CExpr::IntLiteral(a), CExpr::IntLiteral(b)) = (left.as_ref(), right.as_ref()) {
+                if a.checked_add(*b).is_none() {
+                    report.warnings.push(UBWarning {
+                        kind: UBKind::SignedIntegerOverflow,
+                        severity: "warning",
+                        message: format!("Signed overflow: {} + {} overflows i64 (C99 §6.5/5)", a, b),
+                        function: Some(func.to_string()),
+                    });
+                }
+            }
+            check_expr_strict(report, func, left);
+            check_expr_strict(report, func, right);
+        }
+        CExpr::BinaryOp { op: CBinOp::Mul, left, right, .. } => {
+            if let (CExpr::IntLiteral(a), CExpr::IntLiteral(b)) = (left.as_ref(), right.as_ref()) {
+                if a.checked_mul(*b).is_none() {
+                    report.warnings.push(UBWarning {
+                        kind: UBKind::SignedIntegerOverflow,
+                        severity: "warning",
+                        message: format!("Signed overflow: {} * {} overflows i64 (C99 §6.5/5)", a, b),
+                        function: Some(func.to_string()),
+                    });
+                }
+            }
+            check_expr_strict(report, func, left);
+            check_expr_strict(report, func, right);
+        }
+        // Shift into sign bit
+        CExpr::BinaryOp { op: CBinOp::Shl, left, right, .. } => {
+            if let (CExpr::IntLiteral(val), CExpr::IntLiteral(shift)) = (left.as_ref(), right.as_ref()) {
+                if *shift >= 0 && *shift < 64 {
+                    if val.checked_shl(*shift as u32).is_none() || (*val > 0 && (*val << *shift) < 0) {
+                        report.warnings.push(UBWarning {
+                            kind: UBKind::ShiftOverflow,
+                            severity: "warning",
+                            message: format!("Shift {} << {} overflows or shifts into sign bit (C99 §6.5.7/4)", val, shift),
+                            function: Some(func.to_string()),
+                        });
+                    }
+                }
+            }
+            check_expr_strict(report, func, left);
+            check_expr_strict(report, func, right);
+        }
+        // Narrowing cast: (char)256, (short)70000, etc.
+        CExpr::Cast { target_type, expr: inner } => {
+            if let CExpr::IntLiteral(val) = inner.as_ref() {
+                let (lo, hi) = type_range(target_type);
+                if *val < lo || *val > hi {
+                    report.warnings.push(UBWarning {
+                        kind: UBKind::IntegerTruncation,
+                        severity: "warning",
+                        message: format!(
+                            "Implicit truncation: value {} does not fit in {} (range {}..{})",
+                            val, render_ctype(target_type), lo, hi
+                        ),
+                        function: Some(func.to_string()),
+                    });
+                }
+            }
+            check_expr_strict(report, func, inner);
+        }
+        // Recurse
+        CExpr::BinaryOp { left, right, .. } => {
+            check_expr_strict(report, func, left);
+            check_expr_strict(report, func, right);
+        }
+        CExpr::UnaryOp { expr: inner, .. } | CExpr::Deref(inner) | CExpr::AddressOf(inner) => {
+            check_expr_strict(report, func, inner);
+        }
+        CExpr::Assign { target, value, .. } => {
+            check_expr_strict(report, func, target);
+            check_expr_strict(report, func, value);
+        }
+        CExpr::Call { args, .. } => {
+            for a in args { check_expr_strict(report, func, a); }
+        }
+        CExpr::Ternary { condition, then_expr, else_expr } => {
+            check_expr_strict(report, func, condition);
+            check_expr_strict(report, func, then_expr);
+            check_expr_strict(report, func, else_expr);
+        }
+        CExpr::Comma(exprs) => {
+            for e in exprs { check_expr_strict(report, func, e); }
+        }
+        CExpr::Index { array, index } => {
+            check_expr_strict(report, func, array);
+            check_expr_strict(report, func, index);
+        }
+        _ => {}
+    }
+}
+
+/// Check if a literal value fits the declared type's bit-width
+fn check_bit_width_init(
+    report: &mut UBReport,
+    func: &str,
+    base_type: &CType,
+    _derived: &Option<CDerivedType>,
+    expr: &adeb_frontend_c::ast::CExpr,
+) {
+    use adeb_frontend_c::ast::CExpr;
+
+    if let CExpr::IntLiteral(val) = expr {
+        let (lo, hi) = type_range(base_type);
+        if lo != 0 || hi != 0 { // only check if we know the range
+            if *val < lo || *val > hi {
+                report.warnings.push(UBWarning {
+                    kind: UBKind::IntegerTruncation,
+                    severity: "warning",
+                    message: format!(
+                        "Value {} does not fit in {} (valid range: {}..{}). Bits will be truncated.",
+                        val, render_ctype(base_type), lo, hi
+                    ),
+                    function: Some(func.to_string()),
+                });
+            }
+        }
+    }
+}
+
+/// Return (min, max) for a C type based on its standard bit-width
+fn type_range(ty: &CType) -> (i64, i64) {
+    match ty {
+        CType::Char => (-128, 127),
+        CType::Short => (-32768, 32767),
+        CType::Int => (-2147483648, 2147483647),
+        CType::Long => (-2147483648, 2147483647),    // Windows: long = 32-bit
+        CType::LongLong => (i64::MIN, i64::MAX),
+        CType::Unsigned(inner) => match inner.as_ref() {
+            CType::Char => (0, 255),
+            CType::Short => (0, 65535),
+            CType::Int => (0, 4294967295),
+            CType::Long => (0, 4294967295),
+            CType::LongLong => (0, i64::MAX),        // approximate: u64 max > i64 max
+            _ => (0, 0),
+        },
+        CType::Signed(inner) => type_range(inner),   // signed same as base
+        _ => (0, 0), // unknown — skip check
+    }
 }
 
 // ── UB Detector Implementation ──────────────────────────────
@@ -854,7 +1082,7 @@ mod tests {
 
     #[test]
     fn test_c_pipeline_basic() {
-        let result = compile_c_pipeline("int main() { return 0; }");
+        let result = compile_c_pipeline("int main() { return 0; }", false);
         assert!(result.is_ok());
         let art = result.unwrap();
         assert_eq!(art.program.functions.len(), 1);
@@ -862,22 +1090,21 @@ mod tests {
 
     #[test]
     fn test_ub_division_by_zero() {
-        let result = compile_c_pipeline("int main() { int x = 10 / 0; return x; }").unwrap();
+        let result = compile_c_pipeline("int main() { int x = 10 / 0; return x; }", false).unwrap();
         assert!(result.ub_report.has_errors());
         assert!(result.ub_report.warnings.iter().any(|w| matches!(w.kind, UBKind::DivisionByZero)));
     }
 
     #[test]
     fn test_ub_shift_overflow() {
-        let result = compile_c_pipeline("int main() { int x = 1 << 64; return x; }").unwrap();
+        let result = compile_c_pipeline("int main() { int x = 1 << 64; return x; }", false).unwrap();
         assert!(result.ub_report.has_warnings());
         assert!(result.ub_report.warnings.iter().any(|w| matches!(w.kind, UBKind::ShiftOverflow)));
     }
 
     #[test]
     fn test_ub_null_deref() {
-        let result = compile_c_pipeline("int main() { int *p = 0; int x = *p; return x; }");
-        // Parser may or may not produce a deref here depending on parsing
+        let result = compile_c_pipeline("int main() { int *p = 0; int x = *p; return x; }", false);
         assert!(result.is_ok());
     }
 
@@ -886,14 +1113,29 @@ mod tests {
         let result = compile_c_pipeline(r#"
             #include <stdio.h>
             int main() { printf("%d %d", 1); return 0; }
-        "#).unwrap();
+        "#, false).unwrap();
         assert!(result.ub_report.warnings.iter().any(|w| matches!(w.kind, UBKind::FormatStringMismatch)));
     }
 
     #[test]
     fn test_ub_no_false_positive_clean_code() {
-        let result = compile_c_pipeline("int add(int a, int b) { return a + b; } int main() { return add(1, 2); }").unwrap();
+        let result = compile_c_pipeline("int add(int a, int b) { return a + b; } int main() { return add(1, 2); }", false).unwrap();
         assert!(!result.ub_report.has_warnings());
+    }
+
+    #[test]
+    fn test_strict_truncation() {
+        // char can hold -128..127, 300 does not fit
+        let result = compile_c_pipeline("int main() { char c = 300; return c; }", true).unwrap();
+        assert!(result.ub_report.has_errors(), "Strict mode should flag char=300 as error");
+        assert!(result.ub_report.warnings.iter().any(|w| matches!(w.kind, UBKind::IntegerTruncation)));
+    }
+
+    #[test]
+    fn test_strict_clean_code_no_errors() {
+        // Clean code should pass strict mode with no errors
+        let result = compile_c_pipeline("int main() { int x = 42; return x; }", true).unwrap();
+        assert!(!result.ub_report.has_errors(), "Clean code should not have strict errors");
     }
 
     #[test]
@@ -912,7 +1154,7 @@ mod tests {
             struct Vec2 { int x; int y; };
             int total;
             int add(int a, int b) { return a + b; }
-        "#).unwrap();
+        "#, false).unwrap();
         let names: Vec<&str> = result.semantic.entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"u32"));
         assert!(names.contains(&"Vec2"));
@@ -932,7 +1174,7 @@ mod tests {
     #[test]
     fn test_fixture_05_control_flow() {
         let src = load_fixture("05_control_flow.c");
-        let result = compile_c_pipeline(&src).unwrap();
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.program.functions.len() >= 7, "Expected >=7 functions");
         assert!(!result.ub_report.has_errors());
     }
@@ -940,7 +1182,7 @@ mod tests {
     #[test]
     fn test_fixture_06_pointers_arrays() {
         let src = load_fixture("06_pointers_arrays.c");
-        let result = compile_c_pipeline(&src).unwrap();
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.program.functions.len() >= 4);
         assert!(!result.ub_report.has_errors());
     }
@@ -948,7 +1190,7 @@ mod tests {
     #[test]
     fn test_fixture_07_structs_enums() {
         let src = load_fixture("07_structs_enums.c");
-        let result = compile_c_pipeline(&src).unwrap();
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.program.functions.len() >= 3);
         assert!(result.program.structs.len() >= 2);
         assert!(!result.ub_report.has_errors());
@@ -957,7 +1199,7 @@ mod tests {
     #[test]
     fn test_fixture_08_preprocessor() {
         let src = load_fixture("08_preprocessor.c");
-        let result = compile_c_pipeline(&src).unwrap();
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.included_headers.len() >= 3);
         assert!(!result.ub_report.has_errors());
     }
@@ -965,7 +1207,7 @@ mod tests {
     #[test]
     fn test_fixture_09_c99_features() {
         let src = load_fixture("09_c99_features.c");
-        let result = compile_c_pipeline(&src).unwrap();
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.program.functions.len() >= 2);
         assert!(!result.ub_report.has_errors());
     }
@@ -973,7 +1215,7 @@ mod tests {
     #[test]
     fn test_fixture_10_c11_headers() {
         let src = load_fixture("10_c11_headers.c");
-        let result = compile_c_pipeline(&src).unwrap();
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.included_headers.len() >= 4);
         assert!(!result.ub_report.has_errors());
     }
@@ -981,8 +1223,7 @@ mod tests {
     #[test]
     fn test_fixture_11_ub_detection() {
         let src = load_fixture("11_ub_detection.c");
-        let result = compile_c_pipeline(&src).unwrap();
-        // Should detect UB: div by zero, shift overflow
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.ub_report.has_warnings(), "UB detector should flag issues in this file");
         let kinds: Vec<String> = result.ub_report.warnings.iter().map(|w| format!("{:?}", w.kind)).collect();
         assert!(kinds.iter().any(|k| k.contains("DivisionByZero")),
@@ -994,37 +1235,36 @@ mod tests {
     #[test]
     fn test_fixture_12_expressions() {
         let src = load_fixture("12_expressions.c");
-        let result = compile_c_pipeline(&src).unwrap();
+        let result = compile_c_pipeline(&src, false).unwrap();
         assert!(result.program.functions.len() >= 9);
         assert!(!result.ub_report.has_errors());
     }
 
-    // Test all original fixtures still work
     #[test]
     fn test_fixture_01_basic() {
         let src = load_fixture("01_ctype_basic.c");
-        let result = compile_c_pipeline(&src);
+        let result = compile_c_pipeline(&src, false);
         assert!(result.is_ok(), "01_ctype_basic.c failed: {:?}", result.err());
     }
 
     #[test]
     fn test_fixture_02_extended() {
         let src = load_fixture("02_ctype_extended.c");
-        let result = compile_c_pipeline(&src);
+        let result = compile_c_pipeline(&src, false);
         assert!(result.is_ok(), "02_ctype_extended.c failed: {:?}", result.err());
     }
 
     #[test]
     fn test_fixture_03_loop_parser() {
         let src = load_fixture("03_ctype_loop_parser.c");
-        let result = compile_c_pipeline(&src);
+        let result = compile_c_pipeline(&src, false);
         assert!(result.is_ok(), "03_ctype_loop_parser.c failed: {:?}", result.err());
     }
 
     #[test]
     fn test_fixture_04_edge_cases() {
         let src = load_fixture("04_ctype_edge_cases.c");
-        let result = compile_c_pipeline(&src);
+        let result = compile_c_pipeline(&src, false);
         assert!(result.is_ok(), "04_ctype_edge_cases.c failed: {:?}", result.err());
     }
 }

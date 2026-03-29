@@ -1603,9 +1603,9 @@ mod tests {
     fn test_repo_ctype_loop_parser_file() {
         let source = read_repo_c_fixture("tests/c/fixtures/03_ctype_loop_parser.c");
         let prog = compile_c_to_program(&source).expect("03_ctype_loop_parser.c failed");
-        assert_has_function(&prog, "classify_string");
-        assert_has_function(&prog, "to_upper_str");
-        assert_has_function(&prog, "parse_hex");
+        assert_has_function(&prog, "count_alpha");
+        assert_has_function(&prog, "count_digits");
+        assert_has_function(&prog, "parse_hex_digit");
         assert_has_function(&prog, "main");
     }
 
