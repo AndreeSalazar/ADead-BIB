@@ -317,6 +317,18 @@ int vsprintf(char *str, const char *format, va_list ap);
 int vsnprintf(char *str, size_t size, const char *format, va_list ap);
 int setvbuf(FILE *stream, char *buf, int mode, size_t size);
 void setbuf(FILE *stream, char *buf);
+#define EOF (-1)
+#define BUFSIZ 8192
+#define FILENAME_MAX 4096
+#define FOPEN_MAX 16
+#define TMP_MAX 238328
+#define L_tmpnam 20
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+#define _IOFBF 0
+#define _IOLBF 1
+#define _IONBF 2
 "#;
 
 const HEADER_STDLIB: &str = r#"
@@ -357,6 +369,14 @@ void *bsearch(const void *key, const void *base, size_t nmemb, size_t size, int 
 int mkstemp(char *template_str);
 char *mkdtemp(char *template_str);
 char *realpath(const char *path, char *resolved_path);
+#define NULL ((void*)0)
+#define EXIT_SUCCESS 0
+#define EXIT_FAILURE 1
+#define RAND_MAX 2147483647
+#define MB_CUR_MAX 4
+typedef struct { int quot; int rem; } div_t;
+typedef struct { long quot; long rem; } ldiv_t;
+typedef struct { long long quot; long long rem; } lldiv_t;
 "#;
 
 const HEADER_STRING: &str = r#"
@@ -516,64 +536,191 @@ typedef unsigned int uint_fast8_t;
 typedef unsigned int uint_fast16_t;
 typedef unsigned int uint_fast32_t;
 typedef unsigned long uint_fast64_t;
+#define INT8_MIN   (-128)
+#define INT8_MAX   127
+#define UINT8_MAX  255
+#define INT16_MIN  (-32768)
+#define INT16_MAX  32767
+#define UINT16_MAX 65535
+#define INT32_MIN  (-2147483647 - 1)
+#define INT32_MAX  2147483647
+#define UINT32_MAX 4294967295U
+#define INT64_MIN  (-9223372036854775807LL - 1LL)
+#define INT64_MAX  9223372036854775807LL
+#define UINT64_MAX 18446744073709551615ULL
+#define INTPTR_MIN  (-9223372036854775807L - 1L)
+#define INTPTR_MAX  9223372036854775807L
+#define UINTPTR_MAX 18446744073709551615UL
+#define INTMAX_MIN  (-9223372036854775807LL - 1LL)
+#define INTMAX_MAX  9223372036854775807LL
+#define UINTMAX_MAX 18446744073709551615ULL
+#define PTRDIFF_MIN (-9223372036854775807L - 1L)
+#define PTRDIFF_MAX 9223372036854775807L
+#define SIZE_MAX    18446744073709551615UL
+#define SIG_ATOMIC_MIN (-2147483647 - 1)
+#define SIG_ATOMIC_MAX 2147483647
+#define WCHAR_MIN   0
+#define WCHAR_MAX   4294967295U
+#define WINT_MIN    0
+#define WINT_MAX    4294967295U
+#define PRId8   "d"
+#define PRId16  "d"
+#define PRId32  "d"
+#define PRId64  "lld"
+#define PRIu8   "u"
+#define PRIu16  "u"
+#define PRIu32  "u"
+#define PRIu64  "llu"
+#define PRIx8   "x"
+#define PRIx16  "x"
+#define PRIx32  "x"
+#define PRIx64  "llx"
+#define PRIX8   "X"
+#define PRIX16  "X"
+#define PRIX32  "X"
+#define PRIX64  "llX"
+#define SCNd8   "hhd"
+#define SCNd16  "hd"
+#define SCNd32  "d"
+#define SCNd64  "lld"
+#define SCNu8   "hhu"
+#define SCNu16  "hu"
+#define SCNu32  "u"
+#define SCNu64  "llu"
 "#;
 
 const HEADER_STDBOOL: &str = r#"
-typedef int bool;
+#define bool _Bool
+#define true 1
+#define false 0
+#define __bool_true_false_are_defined 1
 "#;
 
 const HEADER_STDDEF: &str = r#"
 typedef unsigned long size_t;
 typedef long ptrdiff_t;
 typedef unsigned int wchar_t;
+typedef double max_align_t;
+#define NULL ((void*)0)
+#define offsetof(type, member) ((size_t)&((type*)0)->member)
 "#;
 
 const HEADER_STDARG: &str = r#"
-typedef struct __va_list_tag { int x; } va_list;
-void va_start(va_list ap, ...);
-void va_end(va_list ap);
-void va_copy(va_list dest, va_list src);
+typedef __builtin_va_list va_list;
+#define va_start(ap, param) __builtin_va_start(ap, param)
+#define va_end(ap)          __builtin_va_end(ap)
+#define va_arg(ap, type)    __builtin_va_arg(ap, type)
+#define va_copy(dest, src)  __builtin_va_copy(dest, src)
 "#;
 
 const HEADER_LIMITS: &str = r#"
-int __CHAR_BIT__;
-int __SCHAR_MIN__;
-int __SCHAR_MAX__;
-int __UCHAR_MAX__;
-int __SHRT_MIN__;
-int __SHRT_MAX__;
-int __USHRT_MAX__;
-int __INT_MIN__;
-int __INT_MAX__;
-unsigned int __UINT_MAX__;
-long __LONG_MIN__;
-long __LONG_MAX__;
-unsigned long __ULONG_MAX__;
-long long __LLONG_MIN__;
-long long __LLONG_MAX__;
-unsigned long long __ULLONG_MAX__;
+#define CHAR_BIT    8
+#define SCHAR_MIN   (-128)
+#define SCHAR_MAX   127
+#define UCHAR_MAX   255
+#define CHAR_MIN    (-128)
+#define CHAR_MAX    127
+#define SHRT_MIN    (-32768)
+#define SHRT_MAX    32767
+#define USHRT_MAX   65535
+#define INT_MIN     (-2147483647 - 1)
+#define INT_MAX     2147483647
+#define UINT_MAX    4294967295U
+#define LONG_MIN    (-9223372036854775807L - 1L)
+#define LONG_MAX    9223372036854775807L
+#define ULONG_MAX   18446744073709551615UL
+#define LLONG_MIN   (-9223372036854775807LL - 1LL)
+#define LLONG_MAX   9223372036854775807LL
+#define ULLONG_MAX  18446744073709551615ULL
+#define MB_LEN_MAX  16
 "#;
 
 const HEADER_FLOAT: &str = r#"
-int __FLT_RADIX__;
-int __FLT_DIG__;
-int __DBL_DIG__;
-int __LDBL_DIG__;
-float __FLT_MIN__;
-float __FLT_MAX__;
-float __FLT_EPSILON__;
-double __DBL_MIN__;
-double __DBL_MAX__;
-double __DBL_EPSILON__;
+#define FLT_RADIX       2
+#define FLT_MANT_DIG    24
+#define FLT_DIG         6
+#define FLT_MIN_EXP     (-125)
+#define FLT_MAX_EXP     128
+#define FLT_MIN_10_EXP  (-37)
+#define FLT_MAX_10_EXP  38
+#define FLT_MIN         1.17549435e-38F
+#define FLT_MAX         3.40282347e+38F
+#define FLT_EPSILON     1.19209290e-07F
+#define DBL_MANT_DIG    53
+#define DBL_DIG         15
+#define DBL_MIN_EXP     (-1021)
+#define DBL_MAX_EXP     1024
+#define DBL_MIN_10_EXP  (-307)
+#define DBL_MAX_10_EXP  308
+#define DBL_MIN         2.2250738585072014e-308
+#define DBL_MAX         1.7976931348623157e+308
+#define DBL_EPSILON     2.2204460492503131e-16
+#define LDBL_MANT_DIG   64
+#define LDBL_DIG        18
+#define LDBL_MIN_EXP    (-16381)
+#define LDBL_MAX_EXP    16384
+#define LDBL_MIN_10_EXP (-4931)
+#define LDBL_MAX_10_EXP 4932
+#define LDBL_MIN        3.3621031431120935063e-4932L
+#define LDBL_MAX        1.1897314953572317650e+4932L
+#define LDBL_EPSILON    1.0842021724855044340e-19L
+#define FLT_ROUNDS      1
+#define FLT_EVAL_METHOD  0
+#define DECIMAL_DIG     21
 "#;
 
 const HEADER_ERRNO: &str = r#"
 extern int errno;
 int *__errno_location(void);
+#define EPERM        1
+#define ENOENT       2
+#define ESRCH        3
+#define EINTR        4
+#define EIO          5
+#define ENXIO        6
+#define E2BIG        7
+#define ENOEXEC      8
+#define EBADF        9
+#define ECHILD      10
+#define EAGAIN      11
+#define ENOMEM      12
+#define EACCES      13
+#define EFAULT      14
+#define EBUSY       16
+#define EEXIST      17
+#define EXDEV       18
+#define ENODEV      19
+#define ENOTDIR     20
+#define EISDIR      21
+#define EINVAL      22
+#define ENFILE      23
+#define EMFILE      24
+#define ENOTTY      25
+#define EFBIG       27
+#define ENOSPC      28
+#define ESPIPE      29
+#define EROFS       30
+#define EMLINK      31
+#define EPIPE       32
+#define EDOM        33
+#define ERANGE      34
+#define EDEADLK     35
+#define ENAMETOOLONG 36
+#define ENOLCK      37
+#define ENOSYS      38
+#define ENOTEMPTY   39
+#define EWOULDBLOCK EAGAIN
+#define EILSEQ      84
 "#;
 
 const HEADER_ASSERT: &str = r#"
 void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function);
+#ifdef NDEBUG
+#define assert(expr) ((void)0)
+#else
+#define assert(expr) ((expr) ? (void)0 : __assert_fail(#expr, __FILE__, __LINE__, __func__))
+#endif
+#define static_assert _Static_assert
 "#;
 
 const HEADER_SIGNAL: &str = r#"
@@ -598,6 +745,31 @@ int sigismember(const sigset_t *set, int signum);
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 int sigpending(sigset_t *set);
 int sigsuspend(const sigset_t *mask);
+#define SIGHUP    1
+#define SIGINT    2
+#define SIGQUIT   3
+#define SIGILL    4
+#define SIGTRAP   5
+#define SIGABRT   6
+#define SIGBUS    7
+#define SIGFPE    8
+#define SIGKILL   9
+#define SIGUSR1  10
+#define SIGSEGV  11
+#define SIGUSR2  12
+#define SIGPIPE  13
+#define SIGALRM  14
+#define SIGTERM  15
+#define SIGCHLD  17
+#define SIGCONT  18
+#define SIGSTOP  19
+#define SIGTSTP  20
+#define SIG_DFL ((sighandler_t)0)
+#define SIG_IGN ((sighandler_t)1)
+#define SIG_ERR ((sighandler_t)-1)
+#define SA_RESTART 0x10000000
+#define SA_NOCLDSTOP 1
+#define SA_NOCLDWAIT 2
 "#;
 
 const HEADER_SETJMP: &str = r#"
@@ -641,6 +813,12 @@ int clock_getres(clockid_t clk_id, struct timespec *res);
 int nanosleep(const struct timespec *req, struct timespec *rem);
 unsigned int sleep(unsigned int seconds);
 int usleep(unsigned int usec);
+#define CLOCKS_PER_SEC 1000000L
+#define CLOCK_REALTIME 0
+#define CLOCK_MONOTONIC 1
+#define CLOCK_PROCESS_CPUTIME_ID 2
+#define CLOCK_THREAD_CPUTIME_ID 3
+#define TIME_UTC 1
 "#;
 
 const HEADER_LOCALE: &str = r#"
@@ -678,12 +856,28 @@ int feupdateenv(const fenv_t *envp);
 "#;
 
 const HEADER_ISO646: &str = r#"
+#define and    &&
+#define and_eq &=
+#define bitand &
+#define bitor  |
+#define compl  ~
+#define not    !
+#define not_eq !=
+#define or     ||
+#define or_eq  |=
+#define xor    ^
+#define xor_eq ^=
 "#;
 
 const HEADER_STDALIGN: &str = r#"
+#define alignas _Alignas
+#define alignof _Alignof
+#define __alignas_is_defined 1
+#define __alignof_is_defined 1
 "#;
 
 const HEADER_STDNORETURN: &str = r#"
+#define noreturn _Noreturn
 "#;
 
 const HEADER_STDATOMIC: &str = r#"
