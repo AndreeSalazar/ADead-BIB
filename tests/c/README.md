@@ -1,7 +1,8 @@
 # tests/c — ADead-BIB C Test Suite
 
-> Suite de pruebas y fixtures del compilador C de ADead-BIB  
-> Organizada para separar documentación, fixtures y futuras pruebas de integración
+> Suite de pruebas y fixtures del compilador C de ADead-BIB
+> 12 fixture files covering C99/C11, UB detection, all expression types
+> 157 total tests (124 frontend + 33 driver/integration)
 
 ---
 
@@ -11,40 +12,63 @@
 tests/c/
 ├── README.md
 └── fixtures/
-    ├── 01_ctype_basic.c
-    ├── 02_ctype_extended.c
-    ├── 03_ctype_loop_parser.c
-    └── 04_ctype_edge_cases.c
+    ├── 01_ctype_basic.c          ctype.h basics
+    ├── 02_ctype_extended.c       ctype.h extended
+    ├── 03_ctype_loop_parser.c    ctype.h real usage patterns
+    ├── 04_ctype_edge_cases.c     ctype.h boundary cases
+    ├── 05_control_flow.c         if/else, while, do-while, for, switch, goto/label
+    ├── 06_pointers_arrays.c      pointers, arrays, multi-dim, string ops
+    ├── 07_structs_enums.c        structs, enums, typedefs, unions
+    ├── 08_preprocessor.c         #include, #define, #ifdef, macros
+    ├── 09_c99_features.c         _Static_assert, inline, mixed decls, nested init
+    ├── 10_c11_headers.c          fenv.h, stdatomic.h, threads.h, stdalign.h
+    ├── 11_ub_detection.c         Intentional UB for testing the detector
+    └── 12_expressions.c          All operators, casts, sizeof, ternary, compound assign
 ```
 
-## Fixtures disponibles
+## Fixtures
 
-| Fixture | Header | Descripción | Estado |
-|---|---|---|---|
-| `01_ctype_basic.c` | `<ctype.h>` | isalpha, isdigit, isalnum, isspace, isupper, islower | ✅ |
-| `02_ctype_extended.c` | `<ctype.h>` | isprint, isgraph, iscntrl, ispunct, isxdigit, isblank, toupper, tolower | ✅ |
-| `03_ctype_loop_parser.c` | `<ctype.h>` | Uso real: clasificar string, to_upper, parse_hex, validar identifier | ✅ |
-| `04_ctype_edge_cases.c` | `<ctype.h>` | Boundaries: NUL, EOF, 0x1F, 0x7F, toupper/tolower con no-letters | ✅ |
+| # | Fixture | Category | Description | Status |
+|---|---|---|---|---|
+| 01 | `01_ctype_basic.c` | stdlib | isalpha, isdigit, isalnum, isspace | ✅ |
+| 02 | `02_ctype_extended.c` | stdlib | isprint, isgraph, iscntrl, ispunct, isxdigit | ✅ |
+| 03 | `03_ctype_loop_parser.c` | stdlib | Real usage: classify string, parse_hex, validate id | ✅ |
+| 04 | `04_ctype_edge_cases.c` | stdlib | Boundary: NUL, EOF, 0x1F, 0x7F | ✅ |
+| 05 | `05_control_flow.c` | language | if/else, while, do-while, for, switch, goto/label | ✅ |
+| 06 | `06_pointers_arrays.c` | language | Pointers, arrays, multi-dim, string ops | ✅ |
+| 07 | `07_structs_enums.c` | language | Structs, enums, typedefs, unions | ✅ |
+| 08 | `08_preprocessor.c` | preprocessor | #include, #define, #ifdef, variadic macros | ✅ |
+| 09 | `09_c99_features.c` | C99/C11 | _Static_assert, inline, mixed decls, nested init | ✅ |
+| 10 | `10_c11_headers.c` | C11 | fenv.h, stdatomic.h, threads.h, stdalign.h | ✅ |
+| 11 | `11_ub_detection.c` | UB | Division by zero, shift overflow, negative index | ✅ |
+| 12 | `12_expressions.c` | language | All operators, casts, sizeof, ternary, compound assign | ✅ |
 
-## Cómo ejecutar
+## How to use
 
 ```bash
-# Compilar un fixture individual
-adb cc tests/c/fixtures/01_ctype_basic.c -o test_ctype.exe
+# Compile a fixture
+adB cc tests/c/fixtures/05_control_flow.c -o test.exe
 
-# Compilar y ejecutar
-adb run tests/c/fixtures/01_ctype_basic.c
+# Compile and run
+adB run tests/c/fixtures/05_control_flow.c
 
-# Step mode — ver pipeline completo
-adb step tests/c/fixtures/01_ctype_basic.c
+# Step mode — see every compiler phase
+adB step tests/c/fixtures/05_control_flow.c
+
+# Step mode with C++ (preview)
+adB cxx app.cpp -step
+
+# Run Rust tests (validates all fixtures automatically)
+cargo test -p ADead-BIB-Main
+cargo test -p adeb-frontend-c
 ```
 
-## Convención de nombres
+## Naming convention
 
 ```text
-XX_header_descripcion.c
-│  │      │
-│  │      └── qué se prueba
-│  └── header principal
-└── número secuencial
+XX_category_description.c
+│  │         │
+│  │         └── what is being tested
+│  └── category (ctype, control, pointer, struct, preprocessor, c99, c11, ub, expr)
+└── sequential number
 ```

@@ -419,9 +419,9 @@ impl CParser {
         if *self.current() == CToken::StaticAssert {
             self.advance();
             self.expect(&CToken::LParen)?;
-            let _expr = self.parse_expression()?;
+            let _expr = self.parse_assign_expr()?;
             self.expect(&CToken::Comma)?;
-            let _msg = self.parse_expression()?;
+            let _msg = self.parse_assign_expr()?;
             self.expect(&CToken::RParen)?;
             self.expect(&CToken::Semicolon)?;
             // Silently accept — compile-time assertions aren't emitted
@@ -1205,9 +1205,9 @@ impl CParser {
             CToken::StaticAssert => {
                 self.advance();
                 self.expect(&CToken::LParen)?;
-                let _expr = self.parse_expression()?;
+                let _expr = self.parse_assign_expr()?;
                 self.expect(&CToken::Comma)?;
-                let _msg = self.parse_expression()?;
+                let _msg = self.parse_assign_expr()?;
                 self.expect(&CToken::RParen)?;
                 self.expect(&CToken::Semicolon)?;
                 Ok(CStmt::Empty)
@@ -1850,25 +1850,38 @@ impl CParser {
     }
 
     /// Parse brace-enclosed initializer list: { expr, expr, ... }
-    /// C11: supports designated initializers: .field = val, [idx] = val
+    /// C99/C11: supports designated initializers: .field = val, [idx] = val
+    /// C99: supports nested brace initializers: {{1,2}, {3,4}}
     fn parse_brace_init(&mut self) -> Result<CExpr, String> {
         self.advance(); // skip {
         let mut elements = Vec::new();
         while *self.current() != CToken::RBrace && *self.current() != CToken::Eof {
-            // C11 designated initializer: .field = expr
+            // C11 designated initializer: .field = expr or .field = { ... }
             if *self.current() == CToken::Dot {
                 self.advance(); // skip .
                 let _field = self.expect_identifier()?;
                 self.expect(&CToken::Assign)?;
-                elements.push(self.parse_assign_expr()?);
+                if *self.current() == CToken::LBrace {
+                    elements.push(self.parse_brace_init()?);
+                } else {
+                    elements.push(self.parse_assign_expr()?);
+                }
             }
-            // C11 designated initializer: [idx] = expr
+            // C11 designated initializer: [idx] = expr or [idx] = { ... }
             else if *self.current() == CToken::LBracket {
                 self.advance(); // skip [
                 let _idx = self.parse_expression()?;
                 self.expect(&CToken::RBracket)?;
                 self.expect(&CToken::Assign)?;
-                elements.push(self.parse_assign_expr()?);
+                if *self.current() == CToken::LBrace {
+                    elements.push(self.parse_brace_init()?);
+                } else {
+                    elements.push(self.parse_assign_expr()?);
+                }
+            }
+            // Nested brace initializer: { ... }
+            else if *self.current() == CToken::LBrace {
+                elements.push(self.parse_brace_init()?);
             } else {
                 elements.push(self.parse_assign_expr()?);
             }

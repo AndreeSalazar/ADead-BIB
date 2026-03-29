@@ -100,7 +100,9 @@ impl CToIR {
                         let init_val = if let Some(ref init) = decl_item.initializer {
                             match init {
                                 CInitializer::Expr(expr) => Some(self.convert_expr(expr)?),
-                                CInitializer::List(_) => None, // TODO: lower list initializers
+                                CInitializer::List(entries) => {
+                                    Some(self.convert_init_list(entries)?)
+                                }
                             }
                         } else {
                             None
@@ -197,6 +199,23 @@ impl CToIR {
         }
     }
 
+    // ========== Initializer list conversion ==========
+
+    /// Convert a CInitEntry list (from brace-enclosed initializer) to Expr::Array
+    fn convert_init_list(&self, entries: &[CInitEntry]) -> Result<Expr, String> {
+        let mut elems = Vec::new();
+        for entry in entries {
+            // Designators are ignored for now — we just take the value in order
+            match &entry.value {
+                CInitializer::Expr(e) => elems.push(self.convert_expr(e)?),
+                CInitializer::List(inner_entries) => {
+                    elems.push(self.convert_init_list(inner_entries)?);
+                }
+            }
+        }
+        Ok(Expr::Array(elems))
+    }
+
     // ========== Struct conversion ==========
 
     fn convert_struct(&self, name: &str, fields: &[CStructField]) -> Struct {
@@ -238,7 +257,9 @@ impl CToIR {
                         let init_val = if let Some(ref init) = decl.initializer {
                             match init {
                                 CInitializer::Expr(expr) => self.convert_expr(expr).ok(),
-                                CInitializer::List(_) => None, // TODO: lower list initializers
+                                CInitializer::List(entries) => {
+                                    self.convert_init_list(entries).ok()
+                                }
                             }
                         } else {
                             None
@@ -342,7 +363,9 @@ impl CToIR {
                     let init_val = if let Some(ref init) = decl.initializer {
                         match init {
                             CInitializer::Expr(expr) => Some(self.convert_expr(expr)?),
-                            CInitializer::List(_) => None, // TODO: lower list initializers
+                            CInitializer::List(entries) => {
+                                Some(self.convert_init_list(entries)?)
+                            }
                         }
                     } else {
                         None
@@ -499,8 +522,12 @@ impl CToIR {
 
             CStmt::Break => Ok(vec![Stmt::Break]),
             CStmt::Continue => Ok(vec![Stmt::Continue]),
-            CStmt::Goto(_label) => Ok(vec![]),
-            CStmt::Label(_name, inner) => self.convert_stmt(inner),
+            CStmt::Goto(label) => Ok(vec![Stmt::JumpTo { label: label.clone() }]),
+            CStmt::Label(name, inner) => {
+                let mut stmts = vec![Stmt::LabelDef { name: name.clone() }];
+                stmts.extend(self.convert_stmt(inner)?);
+                Ok(stmts)
+            }
             CStmt::Empty => Ok(vec![]),
         }
     }
@@ -555,6 +582,15 @@ impl CToIR {
                                 Expr::Number(0)
                             };
                             return Ok(vec![Stmt::Return(Some(code))]);
+                        }
+                        "scanf" | "sscanf" | "fscanf" => {
+                            // scanf(fmt, &a, &b, ...) → generic call
+                            let a: Result<Vec<Expr>, String> =
+                                args.iter().map(|a| self.convert_expr(a)).collect();
+                            return Ok(vec![Stmt::Expr(Expr::Call {
+                                name: name.clone(),
+                                args: a?,
+                            })]);
                         }
                         "memset" | "memcpy" | "memmove" | "strcpy" | "strncpy" | "strcat"
                         | "strlen" | "strcmp" | "atoi" | "atof" => {
@@ -2353,6 +2389,313 @@ mod tests {
             int main() {
                 int x = __STDC__;
                 return x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_goto_label_lowering() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int x = 0;
+                goto skip;
+                x = 1;
+            skip:
+                return x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+        let body = &prog.functions[0].body;
+        let has_jump = body.iter().any(|s| matches!(s, Stmt::JumpTo { .. }));
+        let has_label = body.iter().any(|s| matches!(s, Stmt::LabelDef { .. }));
+        assert!(has_jump, "Expected JumpTo in body: {:?}", body);
+        assert!(has_label, "Expected LabelDef in body: {:?}", body);
+    }
+
+    #[test]
+    fn test_fenv_header_available() {
+        let prog = compile_c_to_program(
+            r#"
+            #include <fenv.h>
+            int main() {
+                feclearexcept(0);
+                return fegetround();
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_stdatomic_header_available() {
+        let prog = compile_c_to_program(
+            r#"
+            #include <stdatomic.h>
+            int main() {
+                atomic_int x;
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_threads_header_available() {
+        let prog = compile_c_to_program(
+            r#"
+            #include <threads.h>
+            int main() {
+                mtx_t m;
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_nested_struct_array_init() {
+        let prog = compile_c_to_program(
+            r#"
+            struct Vec2 { int x; int y; };
+            int main() {
+                struct Vec2 pts[4] = {{0,0}, {1,0}, {1,1}, {0,1}};
+                return pts[2].x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_scanf_as_call() {
+        let prog = compile_c_to_program(
+            r#"
+            #include <stdio.h>
+            int main() {
+                int x;
+                scanf("%d", &x);
+                return x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_multiple_goto_labels() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int i = 0;
+            loop_start:
+                if (i >= 10) goto loop_end;
+                i++;
+                goto loop_start;
+            loop_end:
+                return i;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_do_while_lowering() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int n = 10;
+                int sum = 0;
+                do {
+                    sum += n;
+                    n--;
+                } while (n > 0);
+                return sum;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_switch_with_default() {
+        let prog = compile_c_to_program(
+            r#"
+            int classify(int x) {
+                switch (x) {
+                    case 0: return 0;
+                    case 1: return 1;
+                    case 2: return 4;
+                    default: return -1;
+                }
+            }
+            int main() {
+                return classify(3);
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 2);
+    }
+
+    #[test]
+    fn test_ternary_expression() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int x = 5;
+                int y = (x > 3) ? 100 : 200;
+                return y;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_compound_assignment_ops() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int x = 10;
+                x += 5;
+                x -= 2;
+                x *= 3;
+                x /= 2;
+                x %= 7;
+                x &= 0xFF;
+                x |= 0x10;
+                x ^= 0x01;
+                x <<= 2;
+                x >>= 1;
+                return x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_enum_constants_in_expressions() {
+        let prog = compile_c_to_program(
+            r#"
+            enum Color { RED = 0, GREEN = 1, BLUE = 2 };
+            int main() {
+                int c = GREEN;
+                return c;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_typedef_resolution() {
+        let prog = compile_c_to_program(
+            r#"
+            typedef unsigned int uint;
+            typedef int* intptr;
+            int main() {
+                uint x = 42;
+                int y = 10;
+                intptr p = &y;
+                return x;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_string_concat_lowering() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                const char *s = "hello " "world" "!";
+                return 0;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_cast_expression() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                double d = 3.14;
+                int i = (int)d;
+                void *p = (void *)0;
+                return i;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_sizeof_types_lowering() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int a = sizeof(int);
+                int b = sizeof(char);
+                int c = sizeof(double);
+                int d = sizeof(void *);
+                return a + b + c + d;
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_nested_function_calls() {
+        let prog = compile_c_to_program(
+            r#"
+            int add(int a, int b) { return a + b; }
+            int mul(int a, int b) { return a * b; }
+            int main() {
+                return add(mul(2, 3), mul(4, 5));
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(prog.functions.len(), 3);
+    }
+
+    #[test]
+    fn test_pointer_arithmetic_patterns() {
+        let prog = compile_c_to_program(
+            r#"
+            int main() {
+                int arr[5] = {10, 20, 30, 40, 50};
+                int *p = arr;
+                int val = *(p + 2);
+                return val;
             }
         "#,
         )

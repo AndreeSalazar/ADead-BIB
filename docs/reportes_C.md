@@ -440,3 +440,77 @@ La estructura actual del ecosistema C de ADead-BIB ya dispone de los bloques ese
 La mejora principal aportada por este reporte es dejar explícita una **jerarquía completa, validada y escalable**, con propósito por carpeta, convención de nombres, archivos de configuración y rutas relativas de referencia.
 
 En su estado actual, la estructura es **modular, mantenible y apta para crecer**, siempre que se preserve esta separación de responsabilidades y se continúe documentando cualquier nueva carpeta o dependencia del ecosistema C.
+
+---
+
+## 13. Mejoras implementadas — Sesión de auditoría C99/C11
+
+> **Fecha:** Julio 2026  
+> **Tests:** 98 → 124 (26 nuevos tests, 4 bugs corregidos)
+
+### 13.1 Bugs corregidos en el parser
+
+| Bug | Causa raíz | Fix |
+|---|---|---|
+| `_Static_assert` dentro de funciones fallaba | `parse_expression()` consumía la coma como operador comma | Usar `parse_assign_expr()` en lugar de `parse_expression()` |
+| Inicializadores anidados `{{1,2},{3,4}}` fallaban | `parse_brace_init()` no recursaba al encontrar `{` interno | Agregar rama recursiva para `CToken::LBrace` en `parse_brace_init()` |
+| Arrays multidimensionales con init anidado | Mismo problema de brace init | Mismo fix recursivo |
+| Patrón real-world con struct arrays | Cascada del bug de init anidado | Mismo fix recursivo |
+
+### 13.2 Lowering (to_ir.rs) — Funcionalidad restaurada
+
+| Feature | Estado anterior | Estado actual |
+|---|---|---|
+| `goto` / labels | No-op (silenciosamente descartados) | Emit `Stmt::JumpTo` / `Stmt::LabelDef` |
+| `CInitializer::List` | `TODO: None` en 3 ubicaciones | `convert_init_list()` recursivo → `Expr::Array` |
+| `scanf` / `sscanf` / `fscanf` | Pasaba por ruta genérica sin reconocimiento | Ruta explícita como statement call |
+
+### 13.3 Headers C99/C11 agregados a stdlib.rs
+
+| Header | Contenido |
+|---|---|
+| `fenv.h` | `fenv_t`, `fexcept_t`, funciones de floating-point environment (C99 §7.6) |
+| `iso646.h` | Macros de operadores alternativos (vacío — manejado por keywords) |
+| `stdalign.h` | `alignas`/`alignof` (vacío — manejado por keywords `_Alignas`/`_Alignof`) |
+| `stdnoreturn.h` | `noreturn` (vacío — manejado por keyword `_Noreturn`) |
+| `stdatomic.h` | Tipos atómicos C11, `atomic_flag`, `atomic_load/store/exchange/fetch_*` |
+| `threads.h` | Tipos y funciones C11 threads: `thrd_*`, `mtx_*`, `cnd_*`, `tss_*`, `call_once` |
+
+### 13.4 Tests agregados (22 nuevos)
+
+**Lowering (to_ir.rs):**
+- `test_goto_label_lowering` — verifica `JumpTo`/`LabelDef` en IR
+- `test_fenv_header_available` — `#include <fenv.h>` compila
+- `test_stdatomic_header_available` — `#include <stdatomic.h>` compila
+- `test_threads_header_available` — `#include <threads.h>` compila
+- `test_nested_struct_array_init` — `struct Vec2 pts[4] = {{0,0},...}`
+- `test_scanf_as_call` — `scanf("%d", &x)` se convierte correctamente
+- `test_multiple_goto_labels` — goto loop con múltiples labels
+- `test_do_while_lowering` — do-while genera IR correcto
+- `test_switch_with_default` — switch con case + default
+- `test_ternary_expression` — operador ternario `?:`
+- `test_compound_assignment_ops` — todos los `+=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=`
+- `test_enum_constants_in_expressions` — enum → constante numérica
+- `test_typedef_resolution` — typedef se resuelve en declaraciones
+- `test_string_concat_lowering` — concatenación de strings adyacentes
+- `test_cast_expression` — cast `(int)d`, `(void *)0`
+- `test_sizeof_types_lowering` — `sizeof(int)`, `sizeof(char)`, etc.
+- `test_nested_function_calls` — `add(mul(2,3), mul(4,5))`
+- `test_pointer_arithmetic_patterns` — `*(p + 2)`
+
+**Stdlib (stdlib.rs):**
+- `test_c99_c11_additional_headers` — 6 nuevos headers disponibles
+- `test_fenv_has_functions` — funciones `feclearexcept`, `fegetround`
+- `test_stdatomic_has_types_and_ops` — tipos y operaciones atómicas
+- `test_threads_has_types_and_ops` — funciones de threading C11
+
+### 13.5 Gaps restantes identificados
+
+| Gap | Prioridad | Notas |
+|---|---|---|
+| `_Generic` (C11) | Media | Requiere nodo AST + parser + lowering |
+| Compound literals `(Type){...}` | Media | Parser y lowering |
+| VLA (Variable Length Arrays) | Baja | Solo declaración, no runtime |
+| Function pointer calls en lowering | Media | Actualmente emite `__fptr_call` marker |
+| Union lowering diferenciado | Baja | Actualmente se trata como struct |
+| Designator support en lowering | Baja | `.field=val` parseado pero ignorado en convert_init_list |

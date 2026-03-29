@@ -205,6 +205,12 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "wctype.h" => Some(crate::compiler_extensions::HEADER_WCTYPE),
         "uchar.h" => Some(crate::compiler_extensions::HEADER_UCHAR),
         "tgmath.h" => Some(crate::compiler_extensions::HEADER_TGMATH),
+        "fenv.h" => Some(HEADER_FENV),
+        "iso646.h" => Some(HEADER_ISO646),
+        "stdalign.h" => Some(HEADER_STDALIGN),
+        "stdnoreturn.h" => Some(HEADER_STDNORETURN),
+        "stdatomic.h" => Some(HEADER_STDATOMIC),
+        "threads.h" => Some(HEADER_THREADS),
 
         // ==========================================
         // ADead-BIB v7.0 — header_main.h (HEREDA TODO)
@@ -648,6 +654,110 @@ struct lconv {
 
 char *setlocale(int category, const char *locale);
 struct lconv *localeconv(void);
+"#;
+
+// ================================================================
+//  C99/C11 Additional Standard Headers
+// ================================================================
+
+const HEADER_FENV: &str = r#"
+typedef unsigned int fenv_t;
+typedef unsigned int fexcept_t;
+
+int feclearexcept(int excepts);
+int fegetexceptflag(fexcept_t *flagp, int excepts);
+int feraiseexcept(int excepts);
+int fesetexceptflag(const fexcept_t *flagp, int excepts);
+int fetestexcept(int excepts);
+int fegetround(void);
+int fesetround(int rdir);
+int fegetenv(fenv_t *envp);
+int feholdexcept(fenv_t *envp);
+int fesetenv(const fenv_t *envp);
+int feupdateenv(const fenv_t *envp);
+"#;
+
+const HEADER_ISO646: &str = r#"
+"#;
+
+const HEADER_STDALIGN: &str = r#"
+"#;
+
+const HEADER_STDNORETURN: &str = r#"
+"#;
+
+const HEADER_STDATOMIC: &str = r#"
+typedef int atomic_flag;
+typedef int atomic_bool;
+typedef int atomic_int;
+typedef unsigned int atomic_uint;
+typedef long atomic_long;
+typedef unsigned long atomic_ulong;
+typedef long long atomic_llong;
+typedef unsigned long long atomic_ullong;
+typedef long atomic_intptr_t;
+typedef unsigned long atomic_uintptr_t;
+typedef unsigned long atomic_size_t;
+typedef long atomic_ptrdiff_t;
+typedef long atomic_intmax_t;
+typedef unsigned long atomic_uintmax_t;
+
+int atomic_flag_test_and_set(volatile atomic_flag *obj);
+void atomic_flag_clear(volatile atomic_flag *obj);
+void atomic_init(volatile void *obj, int value);
+int atomic_load(const volatile void *obj);
+void atomic_store(volatile void *obj, int desired);
+int atomic_exchange(volatile void *obj, int desired);
+int atomic_compare_exchange_strong(volatile void *obj, void *expected, int desired);
+int atomic_compare_exchange_weak(volatile void *obj, void *expected, int desired);
+int atomic_fetch_add(volatile void *obj, int arg);
+int atomic_fetch_sub(volatile void *obj, int arg);
+int atomic_fetch_or(volatile void *obj, int arg);
+int atomic_fetch_xor(volatile void *obj, int arg);
+int atomic_fetch_and(volatile void *obj, int arg);
+int atomic_is_lock_free(const volatile void *obj);
+void atomic_thread_fence(int order);
+void atomic_signal_fence(int order);
+"#;
+
+const HEADER_THREADS: &str = r#"
+typedef unsigned long thrd_t;
+typedef int (*thrd_start_t)(void *);
+typedef struct { long __data[10]; } mtx_t;
+typedef struct { long __data[12]; } cnd_t;
+typedef unsigned int tss_t;
+typedef void (*tss_dtor_t)(void *);
+typedef struct { int __data; } once_flag;
+
+int thrd_create(thrd_t *thr, thrd_start_t func, void *arg);
+int thrd_equal(thrd_t lhs, thrd_t rhs);
+thrd_t thrd_current(void);
+int thrd_sleep(const struct timespec *duration, struct timespec *remaining);
+void thrd_yield(void);
+void thrd_exit(int res);
+int thrd_detach(thrd_t thr);
+int thrd_join(thrd_t thr, int *res);
+
+int mtx_init(mtx_t *mutex, int type_val);
+int mtx_lock(mtx_t *mutex);
+int mtx_timedlock(mtx_t *mutex, const struct timespec *ts);
+int mtx_trylock(mtx_t *mutex);
+int mtx_unlock(mtx_t *mutex);
+void mtx_destroy(mtx_t *mutex);
+
+int cnd_init(cnd_t *cond);
+int cnd_signal(cnd_t *cond);
+int cnd_broadcast(cnd_t *cond);
+int cnd_wait(cnd_t *cond, mtx_t *mutex);
+int cnd_timedwait(cnd_t *cond, mtx_t *mutex, const struct timespec *ts);
+void cnd_destroy(cnd_t *cond);
+
+int tss_create(tss_t *key, tss_dtor_t dtor);
+void *tss_get(tss_t key);
+int tss_set(tss_t key, void *val);
+void tss_delete(tss_t key);
+
+void call_once(once_flag *flag, void (*func)(void));
 "#;
 
 // ================================================================
@@ -2945,6 +3055,13 @@ mod tests {
             "expat.h",
             "jsmn.h",
             "libconfig.h",
+            // C99/C11 additional headers
+            "fenv.h",
+            "iso646.h",
+            "stdalign.h",
+            "stdnoreturn.h",
+            "stdatomic.h",
+            "threads.h",
         ];
         for h in &headers {
             assert!(get_header(h).is_some(), "Missing header: {}", h);
@@ -2954,5 +3071,45 @@ mod tests {
             "Expected 55+ headers, got {}",
             headers.len()
         );
+    }
+
+    #[test]
+    fn test_c99_c11_additional_headers() {
+        assert!(get_header("fenv.h").is_some(), "Missing fenv.h");
+        assert!(get_header("iso646.h").is_some(), "Missing iso646.h");
+        assert!(get_header("stdalign.h").is_some(), "Missing stdalign.h");
+        assert!(get_header("stdnoreturn.h").is_some(), "Missing stdnoreturn.h");
+        assert!(get_header("stdatomic.h").is_some(), "Missing stdatomic.h");
+        assert!(get_header("threads.h").is_some(), "Missing threads.h");
+    }
+
+    #[test]
+    fn test_fenv_has_functions() {
+        let fenv = get_header("fenv.h").unwrap();
+        assert!(fenv.contains("feclearexcept"));
+        assert!(fenv.contains("fegetround"));
+        assert!(fenv.contains("fesetround"));
+        assert!(fenv.contains("fenv_t"));
+    }
+
+    #[test]
+    fn test_stdatomic_has_types_and_ops() {
+        let sa = get_header("stdatomic.h").unwrap();
+        assert!(sa.contains("atomic_int"));
+        assert!(sa.contains("atomic_flag"));
+        assert!(sa.contains("atomic_load"));
+        assert!(sa.contains("atomic_store"));
+        assert!(sa.contains("atomic_fetch_add"));
+        assert!(sa.contains("atomic_compare_exchange_strong"));
+    }
+
+    #[test]
+    fn test_threads_has_types_and_ops() {
+        let th = get_header("threads.h").unwrap();
+        assert!(th.contains("thrd_create"));
+        assert!(th.contains("mtx_lock"));
+        assert!(th.contains("cnd_signal"));
+        assert!(th.contains("tss_create"));
+        assert!(th.contains("call_once"));
     }
 }
