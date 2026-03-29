@@ -72,7 +72,7 @@
 
 ## 5. Test Fixtures — Resultados de Compilación y Ejecución
 
-### 5.1 Compilación con `adB cc` (18/18 = 100%)
+### 5.1 Compilación con `adB cc` (33/33 = 100%)
 
 | # | Fixture | Compila | PE Size | Tiempo |
 | --- | --- | --- | --- | --- |
@@ -94,6 +94,21 @@
 | 16 | `16_math.c` | ✅ | 2560 B | < 1s |
 | 17 | `17_stdint_limits.c` | ✅ | 2560 B | < 1s |
 | 18 | `18_errno_assert.c` | ✅ | 2048 B | < 1s |
+| 19 | `19_signal.c` | ✅ | — | < 1s |
+| 20 | `20_setjmp.c` | ✅ | — | < 1s |
+| 21 | `21_time.c` | ✅ | — | < 1s |
+| 22 | `22_locale.c` | ✅ | — | < 1s |
+| 23 | `23_stdarg.c` | ✅ | — | < 1s |
+| 24 | `24_complex.c` | ✅ | — | < 1s |
+| 25 | `25_wchar_wctype.c` | ✅ | — | < 1s |
+| 26 | `26_iso646_stdalign_noreturn.c` | ✅ | — | < 1s |
+| 27 | `27_uchar_tgmath.c` | ✅ | — | < 1s |
+| 28 | `28_production_types.c` | ✅ | — | < 1s |
+| 29 | `29_production_memory.c` | ✅ | — | < 1s |
+| 30 | `30_production_strings.c` | ✅ | — | < 1s |
+| 31 | `31_production_control.c` | ✅ | — | < 1s |
+| 32 | `32_production_structs.c` | ✅ | — | < 1s |
+| 33 | `33_production_opengl_parse.c` | ✅ | — | < 1s |
 
 ### 5.2 Ejecución (16/18 ejecutan correctamente)
 
@@ -193,7 +208,7 @@ La cadena completa funciona:
 source.c → Preprocessor → Lexer → Parser → UB Detector → IR → x64 CodeGen → PE
 ```
 
-Todos los 18 test fixtures compilan exitosamente a PE ejecutables.
+Todos los 33 test fixtures compilan exitosamente a PE ejecutables.
 16/18 ejecutan correctamente (2 crashean por límite de tamaño del backend PE, no del frontend).
 
 Las limitaciones restantes son del **backend** (codegen/PE), no del frontend C.

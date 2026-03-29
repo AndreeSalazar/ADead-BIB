@@ -213,6 +213,20 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "threads.h" => Some(HEADER_THREADS),
 
         // ==========================================
+        // OpenGL / GPU — C-level access (Fase 2)
+        // ==========================================
+        "GL/gl.h" | "gl.h" => Some(HEADER_GL),
+        "GL/glext.h" | "glext.h" => Some(HEADER_GLEXT),
+        "GL/glcorearb.h" => Some(HEADER_GLEXT),
+        "openglz.h" => Some(HEADER_OPENGLZ),
+        "fastos_gpu.h" => Some(HEADER_FASTOS_GPU),
+
+        // ==========================================
+        // ADead-BIB Core Headers (Arquitectura_2)
+        // ==========================================
+        "adead.h" => Some(HEADER_ADEAD_CORE),
+
+        // ==========================================
         // ADead-BIB v7.0 — header_main.h (HEREDA TODO)
         // ==========================================
         // Un solo include. Todo disponible. Sin linker.
@@ -952,6 +966,470 @@ int tss_set(tss_t key, void *val);
 void tss_delete(tss_t key);
 
 void call_once(once_flag *flag, void (*func)(void));
+"#;
+
+// ================================================================
+//  OpenGL / GPU C Headers
+// ================================================================
+
+const HEADER_GL: &str = r#"
+/* GL/gl.h — OpenGL 1.x-2.x C API */
+typedef unsigned int GLenum;
+typedef unsigned int GLbitfield;
+typedef unsigned int GLuint;
+typedef int GLint;
+typedef int GLsizei;
+typedef unsigned char GLboolean;
+typedef signed char GLbyte;
+typedef short GLshort;
+typedef unsigned char GLubyte;
+typedef unsigned short GLushort;
+typedef float GLfloat;
+typedef float GLclampf;
+typedef double GLdouble;
+typedef double GLclampd;
+typedef void GLvoid;
+typedef char GLchar;
+typedef long GLsizeiptr;
+typedef long GLintptr;
+
+/* Boolean */
+#define GL_FALSE 0
+#define GL_TRUE  1
+
+/* Primitives */
+#define GL_POINTS         0x0000
+#define GL_LINES          0x0001
+#define GL_LINE_LOOP      0x0002
+#define GL_LINE_STRIP     0x0003
+#define GL_TRIANGLES      0x0004
+#define GL_TRIANGLE_STRIP 0x0005
+#define GL_TRIANGLE_FAN   0x0006
+#define GL_QUADS          0x0007
+
+/* Data types */
+#define GL_BYTE           0x1400
+#define GL_UNSIGNED_BYTE  0x1401
+#define GL_SHORT          0x1402
+#define GL_UNSIGNED_SHORT 0x1403
+#define GL_INT            0x1404
+#define GL_UNSIGNED_INT   0x1405
+#define GL_FLOAT          0x1406
+#define GL_DOUBLE         0x140A
+
+/* Buffer bits */
+#define GL_DEPTH_BUFFER_BIT   0x00000100
+#define GL_STENCIL_BUFFER_BIT 0x00000400
+#define GL_COLOR_BUFFER_BIT   0x00004000
+
+/* Enable caps */
+#define GL_BLEND        0x0BE2
+#define GL_CULL_FACE    0x0B44
+#define GL_DEPTH_TEST   0x0B71
+#define GL_SCISSOR_TEST 0x0C11
+#define GL_STENCIL_TEST 0x0B90
+#define GL_TEXTURE_2D   0x0DE1
+#define GL_LINE_SMOOTH  0x0B20
+
+/* Texture */
+#define GL_TEXTURE0           0x84C0
+#define GL_TEXTURE_MAG_FILTER 0x2800
+#define GL_TEXTURE_MIN_FILTER 0x2801
+#define GL_TEXTURE_WRAP_S     0x2802
+#define GL_TEXTURE_WRAP_T     0x2803
+#define GL_NEAREST            0x2600
+#define GL_LINEAR             0x2601
+#define GL_NEAREST_MIPMAP_NEAREST 0x2700
+#define GL_LINEAR_MIPMAP_LINEAR   0x2703
+#define GL_REPEAT             0x2901
+#define GL_CLAMP_TO_EDGE      0x812F
+#define GL_MIRRORED_REPEAT    0x8370
+
+/* Pixel formats */
+#define GL_RED            0x1903
+#define GL_RG             0x8227
+#define GL_RGB            0x1907
+#define GL_RGBA           0x1908
+#define GL_BGR            0x80E0
+#define GL_BGRA           0x80E1
+#define GL_DEPTH_COMPONENT 0x1902
+#define GL_DEPTH_STENCIL   0x84F9
+
+/* Internal formats */
+#define GL_R8             0x8229
+#define GL_RG8            0x822B
+#define GL_RGB8           0x8051
+#define GL_RGBA8          0x8058
+#define GL_RGBA16F        0x881A
+#define GL_RGBA32F        0x8814
+#define GL_DEPTH_COMPONENT16  0x81A5
+#define GL_DEPTH_COMPONENT24  0x81A6
+#define GL_DEPTH_COMPONENT32F 0x8CAC
+#define GL_DEPTH24_STENCIL8   0x88F0
+#define GL_SRGB8_ALPHA8       0x8C43
+
+/* Blend */
+#define GL_ZERO                0
+#define GL_ONE                 1
+#define GL_SRC_ALPHA           0x0302
+#define GL_ONE_MINUS_SRC_ALPHA 0x0303
+#define GL_DST_ALPHA           0x0304
+#define GL_SRC_COLOR           0x0300
+#define GL_DST_COLOR           0x0306
+
+/* Face cull */
+#define GL_FRONT          0x0404
+#define GL_BACK           0x0405
+#define GL_FRONT_AND_BACK 0x0408
+#define GL_CW             0x0900
+#define GL_CCW            0x0901
+
+/* Depth */
+#define GL_NEVER    0x0200
+#define GL_LESS     0x0201
+#define GL_EQUAL    0x0202
+#define GL_LEQUAL   0x0203
+#define GL_GREATER  0x0204
+#define GL_NOTEQUAL 0x0205
+#define GL_GEQUAL   0x0206
+#define GL_ALWAYS   0x0207
+
+/* Errors */
+#define GL_NO_ERROR          0
+#define GL_INVALID_ENUM      0x0500
+#define GL_INVALID_VALUE     0x0501
+#define GL_INVALID_OPERATION 0x0502
+#define GL_OUT_OF_MEMORY     0x0505
+#define GL_STACK_OVERFLOW    0x0503
+#define GL_STACK_UNDERFLOW   0x0504
+
+/* Get */
+#define GL_VENDOR     0x1F00
+#define GL_RENDERER   0x1F01
+#define GL_VERSION    0x1F02
+#define GL_EXTENSIONS 0x1F03
+
+/* GL 1.0-1.1 functions */
+void glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
+void glClear(GLbitfield mask);
+void glEnable(GLenum cap);
+void glDisable(GLenum cap);
+void glBlendFunc(GLenum sfactor, GLenum dfactor);
+void glCullFace(GLenum mode);
+void glFrontFace(GLenum mode);
+void glDepthFunc(GLenum func);
+void glDepthMask(GLboolean flag);
+void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
+void glScissor(GLint x, GLint y, GLsizei width, GLsizei height);
+void glLineWidth(GLfloat width);
+void glPointSize(GLfloat size);
+void glPolygonMode(GLenum face, GLenum mode);
+void glDrawArrays(GLenum mode, GLint first, GLsizei count);
+void glDrawElements(GLenum mode, GLsizei count, GLenum type, const void *indices);
+void glGenTextures(GLsizei n, GLuint *textures);
+void glDeleteTextures(GLsizei n, const GLuint *textures);
+void glBindTexture(GLenum target, GLuint texture);
+void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void *pixels);
+void glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels);
+void glTexParameteri(GLenum target, GLenum pname, GLint param);
+void glTexParameterf(GLenum target, GLenum pname, GLfloat param);
+void glPixelStorei(GLenum pname, GLint param);
+void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void *pixels);
+GLenum glGetError(void);
+const GLubyte *glGetString(GLenum name);
+void glGetIntegerv(GLenum pname, GLint *params);
+void glGetFloatv(GLenum pname, GLfloat *params);
+GLboolean glIsEnabled(GLenum cap);
+void glFlush(void);
+void glFinish(void);
+void glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha);
+void glStencilFunc(GLenum func, GLint ref, GLuint mask);
+void glStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass);
+void glStencilMask(GLuint mask);
+void glGenerateMipmap(GLenum target);
+"#;
+
+const HEADER_GLEXT: &str = r#"
+/* GL/glext.h — OpenGL 2.0+ / 3.x / 4.x extensions */
+
+/* Buffer objects (GL 1.5+) */
+#define GL_ARRAY_BUFFER         0x8892
+#define GL_ELEMENT_ARRAY_BUFFER 0x8893
+#define GL_UNIFORM_BUFFER       0x8A11
+#define GL_STATIC_DRAW          0x88E4
+#define GL_DYNAMIC_DRAW         0x88E8
+#define GL_STREAM_DRAW          0x88E0
+
+void glGenBuffers(GLsizei n, GLuint *buffers);
+void glDeleteBuffers(GLsizei n, const GLuint *buffers);
+void glBindBuffer(GLenum target, GLuint buffer);
+void glBufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+void *glMapBuffer(GLenum target, GLenum access);
+GLboolean glUnmapBuffer(GLenum target);
+
+/* Shaders (GL 2.0+) */
+#define GL_FRAGMENT_SHADER 0x8B30
+#define GL_VERTEX_SHADER   0x8B31
+#define GL_GEOMETRY_SHADER 0x8DD9
+#define GL_COMPUTE_SHADER  0x91B9
+#define GL_TESS_CONTROL_SHADER    0x8E88
+#define GL_TESS_EVALUATION_SHADER 0x8E87
+#define GL_COMPILE_STATUS  0x8B81
+#define GL_LINK_STATUS     0x8B82
+#define GL_INFO_LOG_LENGTH 0x8B84
+#define GL_ACTIVE_UNIFORMS 0x8B86
+#define GL_ACTIVE_ATTRIBUTES 0x8B89
+
+GLuint glCreateShader(GLenum type);
+void glDeleteShader(GLuint shader);
+void glShaderSource(GLuint shader, GLsizei count, const GLchar **string, const GLint *length);
+void glCompileShader(GLuint shader);
+void glGetShaderiv(GLuint shader, GLenum pname, GLint *params);
+void glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+GLuint glCreateProgram(void);
+void glDeleteProgram(GLuint program);
+void glAttachShader(GLuint program, GLuint shader);
+void glDetachShader(GLuint program, GLuint shader);
+void glLinkProgram(GLuint program);
+void glUseProgram(GLuint program);
+void glGetProgramiv(GLuint program, GLenum pname, GLint *params);
+void glGetProgramInfoLog(GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+void glValidateProgram(GLuint program);
+
+/* Uniforms */
+GLint glGetUniformLocation(GLuint program, const GLchar *name);
+void glUniform1i(GLint location, GLint v0);
+void glUniform1f(GLint location, GLfloat v0);
+void glUniform2f(GLint location, GLfloat v0, GLfloat v1);
+void glUniform3f(GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
+void glUniform4f(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+void glUniform2i(GLint location, GLint v0, GLint v1);
+void glUniform3i(GLint location, GLint v0, GLint v1, GLint v2);
+void glUniform4i(GLint location, GLint v0, GLint v1, GLint v2, GLint v3);
+void glUniform1fv(GLint location, GLsizei count, const GLfloat *value);
+void glUniform2fv(GLint location, GLsizei count, const GLfloat *value);
+void glUniform3fv(GLint location, GLsizei count, const GLfloat *value);
+void glUniform4fv(GLint location, GLsizei count, const GLfloat *value);
+void glUniformMatrix2fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+void glUniformMatrix3fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+void glUniformMatrix4fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+
+/* Vertex attributes */
+GLint glGetAttribLocation(GLuint program, const GLchar *name);
+void glBindAttribLocation(GLuint program, GLuint index, const GLchar *name);
+void glEnableVertexAttribArray(GLuint index);
+void glDisableVertexAttribArray(GLuint index);
+void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
+void glVertexAttribIPointer(GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer);
+
+/* VAO (GL 3.0+) */
+void glGenVertexArrays(GLsizei n, GLuint *arrays);
+void glDeleteVertexArrays(GLsizei n, const GLuint *arrays);
+void glBindVertexArray(GLuint array);
+
+/* Framebuffers (GL 3.0+) */
+#define GL_FRAMEBUFFER      0x8D40
+#define GL_READ_FRAMEBUFFER 0x8CA8
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
+#define GL_RENDERBUFFER     0x8D41
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+#define GL_DEPTH_ATTACHMENT  0x8D00
+#define GL_STENCIL_ATTACHMENT 0x8D20
+#define GL_DEPTH_STENCIL_ATTACHMENT 0x821A
+
+void glGenFramebuffers(GLsizei n, GLuint *framebuffers);
+void glDeleteFramebuffers(GLsizei n, const GLuint *framebuffers);
+void glBindFramebuffer(GLenum target, GLuint framebuffer);
+GLenum glCheckFramebufferStatus(GLenum target);
+void glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+void glGenRenderbuffers(GLsizei n, GLuint *renderbuffers);
+void glDeleteRenderbuffers(GLsizei n, const GLuint *renderbuffers);
+void glBindRenderbuffer(GLenum target, GLuint renderbuffer);
+void glRenderbufferStorage(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+void glFramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
+
+/* Draw instanced (GL 3.1+) */
+void glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei instancecount);
+void glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
+void glBindBufferBase(GLenum target, GLuint index, GLuint buffer);
+void glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size);
+
+/* Compute (GL 4.3+) */
+void glDispatchCompute(GLuint num_groups_x, GLuint num_groups_y, GLuint num_groups_z);
+void glMemoryBarrier(GLbitfield barriers);
+#define GL_SHADER_STORAGE_BUFFER   0x90D2
+#define GL_SHADER_STORAGE_BARRIER_BIT 0x00002000
+#define GL_ALL_BARRIER_BITS        0xFFFFFFFF
+
+/* DSA (GL 4.5+) */
+void glCreateBuffers(GLsizei n, GLuint *buffers);
+void glNamedBufferData(GLuint buffer, GLsizeiptr size, const void *data, GLenum usage);
+void glCreateTextures(GLenum target, GLsizei n, GLuint *textures);
+void glTextureStorage2D(GLuint texture, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height);
+void glTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels);
+void glBindTextureUnit(GLuint unit, GLuint texture);
+void glCreateVertexArrays(GLsizei n, GLuint *arrays);
+void glCreateFramebuffers(GLsizei n, GLuint *framebuffers);
+
+/* Query (GL 3.3+) */
+void glGenQueries(GLsizei n, GLuint *ids);
+void glDeleteQueries(GLsizei n, const GLuint *ids);
+void glBeginQuery(GLenum target, GLuint id);
+void glEndQuery(GLenum target);
+void glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params);
+
+/* Multi-draw (GL 4.6) */
+void glMultiDrawElementsIndirect(GLenum mode, GLenum type, const void *indirect, GLsizei drawcount, GLsizei stride);
+
+/* SPIR-V (GL 4.6) */
+void glShaderBinary(GLsizei count, const GLuint *shaders, GLenum binaryFormat, const void *binary, GLsizei length);
+void glSpecializeShader(GLuint shader, const GLchar *pEntryPoint, GLuint numSpecializationConstants, const GLuint *pConstantIndex, const GLuint *pConstantValue);
+#define GL_SHADER_BINARY_FORMAT_SPIR_V 0x9551
+"#;
+
+const HEADER_OPENGLZ: &str = r#"
+/* openglz.h — ADead-BIB OpenGLZ Unified API */
+/* Header Intelligence: #include <openglz.h> → todo GL 1.0-4.6 listo */
+
+/* Inherits all of GL/gl.h + GL/glext.h automatically */
+
+/* Window management — no GLFW, no SDL needed */
+typedef struct OGLZWindow OGLZWindow;
+typedef struct OGLZShader OGLZShader;
+typedef struct OGLZMesh OGLZMesh;
+typedef struct OGLZTexture OGLZTexture;
+
+/* Create/destroy */
+OGLZWindow*  oglz_create_window(int width, int height, const char *title);
+void         oglz_destroy(OGLZWindow *win);
+int          oglz_should_close(OGLZWindow *win);
+void         oglz_poll_events(OGLZWindow *win);
+void         oglz_swap_buffers(OGLZWindow *win);
+double       oglz_get_time(void);
+
+/* Shader helpers */
+OGLZShader*  oglz_shader_from_glsl(const char *vert_src, const char *frag_src);
+OGLZShader*  oglz_shader_from_files(const char *vert_path, const char *frag_path);
+void         oglz_shader_use(OGLZShader *shader);
+void         oglz_shader_destroy(OGLZShader *shader);
+void         oglz_shader_set_int(OGLZShader *s, const char *name, int val);
+void         oglz_shader_set_float(OGLZShader *s, const char *name, float val);
+void         oglz_shader_set_vec3(OGLZShader *s, const char *name, float x, float y, float z);
+void         oglz_shader_set_vec4(OGLZShader *s, const char *name, float x, float y, float z, float w);
+void         oglz_shader_set_mat4(OGLZShader *s, const char *name, const float *mat);
+
+/* Built-in meshes */
+OGLZMesh*    oglz_mesh_cube(void);
+OGLZMesh*    oglz_mesh_quad(void);
+OGLZMesh*    oglz_mesh_sphere(int segments, int rings);
+OGLZMesh*    oglz_mesh_from_data(const float *vertices, int vert_count, const unsigned int *indices, int idx_count);
+void         oglz_mesh_destroy(OGLZMesh *mesh);
+
+/* Drawing */
+void         oglz_clear(void);
+void         oglz_clear_color(float r, float g, float b, float a);
+void         oglz_draw(OGLZMesh *mesh, OGLZShader *shader);
+void         oglz_draw_instanced(OGLZMesh *mesh, OGLZShader *shader, int count);
+
+/* Textures */
+OGLZTexture* oglz_texture_from_file(const char *path);
+OGLZTexture* oglz_texture_from_data(const unsigned char *data, int width, int height, int channels);
+void         oglz_texture_bind(OGLZTexture *tex, int unit);
+void         oglz_texture_destroy(OGLZTexture *tex);
+
+/* Built-in shaders */
+extern const char *OGLZ_SHADER_BASIC_VERT;
+extern const char *OGLZ_SHADER_BASIC_FRAG;
+extern const char *OGLZ_SHADER_PHONG_VERT;
+extern const char *OGLZ_SHADER_PHONG_FRAG;
+
+/* Main loop macro */
+#define OGLZ_MAIN_LOOP(win) while(!oglz_should_close(win))
+"#;
+
+const HEADER_FASTOS_GPU: &str = r#"
+/* fastos_gpu.h — FastOS direct GPU access */
+typedef unsigned char u8;
+typedef unsigned short u16;
+typedef unsigned int u32;
+typedef unsigned long long u64;
+
+int gpu_init(void);
+int gpu_detect(void);
+void gpu_print_info(void);
+u64 gpu_get_bar0(void);
+u64 gpu_get_bar1(void);
+u32 gpu_get_vram_mb(void);
+u8 gpu_is_detected(void);
+u16 gpu_get_device_id(void);
+void gpu_vram_write32(u64 offset, u32 value);
+u32 gpu_vram_read32(u64 offset);
+void gpu_set_pixel(u32 x, u32 y, u32 color);
+void gpu_fill_rect(u32 x, u32 y, u32 w, u32 h, u32 color);
+void gpu_hline(u32 x, u32 y, u32 len, u32 color);
+void gpu_vline(u32 x, u32 y, u32 len, u32 color);
+void gpu_rect(u32 x, u32 y, u32 w, u32 h, u32 color);
+void gpu_test_pattern(void);
+void gpu_sync(void);
+
+#define GPU_COLOR_RED     0x00FF0000
+#define GPU_COLOR_GREEN   0x0000FF00
+#define GPU_COLOR_BLUE    0x000000FF
+#define GPU_COLOR_WHITE   0x00FFFFFF
+#define GPU_COLOR_BLACK   0x00000000
+#define GPU_RGB(r, g, b) (((r) << 16) | ((g) << 8) | (b))
+"#;
+
+const HEADER_ADEAD_CORE: &str = r#"
+/* adead.h — ADead-BIB Master Header (Arquitectura_2) */
+/* One include to rule them all */
+typedef unsigned char      u8;
+typedef unsigned short     u16;
+typedef unsigned int       u32;
+typedef unsigned long long u64;
+typedef signed char        i8;
+typedef signed short       i16;
+typedef signed int         i32;
+typedef signed long long   i64;
+typedef float              f32;
+typedef double             f64;
+
+/* Memory — SSE/AVX aligned */
+void* adead_malloc(u64 size);
+void  adead_free(void *ptr);
+void  adead_free_safe(void **ptr);
+void* adead_memcpy(void *dst, const void *src, u64 n);
+void* adead_memset(void *ptr, i32 val, u64 n);
+
+#define ADEAD_NEW(type)         ((type*)adead_malloc(sizeof(type)))
+#define ADEAD_NEW_ARRAY(type,n) ((type*)adead_malloc(sizeof(type)*(n)))
+#define ADEAD_FREE(ptr)         adead_free_safe((void**)&(ptr))
+
+/* Platform detection */
+#ifdef _WIN32
+  #define ADEAD_PLATFORM_WINDOWS 1
+#elif defined(__linux__)
+  #define ADEAD_PLATFORM_LINUX 1
+#elif defined(__FASTOS__)
+  #define ADEAD_PLATFORM_FASTOS 1
+#endif
+
+/* String */
+u64  adead_strlen(const char *s);
+i32  adead_strcmp(const char *a, const char *b);
+char* adead_strcpy(char *dst, const char *src);
+
+/* I/O */
+int adead_printf(const char *fmt, ...);
+
+/* C stdlib aliases */
+#define malloc(n)       adead_malloc(n)
+#define free(p)         adead_free(p)
+#define memcpy(d,s,n)   adead_memcpy(d,s,n)
+#define memset(p,v,n)   adead_memset(p,v,n)
 "#;
 
 // ================================================================
