@@ -819,4 +819,131 @@ mod tests {
         assert!(arts.ub_report.has_errors());
         assert!(arts.ub_report.warnings.iter().all(|w| w.severity == "error"));
     }
+
+    // ── Phase 3: Fixture tests 11-15 ────────────────────────
+
+    #[test]
+    fn test_fixture_11_virtual() {
+        let arts = parse_fixture("11_virtual.cpp");
+        assert!(arts.program.structs.iter().any(|s| s.name == "Animal"));
+        assert!(arts.program.structs.iter().any(|s| s.name == "Dog"));
+        // Animal should have __vptr field (has virtual methods)
+        let animal = arts.program.structs.iter().find(|s| s.name == "Animal").unwrap();
+        assert!(animal.fields.iter().any(|f| f.name == "__vptr"));
+        // Vtable struct should be emitted
+        assert!(arts.program.structs.iter().any(|s| s.name == "__vtable_Animal"));
+    }
+
+    #[test]
+    fn test_fixture_12_operator_overload() {
+        let arts = parse_fixture("12_operator_overload.cpp");
+        assert!(arts.program.structs.iter().any(|s| s.name == "Vec2"));
+        // operator+ → operator_add, operator== → operator_eq
+        assert!(arts.program.functions.iter().any(|f| f.name == "Vec2::operator_add"));
+        assert!(arts.program.functions.iter().any(|f| f.name == "Vec2::operator_eq"));
+    }
+
+    #[test]
+    fn test_fixture_13_static_method() {
+        let arts = parse_fixture("13_static_method.cpp");
+        assert!(arts.program.structs.iter().any(|s| s.name == "Config"));
+        // Static methods should NOT have 'this' parameter
+        let dw = arts.program.functions.iter().find(|f| f.name == "Config::default_width").unwrap();
+        assert!(dw.params.is_empty(), "static method should have no params");
+        // Constructor should have initializer list lowered
+        let init = arts.program.functions.iter().find(|f| f.name == "Config::__init").unwrap();
+        assert!(init.body.len() >= 2, "constructor should have init list stmts");
+    }
+
+    #[test]
+    fn test_fixture_14_extern_c() {
+        let arts = parse_fixture("14_extern_c.cpp");
+        // extern "C" functions should be emitted
+        assert!(arts.program.functions.iter().any(|f| f.name == "abs"));
+        assert!(arts.program.functions.iter().any(|f| f.name == "atoi"));
+        assert!(arts.program.functions.iter().any(|f| f.name == "helper"));
+    }
+
+    #[test]
+    fn test_fixture_15_destructor() {
+        let arts = parse_fixture("15_destructor.cpp");
+        assert!(arts.program.structs.iter().any(|s| s.name == "Resource"));
+        assert!(arts.program.functions.iter().any(|f| f.name == "Resource::__init"));
+        assert!(arts.program.functions.iter().any(|f| f.name == "Resource::__destroy"));
+    }
+
+    // ── Phase 3: Unit tests for new lowerings ───────────────
+
+    #[test]
+    fn test_vtable_struct_generated() {
+        let result = compile_cpp_pipeline(r#"
+            class Base {
+            public:
+                virtual int foo() { return 1; }
+                virtual int bar() { return 2; }
+            };
+            int main() { return 0; }
+        "#, false);
+        assert!(result.is_ok());
+        let arts = result.unwrap();
+        let base = arts.program.structs.iter().find(|s| s.name == "Base").unwrap();
+        assert!(base.fields.iter().any(|f| f.name == "__vptr"));
+        assert!(arts.program.structs.iter().any(|s| s.name == "__vtable_Base"));
+        let vt = arts.program.structs.iter().find(|s| s.name == "__vtable_Base").unwrap();
+        assert_eq!(vt.fields.len(), 2); // foo + bar
+    }
+
+    #[test]
+    fn test_operator_mangling() {
+        let result = compile_cpp_pipeline(r#"
+            class Num {
+            public:
+                int v;
+                int operator+(int r) { return v + r; }
+                int operator==(int r) { return v == r; }
+                int operator[](int i) { return i; }
+            };
+            int main() { return 0; }
+        "#, false);
+        assert!(result.is_ok());
+        let arts = result.unwrap();
+        assert!(arts.program.functions.iter().any(|f| f.name == "Num::operator_add"));
+        assert!(arts.program.functions.iter().any(|f| f.name == "Num::operator_eq"));
+        assert!(arts.program.functions.iter().any(|f| f.name == "Num::operator_index"));
+    }
+
+    #[test]
+    fn test_static_method_no_this() {
+        let result = compile_cpp_pipeline(r#"
+            class Math {
+            public:
+                static int square(int x) { return x * x; }
+            };
+            int main() { return 0; }
+        "#, false);
+        assert!(result.is_ok());
+        let arts = result.unwrap();
+        let sq = arts.program.functions.iter().find(|f| f.name == "Math::square").unwrap();
+        // Static: only 'x' param, no 'this'
+        assert_eq!(sq.params.len(), 1);
+        assert_eq!(sq.params[0].name, "x");
+    }
+
+    #[test]
+    fn test_initializer_list_lowered() {
+        let result = compile_cpp_pipeline(r#"
+            class Point {
+            public:
+                int x;
+                int y;
+                Point(int a, int b) : x(a), y(b) {}
+            };
+            int main() { return 0; }
+        "#, false);
+        assert!(result.is_ok());
+        let arts = result.unwrap();
+        let init = arts.program.functions.iter().find(|f| f.name == "Point::__init").unwrap();
+        // Should have FieldAssign for x and y from initializer list
+        assert!(init.body.len() >= 2);
+    }
 }

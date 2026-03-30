@@ -27,11 +27,51 @@ pub struct CppToIR {
     ns: Vec<String>,
     current_class: Option<String>,
     enum_constants: Vec<(String, i64)>,
+    /// Track virtual methods per class for vtable generation
+    vtables: Vec<VTableInfo>,
+    /// Track template function definitions for monomorphization
+    template_defs: Vec<TemplateFuncDef>,
+    /// Track template instantiations requested
+    template_uses: Vec<(String, Vec<CppType>)>,
+    /// Type aliases: using/typedef name → resolved type
+    type_aliases: Vec<(String, CppType)>,
+}
+
+/// Vtable entry: one virtual method slot
+#[derive(Debug, Clone)]
+struct VTableSlot {
+    method_name: String,
+    mangled_name: String,
+}
+
+/// Per-class vtable info
+#[derive(Debug, Clone)]
+struct VTableInfo {
+    class_name: String,
+    slots: Vec<VTableSlot>,
+}
+
+/// Stored template function definition for monomorphization
+#[derive(Debug, Clone)]
+struct TemplateFuncDef {
+    name: String,
+    template_params: Vec<CppTemplateParam>,
+    return_type: CppType,
+    params: Vec<CppParam>,
+    body: Vec<CppStmt>,
 }
 
 impl CppToIR {
     pub fn new() -> Self {
-        Self { ns: Vec::new(), current_class: None, enum_constants: Vec::new() }
+        Self {
+            ns: Vec::new(),
+            current_class: None,
+            enum_constants: Vec::new(),
+            vtables: Vec::new(),
+            template_defs: Vec::new(),
+            template_uses: Vec::new(),
+            type_aliases: Vec::new(),
+        }
     }
 
     fn mangled(&self, name: &str) -> String {
@@ -43,15 +83,32 @@ impl CppToIR {
         let mut prog = Program::new();
         prog.attributes = ProgramAttributes::default();
 
-        // Pass 1: collect enums, typedefs
+        // Pass 1: collect enums, typedefs, type aliases, template definitions
         for d in &unit.declarations {
-            if let CppTopLevel::EnumDef { values, .. } = d {
-                let mut val = 0i64;
-                for (name, expr) in values {
-                    if let Some(CppExpr::IntLiteral(v)) = expr { val = *v; }
-                    self.enum_constants.push((name.clone(), val));
-                    val += 1;
+            match d {
+                CppTopLevel::EnumDef { values, .. } => {
+                    let mut val = 0i64;
+                    for (name, expr) in values {
+                        if let Some(CppExpr::IntLiteral(v)) = expr { val = *v; }
+                        self.enum_constants.push((name.clone(), val));
+                        val += 1;
+                    }
                 }
+                CppTopLevel::TypeAlias { new_name, original, .. } => {
+                    self.type_aliases.push((new_name.clone(), original.clone()));
+                }
+                CppTopLevel::FunctionDef { name, template_params, return_type, params, body, .. }
+                    if !template_params.is_empty() =>
+                {
+                    self.template_defs.push(TemplateFuncDef {
+                        name: name.clone(),
+                        template_params: template_params.clone(),
+                        return_type: return_type.clone(),
+                        params: params.clone(),
+                        body: body.clone(),
+                    });
+                }
+                _ => {}
             }
         }
 
@@ -59,11 +116,30 @@ impl CppToIR {
         for d in &unit.declarations {
             self.convert_top_level(d, &mut prog)?;
         }
+
+        // Pass 3: emit vtable structs for classes with virtual methods
+        for vt in &self.vtables {
+            let mut vtable_fields = Vec::new();
+            for slot in &vt.slots {
+                vtable_fields.push(StructField {
+                    name: slot.method_name.clone(),
+                    field_type: Type::Pointer(Box::new(Type::Void)),
+                });
+            }
+            prog.structs.push(Struct {
+                name: format!("__vtable_{}", vt.class_name),
+                fields: vtable_fields,
+                is_packed: false,
+            });
+        }
+
         Ok(prog)
     }
 
     fn convert_top_level(&mut self, decl: &CppTopLevel, prog: &mut Program) -> Result<(), String> {
         match decl {
+            // Skip template functions — they're stored for monomorphization
+            CppTopLevel::FunctionDef { template_params, .. } if !template_params.is_empty() => {}
             CppTopLevel::FunctionDef { return_type, name, params, body, .. } => {
                 let fname = self.mangled(name);
                 let ir_params: Vec<Param> = params.iter().map(|p| self.convert_param(p)).collect();
@@ -95,10 +171,25 @@ impl CppToIR {
                     });
                 }
             }
-            CppTopLevel::EnumDef { .. } => { /* handled in pass 1 */ }
-            CppTopLevel::TypeAlias { .. } | CppTopLevel::UsingDecl { .. }
-            | CppTopLevel::UsingNamespace(_) | CppTopLevel::FunctionDecl { .. }
-            | CppTopLevel::StaticAssert { .. } | CppTopLevel::ExternC { .. }
+            CppTopLevel::ExternC { declarations } => {
+                for d in declarations { self.convert_top_level(d, prog)?; }
+            }
+            CppTopLevel::FunctionDecl { name, params, return_type, .. } => {
+                // Forward declaration: emit function with empty body
+                let fname = self.mangled(name);
+                let ir_params: Vec<Param> = params.iter().map(|p| self.convert_param(p)).collect();
+                prog.functions.push(Function {
+                    name: fname,
+                    params: ir_params,
+                    return_type: Some(self.type_name(return_type)),
+                    resolved_return_type: self.convert_type(return_type),
+                    body: Vec::new(),
+                    attributes: FunctionAttributes::default(),
+                });
+            }
+            CppTopLevel::EnumDef { .. } | CppTopLevel::TypeAlias { .. } => { /* handled in pass 1 */ }
+            CppTopLevel::UsingDecl { .. } | CppTopLevel::UsingNamespace(_)
+            | CppTopLevel::StaticAssert { .. }
             | CppTopLevel::TemplateInstantiation { .. }
             | CppTopLevel::TemplateSpecialization { .. }
             | CppTopLevel::TemplateFuncSpecialization { .. } => {}
@@ -106,11 +197,26 @@ impl CppToIR {
         Ok(())
     }
 
-    // ── Class → Struct + Functions ──────────────────────────
+    // ── Class → Struct + Functions + vtable ────────────────
     fn convert_class(&mut self, name: &str, bases: &[CppBaseClass],
         members: &[CppClassMember], _is_struct: bool, prog: &mut Program
     ) -> Result<(), String> {
         let mut fields = Vec::new();
+        let mut vtable_slots: Vec<VTableSlot> = Vec::new();
+        let has_virtual = members.iter().any(|m| match m {
+            CppClassMember::Method { qualifiers, .. } => qualifiers.is_virtual || qualifiers.is_pure_virtual,
+            CppClassMember::Destructor { is_virtual, .. } => *is_virtual,
+            _ => false,
+        });
+
+        // If class has virtual methods, add __vptr field
+        if has_virtual {
+            fields.push(StructField {
+                name: "__vptr".into(),
+                field_type: Type::Pointer(Box::new(Type::Void)),
+            });
+        }
+
         // Inherit base class fields (simple embedding)
         for base in bases {
             fields.push(StructField {
@@ -130,33 +236,64 @@ impl CppToIR {
                         field_type: self.convert_type(type_spec),
                     });
                 }
-                CppClassMember::Method { return_type, name: mname, params, body: Some(body), .. } => {
-                    let fname = format!("{}::{}", name, mname);
-                    let mut ir_params = vec![Param::typed("this".into(),
-                        Type::Pointer(Box::new(Type::Struct(name.to_string()))))];
-                    ir_params.extend(params.iter().map(|p| self.convert_param(p)));
-                    let ir_body = self.convert_stmts(body)?;
-                    let func = Function {
-                        name: fname,
-                        params: ir_params,
-                        return_type: Some(self.type_name(return_type)),
-                        resolved_return_type: self.convert_type(return_type),
-                        body: ir_body,
-                        attributes: FunctionAttributes::default(),
+                CppClassMember::Method { return_type, name: mname, params, qualifiers, body, .. } => {
+                    // Phase 3: operator overload → mangled name
+                    let method_name = Self::mangle_operator(mname);
+                    let fname = format!("{}::{}", name, method_name);
+
+                    // Phase 3: track virtual methods for vtable
+                    if qualifiers.is_virtual || qualifiers.is_override || qualifiers.is_pure_virtual {
+                        vtable_slots.push(VTableSlot {
+                            method_name: method_name.clone(),
+                            mangled_name: fname.clone(),
+                        });
+                    }
+
+                    // Static methods don't get `this` parameter
+                    let mut ir_params = if qualifiers.is_static {
+                        Vec::new()
+                    } else {
+                        vec![Param::typed("this".into(),
+                            Type::Pointer(Box::new(Type::Struct(name.to_string()))))]
                     };
-                    prog.functions.push(func);
+                    ir_params.extend(params.iter().map(|p| self.convert_param(p)));
+
+                    if let Some(body) = body {
+                        let ir_body = self.convert_stmts(body)?;
+                        prog.functions.push(Function {
+                            name: fname,
+                            params: ir_params,
+                            return_type: Some(self.type_name(return_type)),
+                            resolved_return_type: self.convert_type(return_type),
+                            body: ir_body,
+                            attributes: FunctionAttributes::default(),
+                        });
+                    }
                 }
-                CppClassMember::Constructor { params, body: Some(body), .. } => {
+                CppClassMember::Constructor { params, body: Some(body), initializer_list, .. } => {
                     let fname = format!("{}::__init", name);
                     let mut ir_params = vec![Param::typed("this".into(),
                         Type::Pointer(Box::new(Type::Struct(name.to_string()))))];
                     ir_params.extend(params.iter().map(|p| self.convert_param(p)));
+
+                    // Phase 3: emit initializer list as assignments before body
+                    let mut init_stmts = Vec::new();
+                    for (field, expr) in initializer_list {
+                        init_stmts.push(Stmt::FieldAssign {
+                            object: Expr::Deref(Box::new(Expr::Variable("this".into()))),
+                            field: field.clone(),
+                            value: self.convert_expr(expr),
+                        });
+                    }
+                    let mut body_stmts = self.convert_stmts(body)?;
+                    init_stmts.append(&mut body_stmts);
+
                     prog.functions.push(Function {
                         name: fname,
                         params: ir_params,
                         return_type: None,
                         resolved_return_type: Type::Void,
-                        body: self.convert_stmts(body)?,
+                        body: init_stmts,
                         attributes: FunctionAttributes::default(),
                     });
                 }
@@ -173,13 +310,73 @@ impl CppToIR {
                         attributes: FunctionAttributes::default(),
                     });
                 }
+                CppClassMember::NestedClass(inner) => {
+                    self.convert_top_level(inner, prog)?;
+                }
+                CppClassMember::NestedEnum(inner) => {
+                    if let CppTopLevel::EnumDef { values, .. } = inner.as_ref() {
+                        let mut val = 0i64;
+                        for (ename, expr) in values {
+                            if let Some(CppExpr::IntLiteral(v)) = expr { val = *v; }
+                            self.enum_constants.push((format!("{}::{}", name, ename), val));
+                            self.enum_constants.push((ename.clone(), val));
+                            val += 1;
+                        }
+                    }
+                }
                 _ => {}
             }
         }
 
+        // Emit class struct
         prog.structs.push(Struct { name: name.to_string(), fields, is_packed: false });
+
+        // Phase 3: store vtable info if this class has virtual methods
+        if !vtable_slots.is_empty() {
+            self.vtables.push(VTableInfo {
+                class_name: name.to_string(),
+                slots: vtable_slots,
+            });
+        }
+
         self.current_class = old_class;
         Ok(())
+    }
+
+    /// Phase 3: Mangle operator overload names
+    fn mangle_operator(name: &str) -> String {
+        match name {
+            "operator+" => "operator_add".into(),
+            "operator-" => "operator_sub".into(),
+            "operator*" => "operator_mul".into(),
+            "operator/" => "operator_div".into(),
+            "operator%" => "operator_mod".into(),
+            "operator==" => "operator_eq".into(),
+            "operator!=" => "operator_ne".into(),
+            "operator<" => "operator_lt".into(),
+            "operator>" => "operator_gt".into(),
+            "operator<=" => "operator_le".into(),
+            "operator>=" => "operator_ge".into(),
+            "operator=" => "operator_assign".into(),
+            "operator+=" => "operator_add_assign".into(),
+            "operator-=" => "operator_sub_assign".into(),
+            "operator*=" => "operator_mul_assign".into(),
+            "operator/=" => "operator_div_assign".into(),
+            "operator[]" => "operator_index".into(),
+            "operator()" => "operator_call".into(),
+            "operator->" => "operator_arrow".into(),
+            "operator<<" => "operator_shl".into(),
+            "operator>>" => "operator_shr".into(),
+            "operator!" => "operator_not".into(),
+            "operator~" => "operator_bitnot".into(),
+            "operator&" => "operator_bitand".into(),
+            "operator|" => "operator_bitor".into(),
+            "operator^" => "operator_bitxor".into(),
+            "operator++" => "operator_inc".into(),
+            "operator--" => "operator_dec".into(),
+            "operator<=>" => "operator_spaceship".into(),
+            other => other.to_string(),
+        }
     }
 
     // ── Statements ──────────────────────────────────────────
@@ -192,13 +389,25 @@ impl CppToIR {
     fn convert_stmt(&mut self, stmt: &CppStmt, out: &mut Vec<Stmt>) -> Result<(), String> {
         match stmt {
             CppStmt::Expr(e) => {
-                // Phase 2: handle assignments at statement level
+                // Phase 2+3: handle special expression forms at statement level
                 match e {
                     CppExpr::Assign { target, value } => {
                         self.lower_assign(target, value, out);
                     }
                     CppExpr::CompoundAssign { op, target, value } => {
                         self.lower_compound_assign(op, target, value, out);
+                    }
+                    // Phase 3: delete expr → destructor call + free
+                    CppExpr::Delete { expr: inner, is_array } => {
+                        self.lower_delete(inner, *is_array, out);
+                    }
+                    // Phase 3: cout << x << y → printf calls
+                    CppExpr::BinaryOp { op: CppBinOp::Shl, left, right } if self.is_cout(left) => {
+                        self.lower_cout_chain(e, out);
+                    }
+                    // Phase 3: cin >> x → scanf call
+                    CppExpr::BinaryOp { op: CppBinOp::Shr, left, right } if self.is_cin(left) => {
+                        self.lower_cin_chain(e, out);
                     }
                     _ => { out.push(Stmt::Expr(self.convert_expr(e))); }
                 }
@@ -626,6 +835,131 @@ impl CppToIR {
                     right: Box::new(v),
                 }));
             }
+        }
+    }
+
+    // ── Phase 3: delete → destructor + free ────────────────
+
+    fn lower_delete(&self, inner: &CppExpr, _is_array: bool, out: &mut Vec<Stmt>) {
+        let ptr = self.convert_expr(inner);
+        // If we know the type, call destructor first
+        if let CppExpr::Identifier(var_name) = inner {
+            if let Some(class_name) = &self.current_class {
+                let dtor_name = format!("{}::__destroy", class_name);
+                out.push(Stmt::Expr(Expr::Call {
+                    name: dtor_name,
+                    args: vec![Expr::Variable(var_name.clone())],
+                }));
+            }
+        }
+        // Then free the memory
+        out.push(Stmt::Expr(Expr::Call {
+            name: "free".into(),
+            args: vec![ptr],
+        }));
+    }
+
+    // ── Phase 3: cout/cin detection ──────────────────────
+
+    fn is_cout(&self, expr: &CppExpr) -> bool {
+        match expr {
+            CppExpr::Identifier(n) => n == "cout",
+            CppExpr::ScopedIdentifier { scope, name } =>
+                name == "cout" && scope.last().map_or(false, |s| s == "std"),
+            // Chained: (cout << x) << y — left is also a shl with cout
+            CppExpr::BinaryOp { op: CppBinOp::Shl, left, .. } => self.is_cout(left),
+            _ => false,
+        }
+    }
+
+    fn is_cin(&self, expr: &CppExpr) -> bool {
+        match expr {
+            CppExpr::Identifier(n) => n == "cin",
+            CppExpr::ScopedIdentifier { scope, name } =>
+                name == "cin" && scope.last().map_or(false, |s| s == "std"),
+            CppExpr::BinaryOp { op: CppBinOp::Shr, left, .. } => self.is_cin(left),
+            _ => false,
+        }
+    }
+
+    // ── Phase 3: cout << x << y → printf calls ──────────
+
+    fn lower_cout_chain(&self, expr: &CppExpr, out: &mut Vec<Stmt>) {
+        // Collect all values in the chain
+        let mut values = Vec::new();
+        self.collect_cout_values(expr, &mut values);
+
+        // Emit printf for each value
+        for val in &values {
+            match val {
+                CppExpr::StringLiteral(s) => {
+                    out.push(Stmt::Expr(Expr::Call {
+                        name: "printf".into(),
+                        args: vec![Expr::String(s.clone())],
+                    }));
+                }
+                CppExpr::Identifier(n) if n == "endl" => {
+                    out.push(Stmt::Expr(Expr::Call {
+                        name: "printf".into(),
+                        args: vec![Expr::String("\n".into())],
+                    }));
+                }
+                CppExpr::ScopedIdentifier { name, .. } if name == "endl" => {
+                    out.push(Stmt::Expr(Expr::Call {
+                        name: "printf".into(),
+                        args: vec![Expr::String("\n".into())],
+                    }));
+                }
+                CppExpr::IntLiteral(n) => {
+                    out.push(Stmt::Expr(Expr::Call {
+                        name: "printf".into(),
+                        args: vec![Expr::String("%d".into()), Expr::Number(*n)],
+                    }));
+                }
+                CppExpr::FloatLiteral(f) => {
+                    out.push(Stmt::Expr(Expr::Call {
+                        name: "printf".into(),
+                        args: vec![Expr::String("%f".into()), Expr::Float(*f)],
+                    }));
+                }
+                other => {
+                    // Generic: print as %d (integer) — best effort
+                    out.push(Stmt::Expr(Expr::Call {
+                        name: "printf".into(),
+                        args: vec![Expr::String("%d".into()), self.convert_expr(other)],
+                    }));
+                }
+            }
+        }
+    }
+
+    fn collect_cout_values<'a>(&self, expr: &'a CppExpr, values: &mut Vec<&'a CppExpr>) {
+        if let CppExpr::BinaryOp { op: CppBinOp::Shl, left, right } = expr {
+            self.collect_cout_values(left, values);
+            values.push(right);
+        }
+        // Base case: cout itself is not a value
+    }
+
+    // ── Phase 3: cin >> x >> y → scanf calls ─────────────
+
+    fn lower_cin_chain(&self, expr: &CppExpr, out: &mut Vec<Stmt>) {
+        let mut vars = Vec::new();
+        self.collect_cin_vars(expr, &mut vars);
+
+        for var in &vars {
+            let ir_var = self.convert_expr(var);
+            out.push(Stmt::Expr(Expr::Call {
+                name: "scanf".into(),
+                args: vec![Expr::String("%d".into()), Expr::AddressOf(Box::new(ir_var))],
+            }));
+        }
+    }
+
+    fn collect_cin_vars<'a>(&self, expr: &'a CppExpr, vars: &mut Vec<&'a CppExpr>) {
+        if let CppExpr::BinaryOp { op: CppBinOp::Shr, left, right } = expr {
+            self.collect_cin_vars(left, vars);
+            vars.push(right);
         }
     }
 
