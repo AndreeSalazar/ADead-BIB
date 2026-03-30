@@ -1,7 +1,7 @@
 # Reporte C++ — ADead-BIB Frontend & Stdlib Analysis
 
 > **Fecha:** 30 de Marzo de 2026  
-> **Versión:** ADead-BIB v8.0  
+> **Versión:** ADead-BIB v9.0  
 > **Autor:** Eddi Andreé Salazar Matos  
 > **Licencia:** Techne v1.0 (τέχνη)  
 > **Objetivo:** Auditoría completa del estado C++ — parser, lowering, driver, stdlib — con plan de extensión C++98→C++17/20 selectivo
@@ -22,15 +22,16 @@
 | **cpp_to_ir.rs** | `lower/cpp_to_ir.rs` | ~720 | ✅ **FASE 2** — Classes, namespaces, assigns, compound-assigns, if constexpr, lambdas, constexpr evaluator |
 | **lower/** | `lower/` | — | ✅ Contiene `cpp_to_ir.rs` |
 | **lib.rs** | `lib.rs` | ~60 | ✅ **COMPILA** — module paths corregidos, aliases, re-exports |
-| **Driver** | `cpp_driver.rs` | ~823 | ✅ **FUNCIONAL** — pipeline completo + UB detector + strict implícito |
+| **Driver** | `cpp_driver.rs` | ~1000 | ✅ **FUNCIONAL** — pipeline completo + UB detector (16 kinds) + strict implícito |
 
 ### 1.2 Estado de Compilación
 
-```
+```text
 cargo build -p adeb-frontend-cpp → 0 ERRORES ✅
 cargo test  -p adeb-frontend-cpp → 43/43 tests OK ✅
-cargo test  -p ADead-BIB-Main    → 56/56 tests OK ✅
-Total:                             99 tests, 0 failures ✅
+cargo test  -p ADead-BIB-Main    → 66/66 tests OK ✅
+cargo test  -p adeb-frontend-c   → 124/124 tests OK ✅
+Total:                             233 tests, 0 failures ✅
 ```
 
 ### 1.3 Lo que se completó (Fase 1 + Fase 2)
@@ -322,11 +323,11 @@ lib.rs (compila):       ██████████████████�
 
 ### Tests
 
-```
+```text
 adeb-frontend-cpp:  43 tests — 0 fallos ✅
-ADead-BIB-Main:     65 tests — 0 fallos ✅ (incluye 15 fixtures C++)
+ADead-BIB-Main:     66 tests — 0 fallos ✅ (incluye 15 fixtures + OpenGL pipeline)
 adeb-frontend-c:   124 tests — 0 fallos ✅
-Total:             232 tests — 0 fallos ✅
+Total:             233 tests — 0 fallos ✅
 ```
 
 ### C++ Fixtures (tests/cpp/fixtures/)
@@ -365,7 +366,7 @@ Total:             232 tests — 0 fallos ✅
 
 **Fases 1, 2 y 3 completadas.** El compilador C++ funciona end-to-end con OOP avanzado:
 
-```
+```text
 .cpp → Preprocessor → Lexer → Parser → UB Detector (strict) → CppToIR → Program IR → ISA → PE
 ```
 
@@ -378,11 +379,142 @@ Total:             232 tests — 0 fallos ✅
 - Static methods → sin `this`
 - 30 operadores mangled
 
-**Próximo:** Fase 4 (STL containers inline, template monomorphization, exceptions → error codes).
+---
+
+## 7. Test Final: OpenGL Cube v3 (420 líneas C++)
+
+### 7.1 Descripción
+
+Aplicación OpenGL real: cubo 3D rotante con iluminación Phong via GL 1.1 fixed-function.
+- **Archivo:** `opengl_test/main.cpp` (420 líneas)
+- **Shaders:** `vertex_shader.glsl` (GLSL 330), `fragment_shader.glsl` (GLSL 330)
+- **APIs usadas:** Win32, GDI, WGL, OpenGL 1.1
+- **Autor:** Eddi Andreé Salazar Matos — Marzo 2026
+
+### 7.2 Resultados del Pipeline C++
+
+```text
+[OPENGL] Pipeline OK ✅
+[OPENGL] Functions: 60
+[OPENGL] Structs:   0
+[OPENGL] Stmts:     33
+[OPENGL] UB issues: 0
+```
+
+### 7.3 Funciones Emitidas (60)
+
+| Categoría | Funciones | Count |
+| --- | --- | --- |
+| msvcrt.dll | printf, malloc, free, memset | 4 |
+| kernel32.dll | GetModuleHandleA, LoadLibraryA, GetProcAddress, Sleep | 4 |
+| user32.dll | RegisterClassA, CreateWindowExA, ShowWindow, PeekMessageA, TranslateMessage, DispatchMessageA, PostQuitMessage, DefWindowProcA, DestroyWindow | 9 |
+| gdi32.dll | GetDC, ReleaseDC, SwapBuffers, ChoosePixelFormat, SetPixelFormat | 5 |
+| opengl32.dll | wglCreateContext, wglMakeCurrent, wglDeleteContext, wglGetProcAddress, glClear, glClearColor, glEnable, glDisable, glDepthFunc, glShadeModel, glViewport, glMatrixMode, glLoadIdentity, glTranslatef, glRotatef, glScalef, glFrustum, glBegin, glEnd, glVertex3f, glColor3f, glColor4f, glNormal3f, glLightfv, glMaterialfv, glMaterialf, glColorMaterial, glFlush, glGetString, glGetError | 30 |
+| User code | my_sin, my_cos, setupLighting, drawCube, render, pumpMessages, printGLInfo, main | 8 |
+
+### 7.4 Detalle por Función de Usuario
+
+| Función | Params | Stmts | Descripción |
+| --- | --- | --- | --- |
+| `my_sin` | 1 | 8 | Taylor series sin(x) — 7 terms |
+| `my_cos` | 1 | 2 | cos via sin(x + PI/2) |
+| `setupLighting` | 0 | 37 | GL 1.1 Phong lighting setup |
+| `drawCube` | 0 | 38 | 6 faces × (color + normal + 4 vertices) |
+| `render` | 0 | 19 | Projection + modelview + draw + rotate |
+| `pumpMessages` | 0 | 6 | Win32 PeekMessageA loop |
+| `printGLInfo` | 0 | 9 | glGetString for vendor/renderer/version |
+| `main` | 0 | 69 | Window creation + GL context + render loop |
+
+### 7.5 Features C++ Usados y Verificados
+
+- ✅ `extern "C"` — 52 funciones de 5 DLLs
+- ✅ `nullptr` — usado en 15+ lugares
+- ✅ Global variables (`float angleY`, `void* g_glrc`, etc.)
+- ✅ Pointer casts — `(unsigned int*)msg`, `(unsigned short*)pfd`, `(unsigned char*)pfd`
+- ✅ Array indexing — `lightPos[0]`, `pfd_s[1]`, `msgFields[2]`
+- ✅ Bitwise OR — `GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT`
+- ✅ Float arithmetic — Taylor series, rotation angles
+- ✅ While loops con break — `pumpMessages()`
+- ✅ If/else control flow — error handling throughout
+- ✅ Function pointers via `GetProcAddress`
+- ✅ `0x` hex literals — GL constants
+- ✅ `f` float suffix — `1.0f`, `0.2f`, `3.14159265f`
+
+### 7.6 IAT Registry v4 — Multi-DLL
+
+Para soportar el OpenGL cube, el IAT registry fue expandido a 5 DLLs:
+
+| DLL | Functions | Slots |
+| --- | --- | --- |
+| msvcrt.dll | printf, scanf, malloc, free, memset, memcpy | 6 |
+| kernel32.dll | GetModuleHandleA, LoadLibraryA, GetProcAddress, Sleep, ExitProcess, GetLastError | 6 |
+| user32.dll | RegisterClassA, CreateWindowExA, ShowWindow, PeekMessageA, TranslateMessage, DispatchMessageA, PostQuitMessage, DefWindowProcA, DestroyWindow, GetDC, ReleaseDC, MessageBoxA | 12 |
+| gdi32.dll | SwapBuffers, ChoosePixelFormat, SetPixelFormat, SetPixel, CreateSolidBrush, DeleteObject, SelectObject, Rectangle | 8 |
+| opengl32.dll | wgl* (4) + gl* (27) | 31 |
+| **Total** | | **63 slots** |
+
+### 7.7 Estado del Test
+
+| Fase | Estado | Notas |
+| --- | --- | --- |
+| Preprocesador | ✅ OK | extern "C" block procesado |
+| Lexer | ✅ OK | 420 líneas → tokens C++ |
+| Parser | ✅ OK | extern "C", globals, functions |
+| UB Detector | ✅ OK | 0 issues (código limpio) |
+| IR Generation | ✅ OK | 60 funciones, 33 stmts globales |
+| ISA Compile | ⏳ Pendiente | Requiere float codegen + multi-DLL call dispatch |
+| PE Output | ⏳ Pendiente | IAT v4 listo, PE builder necesita actualización |
 
 ---
 
-*ADead-BIB v8.0 — C++ Fase 3 Completa — Marzo 2026*  
-*Eddi Andreé Salazar Matos — Lima, Perú*  
-*Licencia: Techne v1.0 (τέχνη)*  
-*"C++ con vtable, operators y cout. Bits respetados. UB = error. 💀🦈"*
+## 8. Cambios v9.0
+
+### 8.1 CLI Mejorado
+
+- **ASCII Banner** — `term::banner()` con logo "ADead-BIB" en azul brillante
+- **`adB run <file>`** — Compile + run con auto-detección por extensión
+- **`adB <file.cpp>`** — Auto-detect sin comando (bare filename)
+- **Colored output** — errores en rojo, éxito en verde, fases en azul
+- **Versión v9.0** — C++ marcado como "complete" (era "preview")
+
+### 8.2 UB Detector v2 (16 categorías)
+
+| # | Kind | Severidad | Descripción |
+| --- | --- | --- | --- |
+| 1 | NullPointerDereference | error | `*nullptr` |
+| 2 | DivisionByZero | error | `x / 0` |
+| 3 | ShiftOverflow | error | `1 << 64` |
+| 4 | SignedIntegerOverflow | error | `INT_MAX + 1` |
+| 5 | DanglingReference | warning | ref a local scope |
+| 6 | ObjectSlicing | warning | copy base de derived |
+| 7 | UseAfterMove | warning | uso post-move |
+| 8 | DoubleFree | warning | free() duplicado |
+| 9 | DeleteMismatch | warning | delete vs delete[] |
+| 10 | VirtualInConstructor | error | `this->method()` en ctor |
+| 11 | UninitialisedMember | warning | campo no init |
+| 12 | ThrowInDestructor | error | throw en dtor |
+| 13 | InfiniteRecursion | warning | recursión sin base |
+| 14 | NarrowingConversion | error | `(char)300` |
+| 15 | UseBeforeInit | warning | variable sin init |
+| 16 | SelfAssignment | warning | `x = x` (bug) |
+
+### 8.3 Documentación
+
+- `docs/guide_C.md` — Guía completa de compilación C
+- `docs/guide_Cpp.md` — Guía completa de compilación C++
+
+### 8.4 Tests Totales
+
+```text
+adeb-frontend-cpp:  43 tests — 0 fallos ✅
+ADead-BIB-Main:     66 tests — 0 fallos ✅ (incluye 15 fixtures + OpenGL pipeline)
+adeb-frontend-c:   124 tests — 0 fallos ✅
+Total:             233 tests — 0 fallos ✅
+```
+
+---
+
+*ADead-BIB v9.0 — C++ Fase 3 Completa + OpenGL Test — Marzo 2026*
+*Eddi Andreé Salazar Matos — Lima, Perú*
+*Licencia: Techne v1.0 (τέχνη)*
+*"OpenGL cube: 420 líneas C++, 60 funciones, 5 DLLs, 0 UB. Bits respetados. 💀🦈"*

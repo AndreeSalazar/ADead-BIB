@@ -945,6 +945,40 @@ mod tests {
     }
 
     #[test]
+    fn test_opengl_cube_pipeline() {
+        // Try to compile the actual OpenGL cube through our pipeline
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let path = format!("{}/../../../../../opengl_test/main.cpp", manifest);
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Cannot read opengl_test/main.cpp: {}", e));
+        let result = compile_cpp_pipeline(&source, false);
+        match &result {
+            Ok(arts) => {
+                eprintln!("[OPENGL] Pipeline OK");
+                eprintln!("[OPENGL] Functions: {}", arts.program.functions.len());
+                eprintln!("[OPENGL] Structs:   {}", arts.program.structs.len());
+                eprintln!("[OPENGL] Stmts:     {}", arts.program.statements.len());
+                eprintln!("[OPENGL] UB issues: {}", arts.ub_report.warnings.len());
+                for f in &arts.program.functions {
+                    eprintln!("[OPENGL]   fn {} ({} params, {} stmts)", f.name, f.params.len(), f.body.len());
+                }
+                for w in &arts.ub_report.warnings {
+                    eprintln!("[OPENGL]   UB: {:?} — {}", w.kind, w.message);
+                }
+            }
+            Err(e) => {
+                eprintln!("[OPENGL] Pipeline ERROR: {}", e);
+            }
+        }
+        assert!(result.is_ok(), "OpenGL cube must parse and lower successfully");
+        let arts = result.unwrap();
+        assert!(arts.program.functions.iter().any(|f| f.name == "main"), "must have main");
+        assert!(arts.program.functions.iter().any(|f| f.name == "render"), "must have render");
+        assert!(arts.program.functions.iter().any(|f| f.name == "drawCube"), "must have drawCube");
+        assert!(arts.program.functions.iter().any(|f| f.name == "setupLighting"), "must have setupLighting");
+    }
+
+    #[test]
     fn test_initializer_list_lowered() {
         let result = compile_cpp_pipeline(r#"
             class Point {

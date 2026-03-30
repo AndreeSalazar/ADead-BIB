@@ -12,9 +12,63 @@ pub mod backend {
         pub mod iat_registry {
             use std::collections::HashMap;
 
-            pub const IAT_DLL: &str = "msvcrt.dll";
+            // ── Multi-DLL IAT Registry v4 ─────────────────────────
+            // Supports: msvcrt, kernel32, user32, gdi32, opengl32
 
+            pub struct DllImport {
+                pub dll: &'static str,
+                pub functions: &'static [&'static str],
+            }
+
+            pub static DLL_IMPORTS: &[DllImport] = &[
+                DllImport { dll: "msvcrt.dll", functions: &[
+                    "printf", "scanf", "malloc", "free", "memset", "memcpy",
+                ] },
+                DllImport { dll: "kernel32.dll", functions: &[
+                    "GetModuleHandleA", "LoadLibraryA", "GetProcAddress",
+                    "Sleep", "ExitProcess", "GetLastError",
+                ] },
+                DllImport { dll: "user32.dll", functions: &[
+                    "RegisterClassA", "CreateWindowExA", "ShowWindow",
+                    "PeekMessageA", "TranslateMessage", "DispatchMessageA",
+                    "PostQuitMessage", "DefWindowProcA", "DestroyWindow",
+                    "GetDC", "ReleaseDC", "MessageBoxA",
+                ] },
+                DllImport { dll: "gdi32.dll", functions: &[
+                    "SwapBuffers", "ChoosePixelFormat", "SetPixelFormat",
+                    "SetPixel", "CreateSolidBrush", "DeleteObject",
+                    "SelectObject", "Rectangle",
+                ] },
+                DllImport { dll: "opengl32.dll", functions: &[
+                    "wglCreateContext", "wglMakeCurrent", "wglDeleteContext",
+                    "wglGetProcAddress",
+                    "glClear", "glClearColor", "glEnable", "glDisable",
+                    "glDepthFunc", "glShadeModel", "glViewport",
+                    "glMatrixMode", "glLoadIdentity",
+                    "glTranslatef", "glRotatef", "glScalef", "glFrustum",
+                    "glBegin", "glEnd",
+                    "glVertex3f", "glColor3f", "glColor4f",
+                    "glNormal3f", "glLightfv", "glMaterialfv", "glMaterialf",
+                    "glColorMaterial", "glFlush",
+                    "glGetString", "glGetError",
+                ] },
+            ];
+
+            // Legacy compat: flat list of all functions across all DLLs
+            pub const IAT_DLL: &str = "msvcrt.dll";
             pub const IAT_ENTRIES: [&str; 4] = ["printf", "scanf", "malloc", "free"];
+
+            fn all_functions() -> Vec<&'static str> {
+                let mut v = Vec::new();
+                for dll in DLL_IMPORTS {
+                    for f in dll.functions { v.push(*f); }
+                }
+                v
+            }
+
+            fn total_function_count() -> usize {
+                DLL_IMPORTS.iter().map(|d| d.functions.len()).sum()
+            }
 
             #[derive(Debug, Clone)]
             pub struct IdataBuildResult {
@@ -28,125 +82,154 @@ pub mod backend {
             }
 
             pub fn slot_for_function(name: &str) -> Option<usize> {
-                IAT_ENTRIES.iter().position(|s| *s == name)
+                let mut idx = 0;
+                for dll in DLL_IMPORTS {
+                    for f in dll.functions {
+                        if *f == name { return Some(idx); }
+                        idx += 1;
+                    }
+                }
+                None
             }
 
             fn align_up(value: usize, align: usize) -> usize {
-                if align == 0 {
-                    return value;
-                }
+                if align == 0 { return value; }
                 (value + (align - 1)) & !(align - 1)
             }
 
-            fn push_u16(buf: &mut Vec<u8>, v: u16) {
-                buf.extend_from_slice(&v.to_le_bytes());
+            fn push_u32_to(buf: &mut [u8], off: usize, v: u32) {
+                buf[off..off+4].copy_from_slice(&v.to_le_bytes());
             }
 
-            fn push_u32(buf: &mut Vec<u8>, v: u32) {
-                buf.extend_from_slice(&v.to_le_bytes());
-            }
-
-            fn push_u64(buf: &mut Vec<u8>, v: u64) {
-                buf.extend_from_slice(&v.to_le_bytes());
+            fn push_u64_to(buf: &mut [u8], off: usize, v: u64) {
+                buf[off..off+8].copy_from_slice(&v.to_le_bytes());
             }
 
             pub fn build_idata(idata_rva: u32, _extra_imports: &[&str]) -> IdataBuildResult {
-                let n = IAT_ENTRIES.len();
+                let num_dlls = DLL_IMPORTS.len();
+                let total_funcs = total_function_count();
 
+                // Layout:
+                // 1. Import directory table: (num_dlls + 1) * 20 bytes (null-terminated)
                 let import_desc_offset = 0usize;
-                let import_desc_size = 20 * 2;
-
-                let mut cursor = import_desc_offset + import_desc_size;
+                let import_desc_size = (num_dlls + 1) * 20;
+                let mut cursor = import_desc_size;
                 cursor = align_up(cursor, 8);
 
-                let oft_offset = cursor;
-                let oft_size = (n + 1) * 8;
-                cursor += oft_size;
-                cursor = align_up(cursor, 8);
+                // 2. Per-DLL OFT (Original First Thunk) arrays
+                let mut dll_oft_offsets = Vec::with_capacity(num_dlls);
+                for dll in DLL_IMPORTS {
+                    dll_oft_offsets.push(cursor);
+                    cursor += (dll.functions.len() + 1) * 8; // +1 for null terminator
+                    cursor = align_up(cursor, 8);
+                }
 
+                // 3. IAT (First Thunk) — single contiguous array for all functions
                 let iat_offset = cursor;
-                let iat_size = (n + 1) * 8;
-                cursor += iat_size;
-                cursor = align_up(cursor, 2);
+                let mut dll_iat_offsets = Vec::with_capacity(num_dlls);
+                for dll in DLL_IMPORTS {
+                    dll_iat_offsets.push(cursor);
+                    cursor += (dll.functions.len() + 1) * 8;
+                    cursor = align_up(cursor, 8);
+                }
 
-                let mut hint_name_offsets: Vec<u32> = Vec::with_capacity(n);
-                for name in IAT_ENTRIES {
-                    hint_name_offsets.push(cursor as u32);
-                    cursor += 2;
-                    cursor += name.as_bytes().len() + 1;
+                // 4. Hint/Name entries for each function
+                cursor = align_up(cursor, 2);
+                let mut hint_name_offsets: Vec<u32> = Vec::with_capacity(total_funcs);
+                for dll in DLL_IMPORTS {
+                    for f in dll.functions {
+                        hint_name_offsets.push(cursor as u32);
+                        cursor += 2; // hint (u16)
+                        cursor += f.as_bytes().len() + 1; // name + null
+                        cursor = align_up(cursor, 2);
+                    }
+                }
+
+                // 5. DLL name strings
+                let mut dll_name_offsets = Vec::with_capacity(num_dlls);
+                for dll in DLL_IMPORTS {
+                    dll_name_offsets.push(cursor);
+                    cursor += dll.dll.as_bytes().len() + 1;
                     cursor = align_up(cursor, 2);
                 }
 
-                let dll_name_offset = cursor;
-                cursor += IAT_DLL.as_bytes().len() + 1;
                 cursor = align_up(cursor, 8);
-
                 let program_strings_offset = cursor as u32;
 
-                let import_dir_rva = idata_rva + import_desc_offset as u32;
-                let import_dir_size = import_desc_size as u32;
-                let oft_rva = idata_rva + oft_offset as u32;
-                let iat_rva = idata_rva + iat_offset as u32;
-
-                let mut slot_to_iat_rva = Vec::with_capacity(n);
-                for i in 0..n {
-                    slot_to_iat_rva.push(iat_rva + (i as u32 * 8));
-                }
-
+                // Build the byte buffer
                 let mut bytes = vec![0u8; program_strings_offset as usize];
 
-                let dll_name_rva = idata_rva + dll_name_offset as u32;
+                let import_dir_rva = idata_rva;
+                let import_dir_size = import_desc_size as u32;
+                let iat_rva = idata_rva + iat_offset as u32;
 
-                let desc0_off = import_desc_offset;
-                {
-                    let original_first_thunk = oft_rva;
-                    let time_date_stamp = 0u32;
-                    let forwarder_chain = 0u32;
-                    let name_rva = dll_name_rva;
-                    let first_thunk = iat_rva;
-
-                    let mut tmp = Vec::with_capacity(20);
-                    push_u32(&mut tmp, original_first_thunk);
-                    push_u32(&mut tmp, time_date_stamp);
-                    push_u32(&mut tmp, forwarder_chain);
-                    push_u32(&mut tmp, name_rva);
-                    push_u32(&mut tmp, first_thunk);
-
-                    bytes[desc0_off..desc0_off + 20].copy_from_slice(&tmp);
+                // Build slot_to_iat_rva: flat index across all DLLs
+                let mut slot_to_iat_rva = Vec::with_capacity(total_funcs);
+                for (di, dll) in DLL_IMPORTS.iter().enumerate() {
+                    for fi in 0..dll.functions.len() {
+                        slot_to_iat_rva.push(idata_rva + dll_iat_offsets[di] as u32 + (fi as u32 * 8));
+                    }
                 }
 
-                for i in 0..n {
-                    let hn_rva = idata_rva + hint_name_offsets[i];
-                    let entry = hn_rva as u64;
-                    let oft_entry_off = oft_offset + i * 8;
-                    let iat_entry_off = iat_offset + i * 8;
-                    bytes[oft_entry_off..oft_entry_off + 8].copy_from_slice(&entry.to_le_bytes());
-                    bytes[iat_entry_off..iat_entry_off + 8].copy_from_slice(&entry.to_le_bytes());
+                // Write import descriptors
+                let mut global_func_idx = 0usize;
+                for (di, dll) in DLL_IMPORTS.iter().enumerate() {
+                    let desc_off = import_desc_offset + di * 20;
+                    let oft_rva = idata_rva + dll_oft_offsets[di] as u32;
+                    let dll_name_rva = idata_rva + dll_name_offsets[di] as u32;
+                    let first_thunk_rva = idata_rva + dll_iat_offsets[di] as u32;
+
+                    push_u32_to(&mut bytes, desc_off + 0, oft_rva);       // OriginalFirstThunk
+                    push_u32_to(&mut bytes, desc_off + 4, 0);             // TimeDateStamp
+                    push_u32_to(&mut bytes, desc_off + 8, 0);             // ForwarderChain
+                    push_u32_to(&mut bytes, desc_off + 12, dll_name_rva); // Name
+                    push_u32_to(&mut bytes, desc_off + 16, first_thunk_rva); // FirstThunk
+
+                    // Write OFT + IAT entries for this DLL
+                    for fi in 0..dll.functions.len() {
+                        let hn_rva = idata_rva + hint_name_offsets[global_func_idx];
+                        let entry = hn_rva as u64;
+                        let oft_entry_off = dll_oft_offsets[di] + fi * 8;
+                        let iat_entry_off = dll_iat_offsets[di] + fi * 8;
+                        push_u64_to(&mut bytes, oft_entry_off, entry);
+                        push_u64_to(&mut bytes, iat_entry_off, entry);
+                        global_func_idx += 1;
+                    }
+                    // Null terminators
+                    let oft_null = dll_oft_offsets[di] + dll.functions.len() * 8;
+                    let iat_null = dll_iat_offsets[di] + dll.functions.len() * 8;
+                    push_u64_to(&mut bytes, oft_null, 0);
+                    push_u64_to(&mut bytes, iat_null, 0);
+                }
+                // Null-terminated import descriptor
+                // Already zeroed from vec![0u8; ...]
+
+                // Write Hint/Name entries
+                global_func_idx = 0;
+                for dll in DLL_IMPORTS {
+                    for f in dll.functions {
+                        let off = hint_name_offsets[global_func_idx] as usize;
+                        // hint = 0
+                        bytes[off] = 0; bytes[off+1] = 0;
+                        let name_bytes = f.as_bytes();
+                        bytes[off+2..off+2+name_bytes.len()].copy_from_slice(name_bytes);
+                        bytes[off+2+name_bytes.len()] = 0;
+                        global_func_idx += 1;
+                    }
                 }
 
-                {
-                    let oft_null_off = oft_offset + n * 8;
-                    let iat_null_off = iat_offset + n * 8;
-                    bytes[oft_null_off..oft_null_off + 8].copy_from_slice(&0u64.to_le_bytes());
-                    bytes[iat_null_off..iat_null_off + 8].copy_from_slice(&0u64.to_le_bytes());
+                // Write DLL name strings
+                for (di, dll) in DLL_IMPORTS.iter().enumerate() {
+                    let off = dll_name_offsets[di];
+                    let dll_bytes = dll.dll.as_bytes();
+                    bytes[off..off+dll_bytes.len()].copy_from_slice(dll_bytes);
+                    bytes[off+dll_bytes.len()] = 0;
                 }
 
-                for (i, name) in IAT_ENTRIES.iter().enumerate() {
-                    let off = hint_name_offsets[i] as usize;
-                    bytes[off..off + 2].copy_from_slice(&0u16.to_le_bytes());
-                    let name_bytes = name.as_bytes();
-                    bytes[off + 2..off + 2 + name_bytes.len()].copy_from_slice(name_bytes);
-                    bytes[off + 2 + name_bytes.len()] = 0;
-                }
-
-                {
-                    let off = dll_name_offset;
-                    let dll_bytes = IAT_DLL.as_bytes();
-                    bytes[off..off + dll_bytes.len()].copy_from_slice(dll_bytes);
-                    bytes[off + dll_bytes.len()] = 0;
-                }
-
-                let iat_size_bytes = ((n + 1) * 8) as u32;
+                // Total IAT size: sum of all DLL IAT arrays
+                let iat_total_size: u32 = DLL_IMPORTS.iter().enumerate().map(|(di, dll)| {
+                    ((dll.functions.len() + 1) * 8) as u32
+                }).sum();
 
                 IdataBuildResult {
                     bytes,
@@ -154,7 +237,7 @@ pub mod backend {
                     import_dir_rva,
                     import_dir_size,
                     iat_rva,
-                    iat_size: iat_size_bytes,
+                    iat_size: iat_total_size,
                     program_strings_offset,
                 }
             }
@@ -162,8 +245,12 @@ pub mod backend {
             pub fn build_iat_name_to_rva_map(idata_rva: u32) -> HashMap<String, u32> {
                 let result = build_idata(idata_rva, &[]);
                 let mut map = HashMap::new();
-                for (i, name) in IAT_ENTRIES.iter().enumerate() {
-                    map.insert((*name).to_string(), result.slot_to_iat_rva[i]);
+                let mut idx = 0;
+                for dll in DLL_IMPORTS {
+                    for f in dll.functions {
+                        map.insert(f.to_string(), result.slot_to_iat_rva[idx]);
+                        idx += 1;
+                    }
                 }
                 map
             }
