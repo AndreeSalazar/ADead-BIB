@@ -175,6 +175,55 @@ pub fn phase_bar(phase_num: usize, name: &str, lang: &str) -> String {
 // Source context: show a source line with a caret under the error location
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// ASCII Banner — Elegant "ADead-BIB" logo
+// ---------------------------------------------------------------------------
+
+/// Returns the ADead-BIB ASCII art banner with blue coloring.
+/// `lang_tag` is shown after the version (e.g. "C", "C++", "CUDA").
+pub fn banner(lang_tag: &str, version: &str) -> String {
+    let art = r#"
+     _    ____                 _       ____ ___ ____
+    / \  |  _ \  ___  __ _  __| |     | __ )_ _| __ )
+   / _ \ | | | |/ _ \/ _` |/ _` |_____|  _ \| ||  _ \
+  / ___ \| |_| |  __/ (_| | (_| |_____| |_) | || |_) |
+ /_/   \_\____/ \___|\__,_|\__,_|     |____/___|____/
+"#;
+
+    if is_color_enabled() {
+        let colored_art = format!("{BOLD}{BRIGHT_BLUE}{}{RESET}", art.trim_start_matches('\n'));
+        let info_line = format!(
+            "  {BOLD}{WHITE}v{version}{RESET}  {DIM}{GRAY}[{lang_tag}]{RESET}  {DIM}{GRAY}No LLVM. No GCC. Pure bits.{RESET}"
+        );
+        let bar = format!("{BLUE}  ─────────────────────────────────────────────────{RESET}");
+        format!("{colored_art}\n{info_line}\n{bar}")
+    } else {
+        let info_line = format!("  v{version}  [{lang_tag}]  No LLVM. No GCC. Pure bits.");
+        let bar = "  ─────────────────────────────────────────────────";
+        format!("{}\n{info_line}\n{bar}", art.trim_start_matches('\n'))
+    }
+}
+
+/// Prints a compact language-specific compiler header (no full banner).
+pub fn compiler_header(lang: &str, version: &str, extras: &str) -> String {
+    if is_color_enabled() {
+        format!(
+            "  {BOLD}{BRIGHT_BLUE}ADead-BIB{RESET} {WHITE}{lang} Compiler{RESET} {DIM}v{version}{RESET}{}{RESET}",
+            if extras.is_empty() { String::new() } else { format!(" {BOLD}{CYAN}[{extras}]{RESET}") }
+        )
+    } else {
+        if extras.is_empty() {
+            format!("  ADead-BIB {lang} Compiler v{version}")
+        } else {
+            format!("  ADead-BIB {lang} Compiler v{version} [{extras}]")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Source context: show a source line with a caret under the error location
+// ---------------------------------------------------------------------------
+
 /// Renders a source-context snippet with a caret pointing to `(line, col)`.
 ///
 /// ```text

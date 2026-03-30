@@ -56,6 +56,9 @@ pub enum CppUBKind {
     ThrowInDestructor,
     InfiniteRecursion,
     NarrowingConversion,
+    UseBeforeInit,        // using variable before initialisation
+    ReturnLocalRef,       // returning reference/pointer to local variable
+    SelfAssignment,       // x = x (likely bug)
 }
 
 #[derive(Debug, Clone)]
@@ -130,10 +133,10 @@ pub fn compile_cpp_file(
     step_mode: bool,
     strict: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // C++ is ALWAYS strict — bits are respected
-    println!("  ADead-BIB C++ Compiler v2.0 [STRICT — bits respected]");
-    println!("   Source: {}", input_file);
-    println!("   Target: {}", output_file);
+    use crate::cli::term;
+    println!("{}", term::compiler_header("C++", "9.0", "STRICT \u{2014} bits respected"));
+    println!("   {} {}", term::dim("Source:"), input_file);
+    println!("   {} {}", term::dim("Target:"), output_file);
 
     let source = fs::read_to_string(input_file)
         .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
@@ -373,6 +376,22 @@ fn detect_ub_in_expr(expr: &CppExpr, report: &mut CppUBReport, ctx: Option<&str>
                 // Can't statically verify — note only
             }
         }
+        // Self-assignment: x = x
+        CppExpr::Assign { target, value } => {
+            if let (CppExpr::Identifier(t), CppExpr::Identifier(v)) = (target.as_ref(), value.as_ref()) {
+                if t == v {
+                    report.warnings.push(CppUBWarning {
+                        kind: CppUBKind::SelfAssignment,
+                        severity: "warning",
+                        message: format!("self-assignment: '{} = {}' is a no-op (likely bug)", t, v),
+                        location: ctx.map(|s| s.into()),
+                    });
+                }
+            }
+            detect_ub_in_expr(target, report, ctx);
+            detect_ub_in_expr(value, report, ctx);
+            return; // already recursed
+        }
         // Recurse into subexpressions
         CppExpr::BinaryOp { left, right, .. } => {
             detect_ub_in_expr(left, report, ctx);
@@ -382,10 +401,6 @@ fn detect_ub_in_expr(expr: &CppExpr, report: &mut CppUBReport, ctx: Option<&str>
         CppExpr::Call { callee, args } => {
             detect_ub_in_expr(callee, report, ctx);
             for a in args { detect_ub_in_expr(a, report, ctx); }
-        }
-        CppExpr::Assign { target, value } => {
-            detect_ub_in_expr(target, report, ctx);
-            detect_ub_in_expr(value, report, ctx);
         }
         CppExpr::Ternary { condition, then_expr, else_expr } => {
             detect_ub_in_expr(condition, report, ctx);

@@ -22,21 +22,23 @@ use std::process::ExitCode;
 //   adB step <file.c>   [-o out]           Step mode (all phases)
 // ============================================================
 
+const VERSION: &str = "9.0";
+
 fn main() -> ExitCode {
     term::enable_ansi();
     let args: Vec<String> = env::args().collect();
     let code = match real_main(&args) {
         Ok(code) => code,
         Err(e) => {
-            eprintln!("  Error: {}", e);
+            eprintln!("  {}", term::error_text(&format!("Error: {}", e)));
             ExitCode::FAILURE
         }
     };
 
     if code == ExitCode::SUCCESS {
-        println!("  Done (exit=0)");
+        println!("  {}", term::ok("Done (exit=0)"));
     } else {
-        eprintln!("  Done (exit!=0)");
+        eprintln!("  {}", term::error_text("Done (exit!=0)"));
     }
     code
 }
@@ -84,49 +86,39 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
         // ── Compile + Run (auto-detect language) ────────
         "run" => {
             let request = parse_request(args, Language::Auto)?;
-            let lang = detect_language(&request.input_file);
-            match lang {
-                Language::C => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
-                Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
-                Language::Cuda => cuda_driver::compile_cuda_file(&request.input_file, &request.output_file, request.step_mode)?,
-                Language::Js => js_driver::compile_js_file(&request.input_file, &request.output_file, request.step_mode)?,
-                Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
-            }
+            compile_by_language(&request)?;
             run_executable(&request.output_file)
         }
 
         // ── Step Mode (auto-detect language) ────────────
         "step" => {
-            let request = parse_request_step(args)?;
-            let lang = detect_language(&request.input_file);
-            match lang {
-                Language::C | Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, true, request.strict)?,
-                Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, true, request.strict)?,
-                Language::Cuda => cuda_driver::compile_cuda_file(&request.input_file, &request.output_file, true)?,
-                Language::Js => js_driver::compile_js_file(&request.input_file, &request.output_file, true)?,
-            }
+            let mut request = parse_request_step(args)?;
+            request.step_mode = true;
+            compile_by_language(&request)?;
             Ok(ExitCode::SUCCESS)
         }
 
         // ── Version ─────────────────────────────────────
         "version" | "--version" | "-v" => {
-            println!("ADead-BIB Compiler v8.0");
-            println!("  Languages: C (complete), C++ (preview), CUDA (preview), JS (preview)");
+            println!("{}", term::banner("Multi-Language", VERSION));
+            println!("  Languages: C (complete), C++ (complete), CUDA (preview), JS (preview)");
             println!("  Target:    Windows PE x86-64");
             println!("  Backend:   ADead-BIB native (no LLVM, no GCC)");
             Ok(ExitCode::SUCCESS)
         }
 
         _ => {
-            // Try auto-detection: if arg is a file, infer language
-            if args[1].ends_with(".c") || args[1].ends_with(".h") {
+            // Try auto-detection: if arg looks like a source file, infer and compile
+            let first = &args[1];
+            let lang = detect_language(first);
+            if lang != Language::Auto || first.ends_with(".c") || first.ends_with(".h") {
                 let request = CompileRequest {
-                    input_file: args[1].clone(),
-                    output_file: default_output_filename(&args[1]),
+                    input_file: first.clone(),
+                    output_file: default_output_filename(first),
                     step_mode: args.iter().any(|a| a == "-step" || a == "--step"),
                     strict: args.iter().any(|a| a == "-Wstrict" || a == "--strict"),
                 };
-                c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, args.iter().any(|a| a == "-Wstrict" || a == "--strict"))?;
+                compile_by_language(&request)?;
                 Ok(ExitCode::SUCCESS)
             } else {
                 print_usage(&args[0]);
@@ -241,6 +233,25 @@ fn detect_language(input_file: &str) -> Language {
     }
 }
 
+fn compile_by_language(request: &CompileRequest) -> Result<(), Box<dyn std::error::Error>> {
+    let lang = detect_language(&request.input_file);
+    match lang {
+        Language::C | Language::Auto => {
+            c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?;
+        }
+        Language::Cpp => {
+            cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?;
+        }
+        Language::Cuda => {
+            cuda_driver::compile_cuda_file(&request.input_file, &request.output_file, request.step_mode)?;
+        }
+        Language::Js => {
+            js_driver::compile_js_file(&request.input_file, &request.output_file, request.step_mode)?;
+        }
+    }
+    Ok(())
+}
+
 fn run_executable(output_file: &str) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let exe_path = if cfg!(target_os = "windows") {
         format!(".\\{}", output_file)
@@ -259,38 +270,36 @@ fn run_executable(output_file: &str) -> Result<ExitCode, Box<dyn std::error::Err
 }
 
 fn print_usage(bin: &str) {
+    println!("{}", term::banner("Multi-Language", VERSION));
     println!();
-    println!("  ADead-BIB Compiler v8.0 — Multi-Language");
+    println!("  {}  {} <command> <file> [options]", term::phase_header("USAGE:"), bin);
+    println!("  {}  {} <file.c|file.cpp>          {}", term::phase_header("SHORT:"), bin, term::dim("(auto-detect)"));
     println!();
-    println!("USAGE:");
-    println!("  {} <command> <file> [options]", bin);
+    println!("  {}", term::phase_header("COMMANDS (Languages):"));
+    println!("    {}   <file.c>     Compile C source (C99/C11)", term::ok("cc  "));
+    println!("    {}   <file.cpp>   Compile C++ source (C++17/20)", term::ok("cxx "));
+    println!("    {}   <file.cu>    Compile CUDA source (preview)", term::info("cuda"));
+    println!("    {}   <file.js>    Compile JavaScript (preview)", term::info("js  "));
     println!();
-    println!("COMMANDS (Languages):");
-    println!("  cc   <file.c>     Compile C source (C99/C11, complete)");
-    println!("  cxx  <file.cpp>   Compile C++ source (preview)");
-    println!("  cuda <file.cu>    Compile CUDA source (preview)");
-    println!("  js   <file.js>    Compile JavaScript source (preview)");
+    println!("  {}", term::phase_header("COMMANDS (Actions):"));
+    println!("    {}   <file>       Compile + run (auto-detect language)", term::ok("run "));
+    println!("    {}   <file>       Step mode: show every compiler phase", term::ok("step"));
+    println!("    {}               Show compiler version", term::info("version"));
+    println!("    {}               Show this help", term::info("help"));
     println!();
-    println!("COMMANDS (Actions):");
-    println!("  run  <file>       Compile + run (auto-detect language)");
-    println!("  step <file>       Step mode: show every compiler phase");
-    println!("  version           Show compiler version");
-    println!("  help              Show this help");
+    println!("  {}", term::phase_header("OPTIONS:"));
+    println!("    {}       Output file (default: <basename>.exe)", term::dim("-o <output>"));
+    println!("    {}     Enable step mode (show all phases)", term::dim("-step, --step"));
+    println!("    {}          Strict C mode: bit-widths enforced, all UB = error", term::dim("-Wstrict"));
+    println!("    {}           C++ is always strict (implicit)", term::dim("(C++ note)"));
     println!();
-    println!("OPTIONS:");
-    println!("  -o <output>       Output file (default: <basename>.exe)");
-    println!("  -step, --step     Enable step mode (show all phases)");
-    println!("  -Wstrict          Strict C mode: bit-widths enforced, all UB = error");
-    println!();
-    println!("EXAMPLES:");
-    println!("  {} cc hello.c                   Compile hello.c -> hello.exe", bin);
-    println!("  {} cc hello.c -o out.exe        Compile with custom output", bin);
-    println!("  {} cc hello.c -step             Compile with step mode", bin);
-    println!("  {} step hello.c                 Step mode shorthand", bin);
-    println!("  {} run hello.c                  Compile + run", bin);
-    println!("  {} cxx app.cpp -o app.exe       Compile C++ (preview)", bin);
-    println!("  {} cuda kernel.cu               Compile CUDA (preview)", bin);
-    println!("  {} js app.js                    Compile JS (preview)", bin);
+    println!("  {}", term::phase_header("EXAMPLES:"));
+    println!("    {} run hello.c                  {}", bin, term::dim("Compile + run C"));
+    println!("    {} run app.cpp                  {}", bin, term::dim("Compile + run C++"));
+    println!("    {} cc hello.c -o out.exe        {}", bin, term::dim("Custom output"));
+    println!("    {} cxx app.cpp -step            {}", bin, term::dim("C++ step mode"));
+    println!("    {} hello.c                      {}", bin, term::dim("Auto-detect C"));
+    println!("    {} app.cpp                      {}", bin, term::dim("Auto-detect C++"));
     println!();
 }
 

@@ -157,13 +157,11 @@ pub fn compile_c_file(
     step_mode: bool,
     strict: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if strict {
-        println!("  ADead-BIB C Compiler v8.0 [STRICT MODE]");
-    } else {
-        println!("  ADead-BIB C Compiler v8.0");
-    }
-    println!("   Source: {}", input_file);
-    println!("   Target: {}", output_file);
+    use crate::cli::term;
+    let extras = if strict { "STRICT" } else { "" };
+    println!("{}", term::compiler_header("C", "9.0", extras));
+    println!("   {} {}", term::dim("Source:"), input_file);
+    println!("   {} {}", term::dim("Target:"), output_file);
 
     let source = fs::read_to_string(input_file)
         .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
