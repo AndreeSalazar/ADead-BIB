@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 adeb-core = { workspace = true }
 adeb-frontend-c = { workspace = true }
-adeb-frontend-cpp = { workspace = true, optional = true }
+adeb-frontend-cpp = { workspace = true }
 adeb-frontend-cuda = { workspace = true, optional = true }
 adeb-middle = { workspace = true }
 adeb-backend-x64 = { workspace = true }
@@ -34,4 +34,3 @@ anyhow = { workspace = true }
 default = []
 cuda = ["adeb-frontend-cuda"]
 gpu = ["adeb-backend-gpu"]
-cpp = ["adeb-frontend-cpp"]

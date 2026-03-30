@@ -111,73 +111,65 @@ pub fn get_cpp_header(name: &str) -> Option<&'static str> {
 }
 
 /// Check if a symbol name is a known C++ stdlib function/type/class.
-/// Uses the stdlib/cpp/ registries for authoritative lookup.
+/// Inline lookup — no external submodule dependencies.
 pub fn is_known_cpp_symbol(name: &str) -> bool {
-    use crate::stdlib::cpp::fastos_iostream;
-    use crate::stdlib::cpp::fastos_vector;
-    use crate::stdlib::cpp::fastos_string_cpp;
-    use crate::stdlib::cpp::fastos_map;
-    use crate::stdlib::cpp::fastos_memory;
-    use crate::stdlib::cpp::fastos_algorithm;
-    use crate::stdlib::cpp::fastos_functional;
-    use crate::stdlib::cpp::fastos_utility;
-    use crate::stdlib::cpp::fastos_exceptions;
-    use crate::stdlib::cpp::fastos_set;
-    use crate::stdlib::cpp::fastos_list;
-    use crate::stdlib::cpp::fastos_deque;
-    use crate::stdlib::cpp::fastos_stack_queue;
-    use crate::stdlib::cpp::fastos_array;
-    use crate::stdlib::cpp::fastos_tuple;
-    use crate::stdlib::cpp::fastos_optional;
-    use crate::stdlib::cpp::fastos_variant;
-    use crate::stdlib::cpp::fastos_any;
-    use crate::stdlib::cpp::fastos_chrono;
-    use crate::stdlib::cpp::fastos_thread;
-    use crate::stdlib::cpp::fastos_future;
-    use crate::stdlib::cpp::fastos_mutex;
-    use crate::stdlib::cpp::fastos_atomic;
-    use crate::stdlib::cpp::fastos_condition_variable;
-    use crate::stdlib::cpp::fastos_regex;
-    use crate::stdlib::cpp::fastos_random;
-    use crate::stdlib::cpp::fastos_filesystem;
-    use crate::stdlib::cpp::fastos_numeric;
-    use crate::stdlib::cpp::fastos_string_view;
-    use crate::stdlib::cpp::fastos_span;
-    use crate::stdlib::cpp::fastos_initializer_list;
-    use crate::stdlib::cpp::fastos_iterator;
-
-    fastos_iostream::is_iostream_symbol(name)
-        || fastos_vector::is_vector_symbol(name)
-        || fastos_string_cpp::is_string_cpp_symbol(name)
-        || fastos_map::is_map_symbol(name)
-        || fastos_memory::is_memory_symbol(name)
-        || fastos_algorithm::is_algorithm_symbol(name)
-        || fastos_functional::is_functional_symbol(name)
-        || fastos_utility::is_utility_symbol(name)
-        || fastos_exceptions::is_exception_symbol(name)
-        || fastos_set::is_set_symbol(name)
-        || fastos_list::is_list_symbol(name)
-        || fastos_deque::is_deque_symbol(name)
-        || fastos_stack_queue::is_stack_queue_symbol(name)
-        || fastos_array::is_array_symbol(name)
-        || fastos_tuple::is_tuple_symbol(name)
-        || fastos_optional::is_optional_symbol(name)
-        || fastos_variant::is_variant_symbol(name)
-        || fastos_any::is_any_symbol(name)
-        || fastos_chrono::is_chrono_symbol(name)
-        || fastos_thread::is_thread_symbol(name)
-        || fastos_future::is_future_symbol(name)
-        || fastos_mutex::is_mutex_symbol(name)
-        || fastos_atomic::is_atomic_symbol(name)
-        || fastos_condition_variable::is_condition_variable_symbol(name)
-        || fastos_regex::is_regex_symbol(name)
-        || fastos_random::is_random_symbol(name)
-        || fastos_filesystem::is_filesystem_symbol(name)
-        || fastos_numeric::is_numeric_symbol(name)
-        || fastos_string_view::is_string_view_symbol(name)
-        || fastos_span::is_span_symbol(name)
-        || fastos_initializer_list::is_initializer_list_symbol(name)
-        || fastos_iterator::is_iterator_symbol(name)
+    // I/O
+    matches!(name,
+        "cout" | "cin" | "cerr" | "clog" | "endl" | "flush"
+        | "printf" | "scanf" | "puts" | "putchar" | "getchar"
+        | "sprintf" | "snprintf" | "fprintf" | "sscanf"
+        // Containers
+        | "vector" | "string" | "map" | "unordered_map" | "set" | "unordered_set"
+        | "list" | "forward_list" | "deque" | "array" | "span"
+        | "stack" | "queue" | "priority_queue"
+        // Smart pointers & memory
+        | "unique_ptr" | "shared_ptr" | "weak_ptr"
+        | "make_unique" | "make_shared"
+        | "malloc" | "calloc" | "realloc" | "free"
+        | "memcpy" | "memset" | "memmove" | "memcmp"
+        // String ops
+        | "strlen" | "strcmp" | "strncmp" | "strcpy" | "strncpy"
+        | "strcat" | "strchr" | "strrchr" | "strstr" | "strdup"
+        | "to_string" | "stoi" | "stol" | "stof" | "stod"
+        // Algorithm
+        | "sort" | "find" | "count" | "accumulate" | "transform"
+        | "for_each" | "copy" | "fill" | "reverse" | "unique"
+        | "min" | "max" | "swap" | "move" | "forward"
+        // Functional
+        | "function" | "bind" | "ref" | "cref"
+        // Utility
+        | "pair" | "tuple" | "optional" | "variant" | "any"
+        | "make_pair" | "make_tuple" | "get"
+        // Exceptions
+        | "exception" | "runtime_error" | "logic_error"
+        | "invalid_argument" | "out_of_range" | "overflow_error"
+        // Math
+        | "abs" | "sqrt" | "pow" | "sin" | "cos" | "tan"
+        | "log" | "log2" | "log10" | "ceil" | "floor" | "round"
+        // Concurrency
+        | "thread" | "mutex" | "lock_guard" | "unique_lock"
+        | "atomic" | "future" | "promise" | "async"
+        | "condition_variable"
+        // Chrono
+        | "chrono" | "duration" | "time_point" | "system_clock"
+        | "steady_clock" | "high_resolution_clock"
+        // Regex / Random / Filesystem
+        | "regex" | "smatch" | "regex_search" | "regex_match"
+        | "mt19937" | "uniform_int_distribution" | "random_device"
+        | "path" | "exists" | "is_directory" | "create_directory"
+        // Type traits
+        | "is_same" | "is_integral" | "is_pointer" | "enable_if"
+        | "decay" | "remove_reference" | "add_pointer"
+        // Iterator
+        | "begin" | "end" | "next" | "prev" | "advance" | "distance"
+        // Numeric
+        | "iota" | "inner_product" | "partial_sum" | "adjacent_difference"
+        // Limits
+        | "numeric_limits"
+        // C stdlib
+        | "atoi" | "atol" | "atof" | "exit" | "abort" | "rand" | "srand"
+        | "system" | "getenv"
+    )
 }
 
 // ========================================

@@ -7,8 +7,8 @@
 // Sin GCC. Sin LLVM. Sin Clang. Solo ADead-BIB. 💀🦈
 // ============================================================
 
-use super::cpp_ast::*;
-use super::cpp_lexer::CppToken;
+use crate::ast::*;
+use crate::parse::lexer::CppToken;
 
 pub struct CppParser {
     tokens: Vec<CppToken>,
@@ -2590,7 +2590,7 @@ impl CppParser {
             let cond_check = CppStmt::If {
                 init: None,
                 condition: CppExpr::UnaryOp {
-                    op: crate::frontend::cpp::cpp_ast::CppUnaryOp::Not,
+                    op: CppUnaryOp::Not,
                     expr: Box::new(condition),
                     is_prefix: true,
                 },
@@ -3509,7 +3509,7 @@ impl CppParser {
 
 #[cfg(test)]
 mod tests {
-    use super::super::cpp_lexer::CppLexer;
+    use crate::parse::lexer::CppLexer;
     use super::*;
 
     fn parse(src: &str) -> CppTranslationUnit {

@@ -63,7 +63,7 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
         // ── C++ Compiler ────────────────────────────────
         "cxx" | "c++" | "cpp" => {
             let request = parse_request(args, Language::Cpp)?;
-            cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, request.step_mode)?;
+            cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?;
             Ok(ExitCode::SUCCESS)
         }
 
@@ -87,7 +87,7 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let lang = detect_language(&request.input_file);
             match lang {
                 Language::C => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
-                Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, request.step_mode)?,
+                Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
                 Language::Cuda => cuda_driver::compile_cuda_file(&request.input_file, &request.output_file, request.step_mode)?,
                 Language::Js => js_driver::compile_js_file(&request.input_file, &request.output_file, request.step_mode)?,
                 Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, request.step_mode, request.strict)?,
@@ -101,7 +101,7 @@ fn real_main(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let lang = detect_language(&request.input_file);
             match lang {
                 Language::C | Language::Auto => c_driver::compile_c_file(&request.input_file, &request.output_file, true, request.strict)?,
-                Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, true)?,
+                Language::Cpp => cpp_driver::compile_cpp_file(&request.input_file, &request.output_file, true, request.strict)?,
                 Language::Cuda => cuda_driver::compile_cuda_file(&request.input_file, &request.output_file, true)?,
                 Language::Js => js_driver::compile_js_file(&request.input_file, &request.output_file, true)?,
             }
