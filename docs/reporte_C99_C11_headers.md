@@ -110,13 +110,13 @@
 | 32 | `32_production_structs.c` | ✅ | — | < 1s |
 | 33 | `33_production_opengl_parse.c` | ✅ | — | < 1s |
 
-### 5.2 Ejecución (16/18 ejecutan correctamente)
+### 5.2 Ejecución (18/18 ejecutan correctamente)
 
 | # | Fixture | Exit | Output | Notas |
 | --- | --- | --- | --- | --- |
 | 01 | `01_ctype_basic.c` | 0 ✅ | printf funciona | isalpha, isdigit operan |
-| 02 | `02_ctype_extended.c` | CRASH | — | PE > 5KB: backend section limit |
-| 03 | `03_ctype_loop_parser.c` | CRASH | — | PE > 5KB: backend section limit |
+| 02 | `02_ctype_extended.c` | 0 ✅ | printf funciona | isprint, isgraph, ispunct, isxdigit, toupper, tolower |
+| 03 | `03_ctype_loop_parser.c` | 0 ✅ | printf funciona | count_alpha, count_digits, parse_hex_digit |
 | 04 | `04_ctype_edge_cases.c` | 0 ✅ | printf funciona | Boundary tests pasan |
 | 05 | `05_control_flow.c` | 0 ✅ | silent | if/while/for/switch/goto OK |
 | 06 | `06_pointers_arrays.c` | 0 ✅ | silent | Pointers + arrays OK |
@@ -157,14 +157,14 @@
 
 ### Backend (codegen + PE) — Limitaciones conocidas
 
-| Limitación | Impacto | Prioridad |
-| --- | --- | --- |
-| PE .text section max ~5KB | Fixtures 02, 03 crash | Media |
-| printf %f (float) no formatea | Imprime enteros | Media |
-| printf %x, %o, %u parcial | hex/octal/unsigned limitados | Media |
-| math.h funciones no linkeadas a msvcrt | Retornan 0 | Baja |
-| string.h funciones parciales en runtime | Retornan addresses | Baja |
-| limits.h macros como constantes 0 | INT_MAX=0 en runtime | Baja |
+| Limitación | Impacto | Prioridad | Estado |
+| --- | --- | --- | --- |
+| ~~PE .text section max ~5KB~~ | ~~Fixtures 02, 03 crash~~ | ~~Media~~ | ✅ CORREGIDO — idata_rva dinámico + patching |
+| printf %f (float) no formatea | Imprime enteros | Media | Pendiente |
+| printf %x, %o, %u parcial | hex/octal/unsigned limitados | Media | Pendiente |
+| math.h funciones no linkeadas a msvcrt | Retornan 0 | Media | Pendiente |
+| string.h funciones parciales en runtime | Retornan addresses | Baja | Pendiente |
+| limits.h macros como constantes 0 | INT_MAX=0 en runtime | Baja | Pendiente |
 
 ---
 
@@ -209,6 +209,6 @@ source.c → Preprocessor → Lexer → Parser → UB Detector → IR → x64 Co
 ```
 
 Todos los 33 test fixtures compilan exitosamente a PE ejecutables.
-16/18 ejecutan correctamente (2 crashean por límite de tamaño del backend PE, no del frontend).
+**18/18 ejecutan correctamente** — el bug de PE .text > 5KB fue corregido con idata_rva dinámico.
 
-Las limitaciones restantes son del **backend** (codegen/PE), no del frontend C.
+Las limitaciones restantes son del **backend** (codegen: printf %f, math.h linking), no del frontend C.

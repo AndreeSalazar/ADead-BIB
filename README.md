@@ -709,11 +709,18 @@ Hecho en Perú 🇵🇪
 
 ## Licencia
 
-**GNU General Public License v2.0**
+**Techne License v1.0 (τέχνη)**
 
 ```
-Copyright (C) 2024–2026 Eddi Andreé Salazar Matos
+Copyright (C) 2026 Eddi Andreé Salazar Matos
+Lima, República del Perú
+
+Uso personal, educativo, open source y startups < $1M: FREE
+Uso comercial > $1M: 10% royalty sobre revenue atribuible
+Contacto: eddi.salazar.dev@gmail.com
 ```
+
+Ver [LICENSE](LICENSE) para los términos completos.
 
 ---
 

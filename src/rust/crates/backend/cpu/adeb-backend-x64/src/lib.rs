@@ -293,19 +293,26 @@ pub mod pe {
         buf.extend_from_slice(&v.to_le_bytes());
     }
 
+    /// The assumed idata_rva that the ISA compiler uses during code generation.
+    /// The PE builder patches code bytes when the actual idata_rva differs.
+    pub const ASSUMED_IDATA_RVA: u32 = 0x2000;
+
     pub fn generate_pe_with_offsets(
         code: &[u8],
         data: &[u8],
         output_path: &str,
-        _iat_call_offsets: &[usize],
-        _string_imm64_offsets: &[usize],
+        iat_call_offsets: &[usize],
+        string_imm64_offsets: &[usize],
     ) -> Result<(), Box<dyn std::error::Error>> {
         let file_alignment: u32 = 0x200;
         let section_alignment: u32 = 0x1000;
 
         let image_base: u64 = 0x0000000140000000;
         let text_rva: u32 = 0x1000;
-        let idata_rva: u32 = 0x2000;
+
+        // Dynamic idata_rva: place .idata after .text's virtual pages
+        let text_virtual_pages = align_up_u32(code.len() as u32, section_alignment);
+        let idata_rva: u32 = text_rva + text_virtual_pages.max(section_alignment);
 
         let idata_result = iat_registry::build_idata(idata_rva, &[]);
         let mut idata = idata_result.bytes;
@@ -313,6 +320,36 @@ pub mod pe {
             idata.resize(idata_result.program_strings_offset as usize, 0);
         }
         idata.extend_from_slice(data);
+
+        // Patch code bytes when idata_rva differs from the assumed value
+        let mut code = code.to_vec();
+        let rva_delta = idata_rva as i64 - ASSUMED_IDATA_RVA as i64;
+        if rva_delta != 0 {
+            // Patch IAT call offsets: each is a RIP-relative disp32 (FF 15 [disp32])
+            // The disp32 encodes (iat_rva - current_rip), so we adjust by the delta
+            for &off in iat_call_offsets {
+                if off + 4 <= code.len() {
+                    let old_disp = i32::from_le_bytes([
+                        code[off], code[off + 1], code[off + 2], code[off + 3],
+                    ]);
+                    let new_disp = old_disp + rva_delta as i32;
+                    code[off..off + 4].copy_from_slice(&new_disp.to_le_bytes());
+                }
+            }
+
+            // Patch string imm64 offsets: each is an absolute address (imagebase + idata_rva + string_offset)
+            // Shift by the RVA delta
+            for &off in string_imm64_offsets {
+                if off + 8 <= code.len() {
+                    let old_addr = u64::from_le_bytes([
+                        code[off], code[off + 1], code[off + 2], code[off + 3],
+                        code[off + 4], code[off + 5], code[off + 6], code[off + 7],
+                    ]);
+                    let new_addr = (old_addr as i64 + rva_delta) as u64;
+                    code[off..off + 8].copy_from_slice(&new_addr.to_le_bytes());
+                }
+            }
+        }
 
         let text_raw_size = align_up_u32(code.len() as u32, file_alignment);
         let idata_raw_size = align_up_u32(idata.len() as u32, file_alignment);
@@ -440,7 +477,7 @@ pub mod pe {
         let mut out = Vec::new();
         out.extend_from_slice(&headers);
 
-        let mut text_raw = Vec::from(code);
+        let mut text_raw = code;
         text_raw.resize(text_raw_size as usize, 0x90);
         out.resize(text_raw_ptr as usize, 0);
         out.extend_from_slice(&text_raw);

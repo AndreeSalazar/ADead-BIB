@@ -504,10 +504,25 @@ En su estado actual, la estructura es **modular, mantenible y apta para crecer**
 - `test_stdatomic_has_types_and_ops` — tipos y operaciones atómicas
 - `test_threads_has_types_and_ops` — funciones de threading C11
 
-### 13.5 Gaps restantes identificados
+### 13.5 Backend PE — Bug .text > 5KB corregido
+
+> **Fecha:** Marzo 2026
+
+**Problema:** Los fixtures 02 y 03 generaban PEs que crasheaban al ejecutar porque el `.text` section excedía 4KB (0x1000 bytes). La causa raíz era que `idata_rva` estaba hardcodeado a `0x2000`, dando al `.text` solo el rango RVA `0x1000`–`0x1FFF`. Cuando el código excedía ese espacio virtual, solapaba con `.idata`, corrompiendo la Import Address Table.
+
+**Solución:**
+1. **PE builder** (`lib.rs`): `idata_rva` se calcula dinámicamente según el tamaño real del código: `text_rva + align_up(code.len(), section_alignment)`
+2. **Patching de código**: Cuando `idata_rva` difiere del valor asumido (`0x2000`), el PE builder parchea todos los `string_imm64_offsets` (direcciones absolutas de strings) y `iat_call_offsets` (desplazamientos RIP-relativos a IAT) con el delta correcto
+3. **Constante compartida**: `pe::ASSUMED_IDATA_RVA` centraliza el valor asumido entre ISA compiler y PE builder
+
+**Resultado:** 18/18 fixtures ejecutan correctamente. Sin límite de tamaño de `.text`.
+
+### 13.6 Gaps restantes identificados
 
 | Gap | Prioridad | Notas |
 |---|---|---|
+| printf %f (float formatting) | Media | Formateo de floats en runtime |
+| math.h → msvcrt linking | Media | sin()/cos() retornan 0 en runtime |
 | `_Generic` (C11) | Media | Requiere nodo AST + parser + lowering |
 | Compound literals `(Type){...}` | Media | Parser y lowering |
 | VLA (Variable Length Arrays) | Baja | Solo declaración, no runtime |

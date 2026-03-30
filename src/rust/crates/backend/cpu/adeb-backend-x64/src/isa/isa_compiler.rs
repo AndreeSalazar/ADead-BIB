@@ -158,9 +158,9 @@ impl IsaCompiler {
     pub fn new(target: Target) -> Self {
         let (base, data_rva) = match target {
             Target::Windows => {
-                // Compute data_rva dynamically from IAT registry
-                // ISA assumes idata_rva=0x2000, PE builder patches to real value
-                let assumed_idata_rva: u64 = 0x2000;
+                // Compute data_rva using ASSUMED_IDATA_RVA — PE builder patches
+                // all code addresses when actual idata_rva differs (code > 4KB)
+                let assumed_idata_rva = crate::pe::ASSUMED_IDATA_RVA as u64;
                 let idata_result = iat_registry::build_idata(assumed_idata_rva as u32, &[]);
                 let drva = assumed_idata_rva + idata_result.program_strings_offset as u64;
                 (0x0000000140000000u64, drva)
