@@ -1,7 +1,10 @@
-# ADead-BIB v8.0 💀🦈
+# ADead-BIB v9.0 💀🦈
 
 **Compilador Nativo: C99 · C++17 → Machine Code Puro · 256-bit Nativo**
 
+> **CLI v9.0 Unificado:** `adB cc` · `adB cxx` · `adB cuda` · `adB js` · `adB run` · `adB step` · `adB version`  
+> **Linker Especial DLL:** Genera bibliotecas nativas para Windows (.dll) y Linux (.so) sin MSVC/GCC/Clang  
+> **DLL Fusion:** Combina con cualquier programa Windows o Linux existente  
 > Zero Overhead · Zero Bloat · Zero Dead Code  
 > Sin NASM · Sin LLVM · Sin GCC · Sin Clang  
 > Sin libc externa · Sin linker · 100% Autosuficiente  
@@ -17,6 +20,8 @@ Tu Código (.c / .cpp)
 │                                           │
 │  .c  → Preprocessor → Lexer → Parser      │
 │  .cpp → Preprocessor → Lexer → Parser     │
+│  .cu → CUDA Frontend → PTX                │
+│  .js → JS Frontend → Bytecode             │
 │                    ↓                      │
 │             CToIR / CppToIR               │
 │                    ↓                      │
@@ -28,7 +33,7 @@ Tu Código (.c / .cpp)
 │             Optimizer                     │
 │             (DCE, Fold, Inline, Peep)     │
 │                    ↓                      │
-│             BitResolver (v8.0)            │
+│             BitResolver (v9.0)            │
 │             (16/32/64/128/256 bits)       │
 │                    ↓                      │
 │             SoA Optimizer                 │
@@ -37,10 +42,13 @@ Tu Código (.c / .cpp)
 │             Encoder + VEX Emitter         │
 │             (FASM-style, x86-64/AVX2)     │
 │                    ↓                      │
-│             PE / ELF / Po                 │
+│             Linker Especial DLL           │
+│             (PE .dll / ELF .so)           │
+│                    ↓                      │
+│             PE / ELF / Po / DLL           │
 └───────────────────────────────────────────┘
         ↓
-  .exe / .elf / .po / .bin
+  .exe / .elf / .po / .bin / .dll / .so
   (Machine Code Puro · 256-bit)
 ```
 
@@ -53,13 +61,14 @@ Tu Código (.c / .cpp)
 3. [Inicio Rápido](#inicio-rápido)
 4. [Step Compiler](#step-compiler)
 5. [Frontends: C99 y C++17](#frontends-c99-y-c17)
-6. [256-bit Pipeline (v8.0)](#256-bit-pipeline-v80)
-7. [Referencia Técnica](#referencia-técnica)
-8. [Estructura del Proyecto](#estructura-del-proyecto)
-9. [Tamaños de Binario](#tamaños-de-binario)
-10. [Resultados de Tests](#resultados-de-tests)
-11. [Comandos CLI](#comandos-cli)
-12. [GPU Backend](#gpu-backend)
+6. [256-bit Pipeline (v9.0)](#256-bit-pipeline-v90)
+7. [Linker Especial DLL](#linker-especial-dll)
+8. [Referencia Técnica](#referencia-técnica)
+9. [Estructura del Proyecto](#estructura-del-proyecto)
+10. [Tamaños de Binario](#tamaños-de-binario)
+11. [Resultados de Tests](#resultados-de-tests)
+12. [Comandos CLI](#comandos-cli)
+13. [GPU Backend](#gpu-backend)
 
 ---
 
@@ -214,7 +223,7 @@ Sin `-I flags`, sin CMake, sin Makefile.
 
 ---
 
-## v8.0 — 256-bit Nativo + Autosuficiencia Total
+## v9.0 — CLI Unificado + Linker Especial DLL + 256-bit Nativo
 
 ```c
 // Un solo include. Todo disponible. Sin linker. 256-bit nativo.
@@ -241,7 +250,8 @@ int main() {
 - **256-bit nativo** — `float arr[8]` detectado como SoA → YMM register automático
 - **BitResolver** — detecta automáticamente si compilar a 16/32/64/128/256 bits
 - **VEX Emitter** — genera VEX prefix C4/C5 para instrucciones AVX2
-- **Po v8.0** — header de 32 bytes con `ymm_used`, `soa_map`, `bg_stamp`
+- **Po v9.0** — header extendido con `ymm_used`, `soa_map`, `bg_stamp`
+- **Linker Especial DLL** — genera .dll (Windows) y .so (Linux) sin MSVC/GCC/Clang
 - **`fastos_*.h`** — headers individuales para control granular (`fastos_stdio.h`, `fastos_math.h`, etc.)
 
 ---
@@ -336,7 +346,7 @@ Funciona con C y C++: `adb step archivo.c` o `adb step archivo.cpp`
 
 ---
 
-## 256-bit Pipeline (v8.0)
+## v9.0 — 256-bit Pipeline
 
 ADead-BIB v8.0 introduce soporte nativo para registros YMM (256-bit) via AVX2, con detección automática de patrones SoA (Structure-of-Arrays).
 
@@ -351,6 +361,7 @@ El BitResolver analiza el IR y decide el ancho óptimo de compilación:
 | `fastos64` | 64 | RAX-R15 | FastOS standard |
 | `fastos128` | 128 | XMM0-XMM15 | SSE/SSE4.2 vectorial |
 | `fastos256` | 256 | **YMM0-YMM15** | **AVX2 nativo** ★ |
+| `dll64` | 64 | RAX-R15 | **DLL Windows/Linux** ★ |
 
 ### SoA Optimizer — Vectorización natural
 
@@ -385,13 +396,14 @@ VFMADD231PS ymm0,y1,y2   C4 E2 75 B8 C2        VEX.256.66.0F38 B8 /r
 VZEROUPPER               C5 F8 77              VEX.128.0F 77
 ```
 
-### Po v8.0 — Header de 32 bytes
+### Po v9.0 / DLL — Header extendido
 
+**Po v9.0 (FastOS Native):**
 ```
 Offset  Size  Field       Description
 ──────────────────────────────────────────
 0x00    4     magic       0x506F4F53 ('PoOS')
-0x04    1     version     0x80 (v8.0)
+0x04    1     version     0x90 (v9.0)
 0x05    1     bits        16/64/128/0xFF(256)
 0x06    2     ymm_used    bitmask YMM0-YMM15
 0x08    4     code_off    offset to .text
@@ -400,6 +412,23 @@ Offset  Size  Field       Description
 0x14    4     data_size   size of .data
 0x18    4     soa_map     offset to SoA table
 0x1C    4     bg_stamp    BG verification hash
+```
+
+**DLL Windows (.dll) y Linux (.so):**
+```
+ADead-BIB genera DLLs nativas sin MSVC/GCC/Clang:
+
+┌───────────────────────────────────────────┐
+│  Tu Código C/C++                          │
+│  ↓                                        │
+│  ADead-BIB Compiler                       │
+│  ↓                                        │
+│  PE .dll (Windows) / ELF .so (Linux)      │
+│  ↓                                        │
+│  Carga con LoadLibraryA / dlopen          │
+│  ↓                                        │
+│  ¡Tu programa Windows/Linux la usa!       │
+└───────────────────────────────────────────┘
 ```
 
 ---
@@ -617,64 +646,90 @@ Integration (18): header_main.h C/C++, fastos_*.h, symbol registries,
 ## Comandos CLI
 
 ```bash
-# Proyectos
-adb create hola              # Nuevo proyecto C
-adb create hola --cpp        # Nuevo proyecto C++
-adb build                    # Compilar proyecto (lee adb.toml)
-adb run                      # Compilar y ejecutar proyecto
+# ═══════════════════════════════════════════════════════════════
+# CLI v9.0 Unificado — Todos los comandos en uno
+# ═══════════════════════════════════════════════════════════════
 
-# C99
-adb cc hello.c -o hello.exe
-adb cc main.c                # → main.exe automático
+# ── C99 ──────────────────────────────────────────────────────────
+adB cc hello.c -o hello.exe            # Compilar C
+adB cc main.c                          # → main.exe automático
+adB cc file.c -step                    # Step mode
+adB cc file.c -Wstrict                 # Modo estricto
 
-# C++
-adb cxx app.cpp -o app.exe
-adb cxx main.cpp             # → main.exe automático
+# ── C++ ──────────────────────────────────────────────────────────
+adB cxx app.cpp -o app.exe             # Compilar C++
+adB cxx main.cpp                       # → main.exe automático
+adB cpp file.cpp                       # Alias: cpp
+adB c++ file.cpp                       # Alias: c++
 
-# Auto-detect
-adb build program.c          # Detecta .c → C99
-adb build program.cpp        # Detecta .cpp → C++
-adb run test.c               # Compilar y ejecutar
+# ── CUDA ─────────────────────────────────────────────────────────
+adB cuda kernel.cu -o kernel.ptx       # PTX para NVIDIA
+adB cuda matmul.cu --ptx               # Solo PTX assembly
 
-# Headers globales
-adb install                  # Instala headers en ~/.adead/include/
-adb include                  # Muestra ruta de headers
+# ── JavaScript ────────────────────────────────────────────────────
+adB js script.js -o script.bin         # Compilar JS a bytecode
+adB js app.js --ast                    # Ver AST
 
-# Flat Binary (OS/Kernel)
-adb cc kernel.c -o kernel.bin --flat
-adb cc boot.c -o boot.bin --flat16 --org=0x7C00 --size=512
+# ── Auto-detect ───────────────────────────────────────────────────
+adB run hello.c                        # Compilar + ejecutar C
+adB run app.cpp                        # Compilar + ejecutar C++
+adB run program.js                     # Compilar + ejecutar JS
 
-# FastOS targets (v8.0)
-adb cc kernel.c --target fastos64 -o kernel.po
-adb cc kernel.c --target fastos128 -o kernel.po
-adb cc kernel.c --target fastos256 -o kernel.po   # 256-bit YMM/AVX2
-adb cc kernel.c --target boot16 -o stage1.bin
-adb cc kernel.c --target boot32 -o stage2.bin
+# ── Step Compiler (todas las fases) ───────────────────────────────
+adB step main.c                        # Ver pipeline paso a paso
+adB step app.cpp                       # Funciona con C++
 
-# Binarios mínimos
-adb nano output.exe          # PE más pequeño posible
-adb micro output.exe         # PE32 < 256 bytes
+# ── Proyectos ────────────────────────────────────────────────────
+adB create hola                        # Nuevo proyecto C
+adB create hola --cpp                  # Nuevo proyecto C++
+adB build                              # Compilar proyecto (adb.toml)
+adB run                                # Compilar y ejecutar proyecto
 
-# GPU
-adb gpu                      # Detectar GPU + generar shader
-adb spirv matmul 1024        # SPIR-V compute shader
+# ── Headers globales ──────────────────────────────────────────────
+adB install                            # Instala headers en ~/.adead/include/
+adB include                            # Muestra ruta de headers
 
-# Step Compiler
-adb step program.c           # Visualizar pipeline paso a paso
+# ── Flat Binary (OS/Kernel) ──────────────────────────────────────
+adB cc kernel.c -o kernel.bin --flat
+adB cc boot.c -o boot.bin --flat16 --org=0x7C00 --size=512
 
-# MicroVM
-adb vm program.c             # Compilar a MicroVM bytecode (4-bit ops)
+# ── DLL / SO (Linker Especial) ───────────────────────────────────
+adB cc lib.c --dll -o mylib.dll        # DLL Windows
+adB cxx lib.cpp --dll -o mylib.dll     # DLL C++ Windows
+adB cc lib.c --so -o libmylib.so       # SO Linux
+adB cxx lib.cpp --so -o libmylib.so    # SO C++ Linux
 
-# Vulkan / CUDA
-adb vulkan shader.comp       # Compilar + ejecutar con Vulkan runtime
-adb cuda kernel.cu           # CUDA code generation
+# ── FastOS targets ────────────────────────────────────────────────
+adB cc kernel.c --target fastos64 -o kernel.po
+adB cc kernel.c --target fastos128 -o kernel.po
+adB cc kernel.c --target fastos256 -o kernel.po   # 256-bit YMM/AVX2
+adB cc kernel.c --target boot16 -o stage1.bin
+adB cc kernel.c --target boot32 -o stage2.bin
 
-# CPU↔GPU Hybrid
-adb unified program.c        # CPU↔GPU auto-dispatch pipeline
+# ── Binarios mínimos ──────────────────────────────────────────────
+adB nano output.exe                    # PE más pequeño posible
+adB micro output.exe                   # PE32 < 256 bytes
 
-# Auto-detect por extensión
-adb program.c                # → C99
-adb program.cpp              # → C++
+# ── GPU ───────────────────────────────────────────────────────────
+adB gpu                                # Detectar GPU + generar shader
+adB spirv matmul 1024                  # SPIR-V compute shader
+
+# ── MicroVM ───────────────────────────────────────────────────────
+adB vm program.c                       # Compilar a MicroVM bytecode
+
+# ── Vulkan / CUDA ─────────────────────────────────────────────────
+adB vulkan shader.comp                 # Compilar + ejecutar Vulkan
+adB cuda kernel.cu                     # CUDA code generation
+
+# ── CPU↔GPU Hybrid ───────────────────────────────────────────────
+adB unified program.c                  # CPU↔GPU auto-dispatch
+
+# ── Auto-detect por extensión ────────────────────────────────────
+adB program.c                          # → C99
+adB program.cpp                        # → C++
+
+# ── Versión ──────────────────────────────────────────────────────
+adB version                            # ASCII banner + versión
 ```
 
 ---
@@ -724,15 +779,16 @@ Ver [LICENSE](LICENSE) para los términos completos.
 
 ---
 
-**ADead-BIB v8.0: C99 · C++17 → Machine Code Puro · 256-bit Nativo 💀🦈**
+**ADead-BIB v9.0: C99 · C++17 → Machine Code Puro · 256-bit Nativo 💀🦈**
 
 ```
 MSVC, GCC, LLVM  = referencias técnicas estudiadas y respetadas
 FASM             = el modelo de encoding directo que ADead-BIB sigue
 Rust             = el guardián que garantiza que el compilador nunca falle
 header_main.h    = un include, todo disponible
-adb create       = como cargo new, pero para C/C++
+adB create       = como cargo new, pero para C/C++
 YMM/AVX2         = 256-bit nativo, SoA natural, VEX prefix
+DLL/SO           = Linker Especial para fusionar con Windows/Linux
 ```
 
 > *"C = intención absoluta del programador*  
@@ -740,11 +796,14 @@ YMM/AVX2         = 256-bit nativo, SoA natural, VEX prefix
 > *Rust = guardián de correctitud*  
 > *FASM = bytes directos al CPU*  
 > *YMM = 256 bits nativos, 8 floats en paralelo*  
-> *ADead-BIB = único en el mundo 💀🦈 🇵🇪"*
+> **DLL = tu código en cualquier programa Windows/Linux**  
+> *ADead-BIB = único en el mundo 💀🦈 🇵🇪*"
 
 ```bash
-adb create hola
+adB create hola
 cd hola
-adb run
+adB run
 # → "Hola desde hola" — 2KB, sin GCC, sin linker
-```
+
+adB cxx mylib.cpp --dll -o mylib.dll
+# → DLL de 2.5KB, usa desde C#, Python, C++, cualquier programa, Futuro
