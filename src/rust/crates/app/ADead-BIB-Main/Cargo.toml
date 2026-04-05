@@ -22,6 +22,7 @@ adeb-backend-x64 = { workspace = true }
 adeb-backend-gpu = { workspace = true, optional = true }
 adeb-bg = { workspace = true }
 adeb-stdlib = { workspace = true }
+adeb-bridge = { workspace = true }
 
 clap = { workspace = true, features = ["derive"] }
 colored = { workspace = true }

@@ -11,6 +11,7 @@ members = [
     "crates/shared/adeb-platform",
     "crates/shared/adeb-stdlib",
     "crates/security/adeb-bg",
+    "crates/shared/adeb-bridge",
 ]
 resolver = "2"
 
@@ -55,3 +56,4 @@ adeb-backend-gpu = { path = "crates/backend/gpu/adeb-backend-gpu" }
 adeb-platform = { path = "crates/shared/adeb-platform" }
 adeb-bg = { path = "crates/security/adeb-bg" }
 adeb-stdlib = { path = "crates/shared/adeb-stdlib" }
+adeb-bridge = { path = "crates/shared/adeb-bridge" }
