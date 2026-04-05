@@ -12,8 +12,10 @@ pub mod backend {
         pub mod iat_registry {
             use std::collections::HashMap;
 
-            // ── Multi-DLL IAT Registry v4 ─────────────────────────
-            // Supports: msvcrt, kernel32, user32, gdi32, opengl32
+            // ── Multi-DLL IAT Registry v5 ─────────────────────────
+            // 13 DLLs, 200+ slots: msvcrt, kernel32, user32, gdi32,
+            // opengl32, ole32, dxgi, d3d9, d3d11, d3d12,
+            // d3dcompiler_47, ws2_32
 
             pub struct DllImport {
                 pub dll: &'static str,
@@ -21,24 +23,104 @@ pub mod backend {
             }
 
             pub static DLL_IMPORTS: &[DllImport] = &[
+                // ── Phase 1: C Runtime (msvcrt.dll) — 40 functions ──
                 DllImport { dll: "msvcrt.dll", functions: &[
-                    "printf", "scanf", "malloc", "free", "memset", "memcpy",
+                    // stdio
+                    "printf", "fprintf", "sprintf", "snprintf", "scanf", "sscanf",
+                    "puts", "putchar", "getchar", "fgets", "fputs",
+                    "fopen", "fclose", "fread", "fwrite", "fseek", "ftell", "rewind",
+                    "feof", "ferror", "fflush", "perror",
+                    // stdlib
+                    "malloc", "calloc", "realloc", "free",
+                    "atoi", "atof", "atol", "strtol", "strtoul", "strtod",
+                    "abs", "rand", "srand", "qsort", "bsearch",
+                    "exit", "getenv", "system",
+                    // string
+                    "memset", "memcpy", "memmove", "memcmp",
+                    "strlen", "strcpy", "strncpy", "strcat", "strncat",
+                    "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strtok",
+                    // time
+                    "time", "clock", "difftime", "strftime",
                 ] },
+                // ── Phase 2: Win32 Core — kernel32.dll (30 functions) ──
                 DllImport { dll: "kernel32.dll", functions: &[
-                    "GetModuleHandleA", "LoadLibraryA", "GetProcAddress",
-                    "Sleep", "ExitProcess", "GetLastError",
+                    // Process & module
+                    "GetModuleHandleA", "GetModuleHandleW",
+                    "LoadLibraryA", "LoadLibraryW", "FreeLibrary",
+                    "GetProcAddress", "ExitProcess", "GetLastError",
+                    "GetCurrentProcess", "GetCurrentProcessId",
+                    "GetCurrentThread", "GetCurrentThreadId",
+                    // Memory
+                    "VirtualAlloc", "VirtualFree", "VirtualProtect",
+                    "HeapCreate", "HeapDestroy", "HeapAlloc", "HeapFree",
+                    // File I/O
+                    "CreateFileA", "ReadFile", "WriteFile", "CloseHandle",
+                    "GetFileSize", "SetFilePointer",
+                    // Sync & timing
+                    "Sleep", "GetTickCount", "QueryPerformanceCounter", "QueryPerformanceFrequency",
+                    // Console
+                    "GetStdHandle", "WriteConsoleA",
+                    // Thread
+                    "CreateThread", "WaitForSingleObject",
+                    // Environment
+                    "GetEnvironmentVariableA", "SetEnvironmentVariableA",
+                    "GetCommandLineA", "GetSystemInfo",
+                    // Debug
+                    "OutputDebugStringA", "IsDebuggerPresent",
                 ] },
+                // ── Phase 2: Win32 UI — user32.dll (40 functions) ──
                 DllImport { dll: "user32.dll", functions: &[
-                    "RegisterClassA", "CreateWindowExA", "ShowWindow",
-                    "PeekMessageA", "TranslateMessage", "DispatchMessageA",
-                    "PostQuitMessage", "DefWindowProcA", "DestroyWindow",
-                    "GetDC", "ReleaseDC", "MessageBoxA",
+                    // Window class & creation
+                    "RegisterClassA", "RegisterClassExA", "UnregisterClassA",
+                    "CreateWindowExA", "DestroyWindow",
+                    "ShowWindow", "UpdateWindow", "InvalidateRect",
+                    "MoveWindow", "SetWindowPos", "AdjustWindowRect",
+                    "SetWindowTextA", "GetWindowTextA",
+                    "GetClientRect", "GetWindowRect",
+                    // Message loop
+                    "PeekMessageA", "GetMessageA", "TranslateMessage", "DispatchMessageA",
+                    "PostQuitMessage", "PostMessageA", "SendMessageA",
+                    "DefWindowProcA",
+                    // DC & painting
+                    "GetDC", "ReleaseDC", "BeginPaint", "EndPaint",
+                    // Dialog & message box
+                    "MessageBoxA", "DialogBoxParamA",
+                    // Input
+                    "GetKeyState", "GetAsyncKeyState",
+                    "GetCursorPos", "SetCursorPos", "ShowCursor",
+                    "SetCapture", "ReleaseCapture",
+                    // Timer
+                    "SetTimer", "KillTimer",
+                    // Resources
+                    "LoadCursorA", "LoadIconA",
+                    // System
+                    "GetSystemMetrics", "GetDesktopWindow",
                 ] },
+                // ── Phase 2: Win32 GDI — gdi32.dll (30 functions) ──
                 DllImport { dll: "gdi32.dll", functions: &[
+                    // Pixel format (OpenGL)
                     "SwapBuffers", "ChoosePixelFormat", "SetPixelFormat",
-                    "SetPixel", "CreateSolidBrush", "DeleteObject",
-                    "SelectObject", "Rectangle",
+                    "DescribePixelFormat",
+                    // Pixel & shape drawing
+                    "SetPixel", "GetPixel",
+                    "Rectangle", "Ellipse", "Polygon",
+                    "MoveToEx", "LineTo",
+                    // Brush & pen
+                    "CreateSolidBrush", "CreatePen",
+                    "SelectObject", "DeleteObject", "GetStockObject",
+                    // Bitmap & DC
+                    "CreateCompatibleDC", "CreateCompatibleBitmap",
+                    "BitBlt", "StretchBlt",
+                    "DeleteDC",
+                    // Text
+                    "TextOutA", "CreateFontA", "SetTextColor", "SetBkColor",
+                    "SetBkMode", "GetTextExtentPoint32A",
+                    // Color
+                    "SetDCBrushColor", "SetDCPenColor",
+                    // Region
+                    "CreateRectRgn",
                 ] },
+                // ── Phase 2: OpenGL 1.1 — opengl32.dll (31 functions) ──
                 DllImport { dll: "opengl32.dll", functions: &[
                     "wglCreateContext", "wglMakeCurrent", "wglDeleteContext",
                     "wglGetProcAddress",
@@ -51,6 +133,42 @@ pub mod backend {
                     "glNormal3f", "glLightfv", "glMaterialfv", "glMaterialf",
                     "glColorMaterial", "glFlush",
                     "glGetString", "glGetError",
+                ] },
+                // ── Phase 3: COM — ole32.dll (6 functions) ──
+                DllImport { dll: "ole32.dll", functions: &[
+                    "CoInitialize", "CoInitializeEx", "CoUninitialize",
+                    "CoCreateInstance", "CoTaskMemAlloc", "CoTaskMemFree",
+                ] },
+                // ── Phase 3: DXGI — dxgi.dll (3 functions) ──
+                DllImport { dll: "dxgi.dll", functions: &[
+                    "CreateDXGIFactory", "CreateDXGIFactory1", "CreateDXGIFactory2",
+                ] },
+                // ── Phase 3: DirectX 9 — d3d9.dll (2 functions) ──
+                DllImport { dll: "d3d9.dll", functions: &[
+                    "Direct3DCreate9", "Direct3DCreate9Ex",
+                ] },
+                // ── Phase 3: DirectX 11 — d3d11.dll (2 functions) ──
+                DllImport { dll: "d3d11.dll", functions: &[
+                    "D3D11CreateDevice", "D3D11CreateDeviceAndSwapChain",
+                ] },
+                // ── Phase 3: DirectX 12 — d3d12.dll (4 functions) ──
+                DllImport { dll: "d3d12.dll", functions: &[
+                    "D3D12CreateDevice", "D3D12GetDebugInterface",
+                    "D3D12SerializeRootSignature", "D3D12SerializeVersionedRootSignature",
+                ] },
+                // ── Phase 3: HLSL Compiler — d3dcompiler_47.dll (4 functions) ──
+                DllImport { dll: "d3dcompiler_47.dll", functions: &[
+                    "D3DCompile", "D3DCompile2",
+                    "D3DCompileFromFile", "D3DReflect",
+                ] },
+                // ── Phase 4: Networking — ws2_32.dll (20 functions) ──
+                DllImport { dll: "ws2_32.dll", functions: &[
+                    "WSAStartup", "WSACleanup", "WSAGetLastError",
+                    "socket", "closesocket", "bind", "listen", "accept",
+                    "connect", "send", "recv", "sendto", "recvfrom",
+                    "select", "shutdown",
+                    "htons", "htonl", "ntohs", "ntohl",
+                    "inet_addr",
                 ] },
             ];
 

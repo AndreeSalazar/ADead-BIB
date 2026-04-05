@@ -1,8 +1,10 @@
-# ADead-BIB v9.0 💀🦈
+# ADead-BIB v10.0 💀🦈
 
-**Compilador Nativo: C99 · C++17 → Machine Code Puro · 256-bit Nativo**
+**Compilador Nativo: C99 · C++17 → Machine Code Puro · 256-bit Nativo · DirectX 9/11/12 · Win32 Completo**
 
-> **CLI v9.0 Unificado:** `adB cc` · `adB cxx` · `adB cuda` · `adB js` · `adB run` · `adB step` · `adB version`  
+> **CLI v10.0 Unificado:** `adB cc` · `adB cxx` · `adB cuda` · `adB js` · `adB run` · `adB step` · `adB version`  
+> **IAT v5:** 12 DLLs · 241 funciones importadas · DirectX 9/11/12 · OpenGL · Winsock  
+> **ASM-BIB Bridge:** 21 funciones assembly nativas enlazadas via COFF .obj  
 > **Linker Especial DLL:** Genera bibliotecas nativas para Windows (.dll) y Linux (.so) sin MSVC/GCC/Clang  
 > **DLL Fusion:** Combina con cualquier programa Windows o Linux existente  
 > Zero Overhead · Zero Bloat · Zero Dead Code  
@@ -10,7 +12,8 @@
 > Sin libc externa · Sin linker · 100% Autosuficiente  
 > FASM-style: bytes directos al CPU  
 > 256-bit nativo: YMM/AVX2 · SoA natural · VEX prefix  
-> `#include <header_main.h>` = TODO disponible
+> `#include <header_main.h>` = TODO disponible  
+> `-Warm ub` = Bypass UB detector para testeo experimental
 
 ```
 Tu Código (.c / .cpp)
@@ -624,7 +627,9 @@ Sin CRT. Sin exception handling tables. Sin RTTI. Sin debug info por defecto. So
 | C++98 Canon | 15 | 15 | **100%** ✅ |
 | Integration tests | 18 | 18 | **100%** ✅ |
 | FASE tests (C99+C++17+PE) | 19 | 19 | **100%** ✅ |
-| **Total Rust tests** | **580** | **580** | **100%** ✅ |
+| ASM-BIB Bridge tests | 33 | 33 | **100%** ✅ |
+| Bridge C fixtures | 13 | 13 | **100%** ✅ |
+| **Total Rust tests** | **580+** | **580+** | **100%** ✅ |
 
 ```
 C99 Canon (18):   tipos, punteros, arrays, structs, unions, enums,
@@ -639,7 +644,130 @@ C++98 Canon (15): clases, herencia, virtual/polimorfismo, templates,
 
 Integration (18): header_main.h C/C++, fastos_*.h, symbol registries,
                   no-linker verification, full E2E programs — ALL PASS ✅
+
+ASM-BIB Bridge (33): COFF parse, 21 function verify, merge, call patch,
+                     symbol resolution, machine code validation — ALL PASS ✅
+
+Bridge Fixtures (13): console, strings, math, memory, control flow,
+                      structs, pointers, Win32 window, GDI drawing,
+                      OpenGL, DX9, DX11, DX12 — ALL COMPILE ✅
 ```
+
+---
+
+## IAT Registry v5 — 12 DLLs · 241 Funciones
+
+ADead-BIB importa funciones de 12 DLLs del sistema sin linker externo:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  DLL                    │ Funciones │ Categoría         │
+├─────────────────────────┼───────────┼───────────────────┤
+│  msvcrt.dll             │    59     │ C Runtime         │
+│  kernel32.dll           │    39     │ Win32 Core        │
+│  user32.dll             │    42     │ Win32 UI          │
+│  gdi32.dll              │    30     │ Win32 GDI         │
+│  opengl32.dll           │    30     │ OpenGL 1.1        │
+│  ole32.dll              │     6     │ COM               │
+│  dxgi.dll               │     3     │ DXGI              │
+│  d3d9.dll               │     2     │ DirectX 9         │
+│  d3d11.dll              │     2     │ DirectX 11        │
+│  d3d12.dll              │     4     │ DirectX 12        │
+│  d3dcompiler_47.dll     │     4     │ HLSL Compiler     │
+│  ws2_32.dll             │    20     │ Winsock           │
+├─────────────────────────┼───────────┼───────────────────┤
+│  TOTAL                  │   241     │                   │
+└─────────────────────────┴───────────┴───────────────────┘
+```
+
+### C Runtime completo (msvcrt.dll — 59 funciones)
+
+```c
+// stdio
+printf, fprintf, sprintf, snprintf, scanf, sscanf, puts, putchar,
+getchar, fgets, fputs, fopen, fclose, fread, fwrite, fseek, ftell,
+rewind, feof, ferror, fflush, perror
+
+// stdlib
+malloc, calloc, realloc, free, atoi, atof, atol, strtol, strtoul,
+strtod, abs, rand, srand, qsort, bsearch, exit, getenv, system
+
+// string
+memset, memcpy, memmove, memcmp, strlen, strcpy, strncpy, strcat,
+strncat, strcmp, strncmp, strchr, strrchr, strstr, strtok
+
+// time
+time, clock, difftime, strftime
+```
+
+### DirectX 9 / 11 / 12 (via IAT directo)
+
+```c
+// DX9  — d3d9.dll
+Direct3DCreate9, Direct3DCreate9Ex
+
+// DX11 — d3d11.dll
+D3D11CreateDevice, D3D11CreateDeviceAndSwapChain
+
+// DX12 — d3d12.dll
+D3D12CreateDevice, D3D12GetDebugInterface,
+D3D12SerializeRootSignature, D3D12SerializeVersionedRootSignature
+
+// DXGI — dxgi.dll
+CreateDXGIFactory, CreateDXGIFactory1, CreateDXGIFactory2
+
+// HLSL — d3dcompiler_47.dll
+D3DCompile, D3DCompile2, D3DCompileFromFile, D3DReflect
+
+// COM — ole32.dll (required for DX)
+CoInitializeEx, CoUninitialize, CoCreateInstance
+```
+
+### Networking (ws2_32.dll — 20 funciones)
+
+```c
+WSAStartup, WSACleanup, WSAGetLastError,
+socket, closesocket, bind, listen, accept,
+connect, send, recv, sendto, recvfrom,
+select, shutdown, htons, htonl, ntohs, ntohl, inet_addr
+```
+
+---
+
+## ASM-BIB Bridge — 21 Funciones Assembly Nativas
+
+ADead-BIB importa `.obj` COFF de ASM-BIB via `adeb-bridge`:
+
+```
+Pipeline: .pasm → ASM-BIB → COFF .obj → adeb-bridge → merge → PE
+
+21 funciones x86-64 (Win64 fastcall ABI):
+  String:  asm_strlen, asm_strcpy, asm_strcmp, asm_strcat, asm_strchr,
+           asm_memcpy, asm_memset, asm_memcmp
+  Math:    asm_abs, asm_min, asm_max, asm_clamp, asm_swap
+  Bit:     asm_popcount, asm_bsr64, asm_bsf64, asm_bswap32, asm_bswap64
+  Utility: asm_is_aligned, asm_align_up, asm_noop
+```
+
+---
+
+## Compiler Flags
+
+```bash
+adB cc hello.c -o hello.exe              # Compilar C normal
+adB cc hello.c -o hello.exe -Wstrict     # Modo estricto (UB = error)
+adB cc hello.c -o hello.exe -Warm ub     # Bypass UB detector (experimental)
+adB cc hello.c -o hello.exe -step        # Step compiler (ver fases)
+```
+
+| Flag | Efecto |
+|---|---|
+| `-Wstrict` | Promueve UB warnings a errors, no emite binario si hay UB |
+| `-Warm ub` | Bypass UB detector — permite compilar con UB para testeo |
+| `-step` | Muestra cada fase del pipeline en terminal |
+| `--flat` | Genera flat binary (OS/Kernel) |
+| `--dll` | Genera DLL Windows (.dll) |
+| `--so` | Genera shared object Linux (.so) |
 
 ---
 
