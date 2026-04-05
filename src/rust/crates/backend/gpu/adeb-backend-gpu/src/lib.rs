@@ -8,5 +8,5 @@ pub mod wgsl;
 pub mod hip;
 
 // Re-exports
-pub use cudead::{CudaDriver, PtxEmitter, KernelDef};
-pub use spirv::{SpirvEmitter, SpirvBytecode};
+pub use cudead::{CudeadDriver, PtxEmitter, KernelDef};
+pub use spirv::bytecode::{BytecodeToSpirV, ADeadGpuOp, ADeadGpuInstr};

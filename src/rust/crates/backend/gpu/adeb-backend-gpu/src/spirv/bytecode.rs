@@ -7,7 +7,64 @@
 //
 // Autor: Eddi Andreé Salazar Matos
 
-use super::super::vulkan::{ExecutionModel, SpirVOp, VulkanCapability};
+/// SPIR-V execution models
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum ExecutionModel {
+    Vertex = 0,
+    TessellationControl = 1,
+    TessellationEvaluation = 2,
+    Geometry = 3,
+    Fragment = 4,
+    GLCompute = 5,
+    Kernel = 6,
+}
+
+/// SPIR-V opcodes used by the compiler
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub enum SpirVOp {
+    OpNop = 0,
+    OpCapability = 17,
+    OpMemoryModel = 14,
+    OpEntryPoint = 15,
+    OpExecutionMode = 16,
+    OpTypeVoid = 19,
+    OpTypeBool = 20,
+    OpTypeInt = 21,
+    OpTypeFloat = 22,
+    OpTypeVector = 23,
+    OpTypeArray = 28,
+    OpTypeStruct = 30,
+    OpTypePointer = 32,
+    OpTypeFunction = 33,
+    OpConstant = 43,
+    OpFunction = 54,
+    OpFunctionEnd = 56,
+    OpVariable = 59,
+    OpLoad = 61,
+    OpStore = 62,
+    OpAccessChain = 65,
+    OpDecorate = 71,
+    OpLabel = 248,
+    OpReturn = 253,
+    OpIAdd = 128,
+    OpControlBarrier = 224,
+}
+
+/// Vulkan capabilities
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum VulkanCapability {
+    Matrix = 0,
+    Shader = 1,
+    Geometry = 2,
+    Tessellation = 3,
+    Float64 = 10,
+    Int64 = 11,
+    Int16 = 22,
+}
 
 /// Opcodes ADead para GPU (4 bits = 16 instrucciones)
 #[repr(u8)]
