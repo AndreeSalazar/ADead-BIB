@@ -116,6 +116,7 @@ pub struct IsaCompiler {
     variables: HashMap<String, i32>,
     variable_types: HashMap<String, Type>,
     array_vars: std::collections::HashSet<String>,
+    array_elem_sizes: HashMap<String, u8>,          // Per-array element byte size (1=char,2=short,4=int,8=qword)
     param_vars: std::collections::HashSet<String>, // Function parameters (use 8-byte stride)
     struct_params: std::collections::HashSet<String>, // Struct parameters (passed by pointer)
     ref_vars: std::collections::HashSet<String>,   // Reference parameters (auto-deref)
@@ -532,6 +533,21 @@ impl IsaCompiler {
             Expr::Cast { target_type, .. } => {
                 matches!(target_type, Type::F32 | Type::F64)
             }
+            _ => false,
+        }
+    }
+
+    /// Check if an expression yields a string pointer (e.g., ternary with string branches).
+    /// Used by emit_print to decide between %s and %d format specifiers.
+    fn expr_yields_string(expr: &Expr) -> bool {
+        match expr {
+            Expr::String(_) => true,
+            Expr::Ternary {
+                then_expr,
+                else_expr,
+                ..
+            } => Self::expr_yields_string(then_expr) || Self::expr_yields_string(else_expr),
+            Expr::Cast { expr: inner, .. } => Self::expr_yields_string(inner),
             _ => false,
         }
     }
@@ -2661,8 +2677,11 @@ impl IsaCompiler {
                 false
             };
 
+            // Check if expression yields a string pointer (ternary with string branches)
+            let is_string_expr = Self::expr_yields_string(expr);
+
             let is_float = matches!(expr, Expr::Float(_));
-            let is_integer = !is_string_var && matches!(
+            let is_integer = !is_string_var && !is_string_expr && matches!(
                 expr,
                 Expr::Number(_)
                     | Expr::Variable(_)
