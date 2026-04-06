@@ -121,6 +121,10 @@ impl Encoder {
                                 Condition::LessEq => 0x0E,
                                 Condition::Greater => 0x0F,
                                 Condition::GreaterEq => 0x0D,
+                                Condition::Below => 0x02,
+                                Condition::BelowEq => 0x06,
+                                Condition::Above => 0x07,
+                                Condition::AboveEq => 0x03,
                                 Condition::Always => {
                                     self.emit(&[0xEB]);
                                     let patch_offset = self.code.len();
@@ -330,6 +334,17 @@ impl Encoder {
                         _ => self.emit_u32(0),
                     }
                 }
+            }
+
+            // ================================================================
+            // Instrucciones adicionales (CDQ/CQO, REP, MOVSB, STOSB)
+            // ================================================================
+            ADeadOp::Cdq => self.emit(&[0x48, 0x99]),   // CQO (REX.W + 99)
+            ADeadOp::Movsb => self.emit(&[0xA4]),
+            ADeadOp::Stosb => self.emit(&[0xAA]),
+            ADeadOp::Rep { op } => {
+                self.emit(&[0xF3]);
+                self.encode_op(op);
             }
         }
     }
@@ -582,6 +597,10 @@ impl Encoder {
             Condition::LessEq => self.emit(&[0x0F, 0x9E, 0xC0]),
             Condition::Greater => self.emit(&[0x0F, 0x9F, 0xC0]),
             Condition::GreaterEq => self.emit(&[0x0F, 0x9D, 0xC0]),
+            Condition::Below => self.emit(&[0x0F, 0x92, 0xC0]),
+            Condition::BelowEq => self.emit(&[0x0F, 0x96, 0xC0]),
+            Condition::Above => self.emit(&[0x0F, 0x97, 0xC0]),
+            Condition::AboveEq => self.emit(&[0x0F, 0x93, 0xC0]),
             Condition::Always => {}
         }
     }
@@ -664,6 +683,10 @@ impl Encoder {
             Condition::LessEq => 0x0E,    // JLE
             Condition::Greater => 0x0F,   // JG
             Condition::GreaterEq => 0x0D, // JGE
+            Condition::Below => 0x02,     // JB (CF=1)
+            Condition::BelowEq => 0x06,   // JBE (CF=1 OR ZF=1)
+            Condition::Above => 0x07,     // JA (CF=0 AND ZF=0)
+            Condition::AboveEq => 0x03,   // JAE (CF=0)
             Condition::Always => {
                 self.encode_jmp(target);
                 return;

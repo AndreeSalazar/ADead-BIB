@@ -249,6 +249,67 @@ impl Reg {
     pub fn is_vector(&self) -> bool {
         self.is_xmm() || self.is_ymm()
     }
+
+    /// Convierte un registro de 64 bits a su equivalente de 32 bits.
+    pub fn to_32bit(&self) -> Option<Reg> {
+        match self {
+            Reg::RAX => Some(Reg::EAX),
+            Reg::RBX => Some(Reg::EBX),
+            Reg::RCX => Some(Reg::ECX),
+            Reg::RDX => Some(Reg::EDX),
+            Reg::RSI => Some(Reg::ESI),
+            Reg::RDI => Some(Reg::EDI),
+            Reg::RBP => Some(Reg::EBP),
+            Reg::RSP => Some(Reg::ESP),
+            _ => None,
+        }
+    }
+
+    /// Convierte un registro de 32 bits a su equivalente de 64 bits.
+    pub fn to_64bit(&self) -> Option<Reg> {
+        match self {
+            Reg::EAX => Some(Reg::RAX),
+            Reg::EBX => Some(Reg::RBX),
+            Reg::ECX => Some(Reg::RCX),
+            Reg::EDX => Some(Reg::RDX),
+            Reg::ESI => Some(Reg::RSI),
+            Reg::EDI => Some(Reg::RDI),
+            Reg::EBP => Some(Reg::RBP),
+            Reg::ESP => Some(Reg::RSP),
+            _ => None,
+        }
+    }
+
+    /// Convierte a su equivalente de 8 bits (byte bajo).
+    pub fn to_8bit(&self) -> Option<Reg> {
+        match self {
+            Reg::RAX | Reg::EAX => Some(Reg::AL),
+            Reg::RBX | Reg::EBX => Some(Reg::BL),
+            Reg::RCX | Reg::ECX => Some(Reg::CL),
+            Reg::RDX | Reg::EDX => Some(Reg::DL),
+            _ => None,
+        }
+    }
+
+    /// Retorna el tamaño del registro en bytes (1, 2, 4, 8, 16, 32).
+    pub fn size_bytes(&self) -> u8 {
+        if self.is_8bit() {
+            1
+        } else if self.is_16bit() {
+            2
+        } else if self.is_32bit() {
+            4
+        } else if self.is_64bit() {
+            8
+        } else if self.is_xmm() {
+            16
+        } else if self.is_ymm() {
+            32
+        } else {
+            // Control, debug, segment registers — tamaño varía por contexto
+            4
+        }
+    }
 }
 
 impl std::fmt::Display for Reg {
@@ -441,6 +502,14 @@ pub enum Condition {
     Greater,
     /// SF=OF — jge / setge
     GreaterEq,
+    /// CF=1 — jb / setb — unsigned less than
+    Below,
+    /// CF=1 OR ZF=1 — jbe / setbe — unsigned less or equal
+    BelowEq,
+    /// CF=0 AND ZF=0 — ja / seta — unsigned greater than
+    Above,
+    /// CF=0 — jae / setae — unsigned greater or equal
+    AboveEq,
     /// Incondicional (usado en Jmp genérico)
     Always,
 }
@@ -454,6 +523,10 @@ impl std::fmt::Display for Condition {
             Condition::LessEq => "le",
             Condition::Greater => "g",
             Condition::GreaterEq => "ge",
+            Condition::Below => "b",
+            Condition::BelowEq => "be",
+            Condition::Above => "a",
+            Condition::AboveEq => "ae",
             Condition::Always => "",
         };
         write!(f, "{}", name)
@@ -744,6 +817,18 @@ pub enum ADeadOp {
         /// Base address to add (e.g., 0x8000 for stage2 loaded at 0x8000)
         base_addr: u32,
     },
+
+    /// CDQ/CQO — Sign-extend EAX/RAX into EDX:RDX (necesario antes de idiv)
+    Cdq,
+
+    /// REP prefix — Repite la instrucción interna (REP MOVSB, REP STOSB, etc.)
+    Rep { op: Box<ADeadOp> },
+
+    /// MOVSB — Move byte [RSI] → [RDI], incrementa/decrementa según DF
+    Movsb,
+
+    /// STOSB — Store AL at [RDI], incrementa RDI
+    Stosb,
 }
 
 impl std::fmt::Display for ADeadOp {
@@ -837,6 +922,10 @@ impl std::fmt::Display for ADeadOp {
                     label, size, base_addr
                 )
             }
+            ADeadOp::Cdq => write!(f, "cqo"),
+            ADeadOp::Rep { op } => write!(f, "rep {}", op),
+            ADeadOp::Movsb => write!(f, "movsb"),
+            ADeadOp::Stosb => write!(f, "stosb"),
         }
     }
 }

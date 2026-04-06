@@ -315,6 +315,7 @@ impl IsaCompiler {
             variables: HashMap::new(),
             variable_types: HashMap::new(),
             array_vars: std::collections::HashSet::new(),
+            array_elem_sizes: HashMap::new(),
             param_vars: std::collections::HashSet::new(),
             struct_params: std::collections::HashSet::new(),
             ref_vars: std::collections::HashSet::new(),
@@ -1871,21 +1872,31 @@ impl IsaCompiler {
                             }
                         }
                     };
-                    // For arrays of structs, each element takes the struct's full size
-                    let elem_size = match var_type {
+                    // Determine element byte size using C99 sizeof rules
+                    // char[64] → 1 byte per element, int[10] → 4, long[5] → 8, struct → layout size
+                    let c99_elem_size: i32 = match var_type {
                         Type::Array(inner, _) => match inner.as_ref() {
                             Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
                                 self.class_layouts.get(n).map(|l| l.size).unwrap_or(8)
                             }
+                            Type::I8 | Type::U8 | Type::Bool => 1,
+                            Type::I16 | Type::U16 => 2,
+                            Type::I32 | Type::U32 => 4,
+                            Type::Pointer(_) | Type::I64 | Type::U64 => 8,
                             _ => 8,
                         },
                         _ => 8,
                     };
-                    let arr_size = count * elem_size;
+                    // For byte/short/int arrays, allocate actual C99 size (rounded up to 8)
+                    // This is critical for string functions (strcpy, strlen, etc.) which expect
+                    // contiguous byte layout, not 8-byte qword slots
+                    let arr_size = ((count * c99_elem_size) + 7) & !7; // align to 8 bytes
                     self.stack_offset -= arr_size;
                     let base = self.stack_offset;
                     self.variables.insert(name.clone(), base);
                     self.array_vars.insert(name.clone());
+                    // Record per-array element byte size for correct index stride
+                    self.array_elem_sizes.insert(name.clone(), c99_elem_size as u8);
 
                     // Initialize array
                     if let Some(Expr::Array(elements)) = value {
@@ -2143,17 +2154,29 @@ impl IsaCompiler {
                         let is_local_array = self.array_vars.contains(name.as_str());
 
                         if is_local_array {
-                            // LOCAL ARRAY: ascending layout, arr[i] at base + i*8
+                            // LOCAL ARRAY: ascending layout with C99 element stride
+                            let elem_stride = *self.array_elem_sizes.get(name.as_str()).unwrap_or(&8) as i32;
                             if let Expr::Number(idx) = index {
-                                let elem_offset = base_offset + (*idx as i32 * 8);
+                                let elem_offset = base_offset + (*idx as i32 * elem_stride);
                                 self.emit_expression(value);
-                                self.ir.emit(ADeadOp::Mov {
-                                    dst: Operand::Mem {
-                                        base: Reg::RBP,
-                                        disp: elem_offset,
-                                    },
-                                    src: Operand::Reg(Reg::RAX),
-                                });
+                                if elem_stride == 1 {
+                                    // Byte store: mov BYTE [rbp+disp], al
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Mem {
+                                            base: Reg::RBP,
+                                            disp: elem_offset,
+                                        },
+                                        src: Operand::Reg(Reg::RAX),
+                                    });
+                                } else {
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Mem {
+                                            base: Reg::RBP,
+                                            disp: elem_offset,
+                                        },
+                                        src: Operand::Reg(Reg::RAX),
+                                    });
+                                }
                             } else {
                                 // Dynamic index for local array
                                 self.emit_expression(value);
@@ -2161,10 +2184,7 @@ impl IsaCompiler {
                                     src: Operand::Reg(Reg::RAX),
                                 });
                                 self.emit_expression(index);
-                                self.ir.emit(ADeadOp::Shl {
-                                    dst: Reg::RAX,
-                                    amount: 3,
-                                });
+                                self.emit_index_scale(elem_stride as u8);
                                 self.ir.emit(ADeadOp::Mov {
                                     dst: Operand::Reg(Reg::RBX),
                                     src: Operand::Reg(Reg::RAX),
@@ -4217,23 +4237,44 @@ impl IsaCompiler {
                         let is_local_array = self.array_vars.contains(name.as_str());
 
                         if is_local_array {
-                            // LOCAL ARRAY: ascending layout, arr[i] at base + i*8
+                            // LOCAL ARRAY: ascending layout with C99 element stride
+                            let elem_stride = *self.array_elem_sizes.get(name.as_str()).unwrap_or(&8) as i32;
                             if let Expr::Number(idx) = index.as_ref() {
-                                let elem_offset = base_offset + (*idx as i32 * 8);
-                                self.ir.emit(ADeadOp::Mov {
-                                    dst: Operand::Reg(Reg::RAX),
-                                    src: Operand::Mem {
-                                        base: Reg::RBP,
-                                        disp: elem_offset,
-                                    },
-                                });
+                                let elem_offset = base_offset + (*idx as i32 * elem_stride);
+                                if elem_stride == 1 {
+                                    // Byte load: movzx rax, BYTE [rbp+disp]
+                                    self.ir.emit(ADeadOp::Lea {
+                                        dst: Reg::RAX,
+                                        src: Operand::Mem {
+                                            base: Reg::RBP,
+                                            disp: elem_offset,
+                                        },
+                                    });
+                                    self.ir.emit(ADeadOp::MovZx {
+                                        dst: Reg::RAX,
+                                        src: Reg::AL,
+                                    });
+                                    // Load actual byte via [rbp+disp]
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RAX),
+                                        src: Operand::Mem {
+                                            base: Reg::RBP,
+                                            disp: elem_offset,
+                                        },
+                                    });
+                                } else {
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RAX),
+                                        src: Operand::Mem {
+                                            base: Reg::RBP,
+                                            disp: elem_offset,
+                                        },
+                                    });
+                                }
                             } else {
                                 // Dynamic index for local array
                                 self.emit_expression(index);
-                                self.ir.emit(ADeadOp::Shl {
-                                    dst: Reg::RAX,
-                                    amount: 3,
-                                });
+                                self.emit_index_scale(elem_stride as u8);
                                 self.ir.emit(ADeadOp::Mov {
                                     dst: Operand::Reg(Reg::RBX),
                                     src: Operand::Reg(Reg::RAX),
@@ -4254,13 +4295,28 @@ impl IsaCompiler {
                                     dst: Operand::Reg(Reg::RBX),
                                     src: Operand::Reg(Reg::RAX),
                                 });
-                                self.ir.emit(ADeadOp::Mov {
-                                    dst: Operand::Reg(Reg::RAX),
-                                    src: Operand::Mem {
-                                        base: Reg::RBX,
-                                        disp: 0,
-                                    },
-                                });
+                                if elem_stride == 1 {
+                                    // Byte load: movzx rax, BYTE [rbx]
+                                    self.ir.emit(ADeadOp::MovZx {
+                                        dst: Reg::RAX,
+                                        src: Reg::AL,
+                                    });
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RAX),
+                                        src: Operand::Mem {
+                                            base: Reg::RBX,
+                                            disp: 0,
+                                        },
+                                    });
+                                } else {
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RAX),
+                                        src: Operand::Mem {
+                                            base: Reg::RBX,
+                                            disp: 0,
+                                        },
+                                    });
+                                }
                             }
                         } else {
                             // POINTER VARIABLE (e.g. function parameter int *arr):

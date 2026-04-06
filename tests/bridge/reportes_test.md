@@ -269,6 +269,103 @@ OpenGL rendered 180 frames
 
 ---
 
+## Fix Tracking
+
+| # | Fix | Priority | Status | Complexity | Tests Fixed |
+|---|-----|----------|--------|------------|-------------|
+| 1 | Struct stack allocation + field offset codegen | P0 | 🔴 Pending | High | 06, 07 |
+| 2 | Local `char[]` array stack frame allocation | P0 | 🔴 Pending | Medium | 02, 04 |
+| 3 | `goto` / label forward-reference resolution | P0 | 🔴 Pending | Medium | 11, 12, 13 |
+| 4 | Vtable triple-pointer cast codegen (`void***`) | P0 | 🔴 Pending | High | 11, 12, 13 |
+| 5 | Function pointer typedef + indirect call codegen | P0 | 🔴 Pending | High | 11, 12, 13 |
+| 6 | Unresolved label patch resolution in encoder | P0 | 🔴 Pending | Medium | 07 |
+| 7 | `%s` ternary expression codegen in printf args | P1 | 🔴 Pending | Low | 03, 05 |
+| 8 | `calloc` zero-check loop (array index + `unsigned char`) | P1 | 🔴 Pending | Medium | 04 |
+| 9 | `realloc` + `strcmp` post-realloc string comparison | P1 | 🔴 Pending | Medium | 04 |
+
+---
+
+## Recommended Fix Order
+
+1. **Local array stack allocation (Fix #2)** — Unblocks Test 02 and partially unblocks Test 04. Medium complexity, high reward. Stack frame codegen for local arrays is a foundational primitive needed by almost every non-trivial C program.
+
+2. **Struct stack allocation + field offset codegen (Fix #1)** — Unblocks Test 06 and partially unblocks Test 07. Shares codegen infrastructure with Fix #2 (both are stack layout issues). Fixing structs + arrays together builds a solid stack frame model.
+
+3. **Unresolved label patch resolution (Fix #6)** — Unblocks Test 07 (combined with Fix #1). Isolated to the encoder's forward-reference pass — should be a targeted fix in the label resolution table.
+
+4. **`goto` / label forward-reference resolution (Fix #3)** — Prerequisite for DX tests 11–13. The ISA compiler needs to emit code for `goto` statements and resolve label targets during encoding.
+
+5. **Vtable triple-pointer cast codegen (Fix #4)** — Required for DX9/11/12 vtable patterns. Depends on correct pointer arithmetic already working from Fixes #1–#3.
+
+6. **Function pointer typedef + indirect call (Fix #5)** — Completes DX support together with Fixes #3–#4. Requires `call rax` codegen for indirect function pointers loaded from vtable offsets.
+
+7. **`%s` ternary codegen (Fix #7)** — Low complexity, upgrades Tests 03 and 05 from PARTIAL to PASS. The ternary expression needs to evaluate to a pointer that gets pushed as a `%s` argument.
+
+8. **`calloc` zero-check loop (Fix #8)** — Depends on Fix #2 (array indexing). Once local arrays work, the zero-check loop in Test 04 should be re-tested before applying further fixes.
+
+9. **`realloc` + `strcmp` (Fix #9)** — Last fix. Depends on correct pointer arithmetic post-realloc. May resolve itself once Fixes #2 and #8 land.
+
+---
+
+## Test Coverage Gap Analysis
+
+| # | Proposed Test | Category | C Features Tested | Depends On |
+|---|--------------|----------|-------------------|------------|
+| 14 | `14_file_io.c` | C stdlib | `fopen`, `fwrite`, `fread`, `fclose`, `fprintf`, `fscanf` | Fix #2 (local arrays) |
+| 15 | `15_threads.c` | Win32 | `CreateThread`, `WaitForSingleObject`, `InterlockedIncrement` | Fix #1 (structs) |
+| 16 | `16_vulkan_window.c` | Graphics | Vulkan instance creation, `vkCreateInstance`, `vkEnumeratePhysicalDevices` | Fixes #4, #5 (vtable/indirect calls) |
+| 17 | `17_recursion_deep.c` | C core | Deep recursion (Ackermann, tree traversal), stack depth stress | None (basic codegen) |
+| 18 | `18_bitfields.c` | C core | Struct bitfields, packed structs, union type-punning | Fix #1 (structs) |
+| 19 | `19_variadic.c` | C core | Variadic functions (`va_list`, `va_start`, `va_arg`, `va_end`) | Fix #2 (local arrays) |
+| 20 | `20_enum_switch.c` | C core | Large `enum` declarations, exhaustive `switch/case` over enums | None |
+| 21 | `21_linked_list.c` | Data structures | Singly/doubly linked lists with `malloc`, pointer chasing | Fixes #1, #2 |
+| 22 | `22_signal_handler.c` | C stdlib | `signal()`, `raise()`, custom signal handlers | Fix #5 (function pointers) |
+| 23 | `23_float_math.c` | C core | `float`/`double` arithmetic, `math.h` (`sin`, `cos`, `sqrt`) | SSE/x87 codegen |
+
+---
+
+## ISA Compiler Coverage Matrix
+
+| C Feature | Parsed | Codegen | Tested | Status |
+|-----------|--------|---------|--------|--------|
+| Integer arithmetic (`+`, `-`, `*`, `/`, `%`) | ✅ | ✅ | ✅ Test 01 | ✅ Working |
+| Integer comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`) | ✅ | ✅ | ✅ Test 03 | ✅ Working |
+| Bitwise operators (`&`, `\|`, `^`, `~`, `<<`, `>>`) | ✅ | ✅ | ✅ Test 03 | ✅ Working |
+| Logical operators (`&&`, `\|\|`, `!`) | ✅ | ✅ | ✅ Test 03 | ✅ Working |
+| `if` / `else` / `else if` | ✅ | ✅ | ✅ Tests 01, 05 | ✅ Working |
+| `for` loop | ✅ | ✅ | ✅ Test 05 | ✅ Working |
+| `while` loop | ✅ | ✅ | ✅ Test 05 | ✅ Working |
+| `do-while` loop | ✅ | ✅ | ✅ Test 05 | ✅ Working |
+| `switch` / `case` / `default` | ✅ | ✅ | ✅ Test 05 | ✅ Working |
+| `break` / `continue` | ✅ | ✅ | ✅ Test 05 | ✅ Working |
+| Function calls (direct) | ✅ | ✅ | ✅ Tests 01–10 | ✅ Working |
+| Function calls (indirect / fn pointer) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Not implemented |
+| `printf` with `%d`, `%x`, `%p` | ✅ | ✅ | ✅ Tests 01–05 | ✅ Working |
+| `printf` with `%s` (direct string) | ✅ | ✅ | ✅ Test 01 | ✅ Working |
+| `printf` with `%s` (ternary expr) | ✅ | ⚠️ | ⚠️ Tests 03, 05 | 🟡 Pointer printed as int |
+| `malloc` / `free` | ✅ | ✅ | ✅ Test 04 | ✅ Working |
+| `calloc` | ✅ | ✅ | ⚠️ Test 04 | 🟡 Alloc works, zero-check fails |
+| `realloc` | ✅ | ⚠️ | ❌ Test 04 | 🟡 Post-realloc data wrong |
+| Local `char[]` arrays | ✅ | ❌ | ❌ Test 02 | 🔴 Stack frame crash |
+| Struct declaration | ✅ | ⚠️ | ❌ Test 06 | 🔴 Field access crash |
+| Struct field access (`.` / `->`) | ✅ | ❌ | ❌ Test 06 | 🔴 Not implemented |
+| Struct by-value passing | ✅ | ❌ | ❌ Test 06 | 🔴 Not implemented |
+| Union access | ✅ | ❌ | ❌ Test 06 | 🔴 Not tested |
+| Pointer arithmetic | ✅ | ⚠️ | ⚠️ Test 07 | 🟡 Basic works, complex crashes |
+| 2D array access (`a[i][j]`) | ✅ | ❌ | ❌ Test 07 | 🔴 Crashes |
+| `goto` / labels | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Empty codegen |
+| Triple-pointer casts (`void***`) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Empty codegen |
+| Typedef (function pointer) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Empty codegen |
+| Win32 API (IAT) | ✅ | ✅ | ✅ Tests 08–10 | ✅ Working |
+| GDI functions | ✅ | ✅ | ✅ Test 09 | ✅ Working |
+| OpenGL 1.1 | ✅ | ✅ | ✅ Test 10 | ✅ Working |
+| DirectX 9/11/12 (vtable) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Blocked on fixes #3–#5 |
+| `float` / `double` arithmetic | ✅ | ❌ | ❌ — | 🔴 Not tested |
+| Variadic functions (`va_list`) | ✅ | ❌ | ❌ — | 🔴 Not tested |
+| File I/O (`fopen`, `fread`, etc.) | ✅ | ❌ | ❌ — | 🔴 Not tested |
+
+---
+
 *Report generated by ADead-BIB Bridge Test Suite*  
 *Compiler binary: `src/rust/target/release/adB.exe`*  
 *ASM-BIB bridge: `src/rust/crates/shared/adeb-bridge/`*
