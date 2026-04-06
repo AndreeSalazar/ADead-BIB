@@ -13,7 +13,8 @@
 // ============================================================
 
 use crate::cli::term;
-use adeb_backend_x64::isa::isa_compiler::{IsaCompiler, Target};
+use adeb_backend_x64::isa::c_isa::CIsaCompiler;
+use adeb_backend_x64::isa::isa_compiler::Target;
 use adeb_core::ast::Program;
 use adeb_frontend_c::ast::{CDeclarator, CDerivedType, CTopLevel, CTranslationUnit, CType};
 use adeb_frontend_c::lower::to_ir::CToIR;
@@ -192,7 +193,7 @@ pub fn compile_c_file(
     }
 
     println!("   Phase 6: Compiling to native code...");
-    let mut compiler = IsaCompiler::new(Target::Windows);
+    let mut compiler = CIsaCompiler::new(Target::Windows);
     let (code, data, iat_offsets, string_offsets) = compiler.compile(&pipeline.program);
 
     if step_mode {
@@ -200,12 +201,14 @@ pub fn compile_c_file(
     }
 
     println!("   Phase 7: Generating PE binary...");
-    adeb_backend_x64::pe::generate_pe_with_offsets(
+    let used_slots = compiler.used_iat_slots().clone();
+    adeb_backend_x64::pe::generate_pe_filtered(
         &code,
         &data,
         output_file,
         &iat_offsets,
         &string_offsets,
+        &used_slots,
     )?;
 
     let meta = fs::metadata(output_file)

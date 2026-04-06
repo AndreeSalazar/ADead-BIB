@@ -1134,7 +1134,7 @@ impl CToIR {
                 };
 
                 match name.as_str() {
-                    "malloc" | "calloc" => {
+                    "malloc" => {
                         if let Some(size_arg) = args.first() {
                             let size = self.convert_expr(size_arg)?;
                             Ok(Expr::Malloc(Box::new(size)))
@@ -1142,17 +1142,23 @@ impl CToIR {
                             Ok(Expr::Null)
                         }
                     }
+                    "calloc" => {
+                        // calloc(count, size) — emit as IAT call with both args
+                        let a: Result<Vec<Expr>, String> =
+                            args.iter().map(|a| self.convert_expr(a)).collect();
+                        Ok(Expr::Call {
+                            name: "calloc".to_string(),
+                            args: a?,
+                        })
+                    }
                     "realloc" => {
-                        if args.len() >= 2 {
-                            let ptr = self.convert_expr(&args[0])?;
-                            let size = self.convert_expr(&args[1])?;
-                            Ok(Expr::Realloc {
-                                ptr: Box::new(ptr),
-                                new_size: Box::new(size),
-                            })
-                        } else {
-                            Ok(Expr::Null)
-                        }
+                        // realloc(ptr, new_size) — emit as IAT call with both args
+                        let a: Result<Vec<Expr>, String> =
+                            args.iter().map(|a| self.convert_expr(a)).collect();
+                        Ok(Expr::Call {
+                            name: "realloc".to_string(),
+                            args: a?,
+                        })
                     }
                     "sizeof" => {
                         if let Some(arg) = args.first() {

@@ -148,6 +148,8 @@ impl CIsaCompiler {
             let mut offset = 0i32;
             let mut max_align = 1i32;
 
+            let mut field_type_pairs: Vec<(String, String)> = Vec::new();
+
             for field in &st.fields {
                 let field_size = c99_sizeof(&field.field_type);
 
@@ -155,12 +157,14 @@ impl CIsaCompiler {
                 let actual_size = if field_size == 0 {
                     // It's a struct type — look up its layout
                     match &field.field_type {
-                        Type::Struct(name) | Type::Named(name) | Type::Class(name) => self
-                            .inner
-                            .class_layouts()
-                            .get(name)
-                            .map(|l| l.size)
-                            .unwrap_or(8),
+                        Type::Struct(name) | Type::Named(name) | Type::Class(name) => {
+                            field_type_pairs.push((field.name.clone(), name.clone()));
+                            self.inner
+                                .class_layouts()
+                                .get(name)
+                                .map(|l| l.size)
+                                .unwrap_or(8)
+                        }
                         _ => 8,
                     }
                 } else {
@@ -214,7 +218,7 @@ impl CIsaCompiler {
                 ClassLayout {
                     name: st.name.clone(),
                     fields,
-                    field_types: vec![],
+                    field_types: field_type_pairs,
                     size: total_size,
                     real_size,
                 },
@@ -225,6 +229,11 @@ impl CIsaCompiler {
     /// Access the underlying IR for optimization passes.
     pub fn ir(&self) -> &super::ADeadIR {
         self.inner.ir()
+    }
+
+    /// Returns the set of IAT slot indices actually used during compilation.
+    pub fn used_iat_slots(&self) -> &std::collections::HashSet<usize> {
+        self.inner.used_iat_slots()
     }
 }
 

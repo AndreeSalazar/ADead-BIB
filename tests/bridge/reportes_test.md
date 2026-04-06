@@ -8,32 +8,38 @@
 
 ---
 
-## Summary
+## Summary (Updated 2026-04-06)
 
 | # | Test | Compile | Run | Status | Notes |
 |---|------|---------|-----|--------|-------|
-| 01 | `01_console_hello.c` | ✅ OK (2048 B) | ✅ exit=0 | **PASS** | All output correct |
-| 02 | `02_string_ops.c` | ✅ OK (6144 B) | ❌ CRASH (0xC0000005) | **FAIL** | Access violation at runtime |
-| 03 | `03_math_logic.c` | ✅ OK (4608 B) | ⚠️ exit=0 | **PARTIAL** | 12/12 pass, but `%s` ternary prints raw address |
-| 04 | `04_memory_alloc.c` | ✅ OK (3584 B) | ⚠️ exit=3 | **PARTIAL** | 4/7 pass; calloc zero-check, realloc, large alloc fail |
-| 05 | `05_control_flow.c` | ✅ OK (5120 B) | ⚠️ exit=0 | **PARTIAL** | 11/11 pass, but `%s` ternary prints raw address |
-| 06 | `06_structs_unions.c` | ✅ OK (4096 B) | ❌ CRASH (0xC0000005) | **FAIL** | Access violation at runtime |
-| 07 | `07_pointers_arrays.c` | ✅ OK (4608 B) | ❌ CRASH (0xC0000005) | **FAIL** | Access violation; unresolved label warning |
-| 08 | `08_win32_window.c` | ✅ OK (3072 B) | ✅ 120 frames | **PASS** | Win32 window created + message loop |
-| 09 | `09_gdi_drawing.c` | ✅ OK (4096 B) | ✅ 180 frames | **PASS** | Gradient + rectangles drawn via GDI |
-| 10 | `10_opengl_basic.c` | ✅ OK (4608 B) | ✅ 180 frames | **PASS** | OpenGL 1.1 triangle rendered |
-| 11 | `11_dx9_window.c` | ✅ OK (1024 B) | ❌ Invalid PE | **FAIL** | PE too small — code gen produces empty .text |
-| 12 | `12_dx11_window.c` | ✅ OK (1024 B) | ❌ Invalid PE | **FAIL** | PE too small — code gen produces empty .text |
-| 13 | `13_dx12_window.c` | ✅ OK (1024 B) | ❌ Invalid PE | **FAIL** | PE too small — code gen produces empty .text |
+| 01 | `01_console_hello.c` | ✅ OK (9728 B) | ✅ exit=0 | **PASS** | All output correct |
+| 02 | `02_string_ops.c` | ✅ OK | ⚠️ exit=4 | **PARTIAL** | 10/14 pass; strchr/memcpy/memset/memcmp fail |
+| 03 | `03_math_logic.c` | ✅ OK | ✅ exit=0 | **PASS** | 12/12 pass |
+| 04 | `04_memory_alloc.c` | ✅ OK | ⚠️ exit=1 | **PARTIAL** | 6/7 pass; calloc zero-check fails |
+| 05 | `05_control_flow.c` | ✅ OK | ✅ exit=0 | **PASS** | 11/11 pass |
+| 06 | `06_structs_unions.c` | ✅ OK (12288 B) | ❌ CRASH (0xC0000005) | **FAIL** | Access violation at runtime |
+| 07 | `07_pointers_arrays.c` | ✅ OK | ❌ CRASH (0xC0000005) | **FAIL** | Access violation at runtime |
+| 08 | `08_win32_window.c` | ✅ OK | ❌ exit=1 | **FAIL** | Win32 API runtime error |
+| 09 | `09_gdi_drawing.c` | ✅ OK | ❌ exit=1 | **FAIL** | GDI runtime error |
+| 10 | `10_opengl_basic.c` | ✅ OK | ❌ exit=1 | **FAIL** | OpenGL runtime error |
+| 11 | `11_dx9_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid for this platform |
+| 12 | `12_dx11_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid for this platform |
+| 13 | `13_dx12_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid for this platform |
 
 ### Totals
 
 | Metric | Count |
 |--------|-------|
 | **Compile success** | 13/13 (100%) |
-| **Run PASS** | 4/13 |
-| **Run PARTIAL** | 3/13 |
-| **Run FAIL** | 6/13 |
+| **Run PASS** | 3/13 (01, 03, 05) |
+| **Run PARTIAL** | 2/13 (02, 04) |
+| **Run FAIL** | 8/13 |
+
+### Key Fix Applied This Session
+
+- **Root cause of 0xC0000139:** `msvcrt.dll` exports `_snprintf`, NOT `snprintf`. Fixed IAT registry.
+- **Filtered DLL imports:** PE now only imports DLLs with actually-used functions (was importing all 12 DLLs).
+- **Tests 01, 03, 05 now fully PASS** (were crashing with 0xC0000139 before).
 
 ---
 
@@ -363,6 +369,60 @@ OpenGL rendered 180 frames
 | `float` / `double` arithmetic | ✅ | ❌ | ❌ — | 🔴 Not tested |
 | Variadic functions (`va_list`) | ✅ | ❌ | ❌ — | 🔴 Not tested |
 | File I/O (`fopen`, `fread`, etc.) | ✅ | ❌ | ❌ — | 🔴 Not tested |
+
+---
+
+## ASM-BIB Bridge Integration Analysis
+
+### What ASM-BIB Provides
+
+ASM-BIB is a complete x86-64 assembler with Python-like syntax (`.pasm`). Key components:
+
+| Component | File | Size | Description |
+|-----------|------|------|-------------|
+| **x86-64 Encoder** | `src/targets/x86_64/encoder.rs` | 107KB | Full instruction encoder (MOV, ADD, SSE, VEX, etc.) |
+| **COFF Writer** | `src/targets/coff.rs` | 28KB | Native COFF .obj generation (no MASM needed) |
+| **PE Writer** | `src/linker/pe_writer.rs` | 43KB | Complete PE linker (sections, imports, exports, reloc) |
+| **Relocator** | `src/linker/relocator.rs` | 9KB | Base relocation support |
+| **Import Lib Parser** | `src/linker/import_lib.rs` | 8KB | .lib import library parsing |
+| **SIB Encoder** | `src/targets/x86_64/sib.rs` | 9KB | ModR/M + SIB byte encoding |
+| **VEX Encoder** | `src/targets/x86_64/vex.rs` | 1.7KB | AVX/VEX prefix encoding |
+
+### stdlib_ring3.pasm — 21 Bridge Functions
+
+Already compiled to `stdlib_ring3_native.obj` (3626 bytes COFF):
+
+| Category | Functions | ABI |
+|----------|-----------|-----|
+| **String** | `asm_strlen`, `asm_strcpy`, `asm_strcmp`, `asm_strcat`, `asm_strchr`, `asm_memcpy`, `asm_memset`, `asm_memcmp` | Win64 fastcall |
+| **Math** | `asm_abs`, `asm_min`, `asm_max`, `asm_clamp`, `asm_swap` | Win64 fastcall |
+| **Bit** | `asm_popcount`, `asm_bsr64`, `asm_bsf64`, `asm_bswap32`, `asm_bswap64` | Win64 fastcall |
+| **Utility** | `asm_is_aligned`, `asm_align_up`, `asm_noop` | Win64 fastcall |
+
+### What's Integrated (adeb-bridge crate)
+
+- `CoffObject` parser: reads ASM-BIB native .obj files
+- `BridgeLinker`: merges ASM .obj code/data with ADead-BIB compiled output
+- Resolves REL32, ADDR64, ADDR32NB relocations
+- 6 tests pass (4 unit + 2 real .obj integration)
+
+### What's Missing for Full Bridge
+
+| Gap | Priority | Description |
+|-----|----------|-------------|
+| **C→ASM symbol resolution** | P0 | C code calling `asm_strlen()` needs to resolve to the .obj symbol |
+| **Bridge in C driver** | P0 | `c_driver.rs` doesn't invoke `BridgeLinker` before PE generation |
+| **ASM-BIB PE writer reuse** | P1 | ASM-BIB's PE writer (43KB) is more mature — handles exports, relocs, DLL mode |
+| **Shared encoder** | P2 | ASM-BIB's encoder (107KB) could replace/augment ADead-BIB's encoder for edge cases |
+| **Additional stdlib modules** | P2 | Ring 0 (kernel), Ring 3+ (SIMD, crypto, threading) not yet written |
+| **Auto-build .obj pipeline** | P2 | No automatic `pasm → obj` step in ADead-BIB build |
+
+### Recommended Next Steps for Bridge
+
+1. **Wire BridgeLinker into c_driver.rs** — After `compiler.compile()`, call `BridgeLinker::merge()` to append ASM .obj code before PE generation
+2. **Add `asm_*` symbol mapping** — When C code calls `strlen()`, optionally redirect to `asm_strlen` from the .obj
+3. **Import ASM-BIB PE writer** — For DLL generation and advanced PE features (exports, reloc, multiple sections)
+4. **New stdlib modules** — SIMD string ops (`asm_memcpy_avx`), threading primitives, crypto (AES-NI)
 
 ---
 

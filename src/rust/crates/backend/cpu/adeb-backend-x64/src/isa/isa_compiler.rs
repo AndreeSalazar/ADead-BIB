@@ -153,6 +153,10 @@ pub struct IsaCompiler {
 
     // Current class being compiled (for method field type resolution)
     current_class: Option<String>,
+
+    // Track which IAT slots are actually used during compilation
+    // Used by PE builder to only import DLLs with referenced functions
+    used_iat_slots: std::collections::HashSet<usize>,
 }
 
 impl IsaCompiler {
@@ -333,6 +337,7 @@ impl IsaCompiler {
             global_offset: 0,
             field_ir_types: HashMap::new(),
             current_class: None,
+            used_iat_slots: std::collections::HashSet::new(),
         }
     }
 
@@ -341,6 +346,12 @@ impl IsaCompiler {
         let mut compiler = Self::new(target);
         compiler.cpu_mode = mode;
         compiler
+    }
+
+    /// Returns the set of IAT slot indices actually used during compilation.
+    /// Used by the PE builder to only import DLLs with referenced functions.
+    pub fn used_iat_slots(&self) -> &std::collections::HashSet<usize> {
+        &self.used_iat_slots
     }
 
     /// Get field offset from class layout (MSVC/GCC/LLVM ABI style)
@@ -2819,6 +2830,7 @@ impl IsaCompiler {
         let slot = iat_registry::slot_for_function(func_name)
             .unwrap_or_else(|| panic!("IAT function not found: {}", func_name));
         let iat_rva = idata_result.slot_to_iat_rva[slot];
+        self.used_iat_slots.insert(slot);
 
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP),
@@ -5052,6 +5064,7 @@ impl IsaCompiler {
             "scanf" | "std::scanf" => Some("scanf"),
             "malloc" => Some("malloc"),
             "free" => Some("free"),
+            "snprintf" => Some("_snprintf"),
             _ => {
                 if iat_registry::slot_for_function(name).is_some() {
                     Some(name)
@@ -5067,6 +5080,7 @@ impl IsaCompiler {
             let slot = iat_registry::slot_for_function(iat_func)
                 .unwrap_or_else(|| panic!("IAT function not found: {}", iat_func));
             let iat_rva = idata_result.slot_to_iat_rva[slot];
+            self.used_iat_slots.insert(slot);
             
             // Guarantee DF=0 before Windows DLL calls (x64 ABI strict requirement)
             self.ir.emit(ADeadOp::Cld);

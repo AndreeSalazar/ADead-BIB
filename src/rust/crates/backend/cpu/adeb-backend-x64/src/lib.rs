@@ -26,7 +26,7 @@ pub mod backend {
                 // ── Phase 1: C Runtime (msvcrt.dll) — 40 functions ──
                 DllImport { dll: "msvcrt.dll", functions: &[
                     // stdio
-                    "printf", "fprintf", "sprintf", "snprintf", "scanf", "sscanf",
+                    "printf", "fprintf", "sprintf", "_snprintf", "scanf", "sscanf",
                     "puts", "putchar", "getchar", "fgets", "fputs",
                     "fopen", "fclose", "fread", "fwrite", "fseek", "ftell", "rewind",
                     "feof", "ferror", "fflush", "perror",
@@ -223,12 +223,34 @@ pub mod backend {
                 buf[off..off+8].copy_from_slice(&v.to_le_bytes());
             }
 
+            /// Legacy: build idata importing ALL DLLs (used by IsaCompiler::new for layout calculation)
             pub fn build_idata(idata_rva: u32, _extra_imports: &[&str]) -> IdataBuildResult {
+                build_idata_filtered(idata_rva, &std::collections::HashSet::new())
+            }
+
+            /// Build idata section, only importing DLLs that have at least one used slot.
+            /// If used_slots is empty, ALL DLLs are imported (legacy behavior).
+            pub fn build_idata_filtered(idata_rva: u32, used_slots: &std::collections::HashSet<usize>) -> IdataBuildResult {
                 let num_dlls = DLL_IMPORTS.len();
                 let total_funcs = total_function_count();
 
-                // Layout:
-                // 1. Import directory table: (num_dlls + 1) * 20 bytes (null-terminated)
+                // Determine which DLLs are actually needed
+                let mut dll_is_used = vec![used_slots.is_empty(); num_dlls];
+                if !used_slots.is_empty() {
+                    let mut slot_idx = 0usize;
+                    for (di, dll) in DLL_IMPORTS.iter().enumerate() {
+                        for _ in dll.functions {
+                            if used_slots.contains(&slot_idx) {
+                                dll_is_used[di] = true;
+                            }
+                            slot_idx += 1;
+                        }
+                    }
+                }
+
+                // IMPORTANT: Always use full num_dlls for directory size so that
+                // OFT/IAT offsets remain identical to the layout computed at compile time.
+                // Unused DLLs simply get zeroed descriptors (= null terminator for the loader).
                 let import_desc_offset = 0usize;
                 let import_desc_size = (num_dlls + 1) * 20;
                 let mut cursor = import_desc_size;
@@ -289,21 +311,26 @@ pub mod backend {
                     }
                 }
 
-                // Write import descriptors
+                // Write import descriptors — compact used DLLs to the front
+                // (zeroed entries in the middle would be treated as null terminator by the PE loader)
                 let mut global_func_idx = 0usize;
+                let mut desc_idx = 0usize;
                 for (di, dll) in DLL_IMPORTS.iter().enumerate() {
-                    let desc_off = import_desc_offset + di * 20;
-                    let oft_rva = idata_rva + dll_oft_offsets[di] as u32;
-                    let dll_name_rva = idata_rva + dll_name_offsets[di] as u32;
-                    let first_thunk_rva = idata_rva + dll_iat_offsets[di] as u32;
+                    if dll_is_used[di] {
+                        let desc_off = import_desc_offset + desc_idx * 20;
+                        let oft_rva = idata_rva + dll_oft_offsets[di] as u32;
+                        let dll_name_rva = idata_rva + dll_name_offsets[di] as u32;
+                        let first_thunk_rva = idata_rva + dll_iat_offsets[di] as u32;
 
-                    push_u32_to(&mut bytes, desc_off + 0, oft_rva);       // OriginalFirstThunk
-                    push_u32_to(&mut bytes, desc_off + 4, 0);             // TimeDateStamp
-                    push_u32_to(&mut bytes, desc_off + 8, 0);             // ForwarderChain
-                    push_u32_to(&mut bytes, desc_off + 12, dll_name_rva); // Name
-                    push_u32_to(&mut bytes, desc_off + 16, first_thunk_rva); // FirstThunk
+                        push_u32_to(&mut bytes, desc_off + 0, oft_rva);       // OriginalFirstThunk
+                        push_u32_to(&mut bytes, desc_off + 4, 0);             // TimeDateStamp
+                        push_u32_to(&mut bytes, desc_off + 8, 0);             // ForwarderChain
+                        push_u32_to(&mut bytes, desc_off + 12, dll_name_rva); // Name
+                        push_u32_to(&mut bytes, desc_off + 16, first_thunk_rva); // FirstThunk
+                        desc_idx += 1;
+                    }
 
-                    // Write OFT + IAT entries for this DLL
+                    // Always write OFT + IAT entries for ALL DLLs (keeps slot RVAs stable)
                     for fi in 0..dll.functions.len() {
                         let hn_rva = idata_rva + hint_name_offsets[global_func_idx];
                         let entry = hn_rva as u64;
@@ -349,11 +376,14 @@ pub mod backend {
                     ((dll.functions.len() + 1) * 8) as u32
                 }).sum();
 
+                // Report actual import directory size based on used DLLs
+                let actual_import_dir_size = ((desc_idx + 1) * 20) as u32;
+
                 IdataBuildResult {
                     bytes,
                     slot_to_iat_rva,
                     import_dir_rva,
-                    import_dir_size,
+                    import_dir_size: actual_import_dir_size,
                     iat_rva,
                     iat_size: iat_total_size,
                     program_strings_offset,
@@ -509,6 +539,17 @@ pub mod pe {
         iat_call_offsets: &[usize],
         string_imm64_offsets: &[usize],
     ) -> Result<(), Box<dyn std::error::Error>> {
+        generate_pe_filtered(code, data, output_path, iat_call_offsets, string_imm64_offsets, &std::collections::HashSet::new())
+    }
+
+    pub fn generate_pe_filtered(
+        code: &[u8],
+        data: &[u8],
+        output_path: &str,
+        iat_call_offsets: &[usize],
+        string_imm64_offsets: &[usize],
+        used_iat_slots: &std::collections::HashSet<usize>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let file_alignment: u32 = 0x200;
         let section_alignment: u32 = 0x1000;
 
@@ -519,7 +560,7 @@ pub mod pe {
         let text_virtual_pages = align_up_u32(code.len() as u32, section_alignment);
         let idata_rva: u32 = text_rva + text_virtual_pages.max(section_alignment);
 
-        let idata_result = iat_registry::build_idata(idata_rva, &[]);
+        let idata_result = iat_registry::build_idata_filtered(idata_rva, used_iat_slots);
         let mut idata = idata_result.bytes;
         if idata.len() != idata_result.program_strings_offset as usize {
             idata.resize(idata_result.program_strings_offset as usize, 0);

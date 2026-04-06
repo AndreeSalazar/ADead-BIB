@@ -153,11 +153,15 @@ impl IsaCompiler {
         let slot = iat_registry::slot_for_function(func_name)
             .unwrap_or_else(|| panic!("IAT function not found: {}", func_name));
         let iat_rva = idata_result.slot_to_iat_rva[slot];
+        self.used_iat_slots.insert(slot);
 
         self.ir.emit(ADeadOp::Sub {
             dst: Operand::Reg(Reg::RSP),
             src: Operand::Imm8(32),
         });
+        
+        self.ir.emit(ADeadOp::Cld);
+
         self.ir.emit(ADeadOp::CallIAT { iat_rva });
         self.ir.emit(ADeadOp::Add {
             dst: Operand::Reg(Reg::RSP),
@@ -242,6 +246,7 @@ impl IsaCompiler {
             "scanf" | "std::scanf" => Some("scanf"),
             "malloc" => Some("malloc"),
             "free" => Some("free"),
+            "snprintf" => Some("_snprintf"),
             _ => {
                 if iat_registry::slot_for_function(name).is_some() {
                     Some(name)

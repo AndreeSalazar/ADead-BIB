@@ -83,6 +83,7 @@ pub struct IsaCompiler {
     pub(crate) temp_alloc: TempAllocator,
     pub(crate) prologue_sub_index: Option<usize>,
     pub(crate) loop_stack: Vec<(Label, Label)>,
+    pub(crate) used_iat_slots: std::collections::HashSet<usize>,
 }
 
 impl IsaCompiler {
@@ -107,6 +108,7 @@ impl IsaCompiler {
             cpu_mode: CpuMode::Long64,
             named_labels: HashMap::new(),
             temp_alloc: TempAllocator::new(),
+            used_iat_slots: std::collections::HashSet::new(),
             prologue_sub_index: None,
             loop_stack: Vec::new(),
         }
