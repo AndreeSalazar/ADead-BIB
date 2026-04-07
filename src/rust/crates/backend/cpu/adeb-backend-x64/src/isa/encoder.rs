@@ -223,6 +223,7 @@ impl Encoder {
             ADeadOp::Mov { dst, src } => self.encode_mov(dst, src),
             ADeadOp::Store16 { base, disp, src } => self.encode_store16(base, *disp, src),
             ADeadOp::Store32 { base, disp, src } => self.encode_store32(base, *disp, src),
+            ADeadOp::Load32 { dst, base, disp } => self.encode_load32(dst, base, *disp),
             ADeadOp::MovZx { dst, src } => self.encode_movzx(dst, src),
             ADeadOp::Lea { dst, src } => self.encode_lea(dst, src),
             ADeadOp::Add { dst, src } => self.encode_add(dst, src),
@@ -933,6 +934,46 @@ impl Encoder {
                 self.emit(&[rex, 0x89, modrm]);
             } else {
                 self.emit(&[0x89, modrm]);
+            }
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Load32: mov eax, DWORD [base+disp] — 32-bit load (no REX.W, zero-extends to 64-bit)
+    /// Encodes: [optional REX] 8B ModR/M [disp]
+    /// On x86-64, writing to a 32-bit register zero-extends the upper 32 bits.
+    fn encode_load32(&mut self, dst: &Reg, base: &Reg, disp: i32) {
+        let (reg_idx, reg_ext) = reg_index(dst);
+        let (base_idx, base_ext) = reg_index(base);
+        // REX.W = false → 32-bit operand size (zero-extends to 64-bit)
+        let rex = self.rex_wrxb(false, reg_ext, base_ext);
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4; // RSP or R12
+
+        if disp == 0 && base_idx != 5 {
+            let modrm = self.modrm(0, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[rex, 0x8B, modrm]);
+            } else {
+                self.emit(&[0x8B, modrm]);
+            }
+            if requires_sib { self.emit(&[0x24]); }
+        } else if fits_i8 {
+            let modrm = self.modrm(1, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[rex, 0x8B, modrm]);
+            } else {
+                self.emit(&[0x8B, modrm]);
+            }
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
+        } else {
+            let modrm = self.modrm(2, reg_idx, base_idx);
+            if rex != 0x40 {
+                self.emit(&[rex, 0x8B, modrm]);
+            } else {
+                self.emit(&[0x8B, modrm]);
             }
             if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);

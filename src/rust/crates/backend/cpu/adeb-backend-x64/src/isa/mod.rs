@@ -620,6 +620,10 @@ pub enum ADeadOp {
     /// Used for writing 4-byte fields (GUID, D3D12 structs, etc.)
     Store32 { base: Reg, disp: i32, src: Reg },
 
+    /// Load32: mov eax, DWORD [base+disp] — 32-bit load (no REX.W, zero-extends to 64-bit)
+    /// Used for reading 4-byte int fields from C structs
+    Load32 { dst: Reg, base: Reg, disp: i32 },
+
     /// LEA dst, [base+disp] — Load effective address
     Lea { dst: Reg, src: Operand },
 
@@ -838,6 +842,7 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::MovZx { dst, src } => write!(f, "movzx {}, {}", dst, src),
             ADeadOp::Store16 { base, disp, src } => write!(f, "mov word [{}{:+}], {}", base, disp, src),
             ADeadOp::Store32 { base, disp, src } => write!(f, "mov dword [{}{:+}], {}", base, disp, src),
+            ADeadOp::Load32 { dst, base, disp } => write!(f, "mov dword {}, [{}{:+}]", dst, base, disp),
             ADeadOp::Lea { dst, src } => write!(f, "lea {}, {}", dst, src),
             ADeadOp::Add { dst, src } => write!(f, "add {}, {}", dst, src),
             ADeadOp::Sub { dst, src } => write!(f, "sub {}, {}", dst, src),

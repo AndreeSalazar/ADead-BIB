@@ -99,9 +99,11 @@ impl CppIsaCompiler {
         // First pass: register structs (same as C99 but with 8-byte slots)
         for st in &program.structs {
             let mut fields = Vec::new();
+            let mut field_sizes_vec = Vec::new();
             let mut offset = 0i32;
             for field in &st.fields {
                 fields.push((field.name.clone(), offset));
+                field_sizes_vec.push((field.name.clone(), 8i32));
                 offset += 8;
             }
             self.inner.insert_class_layout(
@@ -110,6 +112,7 @@ impl CppIsaCompiler {
                     name: st.name.clone(),
                     fields,
                     field_types: vec![],
+                    field_sizes: field_sizes_vec,
                     size: offset,
                     real_size: offset,
                 },
@@ -177,10 +180,12 @@ impl CppIsaCompiler {
             offset = 8;
         }
 
+        let field_sizes_vec = fields.iter().map(|(n, _)| (n.clone(), 8i32)).collect();
         ClassLayout {
             name: class.name.clone(),
             fields,
             field_types: vec![],
+            field_sizes: field_sizes_vec,
             size: offset,
             real_size: offset,
         }

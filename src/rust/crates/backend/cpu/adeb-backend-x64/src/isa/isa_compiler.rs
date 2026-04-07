@@ -93,7 +93,8 @@ pub struct ClassLayout {
     pub name: String,
     pub fields: Vec<(String, i32)>,         // (field_name, offset)
     pub field_types: Vec<(String, String)>, // (field_name, type_name) for nested struct detection
-    pub size: i32,                          // Stack layout size (8-byte aligned slots)
+    pub field_sizes: Vec<(String, i32)>,    // (field_name, byte_size) for sized MOV
+    pub size: i32,                          // Total struct size (C99 aligned)
     pub real_size: i32,                     // True C99 sizeof (for sizeof operator)
 }
 
@@ -184,6 +185,7 @@ impl IsaCompiler {
                 name: "Counter".to_string(),
                 fields: vec![("value".to_string(), 0), ("max_value".to_string(), 8)],
                 field_types: vec![],
+                field_sizes: vec![("value".to_string(), 8), ("max_value".to_string(), 8)],
                 size: 16,
                 real_size: 16,
             },
@@ -196,6 +198,7 @@ impl IsaCompiler {
                 name: "Point2D".to_string(),
                 fields: vec![("x".to_string(), 0), ("y".to_string(), 8)],
                 field_types: vec![],
+                field_sizes: vec![("x".to_string(), 8), ("y".to_string(), 8)],
                 size: 16,
                 real_size: 16,
             },
@@ -208,6 +211,7 @@ impl IsaCompiler {
                 name: "Shape".to_string(),
                 fields: vec![("id".to_string(), 0)],
                 field_types: vec![],
+                field_sizes: vec![("id".to_string(), 8)],
                 size: 8,
                 real_size: 8,
             },
@@ -220,6 +224,7 @@ impl IsaCompiler {
                 name: "Circle".to_string(),
                 fields: vec![("id".to_string(), 0), ("radius".to_string(), 8)],
                 field_types: vec![],
+                field_sizes: vec![("id".to_string(), 8), ("radius".to_string(), 8)],
                 size: 16,
                 real_size: 16,
             },
@@ -236,6 +241,7 @@ impl IsaCompiler {
                     ("h".to_string(), 16),
                 ],
                 field_types: vec![],
+                field_sizes: vec![("id".to_string(), 8), ("w".to_string(), 8), ("h".to_string(), 8)],
                 size: 24,
                 real_size: 24,
             },
@@ -252,6 +258,7 @@ impl IsaCompiler {
                     ("height".to_string(), 24),
                 ],
                 field_types: vec![],
+                field_sizes: vec![("origin".to_string(), 16), ("width".to_string(), 8), ("height".to_string(), 8)],
                 size: 32,
                 real_size: 32,
             },
@@ -264,6 +271,7 @@ impl IsaCompiler {
                 name: "Stack".to_string(),
                 fields: vec![("data".to_string(), 0), ("top".to_string(), 8)],
                 field_types: vec![],
+                field_sizes: vec![("data".to_string(), 8), ("top".to_string(), 8)],
                 size: 16,
                 real_size: 16,
             },
@@ -281,6 +289,7 @@ impl IsaCompiler {
                     ("count".to_string(), 24),
                 ],
                 field_types: vec![],
+                field_sizes: vec![("data".to_string(), 8), ("front".to_string(), 8), ("rear".to_string(), 8), ("count".to_string(), 8)],
                 size: 32,
                 real_size: 32,
             },
@@ -293,6 +302,7 @@ impl IsaCompiler {
                 name: "LinkedList".to_string(),
                 fields: vec![("head".to_string(), 0)],
                 field_types: vec![],
+                field_sizes: vec![("head".to_string(), 8)],
                 size: 8,
                 real_size: 8,
             },
@@ -304,6 +314,7 @@ impl IsaCompiler {
                 name: "Node".to_string(),
                 fields: vec![("value".to_string(), 0), ("next".to_string(), 8)],
                 field_types: vec![],
+                field_sizes: vec![("value".to_string(), 8), ("next".to_string(), 8)],
                 size: 16,
                 real_size: 16,
             },
@@ -403,6 +414,60 @@ impl IsaCompiler {
         }
         // Fallback to generic field offset
         self.get_field_offset(field_name)
+    }
+
+    /// Get field byte size for a specific class/struct field.
+    /// Returns the byte width (1, 2, 4, or 8) for sized memory access.
+    /// Falls back to 8 (qword) if not found.
+    fn get_class_field_size(&self, class_name: &str, field_name: &str) -> i32 {
+        if let Some(layout) = self.class_layouts.get(class_name) {
+            for (name, size) in &layout.field_sizes {
+                if name == field_name {
+                    return *size;
+                }
+            }
+        }
+        8 // default: 64-bit qword
+    }
+
+    /// Emit a sized load from [base_reg + disp] into RAX.
+    /// Uses Load32 for 4-byte fields, regular 64-bit MOV for 8-byte.
+    fn emit_sized_load(&mut self, base_reg: Reg, disp: i32, byte_size: i32) {
+        if byte_size == 4 {
+            self.ir.emit(ADeadOp::Load32 {
+                dst: Reg::RAX,
+                base: base_reg,
+                disp,
+            });
+        } else {
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(Reg::RAX),
+                src: Operand::Mem {
+                    base: base_reg,
+                    disp,
+                },
+            });
+        }
+    }
+
+    /// Emit a sized store from RAX into [base_reg + disp].
+    /// Uses Store32 for 4-byte fields, regular 64-bit MOV for 8-byte.
+    fn emit_sized_store(&mut self, base_reg: Reg, disp: i32, byte_size: i32, src_reg: Reg) {
+        if byte_size == 4 {
+            self.ir.emit(ADeadOp::Store32 {
+                base: base_reg,
+                disp,
+                src: src_reg,
+            });
+        } else {
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Mem {
+                    base: base_reg,
+                    disp,
+                },
+                src: Operand::Reg(src_reg),
+            });
+        }
     }
 
     /// Compute sizeof for a Type, consulting class_layouts for structs
@@ -658,6 +723,7 @@ impl IsaCompiler {
         // Fase 0: Registrar layouts de structs/clases del programa (MSVC ABI style)
         for st in &program.structs {
             let mut fields = Vec::new();
+            let mut field_sizes_vec = Vec::new();
             let mut offset = 0i32;
             for field in &st.fields {
                 fields.push((field.name.clone(), offset));
@@ -670,6 +736,7 @@ impl IsaCompiler {
                     Type::Array(_, None) => 8, // unsized array = pointer
                     _ => 8,                    // Primitives: 8-byte qword slots
                 };
+                field_sizes_vec.push((field.name.clone(), field_size));
                 offset += field_size;
             }
             let real_size_sum: i32 = st
@@ -697,12 +764,16 @@ impl IsaCompiler {
                     (f.name.clone(), type_name)
                 })
                 .collect();
-            // Register field IR types for float detection
+            // Register field IR types for float detection (always, even if layout exists)
             for field in &st.fields {
                 self.field_ir_types.insert(
                     (st.name.clone(), field.name.clone()),
                     field.field_type.clone(),
                 );
+            }
+            // Only register layout if not already present (c_isa may have registered C99 layouts)
+            if self.class_layouts.contains_key(&st.name) {
+                continue;
             }
             self.class_layouts.insert(
                 st.name.clone(),
@@ -710,6 +781,7 @@ impl IsaCompiler {
                     name: st.name.clone(),
                     fields,
                     field_types,
+                    field_sizes: field_sizes_vec,
                     size: offset,
                     real_size,
                 },
@@ -1946,6 +2018,10 @@ impl IsaCompiler {
                     };
 
                     // Get layout from class_layouts (registered during compile phase 0)
+                    eprintln!("[DEBUG VarDecl struct] name={} struct_name={} has_layout={}", name, struct_name, self.class_layouts.contains_key(&struct_name));
+                    if let Some(layout) = self.class_layouts.get(&struct_name) {
+                        eprintln!("[DEBUG VarDecl layout] size={} fields={:?}", layout.size, layout.fields);
+                    }
                     let (struct_size, fields) =
                         if let Some(layout) = self.class_layouts.get(&struct_name) {
                             (layout.size, layout.fields.clone())
@@ -3767,6 +3843,10 @@ impl IsaCompiler {
                                 .as_ref()
                                 .map(|sn| self.get_class_field_offset(sn, field))
                                 .unwrap_or_else(|| self.get_field_offset(field));
+                            let field_size = struct_name
+                                .as_ref()
+                                .map(|sn| self.get_class_field_size(sn, field))
+                                .unwrap_or(8);
                             // Load pointer from stack
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Reg(Reg::RBX),
@@ -3775,14 +3855,8 @@ impl IsaCompiler {
                                     disp: ptr_offset,
                                 },
                             });
-                            // Load field at [pointer + field_offset]
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Reg(Reg::RAX),
-                                src: Operand::Mem {
-                                    base: Reg::RBX,
-                                    disp: field_offset,
-                                },
-                            });
+                            // Load field at [pointer + field_offset] with correct size
+                            self.emit_sized_load(Reg::RBX, field_offset, field_size);
                             return;
                         }
                     }
@@ -4233,6 +4307,145 @@ impl IsaCompiler {
                         src: Operand::Reg(Reg::RBX),
                     });
                     // Load value at [pointer + field_offset + i*8]
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RBX),
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Mem {
+                            base: Reg::RBX,
+                            disp: 0,
+                        },
+                    });
+                } else if let Expr::FieldAccess { object: fa_obj, field: fa_field } = object.as_ref() {
+                    // Handle struct_field[index] like v.bytes[0]
+                    // The field is an array inside a struct — use its stack address
+                    eprintln!("[DEBUG Index/FieldAccess] object={:?} field={}", fa_obj, fa_field);
+                    if let Expr::Variable(obj_name) = fa_obj.as_ref() {
+                        let var_field = format!("{}.{}", obj_name, fa_field);
+                            eprintln!("[DEBUG] var_field={} found={} all_vars={:?}", var_field, self.variables.contains_key(&var_field), self.variables.keys().filter(|k| k.starts_with(&format!("{}.", obj_name))).collect::<Vec<_>>());
+                        if let Some(&field_offset) = self.variables.get(&var_field) {
+                            // Determine element stride from the field's array type
+                            let elem_stride = self.variable_types.get(obj_name)
+                                .and_then(|ty| match ty {
+                                    Type::Struct(sn) | Type::Named(sn) | Type::Class(sn) => {
+                                        self.class_layouts.get(sn.as_str())
+                                    }
+                                    _ => None,
+                                })
+                                .and_then(|layout| {
+                                    // Find field IR type from field_ir_types
+                                    None::<u8> // will fall through
+                                })
+                                .unwrap_or_else(|| {
+                                    // Check field_ir_types for the actual element type
+                                    if let Some(ty) = self.variable_types.get(obj_name) {
+                                        match ty {
+                                            Type::Struct(sn) | Type::Named(sn) | Type::Class(sn) => {
+                                                if let Some(fty) = self.field_ir_types.get(&(sn.clone(), fa_field.clone())) {
+                                                    match fty {
+                                                        Type::Array(inner, _) => {
+                                                            match inner.as_ref() {
+                                                                Type::I8 | Type::U8 => 1,
+                                                                Type::I16 | Type::U16 => 2,
+                                                                Type::I32 | Type::U32 => 4,
+                                                                _ => 8,
+                                                            }
+                                                        }
+                                                        _ => 8,
+                                                    }
+                                                } else { 8 }
+                                            }
+                                            _ => 8,
+                                        }
+                                    } else { 8 }
+                                });
+
+                            if let Expr::Number(idx) = index.as_ref() {
+                                let elem_offset = field_offset + (*idx as i32 * elem_stride as i32);
+                                if elem_stride == 1 {
+                                    // Byte load from stack
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RAX),
+                                        src: Operand::Mem {
+                                            base: Reg::RBP,
+                                            disp: elem_offset,
+                                        },
+                                    });
+                                    self.ir.emit(ADeadOp::And {
+                                        dst: Reg::RAX,
+                                        src: Reg::RAX,
+                                    });
+                                    // Mask to byte
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RBX),
+                                        src: Operand::Imm64(0xFF),
+                                    });
+                                    self.ir.emit(ADeadOp::And {
+                                        dst: Reg::RAX,
+                                        src: Reg::RBX,
+                                    });
+                                } else {
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RAX),
+                                        src: Operand::Mem {
+                                            base: Reg::RBP,
+                                            disp: elem_offset,
+                                        },
+                                    });
+                                }
+                            } else {
+                                // Dynamic index: LEA base, compute index*stride, add, load
+                                self.emit_expression(index);
+                                self.emit_index_scale(elem_stride);
+                                self.ir.emit(ADeadOp::Lea {
+                                    dst: Reg::RBX,
+                                    src: Operand::Mem {
+                                        base: Reg::RBP,
+                                        disp: field_offset,
+                                    },
+                                });
+                                self.ir.emit(ADeadOp::Add {
+                                    dst: Operand::Reg(Reg::RBX),
+                                    src: Operand::Reg(Reg::RAX),
+                                });
+                                self.ir.emit(ADeadOp::Mov {
+                                    dst: Operand::Reg(Reg::RAX),
+                                    src: Operand::Mem {
+                                        base: Reg::RBX,
+                                        disp: 0,
+                                    },
+                                });
+                                if elem_stride == 1 {
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RBX),
+                                        src: Operand::Imm64(0xFF),
+                                    });
+                                    self.ir.emit(ADeadOp::And {
+                                        dst: Reg::RAX,
+                                        src: Reg::RBX,
+                                    });
+                                }
+                            }
+                            return;
+                        }
+                    }
+                    // Fallback: evaluate FieldAccess as pointer, then index
+                    self.emit_expression(index);
+                    self.ir.emit(ADeadOp::Push {
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                    self.emit_expression(object);
+                    self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
+                    self.ir.emit(ADeadOp::Shl {
+                        dst: Reg::RBX,
+                        amount: 3,
+                    });
+                    self.ir.emit(ADeadOp::Add {
+                        dst: Operand::Reg(Reg::RAX),
+                        src: Operand::Reg(Reg::RBX),
+                    });
                     self.ir.emit(ADeadOp::Mov {
                         dst: Operand::Reg(Reg::RBX),
                         src: Operand::Reg(Reg::RAX),

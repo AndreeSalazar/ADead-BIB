@@ -145,72 +145,65 @@ impl CIsaCompiler {
     fn register_c99_layouts(&mut self, program: &crate::frontend::ast::Program) {
         for st in &program.structs {
             let mut fields = Vec::new();
+            let mut field_sizes_vec = Vec::new();
             let mut offset = 0i32;
-            let mut max_align = 1i32;
 
             let mut field_type_pairs: Vec<(String, String)> = Vec::new();
 
-            for field in &st.fields {
-                let field_size = c99_sizeof(&field.field_type);
+            // Compute real C99 size for sizeof reporting
+            let mut real_offset = 0i32;
+            let mut max_align = 1i32;
 
-                // For struct fields, look up the struct size from already-registered layouts
-                let actual_size = if field_size == 0 {
-                    // It's a struct type — look up its layout
+            for field in &st.fields {
+                let c99_size = c99_sizeof(&field.field_type);
+
+                // Determine actual C99 byte size of this field
+                let actual_c99_size = if c99_size == 0 {
                     match &field.field_type {
                         Type::Struct(name) | Type::Named(name) | Type::Class(name) => {
                             field_type_pairs.push((field.name.clone(), name.clone()));
                             self.inner
                                 .class_layouts()
                                 .get(name)
-                                .map(|l| l.size)
+                                .map(|l| l.real_size)
                                 .unwrap_or(8)
                         }
                         _ => 8,
                     }
+                } else if matches!(&field.field_type, Type::Pointer(_)) {
+                    8
                 } else {
-                    field_size
+                    c99_size
                 };
 
-                let field_align = c99_align(actual_size);
-                if field_align > max_align {
-                    max_align = field_align;
-                }
-
-                // Align the current offset
-                offset = align_to(offset, field_align);
-                fields.push((field.name.clone(), offset));
-
-                // Advance by field size (minimum 8 for stack slot compatibility)
-                // NOTE: We use max(actual_size, 8) for stack layout because
-                // the ISA compiler stores all values as 64-bit qwords on stack.
-                // But for sizeof reporting, we use the real size.
-                offset += 8.max(actual_size);
-            }
-
-            // Align total struct size to its largest member alignment
-            let total_size = align_to(offset, max_align.max(8));
-
-            // Compute real C99 sizeof (sum of actual field sizes with alignment)
-            let mut real_offset = 0i32;
-            for field in &st.fields {
-                let fs = c99_sizeof(&field.field_type);
-                let actual_fs = if fs == 0 {
-                    match &field.field_type {
-                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => self
-                            .inner
+                // Stack layout: 8-byte slots (ISA compiler requires qword-width variables)
+                // For nested structs, use their full layout size
+                let stack_slot_size = match &field.field_type {
+                    Type::Struct(name) | Type::Named(name) | Type::Class(name) => {
+                        self.inner
                             .class_layouts()
-                            .get(n)
-                            .map(|l| l.real_size)
-                            .unwrap_or(8),
-                        _ => 8,
+                            .get(name)
+                            .map(|l| l.size)
+                            .unwrap_or(8)
                     }
-                } else {
-                    fs
+                    _ => 8, // all primitives/pointers use 8-byte slots on stack
                 };
-                let fa = c99_align(actual_fs);
+
+                fields.push((field.name.clone(), offset));
+                // field_sizes stores the REAL C99 byte size for sized MOV instructions
+                field_sizes_vec.push((field.name.clone(), actual_c99_size));
+                offset += stack_slot_size;
+
+                // Real C99 layout for sizeof
+                let fa = c99_align(actual_c99_size);
+                if fa > max_align { max_align = fa; }
                 real_offset = align_to(real_offset, fa);
-                real_offset += actual_fs;
+                real_offset += actual_c99_size;
             }
+
+            // Stack size: 8-byte aligned
+            let total_size = align_to(offset, 8);
+            // Real C99 sizeof
             let real_size = align_to(real_offset, max_align);
 
             self.inner.insert_class_layout(
@@ -219,6 +212,7 @@ impl CIsaCompiler {
                     name: st.name.clone(),
                     fields,
                     field_types: field_type_pairs,
+                    field_sizes: field_sizes_vec,
                     size: total_size,
                     real_size,
                 },
