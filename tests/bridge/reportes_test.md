@@ -8,32 +8,32 @@
 
 ---
 
-## Summary (Updated 2026-04-06)
+## Summary (Updated 2026-04-07)
 
 | # | Test | Compile | Run | Status | Notes |
 |---|------|---------|-----|--------|-------|
 | 01 | `01_console_hello.c` | ✅ OK (9728 B) | ✅ exit=0 | **PASS** | All output correct |
 | 02 | `02_string_ops.c` | ✅ OK | ⚠️ exit=4 | **PARTIAL** | 10/14 pass; strchr/memcpy/memset/memcmp fail |
-| 03 | `03_math_logic.c` | ✅ OK | ✅ exit=0 | **PASS** | 12/12 pass |
-| 04 | `04_memory_alloc.c` | ✅ OK | ⚠️ exit=1 | **PARTIAL** | 6/7 pass; calloc zero-check fails |
-| 05 | `05_control_flow.c` | ✅ OK | ✅ exit=0 | **PASS** | 11/11 pass |
+| 03 | `03_math_logic.c` | ✅ OK | ✅ exit=0 | **PASS** | 12/12 pass; %s ternary prints pointer |
+| 04 | `04_memory_alloc.c` | ✅ OK | ⚠️ exit=3 | **PARTIAL** | 4/7 pass; calloc zero/realloc/large alloc fail |
+| 05 | `05_control_flow.c` | ✅ OK | ✅ exit=0 | **PASS** | 11/11 pass; %s ternary prints pointer |
 | 06 | `06_structs_unions.c` | ✅ OK (12288 B) | ❌ CRASH (0xC0000005) | **FAIL** | Access violation at runtime |
 | 07 | `07_pointers_arrays.c` | ✅ OK | ❌ CRASH (0xC0000005) | **FAIL** | Access violation at runtime |
-| 08 | `08_win32_window.c` | ✅ OK | ❌ exit=1 | **FAIL** | Win32 API runtime error |
-| 09 | `09_gdi_drawing.c` | ✅ OK | ❌ exit=1 | **FAIL** | GDI runtime error |
-| 10 | `10_opengl_basic.c` | ✅ OK | ❌ exit=1 | **FAIL** | OpenGL runtime error |
-| 11 | `11_dx9_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid for this platform |
-| 12 | `12_dx11_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid for this platform |
-| 13 | `13_dx12_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid for this platform |
+| 08 | `08_win32_window.c` | ✅ OK | ✅ exit=0 | **PASS** | Win32 API calls work, 120 frames |
+| 09 | `09_gdi_drawing.c` | ✅ OK | ✅ exit=0 | **PASS** | GDI gradient + rectangles, 180 frames |
+| 10 | `10_opengl_basic.c` | ✅ OK | ✅ exit=0 | **PASS** | OpenGL 1.1 context + rendering, 180 frames |
+| 11 | `11_dx9_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid — empty .text section |
+| 12 | `12_dx11_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid — empty .text section |
+| 13 | `13_dx12_window.c` | ✅ OK | ❌ Invalid PE | **FAIL** | PE invalid — empty .text section |
 
 ### Totals
 
 | Metric | Count |
 |--------|-------|
 | **Compile success** | 13/13 (100%) |
-| **Run PASS** | 3/13 (01, 03, 05) |
+| **Run PASS** | 6/13 (01, 03, 05, 08, 09, 10) |
 | **Run PARTIAL** | 2/13 (02, 04) |
-| **Run FAIL** | 8/13 |
+| **Run FAIL** | 5/13 (06, 07, 11, 12, 13) |
 
 ### Key Fix Applied This Session
 
@@ -60,13 +60,15 @@ PASS: basic arithmetic
 - If/else branching: correct
 - Return code: 0 ✅
 
-### ❌ TEST 02 — String Operations (CRASH)
+### ⚠️ TEST 02 — String Operations (PARTIAL: 10/14)
 
-- **Exit code:** 0xC0000005 (ACCESS_VIOLATION)
-- **Root cause:** The ISA compiler generates `call [IAT]` for string functions (strlen, strcpy, strcmp, strcat, strchr, memcpy, memset, memcmp). These are correctly imported via the PE IAT from `msvcrt.dll`. The crash happens due to local array variable access — `char buf[64]` — the stack frame for array locals is not properly allocated or addressed in the x64 code gen.
-- **Affects:** Any test using local char arrays with string functions
+- **Exit code:** 4 (4 failures)
+- **Passing:** strlen, strcpy, strcmp, strcat, strncpy, strncmp, strncat, strstr, strtok, sprintf (10/14)
+- **Failing:** strchr, memcpy, memset, memcmp (4/14)
+- **Root cause:** The 4 failing functions involve `unsigned char` pointer arithmetic and byte-level memory operations. The ISA compiler's codegen for `memcpy`/`memset`/`memcmp` byte loops and `strchr` character search generates incorrect addressing for byte-level access.
+- **Affects:** Any test using byte-level memory operations
 
-### ⚠️ TEST 03 — Math & Logic (PARTIAL PASS)
+### ✅ TEST 03 — Math & Logic (PASS — 12/12)
 
 ```
 === ADead-BIB Bridge Test 03: Math & Logic ===
@@ -74,10 +76,10 @@ Results: 12 passed, 0 failed
 === Test 03: 1073750447 ===
 ```
 
-- All 12 math/logic sub-tests pass
-- **Issue:** The final `printf("=== Test 03: %s ===\n", fail == 0 ? "PASS" : "FAIL")` prints the string pointer as integer (1073750447 = 0x4000102F) instead of the actual string
+- All 12 math/logic sub-tests pass ✅
+- **Cosmetic issue:** The final `printf("=== Test 03: %s ===\n", fail == 0 ? "PASS" : "FAIL")` prints the string pointer as integer (1073750447 = 0x4000102F) instead of the actual string
 - **Root cause:** ISA compiler handles `%s` with ternary string expression incorrectly — it pushes the pointer value but printf interprets it as `%s` → prints the numeric pointer value because the data section address isn't properly dereferenced in the format string handling
-- **Fix needed:** Ternary expression codegen for string results in printf args
+- **Fix needed:** Ternary expression codegen for string results in printf args (cosmetic — all sub-tests pass)
 
 ### ⚠️ TEST 04 — Memory Allocation (PARTIAL PASS: 4/7)
 
@@ -99,7 +101,7 @@ Results: 4 passed, 3 failed
 
 - **Root cause:** The loop-based zero checking and post-realloc string comparison relies on correct array indexing codegen which has issues with `unsigned char` casts and pointer arithmetic after realloc
 
-### ⚠️ TEST 05 — Control Flow (PARTIAL PASS)
+### ✅ TEST 05 — Control Flow (PASS — 11/11)
 
 ```
 === ADead-BIB Bridge Test 05: Control Flow ===
@@ -116,7 +118,7 @@ Results: 11 passed, 0 failed
 - fibonacci(10)=55, fibonacci(20)=6765: ✅
 - is_prime: ✅
 - break/continue: ✅
-- **Same %s ternary issue** as test 03
+- **Cosmetic:** Same %s ternary issue as test 03 (all sub-tests pass)
 
 ### ❌ TEST 06 — Structs & Unions (CRASH)
 
@@ -132,7 +134,7 @@ Results: 11 passed, 0 failed
 - **Compile warning:** "2 unresolved label patches (35 labels known, 36 patches total)"
 - **Root cause:** Complex pointer arithmetic, 2D array access (`mat[i][j]`), and function pointer calls. The unresolved label patches indicate jump targets that the encoder couldn't resolve, leading to jumps to invalid addresses.
 
-### ✅ TEST 08 — Win32 Window (PASS)
+### ✅ TEST 08 — Win32 Window (PASS) ★
 
 ```
 === ADead-BIB Bridge Test 08: Win32 Window ===
@@ -147,8 +149,9 @@ Window lived for 120 frames
 - RegisterClassA + CreateWindowExA: ✅
 - Message loop with PeekMessageA: ✅
 - Window displayed for 120 frames (~2 seconds): ✅
+- Return code: 0 ✅
 
-### ✅ TEST 09 — GDI Drawing (PASS)
+### ✅ TEST 09 — GDI Drawing (PASS) ★
 
 ```
 === ADead-BIB Bridge Test 09: GDI Drawing ===
@@ -161,8 +164,9 @@ GDI window lived for 180 frames
 - GDI API (GetDC, SetPixel, CreateSolidBrush, Rectangle): ✅
 - Gradient rendering via SetPixel: ✅
 - Colored rectangles via GDI brushes: ✅
+- Return code: 0 ✅
 
-### ✅ TEST 10 — OpenGL 1.1 (PASS)
+### ✅ TEST 10 — OpenGL 1.1 (PASS) ★
 
 ```
 === ADead-BIB Bridge Test 10: OpenGL ===
@@ -177,6 +181,7 @@ OpenGL rendered 180 frames
 - ChoosePixelFormat + SetPixelFormat: ✅
 - glClear + glBegin/glEnd triangle rendering: ✅
 - SwapBuffers for 180 frames: ✅
+- Return code: 0 ✅
 
 ### ❌ TEST 11 — DirectX 9 (INVALID PE)
 
@@ -208,8 +213,7 @@ OpenGL rendered 180 frames
 
 | Issue | Affected Tests | Description |
 |-------|---------------|-------------|
-| **Struct codegen** | 06, 07 | Struct field access, struct-by-value passing crashes |
-| **Array local codegen** | 02, 04 | Local `char[]` arrays with string functions crash |
+| **Struct codegen** | 06, 07 | Struct field access, struct-by-value passing crashes (0xC0000005) |
 | **Empty codegen for complex C** | 11, 12, 13 | goto/labels, vtable casts, function pointer typedefs produce empty .text |
 | **Unresolved label patches** | 07 | Jump encoder can't resolve all forward references |
 
@@ -217,15 +221,17 @@ OpenGL rendered 180 frames
 
 | Issue | Affected Tests | Description |
 |-------|---------------|-------------|
-| **%s ternary codegen** | 03, 05 | `printf("%s", cond ? "A" : "B")` prints pointer address instead of string |
+| **Byte-level memory ops** | 02 | strchr/memcpy/memset/memcmp fail — byte-level pointer arithmetic |
 | **calloc zero-check loop** | 04 | For loop checking calloc zeros fails (array indexing + unsigned char) |
 | **realloc + strcmp** | 04 | Post-realloc string comparison produces wrong result |
+| **Large alloc content** | 04 | 1MB alloc content verification fails |
 
 ### P2 — Low (cosmetic)
 
 | Issue | Affected Tests | Description |
 |-------|---------------|-------------|
-| **Encoder warnings** | 07, 08 | "unresolved label patches" warnings in stderr |
+| **%s ternary codegen** | 03, 05 | `printf("%s", cond ? "A" : "B")` prints pointer address instead of string |
+| **Encoder warnings** | 07 | "unresolved label patches" warnings in stderr |
 
 ---
 
@@ -266,12 +272,13 @@ OpenGL rendered 180 frames
 
 ## What Needs Work
 
-1. **Struct field access codegen** — struct member read/write generates invalid x64 code
-2. **Local array stack allocation** — char arrays on stack not properly allocated
-3. **Complex pointer casts** — triple-pointer dereference (vtable pattern) not handled
-4. **goto/label forward references** — label encoder doesn't handle all forward jumps
-5. **Function pointer typedef + indirect call** — vtable-style calls not codegen'd
-6. **%s format specifier with ternary** — string pointer not properly passed to printf
+1. **Struct field access codegen** — struct member read/write generates invalid x64 code (Test 06, 07)
+2. **Byte-level memory operations** — strchr/memcpy/memset/memcmp codegen for byte-level pointer ops (Test 02)
+3. **Complex pointer casts** — triple-pointer dereference (vtable pattern) not handled (Tests 11–13)
+4. **goto/label forward references** — label encoder doesn't handle all forward jumps (Tests 11–13)
+5. **Function pointer typedef + indirect call** — vtable-style calls not codegen'd (Tests 11–13)
+6. **calloc/realloc verification** — post-alloc content checks fail (Test 04)
+7. **%s format specifier with ternary** — string pointer not properly passed to printf (cosmetic, Tests 03, 05)
 
 ---
 
@@ -280,36 +287,35 @@ OpenGL rendered 180 frames
 | # | Fix | Priority | Status | Complexity | Tests Fixed |
 |---|-----|----------|--------|------------|-------------|
 | 1 | Struct stack allocation + field offset codegen | P0 | 🔴 Pending | High | 06, 07 |
-| 2 | Local `char[]` array stack frame allocation | P0 | 🔴 Pending | Medium | 02, 04 |
+| 2 | Byte-level memory ops (strchr/memcpy/memset/memcmp) | P1 | 🔴 Pending | Medium | 02 |
 | 3 | `goto` / label forward-reference resolution | P0 | 🔴 Pending | Medium | 11, 12, 13 |
 | 4 | Vtable triple-pointer cast codegen (`void***`) | P0 | 🔴 Pending | High | 11, 12, 13 |
 | 5 | Function pointer typedef + indirect call codegen | P0 | 🔴 Pending | High | 11, 12, 13 |
 | 6 | Unresolved label patch resolution in encoder | P0 | 🔴 Pending | Medium | 07 |
-| 7 | `%s` ternary expression codegen in printf args | P1 | 🔴 Pending | Low | 03, 05 |
+| 7 | `%s` ternary expression codegen in printf args | P2 | 🔴 Pending | Low | 03, 05 |
 | 8 | `calloc` zero-check loop (array index + `unsigned char`) | P1 | 🔴 Pending | Medium | 04 |
 | 9 | `realloc` + `strcmp` post-realloc string comparison | P1 | 🔴 Pending | Medium | 04 |
+| 10 | Large alloc (1MB) content verification | P1 | 🔴 Pending | Medium | 04 |
 
 ---
 
 ## Recommended Fix Order
 
-1. **Local array stack allocation (Fix #2)** — Unblocks Test 02 and partially unblocks Test 04. Medium complexity, high reward. Stack frame codegen for local arrays is a foundational primitive needed by almost every non-trivial C program.
+1. **Struct stack allocation + field offset codegen (Fix #1)** — Unblocks Tests 06 and 07. High complexity but high reward — struct field access is a foundational primitive for almost every non-trivial C program.
 
-2. **Struct stack allocation + field offset codegen (Fix #1)** — Unblocks Test 06 and partially unblocks Test 07. Shares codegen infrastructure with Fix #2 (both are stack layout issues). Fixing structs + arrays together builds a solid stack frame model.
+2. **Unresolved label patch resolution (Fix #6)** — Unblocks Test 07 (combined with Fix #1). Isolated to the encoder's forward-reference pass — should be a targeted fix in the label resolution table.
 
-3. **Unresolved label patch resolution (Fix #6)** — Unblocks Test 07 (combined with Fix #1). Isolated to the encoder's forward-reference pass — should be a targeted fix in the label resolution table.
+3. **`goto` / label forward-reference resolution (Fix #3)** — Prerequisite for DX tests 11–13. The ISA compiler needs to emit code for `goto` statements and resolve label targets during encoding.
 
-4. **`goto` / label forward-reference resolution (Fix #3)** — Prerequisite for DX tests 11–13. The ISA compiler needs to emit code for `goto` statements and resolve label targets during encoding.
+4. **Vtable triple-pointer cast codegen (Fix #4)** — Required for DX9/11/12 vtable patterns. Depends on correct pointer arithmetic already working from Fixes #1–#3.
 
-5. **Vtable triple-pointer cast codegen (Fix #4)** — Required for DX9/11/12 vtable patterns. Depends on correct pointer arithmetic already working from Fixes #1–#3.
+5. **Function pointer typedef + indirect call (Fix #5)** — Completes DX support together with Fixes #3–#4. Requires `call rax` codegen for indirect function pointers loaded from vtable offsets.
 
-6. **Function pointer typedef + indirect call (Fix #5)** — Completes DX support together with Fixes #3–#4. Requires `call rax` codegen for indirect function pointers loaded from vtable offsets.
+6. **Byte-level memory ops (Fix #2)** — Fixes strchr/memcpy/memset/memcmp in Test 02. Medium complexity, upgrades Test 02 from PARTIAL (10/14) to PASS.
 
-7. **`%s` ternary codegen (Fix #7)** — Low complexity, upgrades Tests 03 and 05 from PARTIAL to PASS. The ternary expression needs to evaluate to a pointer that gets pushed as a `%s` argument.
+7. **`calloc` zero-check + realloc + large alloc (Fixes #8, #9, #10)** — Upgrades Test 04 from PARTIAL (4/7) to PASS. These share root cause in pointer arithmetic after allocation.
 
-8. **`calloc` zero-check loop (Fix #8)** — Depends on Fix #2 (array indexing). Once local arrays work, the zero-check loop in Test 04 should be re-tested before applying further fixes.
-
-9. **`realloc` + `strcmp` (Fix #9)** — Last fix. Depends on correct pointer arithmetic post-realloc. May resolve itself once Fixes #2 and #8 land.
+8. **`%s` ternary codegen (Fix #7)** — Low complexity, cosmetic fix. Tests 03 and 05 already PASS (all sub-tests pass), this just fixes the summary line display.
 
 ---
 
@@ -352,7 +358,7 @@ OpenGL rendered 180 frames
 | `malloc` / `free` | ✅ | ✅ | ✅ Test 04 | ✅ Working |
 | `calloc` | ✅ | ✅ | ⚠️ Test 04 | 🟡 Alloc works, zero-check fails |
 | `realloc` | ✅ | ⚠️ | ❌ Test 04 | 🟡 Post-realloc data wrong |
-| Local `char[]` arrays | ✅ | ❌ | ❌ Test 02 | 🔴 Stack frame crash |
+| Local `char[]` arrays | ✅ | ⚠️ | ⚠️ Test 02 | 🟡 10/14 pass; byte-level ops fail |
 | Struct declaration | ✅ | ⚠️ | ❌ Test 06 | 🔴 Field access crash |
 | Struct field access (`.` / `->`) | ✅ | ❌ | ❌ Test 06 | 🔴 Not implemented |
 | Struct by-value passing | ✅ | ❌ | ❌ Test 06 | 🔴 Not implemented |
@@ -362,9 +368,9 @@ OpenGL rendered 180 frames
 | `goto` / labels | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Empty codegen |
 | Triple-pointer casts (`void***`) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Empty codegen |
 | Typedef (function pointer) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Empty codegen |
-| Win32 API (IAT) | ✅ | ✅ | ✅ Tests 08–10 | ✅ Working |
-| GDI functions | ✅ | ✅ | ✅ Test 09 | ✅ Working |
-| OpenGL 1.1 | ✅ | ✅ | ✅ Test 10 | ✅ Working |
+| Win32 API (IAT) | ✅ | ✅ | ✅ Test 08 — PASS | ✅ Working |
+| GDI functions | ✅ | ✅ | ✅ Test 09 — PASS | ✅ Working |
+| OpenGL 1.1 | ✅ | ✅ | ✅ Test 10 — PASS | ✅ Working |
 | DirectX 9/11/12 (vtable) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Blocked on fixes #3–#5 |
 | `float` / `double` arithmetic | ✅ | ❌ | ❌ — | 🔴 Not tested |
 | Variadic functions (`va_list`) | ✅ | ❌ | ❌ — | 🔴 Not tested |

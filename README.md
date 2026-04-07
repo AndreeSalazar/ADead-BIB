@@ -628,7 +628,8 @@ Sin CRT. Sin exception handling tables. Sin RTTI. Sin debug info por defecto. So
 | Integration tests | 18 | 18 | **100%** ✅ |
 | FASE tests (C99+C++17+PE) | 19 | 19 | **100%** ✅ |
 | ASM-BIB Bridge tests | 33 | 33 | **100%** ✅ |
-| Bridge C fixtures | 13 | 13 | **100%** ✅ |
+| Bridge C fixtures (compile) | 13 | 13 | **100%** ✅ |
+| Bridge C fixtures (run) | 13 | 6 PASS + 2 PARTIAL | **46% full pass** |
 | **Total Rust tests** | **580+** | **580+** | **100%** ✅ |
 
 ```
@@ -648,9 +649,10 @@ Integration (18): header_main.h C/C++, fastos_*.h, symbol registries,
 ASM-BIB Bridge (33): COFF parse, 21 function verify, merge, call patch,
                      symbol resolution, machine code validation — ALL PASS ✅
 
-Bridge Fixtures (13): console, strings, math, memory, control flow,
-                      structs, pointers, Win32 window, GDI drawing,
-                      OpenGL, DX9, DX11, DX12 — ALL COMPILE ✅
+Bridge Fixtures (13): ALL COMPILE ✅ — Runtime results:
+  PASS (6): console, math, control flow, Win32 window, GDI, OpenGL
+  PARTIAL (2): strings (10/14), memory (4/7)
+  FAIL (5): structs (crash), pointers (crash), DX9/DX11/DX12 (invalid PE)
 ```
 
 ---
