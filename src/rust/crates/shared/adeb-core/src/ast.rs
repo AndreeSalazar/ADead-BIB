@@ -572,6 +572,8 @@ pub struct Struct {
     pub fields: Vec<StructField>,
     /// @packed — no padding, exact memory layout (for hardware structs)
     pub is_packed: bool,
+    /// Union semantics — all fields share offset 0, size = max(field sizes)
+    pub is_union: bool,
 }
 
 #[derive(Debug, Clone)]

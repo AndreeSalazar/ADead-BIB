@@ -154,6 +154,10 @@ impl CIsaCompiler {
             let mut real_offset = 0i32;
             let mut max_align = 1i32;
 
+            // Union tracking: max sizes for union layout
+            let mut union_max_stack = 0i32;
+            let mut union_max_real = 0i32;
+
             for field in &st.fields {
                 let c99_size = c99_sizeof(&field.field_type);
 
@@ -189,22 +193,39 @@ impl CIsaCompiler {
                     _ => 8, // all primitives/pointers use 8-byte slots on stack
                 };
 
-                fields.push((field.name.clone(), offset));
-                // field_sizes stores the REAL C99 byte size for sized MOV instructions
-                field_sizes_vec.push((field.name.clone(), actual_c99_size));
-                offset += stack_slot_size;
+                if st.is_union {
+                    // UNION: all fields at offset 0, size = max(field sizes)
+                    fields.push((field.name.clone(), 0));
+                    field_sizes_vec.push((field.name.clone(), actual_c99_size));
+                    if stack_slot_size > union_max_stack { union_max_stack = stack_slot_size; }
+                    if actual_c99_size > union_max_real { union_max_real = actual_c99_size; }
+                    let fa = c99_align(actual_c99_size);
+                    if fa > max_align { max_align = fa; }
+                } else {
+                    // STRUCT: sequential layout
+                    fields.push((field.name.clone(), offset));
+                    field_sizes_vec.push((field.name.clone(), actual_c99_size));
+                    offset += stack_slot_size;
 
-                // Real C99 layout for sizeof
-                let fa = c99_align(actual_c99_size);
-                if fa > max_align { max_align = fa; }
-                real_offset = align_to(real_offset, fa);
-                real_offset += actual_c99_size;
+                    // Real C99 layout for sizeof
+                    let fa = c99_align(actual_c99_size);
+                    if fa > max_align { max_align = fa; }
+                    real_offset = align_to(real_offset, fa);
+                    real_offset += actual_c99_size;
+                }
             }
 
-            // Stack size: 8-byte aligned
-            let total_size = align_to(offset, 8);
-            // Real C99 sizeof
-            let real_size = align_to(real_offset, max_align);
+            let (total_size, real_size) = if st.is_union {
+                // Union: size = max of all fields, aligned
+                let ts = align_to(union_max_stack, 8);
+                let rs = align_to(union_max_real, max_align);
+                (ts, rs)
+            } else {
+                // Struct: cumulative size
+                let ts = align_to(offset, 8);
+                let rs = align_to(real_offset, max_align);
+                (ts, rs)
+            };
 
             self.inner.insert_class_layout(
                 st.name.clone(),
@@ -215,6 +236,7 @@ impl CIsaCompiler {
                     field_sizes: field_sizes_vec,
                     size: total_size,
                     real_size,
+                    is_union: st.is_union,
                 },
             );
         }

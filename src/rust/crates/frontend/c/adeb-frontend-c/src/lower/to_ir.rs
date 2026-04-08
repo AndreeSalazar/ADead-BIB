@@ -53,13 +53,15 @@ impl CToIR {
         for decl in &unit.declarations {
             match decl {
                 CTopLevel::StructDef { name, fields } => {
-                    program.structs.push(self.convert_struct(name, fields));
+                    program.structs.push(self.convert_struct(name, fields, false));
                 }
                 CTopLevel::UnionDef { name, fields } => {
-                    program.structs.push(self.convert_struct(name, fields));
+                    program.structs.push(self.convert_struct(name, fields, true));
                 }
-                CTopLevel::EnumDef { name: _, values } => {
+                CTopLevel::EnumDef { name, values } => {
                     self.collect_enum_constants(values);
+                    // Register enum name as typedef → int for sizeof resolution
+                    self.typedefs.push((name.clone(), CType::Int));
                 }
                 CTopLevel::TypedefDecl { original, new_name } => {
                     self.typedefs.push((new_name.clone(), original.clone()));
@@ -218,7 +220,7 @@ impl CToIR {
 
     // ========== Struct conversion ==========
 
-    fn convert_struct(&self, name: &str, fields: &[CStructField]) -> Struct {
+    fn convert_struct(&self, name: &str, fields: &[CStructField], is_union: bool) -> Struct {
         Struct {
             name: name.to_string(),
             fields: fields
@@ -229,6 +231,7 @@ impl CToIR {
                 })
                 .collect(),
             is_packed: false,
+            is_union,
         }
     }
 

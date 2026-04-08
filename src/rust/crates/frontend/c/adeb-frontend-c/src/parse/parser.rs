@@ -951,6 +951,28 @@ impl CParser {
             }
         }
 
+        // typedef union { ... } Name;  (anonymous union)
+        if *self.current() == CToken::Union && *self.peek() == CToken::LBrace {
+            self.advance(); // skip union
+            self.advance(); // skip {
+            let fields = self.parse_struct_fields()?;
+            self.expect(&CToken::RBrace)?;
+            let is_ptr = self.eat(&CToken::Star);
+            let new_name = self.expect_identifier()?;
+            self.typedef_names.insert(new_name.clone());
+            self.expect(&CToken::Semicolon)?;
+            if is_ptr {
+                return Ok(CTopLevel::TypedefDecl {
+                    original: CType::Pointer(Box::new(CType::Union(new_name.clone()))),
+                    new_name,
+                });
+            }
+            return Ok(CTopLevel::UnionDef {
+                name: new_name,
+                fields,
+            });
+        }
+
         // typedef union Name { ... } Alias;
         // Also handles: typedef union Name { ... } *PtrAlias;
         if *self.current() == CToken::Union {
@@ -968,17 +990,17 @@ impl CParser {
                         self.expect(&CToken::Semicolon)?;
                         if is_ptr {
                             return Ok(CTopLevel::TypedefDecl {
-                                original: CType::Pointer(Box::new(CType::Struct(_union_name))),
+                                original: CType::Pointer(Box::new(CType::Union(_union_name))),
                                 new_name: alias,
                             });
                         }
-                        return Ok(CTopLevel::StructDef {
+                        return Ok(CTopLevel::UnionDef {
                             name: alias,
                             fields,
                         });
                     } else {
                         self.expect(&CToken::Semicolon)?;
-                        return Ok(CTopLevel::StructDef {
+                        return Ok(CTopLevel::UnionDef {
                             name: _union_name,
                             fields,
                         });

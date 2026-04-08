@@ -96,6 +96,7 @@ pub struct ClassLayout {
     pub field_sizes: Vec<(String, i32)>,    // (field_name, byte_size) for sized MOV
     pub size: i32,                          // Total struct size (C99 aligned)
     pub real_size: i32,                     // True C99 sizeof (for sizeof operator)
+    pub is_union: bool,                     // Union semantics (all fields at offset 0)
 }
 
 /// ISA Compiler — Compilador que genera ADeadIR en vez de bytes directos.
@@ -188,6 +189,7 @@ impl IsaCompiler {
                 field_sizes: vec![("value".to_string(), 8), ("max_value".to_string(), 8)],
                 size: 16,
                 real_size: 16,
+                is_union: false,
             },
         );
 
@@ -201,6 +203,7 @@ impl IsaCompiler {
                 field_sizes: vec![("x".to_string(), 8), ("y".to_string(), 8)],
                 size: 16,
                 real_size: 16,
+                is_union: false,
             },
         );
 
@@ -214,6 +217,7 @@ impl IsaCompiler {
                 field_sizes: vec![("id".to_string(), 8)],
                 size: 8,
                 real_size: 8,
+                is_union: false,
             },
         );
 
@@ -227,6 +231,7 @@ impl IsaCompiler {
                 field_sizes: vec![("id".to_string(), 8), ("radius".to_string(), 8)],
                 size: 16,
                 real_size: 16,
+                is_union: false,
             },
         );
 
@@ -244,6 +249,7 @@ impl IsaCompiler {
                 field_sizes: vec![("id".to_string(), 8), ("w".to_string(), 8), ("h".to_string(), 8)],
                 size: 24,
                 real_size: 24,
+                is_union: false,
             },
         );
 
@@ -261,6 +267,7 @@ impl IsaCompiler {
                 field_sizes: vec![("origin".to_string(), 16), ("width".to_string(), 8), ("height".to_string(), 8)],
                 size: 32,
                 real_size: 32,
+                is_union: false,
             },
         );
 
@@ -274,6 +281,7 @@ impl IsaCompiler {
                 field_sizes: vec![("data".to_string(), 8), ("top".to_string(), 8)],
                 size: 16,
                 real_size: 16,
+                is_union: false,
             },
         );
 
@@ -292,6 +300,7 @@ impl IsaCompiler {
                 field_sizes: vec![("data".to_string(), 8), ("front".to_string(), 8), ("rear".to_string(), 8), ("count".to_string(), 8)],
                 size: 32,
                 real_size: 32,
+                is_union: false,
             },
         );
 
@@ -305,6 +314,7 @@ impl IsaCompiler {
                 field_sizes: vec![("head".to_string(), 8)],
                 size: 8,
                 real_size: 8,
+                is_union: false,
             },
         );
 
@@ -317,6 +327,7 @@ impl IsaCompiler {
                 field_sizes: vec![("value".to_string(), 8), ("next".to_string(), 8)],
                 size: 16,
                 real_size: 16,
+                is_union: false,
             },
         );
 
@@ -784,6 +795,7 @@ impl IsaCompiler {
                     field_sizes: field_sizes_vec,
                     size: offset,
                     real_size,
+                    is_union: st.is_union,
                 },
             );
         }
@@ -1389,10 +1401,8 @@ impl IsaCompiler {
                 // Mark as function parameter (uses 8-byte stride for pointer indexing)
                 self.param_vars.insert(param.name.clone());
                 // Mark struct parameters for pointer-based field access
-                if matches!(
-                    &param.param_type,
-                    Type::Struct(_) | Type::Named(_) | Type::Class(_)
-                ) {
+                // Only mark types that have an actual class layout (not scalar typedefs)
+                if self.is_real_struct_type(&param.param_type) {
                     self.struct_params.insert(param.name.clone());
                 }
                 // Mark reference parameters for auto-deref

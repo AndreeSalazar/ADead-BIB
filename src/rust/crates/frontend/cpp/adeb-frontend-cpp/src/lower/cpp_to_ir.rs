@@ -130,6 +130,7 @@ impl CppToIR {
                 name: format!("__vtable_{}", vt.class_name),
                 fields: vtable_fields,
                 is_packed: false,
+                is_union: false,
             });
         }
 
@@ -329,7 +330,7 @@ impl CppToIR {
         }
 
         // Emit class struct
-        prog.structs.push(Struct { name: name.to_string(), fields, is_packed: false });
+        prog.structs.push(Struct { name: name.to_string(), fields, is_packed: false, is_union: false });
 
         // Phase 3: store vtable info if this class has virtual methods
         if !vtable_slots.is_empty() {

@@ -115,6 +115,7 @@ impl CppIsaCompiler {
                     field_sizes: field_sizes_vec,
                     size: offset,
                     real_size: offset,
+                    is_union: false,
                 },
             );
         }
@@ -188,6 +189,7 @@ impl CppIsaCompiler {
             field_sizes: field_sizes_vec,
             size: offset,
             real_size: offset,
+            is_union: false,
         }
     }
 
