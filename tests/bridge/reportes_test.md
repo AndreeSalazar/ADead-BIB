@@ -319,20 +319,20 @@ OpenGL rendered 180 frames
 
 ---
 
-## Test Coverage Gap Analysis
+## Test Coverage — New Tests (14–23) ✅ IMPLEMENTED
 
-| # | Proposed Test | Category | C Features Tested | Depends On |
-|---|--------------|----------|-------------------|------------|
-| 14 | `14_file_io.c` | C stdlib | `fopen`, `fwrite`, `fread`, `fclose`, `fprintf`, `fscanf` | Fix #2 (local arrays) |
-| 15 | `15_threads.c` | Win32 | `CreateThread`, `WaitForSingleObject`, `InterlockedIncrement` | Fix #1 (structs) |
-| 16 | `16_vulkan_window.c` | Graphics | Vulkan instance creation, `vkCreateInstance`, `vkEnumeratePhysicalDevices` | Fixes #4, #5 (vtable/indirect calls) |
-| 17 | `17_recursion_deep.c` | C core | Deep recursion (Ackermann, tree traversal), stack depth stress | None (basic codegen) |
-| 18 | `18_bitfields.c` | C core | Struct bitfields, packed structs, union type-punning | Fix #1 (structs) |
-| 19 | `19_variadic.c` | C core | Variadic functions (`va_list`, `va_start`, `va_arg`, `va_end`) | Fix #2 (local arrays) |
-| 20 | `20_enum_switch.c` | C core | Large `enum` declarations, exhaustive `switch/case` over enums | None |
-| 21 | `21_linked_list.c` | Data structures | Singly/doubly linked lists with `malloc`, pointer chasing | Fixes #1, #2 |
-| 22 | `22_signal_handler.c` | C stdlib | `signal()`, `raise()`, custom signal handlers | Fix #5 (function pointers) |
-| 23 | `23_float_math.c` | C core | `float`/`double` arithmetic, `math.h` (`sin`, `cos`, `sqrt`) | SSE/x87 codegen |
+| # | Test | Category | C Features Tested | Depends On | Status |
+|---|------|----------|-------------------|------------|--------|
+| 14 | `14_file_io.c` | C stdlib | `fopen`, `fread`, `fprintf`, `fseek`, `ftell`, `remove` | Fix #2 (local arrays) | 🔵 READY |
+| 15 | `15_threads.c` | Win32 | `CreateThread`, `WaitForSingleObject`, `InterlockedIncrement` | Fix #1 (structs) | 🔵 READY |
+| 16 | `16_vulkan_window.c` | Graphics | Vulkan instance, `vkCreateInstance`, `vkEnumeratePhysicalDevices` | Fixes #4, #5 (vtable/indirect calls) | 🔵 READY |
+| 17 | `17_recursion_deep.c` | C core | Ackermann, factorial, binary search, mutual recursion, tree count | None (basic codegen) | 🔵 READY |
+| 18 | `18_bitfields.c` | C core | Struct bitfields, packed structs, union type-punning | Fix #1 (structs) | 🔵 READY |
+| 19 | `19_variadic.c` | C core | `va_list`, `va_start`, `va_arg`, `va_end`, custom variadic funcs | Fix #2 (local arrays) | 🔵 READY |
+| 20 | `20_enum_switch.c` | C core | Large `enum` (17 values), exhaustive `switch/case`, explicit values | None | 🔵 READY |
+| 21 | `21_linked_list.c` | Data structures | Singly linked list: push, pop, find, reverse, free | Fixes #1, #2 | 🔵 READY |
+| 22 | `22_signal_handler.c` | C stdlib | `signal()`, `raise()`, `SIG_DFL`, `SIG_IGN`, custom handlers | Fix #5 (function pointers) | 🔵 READY |
+| 23 | `23_float_math.c` | C core | `float`/`double` arithmetic, Newton sqrt, precision, conversions | SSE/x87 codegen | 🔵 READY |
 
 ---
 
@@ -372,9 +372,16 @@ OpenGL rendered 180 frames
 | GDI functions | ✅ | ✅ | ✅ Test 09 — PASS | ✅ Working |
 | OpenGL 1.1 | ✅ | ✅ | ✅ Test 10 — PASS | ✅ Working |
 | DirectX 9/11/12 (vtable) | ✅ | ❌ | ❌ Tests 11–13 | 🔴 Blocked on fixes #3–#5 |
-| `float` / `double` arithmetic | ✅ | ❌ | ❌ — | 🔴 Not tested |
-| Variadic functions (`va_list`) | ✅ | ❌ | ❌ — | 🔴 Not tested |
-| File I/O (`fopen`, `fread`, etc.) | ✅ | ❌ | ❌ — | 🔴 Not tested |
+| `float` / `double` arithmetic | ✅ | ❌ | ❌ Test 23 | 🔵 Test ready (SSE/x87 codegen needed) |
+| Variadic functions (`va_list`) | ✅ | ❌ | ❌ Test 19 | 🔵 Test ready |
+| File I/O (`fopen`, `fread`, etc.) | ✅ | ❌ | ❌ Test 14 | 🔵 Test ready |
+| Struct bitfields | ✅ | ❌ | ❌ Test 18 | 🔵 Test ready (depends on struct fix) |
+| Deep recursion (Ackermann, etc.) | ✅ | ✅ | ❌ Test 17 | 🔵 Test ready |
+| Large enum + switch | ✅ | ✅ | ❌ Test 20 | 🔵 Test ready |
+| Linked list (malloc + pointers) | ✅ | ❌ | ❌ Test 21 | 🔵 Test ready (depends on struct fix) |
+| Signal handlers (`signal`, `raise`) | ✅ | ❌ | ❌ Test 22 | 🔵 Test ready |
+| Win32 Threads (CreateThread) | ✅ | ❌ | ❌ Test 15 | 🔵 Test ready |
+| Vulkan (vkCreateInstance) | ✅ | ❌ | ❌ Test 16 | 🔵 Test ready (depends on vtable fix) |
 
 ---
 
