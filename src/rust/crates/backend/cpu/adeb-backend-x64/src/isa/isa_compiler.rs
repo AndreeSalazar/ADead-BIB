@@ -442,42 +442,76 @@ impl IsaCompiler {
     }
 
     /// Emit a sized load from [base_reg + disp] into RAX.
-    /// Uses Load32 for 4-byte fields, regular 64-bit MOV for 8-byte.
+    /// Uses appropriate width: 1→movzx byte, 2→Load16, 4→Load32, 8→MOV qword.
     fn emit_sized_load(&mut self, base_reg: Reg, disp: i32, byte_size: i32) {
-        if byte_size == 4 {
-            self.ir.emit(ADeadOp::Load32 {
-                dst: Reg::RAX,
-                base: base_reg,
-                disp,
-            });
-        } else {
-            self.ir.emit(ADeadOp::Mov {
-                dst: Operand::Reg(Reg::RAX),
-                src: Operand::Mem {
+        match byte_size {
+            1 => {
+                self.ir.emit(ADeadOp::Load8 {
+                    dst: Reg::RAX,
                     base: base_reg,
                     disp,
-                },
-            });
+                });
+            }
+            2 => {
+                self.ir.emit(ADeadOp::Load16 {
+                    dst: Reg::RAX,
+                    base: base_reg,
+                    disp,
+                });
+            }
+            4 => {
+                self.ir.emit(ADeadOp::Load32 {
+                    dst: Reg::RAX,
+                    base: base_reg,
+                    disp,
+                });
+            }
+            _ => {
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(Reg::RAX),
+                    src: Operand::Mem {
+                        base: base_reg,
+                        disp,
+                    },
+                });
+            }
         }
     }
 
-    /// Emit a sized store from RAX into [base_reg + disp].
-    /// Uses Store32 for 4-byte fields, regular 64-bit MOV for 8-byte.
+    /// Emit a sized store from src_reg into [base_reg + disp].
+    /// Uses appropriate width: 1→Store8, 2→Store16, 4→Store32, 8→MOV qword.
     fn emit_sized_store(&mut self, base_reg: Reg, disp: i32, byte_size: i32, src_reg: Reg) {
-        if byte_size == 4 {
-            self.ir.emit(ADeadOp::Store32 {
-                base: base_reg,
-                disp,
-                src: src_reg,
-            });
-        } else {
-            self.ir.emit(ADeadOp::Mov {
-                dst: Operand::Mem {
+        match byte_size {
+            1 => {
+                self.ir.emit(ADeadOp::Store8 {
                     base: base_reg,
                     disp,
-                },
-                src: Operand::Reg(src_reg),
-            });
+                    src: src_reg,
+                });
+            }
+            2 => {
+                self.ir.emit(ADeadOp::Store16 {
+                    base: base_reg,
+                    disp,
+                    src: src_reg,
+                });
+            }
+            4 => {
+                self.ir.emit(ADeadOp::Store32 {
+                    base: base_reg,
+                    disp,
+                    src: src_reg,
+                });
+            }
+            _ => {
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Mem {
+                        base: base_reg,
+                        disp,
+                    },
+                    src: Operand::Reg(src_reg),
+                });
+            }
         }
     }
 
@@ -533,10 +567,22 @@ impl IsaCompiler {
         if let Some(vt) = self.variable_types.get(var_name) {
             match vt {
                 Type::Pointer(inner) | Type::Array(inner, _) => match inner.as_ref() {
-                    // Only byte-sized types use stride 1 (string literals, char arrays)
-                    // Everything else uses 8-byte stride because our stack stores
-                    // all values as 64-bit qwords.
                     Type::I8 | Type::U8 | Type::Bool => 1,
+                    Type::I16 | Type::U16 => 2,
+                    Type::I32 | Type::U32 | Type::F32 => 4,
+                    Type::Named(name) => {
+                        let s = crate::isa::c_isa::c99_sizeof(&Type::Named(name.clone()));
+                        if s > 0 && s <= 8 { s as u8 } else { 8 }
+                    }
+                    Type::Struct(name) | Type::Class(name) => {
+                        if let Some(layout) = self.class_layouts.get(name.as_str()) {
+                            layout.real_size as u8
+                        } else {
+                            8
+                        }
+                    }
+                    Type::Pointer(_) => 8,
+                    Type::I64 | Type::U64 | Type::F64 => 8,
                     _ => 8,
                 },
                 _ => 8,
@@ -684,29 +730,9 @@ impl IsaCompiler {
         }
     }
 
-    /// Emit load from memory with appropriate width.
-    /// For byte access (stride=1), load 64-bit and AND with 0xFF to isolate the byte.
+    /// Emit load from memory with appropriate width based on stride.
     fn emit_load_with_stride(&mut self, base_reg: Reg, stride: u8) {
-        // Load full qword from [base_reg]
-        self.ir.emit(ADeadOp::Mov {
-            dst: Operand::Reg(Reg::RAX),
-            src: Operand::Mem {
-                base: base_reg,
-                disp: 0,
-            },
-        });
-        if stride == 1 {
-            // Mask to single byte: movzx rax, al
-            // Emitted as: and rax, 0xFF using mov rbx, 0xFF + and rax, rbx
-            self.ir.emit(ADeadOp::Mov {
-                dst: Operand::Reg(Reg::RBX),
-                src: Operand::Imm32(0xFF),
-            });
-            self.ir.emit(ADeadOp::And {
-                dst: Reg::RAX,
-                src: Reg::RBX,
-            });
-        }
+        self.emit_sized_load(base_reg, 0, stride as i32);
     }
 
     /// Set CPU mode at runtime (for mode transitions)
@@ -2336,13 +2362,7 @@ impl IsaCompiler {
                             });
                             // Store value at [ptr + i*stride]
                             self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Mem {
-                                    base: Reg::RAX,
-                                    disp: 0,
-                                },
-                                src: Operand::Reg(Reg::RCX),
-                            });
+                            self.emit_sized_store(Reg::RAX, 0, stride as i32, Reg::RCX);
                         }
                     } else {
                         // Unknown variable - skip
@@ -3459,14 +3479,27 @@ impl IsaCompiler {
                     || Self::expr_is_float_full(right, &self.variable_types, &self.field_ir_types, &self.current_class);
 
                 if is_float_op && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div) {
+                    let left_is_float = Self::expr_is_float_full(left, &self.variable_types, &self.field_ir_types, &self.current_class);
+                    let right_is_float = Self::expr_is_float_full(right, &self.variable_types, &self.field_ir_types, &self.current_class);
                     // Float path: use XMM registers with SSE instructions
-                    // Evaluate left → RAX (float bits), move to XMM0, save on stack
+                    // Evaluate left → RAX, promote to float if needed, save on stack
                     self.emit_expression(left);
-                    self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM0, src: Reg::RAX });
+                    if left_is_float {
+                        self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM0, src: Reg::RAX });
+                    } else {
+                        // int → double promotion
+                        self.ir.emit(ADeadOp::CvtSi2Sd { dst: Reg::XMM0, src: Reg::RAX });
+                    }
+                    self.ir.emit(ADeadOp::MovQ { dst: Reg::RAX, src: Reg::XMM0 });
                     self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
-                    // Evaluate right → RAX (float bits), move to XMM1
+                    // Evaluate right → RAX, promote to float if needed
                     self.emit_expression(right);
-                    self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM1, src: Reg::RAX });
+                    if right_is_float {
+                        self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM1, src: Reg::RAX });
+                    } else {
+                        // int → double promotion
+                        self.ir.emit(ADeadOp::CvtSi2Sd { dst: Reg::XMM1, src: Reg::RAX });
+                    }
                     // Restore left into XMM0
                     self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
                     self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM0, src: Reg::RAX });
@@ -4797,13 +4830,7 @@ impl IsaCompiler {
             // ========== MALLOC ==========
             Expr::Malloc(size_expr) => {
                 // Evaluate size argument → RCX (first arg, Windows x64 ABI)
-                // Our runtime uses 8-byte qword slots, so scale allocation to
-                // ensure enough space (sizeof(int)=4 but stride=8)
                 self.emit_expression(size_expr);
-                self.ir.emit(ADeadOp::Shl {
-                    dst: Reg::RAX,
-                    amount: 1,
-                }); // ×2 for qword safety
                 self.ir.emit(ADeadOp::Mov {
                     dst: Operand::Reg(Reg::RCX),
                     src: Operand::Reg(Reg::RAX),
@@ -4829,37 +4856,77 @@ impl IsaCompiler {
                 target_type,
                 expr: inner,
             } => {
+                let inner_is_float = Self::expr_is_float_full(
+                    inner,
+                    &self.variable_types,
+                    &self.field_ir_types,
+                    &self.current_class,
+                );
+                let target_is_float = match target_type {
+                    Type::F32 | Type::F64 => true,
+                    Type::Named(n) if n == "float" || n == "double" => true,
+                    _ => false,
+                };
+                let _target_is_int = match target_type {
+                    Type::I8 | Type::U8 | Type::I16 | Type::U16
+                    | Type::I32 | Type::U32 | Type::I64 | Type::U64 => true,
+                    Type::Named(n) if n == "int" || n == "unsigned int" || n == "unsigned"
+                        || n == "long" || n == "long long" || n == "short" || n == "char" => true,
+                    _ => false,
+                };
+
                 self.emit_expression(inner);
-                // Apply truncation based on target type size
-                let target_size = crate::isa::c_isa::c99_sizeof_for_expr(target_type);
-                match target_size {
-                    1 => {
-                        // Truncate to 8 bits (char): movzx rax, al
-                        self.ir.emit(ADeadOp::MovZx {
-                            dst: Reg::RAX,
-                            src: Reg::AL,
-                        });
-                    }
-                    2 => {
-                        // Truncate to 16 bits (short): and rax, 0xFFFF
-                        self.ir.emit(ADeadOp::Mov {
-                            dst: Operand::Reg(Reg::RBX),
-                            src: Operand::Imm32(0xFFFF),
-                        });
-                        self.ir.emit(ADeadOp::And {
-                            dst: Reg::RAX,
-                            src: Reg::RBX,
-                        });
-                    }
-                    4 => {
-                        // Truncate to 32 bits (int): mov eax, eax (zero-extends upper 32)
-                        self.ir.emit(ADeadOp::Mov {
-                            dst: Operand::Reg(Reg::EAX),
-                            src: Operand::Reg(Reg::EAX),
-                        });
-                    }
-                    _ => {
-                        // 8 bytes or unknown — no truncation needed
+
+                if inner_is_float && !target_is_float {
+                    // float/double → int: CVTTSD2SI (truncate double to integer)
+                    // Value is in RAX as bit-pattern; move to XMM0 first
+                    self.ir.emit(ADeadOp::MovQ {
+                        dst: Reg::XMM0,
+                        src: Reg::RAX,
+                    });
+                    self.ir.emit(ADeadOp::CvtTsd2Si {
+                        dst: Reg::RAX,
+                        src: Reg::XMM0,
+                    });
+                } else if !inner_is_float && target_is_float {
+                    // int → float/double: CVTSI2SD (integer to double)
+                    self.ir.emit(ADeadOp::CvtSi2Sd {
+                        dst: Reg::XMM0,
+                        src: Reg::RAX,
+                    });
+                    self.ir.emit(ADeadOp::MovQ {
+                        dst: Reg::RAX,
+                        src: Reg::XMM0,
+                    });
+                } else {
+                    // Integer truncation based on target type size
+                    let target_size = crate::isa::c_isa::c99_sizeof_for_expr(target_type);
+                    match target_size {
+                        1 => {
+                            self.ir.emit(ADeadOp::MovZx {
+                                dst: Reg::RAX,
+                                src: Reg::AL,
+                            });
+                        }
+                        2 => {
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RBX),
+                                src: Operand::Imm32(0xFFFF),
+                            });
+                            self.ir.emit(ADeadOp::And {
+                                dst: Reg::RAX,
+                                src: Reg::RBX,
+                            });
+                        }
+                        4 => {
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::EAX),
+                                src: Operand::Reg(Reg::EAX),
+                            });
+                        }
+                        _ => {
+                            // 8 bytes or unknown — no truncation needed
+                        }
                     }
                 }
             }

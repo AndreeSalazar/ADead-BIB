@@ -849,10 +849,44 @@ impl CParser {
                 None
             };
             self.expect(&CToken::RBracket)?;
-            CType::Array(Box::new(field_type), size)
+            CType::Array(Box::new(field_type.clone()), size)
         } else {
-            field_type
+            field_type.clone()
         };
+
+        // Handle comma-separated field declarations: type a, b, c;
+        if self.eat(&CToken::Comma) {
+            eprintln!("[DEBUG parse_struct_field] comma-separated: first_name={}, type={:?}", field_name, final_type);
+            let mut extra_fields = vec![CStructField { field_type: final_type, name: field_name }];
+            loop {
+                let extra_name = self.expect_identifier()?;
+                let extra_type = if *self.current() == CToken::LBracket {
+                    self.advance();
+                    let size = if let CToken::IntLiteral(n) = self.current().clone() {
+                        self.advance();
+                        Some(n as usize)
+                    } else {
+                        while *self.current() != CToken::RBracket && *self.current() != CToken::Eof {
+                            self.advance();
+                        }
+                        None
+                    };
+                    self.expect(&CToken::RBracket)?;
+                    CType::Array(Box::new(field_type.clone()), size)
+                } else {
+                    field_type.clone()
+                };
+                extra_fields.push(CStructField { field_type: extra_type, name: extra_name });
+                if !self.eat(&CToken::Comma) {
+                    break;
+                }
+            }
+            self.expect(&CToken::Semicolon)?;
+            // Push all but the first into anonymous_struct_fields so they get picked up
+            let first = extra_fields.remove(0);
+            self.anonymous_struct_fields.extend(extra_fields);
+            return Ok(Some(first));
+        }
 
         self.expect(&CToken::Semicolon)?;
         Ok(Some(CStructField { field_type: final_type, name: field_name }))

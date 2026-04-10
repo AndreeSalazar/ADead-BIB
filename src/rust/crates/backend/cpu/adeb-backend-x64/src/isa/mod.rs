@@ -612,9 +612,18 @@ pub enum ADeadOp {
     /// MOVZX dst, src — Zero-extend (ej: movzx rax, al)
     MovZx { dst: Reg, src: Reg },
 
+    /// Store8: mov BYTE [base+disp], reg — 8-bit store
+    Store8 { base: Reg, disp: i32, src: Reg },
+
+    /// Load8: movzx reg, BYTE [base+disp] — 8-bit load, zero-extended to 64-bit
+    Load8 { dst: Reg, base: Reg, disp: i32 },
+
     /// Store16: mov WORD [base+disp], reg — 16-bit store (0x66 prefix)
     /// Used for VGA text mode writes (each cell = char + attr = 2 bytes)
     Store16 { base: Reg, disp: i32, src: Reg },
+
+    /// Load16: movzx reg, WORD [base+disp] — 16-bit load, zero-extended to 64-bit
+    Load16 { dst: Reg, base: Reg, disp: i32 },
 
     /// Store32: mov DWORD [base+disp], reg — 32-bit store (no REX.W)
     /// Used for writing 4-byte fields (GUID, D3D12 structs, etc.)
@@ -701,6 +710,9 @@ pub enum ADeadOp {
     // ---- SSE / Floating Point ----
     /// CVTSI2SD dst, src — Convertir entero a double (int → xmm)
     CvtSi2Sd { dst: Reg, src: Reg },
+
+    /// CVTTSD2SI dst, src — Truncate double to integer (xmm → int)
+    CvtTsd2Si { dst: Reg, src: Reg },
 
     /// MOVQ dst, src — Mover entre registro GP y XMM (64-bit)
     MovQ { dst: Reg, src: Reg },
@@ -840,7 +852,10 @@ impl std::fmt::Display for ADeadOp {
         match self {
             ADeadOp::Mov { dst, src } => write!(f, "mov {}, {}", dst, src),
             ADeadOp::MovZx { dst, src } => write!(f, "movzx {}, {}", dst, src),
+            ADeadOp::Store8 { base, disp, src } => write!(f, "mov byte [{}{:+}], {}", base, disp, src),
+            ADeadOp::Load8 { dst, base, disp } => write!(f, "movzx {}, byte [{}{:+}]", dst, base, disp),
             ADeadOp::Store16 { base, disp, src } => write!(f, "mov word [{}{:+}], {}", base, disp, src),
+            ADeadOp::Load16 { dst, base, disp } => write!(f, "movzx {}, word [{}{:+}]", dst, base, disp),
             ADeadOp::Store32 { base, disp, src } => write!(f, "mov dword [{}{:+}], {}", base, disp, src),
             ADeadOp::Load32 { dst, base, disp } => write!(f, "mov dword {}, [{}{:+}]", dst, base, disp),
             ADeadOp::Lea { dst, src } => write!(f, "lea {}, {}", dst, src),
@@ -867,6 +882,7 @@ impl std::fmt::Display for ADeadOp {
             ADeadOp::Ret => write!(f, "ret"),
             ADeadOp::Syscall => write!(f, "syscall"),
             ADeadOp::CvtSi2Sd { dst, src } => write!(f, "cvtsi2sd {}, {}", dst, src),
+            ADeadOp::CvtTsd2Si { dst, src } => write!(f, "cvttsd2si {}, {}", dst, src),
             ADeadOp::MovQ { dst, src } => write!(f, "movq {}, {}", dst, src),
             ADeadOp::Addsd { dst, src } => write!(f, "addsd {}, {}", dst, src),
             ADeadOp::Subsd { dst, src } => write!(f, "subsd {}, {}", dst, src),

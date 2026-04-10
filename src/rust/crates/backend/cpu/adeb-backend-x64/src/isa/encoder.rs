@@ -221,7 +221,10 @@ impl Encoder {
     pub fn encode_op(&mut self, op: &ADeadOp) {
         match op {
             ADeadOp::Mov { dst, src } => self.encode_mov(dst, src),
+            ADeadOp::Store8 { base, disp, src } => self.encode_store8(base, *disp, src),
+            ADeadOp::Load8 { dst, base, disp } => self.encode_load8(dst, base, *disp),
             ADeadOp::Store16 { base, disp, src } => self.encode_store16(base, *disp, src),
+            ADeadOp::Load16 { dst, base, disp } => self.encode_load16(dst, base, *disp),
             ADeadOp::Store32 { base, disp, src } => self.encode_store32(base, *disp, src),
             ADeadOp::Load32 { dst, base, disp } => self.encode_load32(dst, base, *disp),
             ADeadOp::MovZx { dst, src } => self.encode_movzx(dst, src),
@@ -254,6 +257,14 @@ impl Encoder {
                 let rex = 0x48 | if src_ext { 0x01 } else { 0x00 };
                 let modrm = 0xC0 | (dst_idx << 3) | src_idx;
                 self.emit(&[0xF2, rex, 0x0F, 0x2A, modrm]);
+            }
+            ADeadOp::CvtTsd2Si { dst, src } => {
+                // CVTTSD2SI r64, xmm: F2 REX.W 0F 2C /r
+                let (src_idx, _) = reg_index(src);
+                let (dst_idx, dst_ext) = reg_index(dst);
+                let rex = 0x48 | if dst_ext { 0x04 } else { 0x00 };
+                let modrm = 0xC0 | (dst_idx << 3) | src_idx;
+                self.emit(&[0xF2, rex, 0x0F, 0x2C, modrm]);
             }
             ADeadOp::MovQ { dst, src } => self.encode_movq(dst, src),
             ADeadOp::Addsd { dst, src } => self.encode_sse_arith(0x58, dst, src),
@@ -856,6 +867,98 @@ impl Encoder {
             // [base+disp32] — mod=10
             let modrm = self.modrm(2, reg_idx, base_idx);
             self.emit(&[rex, opcode, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Store8: mov BYTE [base+disp], reg — 8-bit store
+    /// Encodes: [REX] 88 ModR/M [disp]
+    fn encode_store8(&mut self, base: &Reg, disp: i32, src: &Reg) {
+        let (reg_idx, reg_ext) = reg_index(src);
+        let (base_idx, base_ext) = reg_index(base);
+        // Need REX prefix if using extended registers or to access SIL/DIL/etc.
+        let need_rex = reg_ext || base_ext || reg_idx >= 4;
+        let rex = 0x40 | if reg_ext { 0x04 } else { 0x00 } | if base_ext { 0x01 } else { 0x00 };
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4;
+
+        if disp == 0 && base_idx != 5 {
+            let modrm = self.modrm(0, reg_idx, base_idx);
+            if need_rex {
+                self.emit(&[rex, 0x88, modrm]);
+            } else {
+                self.emit(&[0x88, modrm]);
+            }
+            if requires_sib { self.emit(&[0x24]); }
+        } else if fits_i8 {
+            let modrm = self.modrm(1, reg_idx, base_idx);
+            if need_rex {
+                self.emit(&[rex, 0x88, modrm]);
+            } else {
+                self.emit(&[0x88, modrm]);
+            }
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
+        } else {
+            let modrm = self.modrm(2, reg_idx, base_idx);
+            if need_rex {
+                self.emit(&[rex, 0x88, modrm]);
+            } else {
+                self.emit(&[0x88, modrm]);
+            }
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Load8: movzx reg, BYTE [base+disp] — 8-bit load, zero-extended to 64-bit
+    /// Encodes: [REX.W] 0F B6 ModR/M [disp]
+    fn encode_load8(&mut self, dst: &Reg, base: &Reg, disp: i32) {
+        let (reg_idx, reg_ext) = reg_index(dst);
+        let (base_idx, base_ext) = reg_index(base);
+        let rex = self.rex_wrxb(true, reg_ext, base_ext);
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4;
+
+        if disp == 0 && base_idx != 5 {
+            let modrm = self.modrm(0, reg_idx, base_idx);
+            self.emit(&[rex, 0x0F, 0xB6, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+        } else if fits_i8 {
+            let modrm = self.modrm(1, reg_idx, base_idx);
+            self.emit(&[rex, 0x0F, 0xB6, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
+        } else {
+            let modrm = self.modrm(2, reg_idx, base_idx);
+            self.emit(&[rex, 0x0F, 0xB6, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit_i32(disp);
+        }
+    }
+
+    /// Load16: movzx reg, WORD [base+disp] — 16-bit load, zero-extended to 64-bit
+    /// Encodes: [REX.W] 0F B7 ModR/M [disp]
+    fn encode_load16(&mut self, dst: &Reg, base: &Reg, disp: i32) {
+        let (reg_idx, reg_ext) = reg_index(dst);
+        let (base_idx, base_ext) = reg_index(base);
+        let rex = self.rex_wrxb(true, reg_ext, base_ext);
+        let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
+        let requires_sib = base_idx == 4;
+
+        if disp == 0 && base_idx != 5 {
+            let modrm = self.modrm(0, reg_idx, base_idx);
+            self.emit(&[rex, 0x0F, 0xB7, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+        } else if fits_i8 {
+            let modrm = self.modrm(1, reg_idx, base_idx);
+            self.emit(&[rex, 0x0F, 0xB7, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+            self.emit(&[disp as u8]);
+        } else {
+            let modrm = self.modrm(2, reg_idx, base_idx);
+            self.emit(&[rex, 0x0F, 0xB7, modrm]);
             if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);
         }
