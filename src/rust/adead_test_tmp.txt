@@ -1,3 +1,0 @@
-Line one: hello
-Line two: world
-Line three: 12345
