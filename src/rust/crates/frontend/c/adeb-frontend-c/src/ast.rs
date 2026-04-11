@@ -351,6 +351,7 @@ pub struct CParam {
 pub struct CStructField {
     pub field_type: CType,
     pub name: String,
+    pub bit_width: Option<u8>,
 }
 
 /// Storage class and specifiers for declarations

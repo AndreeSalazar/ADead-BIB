@@ -580,6 +580,7 @@ pub struct Struct {
 pub struct StructField {
     pub name: String,
     pub field_type: Type,
+    pub bit_width: Option<u8>,
 }
 
 // Rust-style impl block

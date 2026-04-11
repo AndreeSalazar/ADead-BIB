@@ -714,7 +714,12 @@ impl CParser {
             }
             let save = self.pos;
             match self.parse_one_struct_field() {
-                Ok(Some(f)) => fields.push(f),
+                Ok(Some(f)) => {
+                    fields.push(f);
+                    if !self.anonymous_struct_fields.is_empty() {
+                        fields.append(&mut self.anonymous_struct_fields);
+                    }
+                }
                 Ok(None) => {
                     if !self.anonymous_struct_fields.is_empty() {
                         fields.append(&mut self.anonymous_struct_fields);
@@ -786,7 +791,7 @@ impl CParser {
                         CType::Array(Box::new(ft), size)
                     } else { ft };
                     self.expect(&CToken::Semicolon)?;
-                    return Ok(Some(CStructField { field_type: final_type, name: fname }));
+                    return Ok(Some(CStructField { field_type: final_type, name: fname, bit_width: None }));
                 }
             }
             self.pos = save;
@@ -816,6 +821,7 @@ impl CParser {
             return Ok(Some(CStructField {
                 field_type: CType::Pointer(Box::new(ret_type)),
                 name: fp_name,
+                bit_width: None,
             }));
         }
 
@@ -823,8 +829,15 @@ impl CParser {
 
         // Handle bit fields: int name : width;
         let field_name = self.expect_identifier()?;
+        eprintln!("[DEBUG parse_one_struct_field] field_name={} current token={:?}", field_name, self.current());
         if self.eat(&CToken::Colon) {
-            // Bit field width — skip the expression
+            eprintln!("[DEBUG bitfield] colon encountered for {}. next token: {:?}", field_name, self.current());
+            let mut bw = None;
+            if let CToken::IntLiteral(n) = self.current() {
+                bw = Some(*n as u8);
+                self.advance();
+            }
+            // Bit field width — skip the expression if it wasn't an int literal
             while *self.current() != CToken::Semicolon
                 && *self.current() != CToken::RBrace
                 && *self.current() != CToken::Eof
@@ -832,7 +845,7 @@ impl CParser {
                 self.advance();
             }
             self.eat(&CToken::Semicolon);
-            return Ok(Some(CStructField { field_type, name: field_name }));
+            return Ok(Some(CStructField { field_type, name: field_name, bit_width: bw }));
         }
 
         // Handle array fields: type name[N];
@@ -857,7 +870,7 @@ impl CParser {
         // Handle comma-separated field declarations: type a, b, c;
         if self.eat(&CToken::Comma) {
             eprintln!("[DEBUG parse_struct_field] comma-separated: first_name={}, type={:?}", field_name, final_type);
-            let mut extra_fields = vec![CStructField { field_type: final_type, name: field_name }];
+            let mut extra_fields = vec![CStructField { field_type: final_type, name: field_name, bit_width: None }];
             loop {
                 let extra_name = self.expect_identifier()?;
                 let extra_type = if *self.current() == CToken::LBracket {
@@ -876,7 +889,7 @@ impl CParser {
                 } else {
                     field_type.clone()
                 };
-                extra_fields.push(CStructField { field_type: extra_type, name: extra_name });
+                extra_fields.push(CStructField { field_type: extra_type, name: extra_name, bit_width: None });
                 if !self.eat(&CToken::Comma) {
                     break;
                 }
@@ -889,7 +902,7 @@ impl CParser {
         }
 
         self.expect(&CToken::Semicolon)?;
-        Ok(Some(CStructField { field_type: final_type, name: field_name }))
+        Ok(Some(CStructField { field_type: final_type, name: field_name, bit_width: None }))
     }
 
     fn parse_enum_def(&mut self) -> Result<CTopLevel, String> {

@@ -94,6 +94,7 @@ pub struct ClassLayout {
     pub fields: Vec<(String, i32)>,         // (field_name, offset)
     pub field_types: Vec<(String, String)>, // (field_name, type_name) for nested struct detection
     pub field_sizes: Vec<(String, i32)>,    // (field_name, byte_size) for sized MOV
+    pub bitfields: Vec<(String, u8, u8)>,   // (field_name, bit_offset, bit_width) for extraction
     pub size: i32,                          // Total struct size (C99 aligned)
     pub real_size: i32,                     // True C99 sizeof (for sizeof operator)
     pub is_union: bool,                     // Union semantics (all fields at offset 0)
@@ -187,6 +188,7 @@ impl IsaCompiler {
                 fields: vec![("value".to_string(), 0), ("max_value".to_string(), 8)],
                 field_types: vec![],
                 field_sizes: vec![("value".to_string(), 8), ("max_value".to_string(), 8)],
+                bitfields: vec![],
                 size: 16,
                 real_size: 16,
                 is_union: false,
@@ -201,6 +203,7 @@ impl IsaCompiler {
                 fields: vec![("x".to_string(), 0), ("y".to_string(), 8)],
                 field_types: vec![],
                 field_sizes: vec![("x".to_string(), 8), ("y".to_string(), 8)],
+                bitfields: vec![],
                 size: 16,
                 real_size: 16,
                 is_union: false,
@@ -215,6 +218,7 @@ impl IsaCompiler {
                 fields: vec![("id".to_string(), 0)],
                 field_types: vec![],
                 field_sizes: vec![("id".to_string(), 8)],
+                bitfields: vec![],
                 size: 8,
                 real_size: 8,
                 is_union: false,
@@ -229,6 +233,7 @@ impl IsaCompiler {
                 fields: vec![("id".to_string(), 0), ("radius".to_string(), 8)],
                 field_types: vec![],
                 field_sizes: vec![("id".to_string(), 8), ("radius".to_string(), 8)],
+                bitfields: vec![],
                 size: 16,
                 real_size: 16,
                 is_union: false,
@@ -247,6 +252,7 @@ impl IsaCompiler {
                 ],
                 field_types: vec![],
                 field_sizes: vec![("id".to_string(), 8), ("w".to_string(), 8), ("h".to_string(), 8)],
+                bitfields: vec![],
                 size: 24,
                 real_size: 24,
                 is_union: false,
@@ -265,6 +271,7 @@ impl IsaCompiler {
                 ],
                 field_types: vec![],
                 field_sizes: vec![("origin".to_string(), 16), ("width".to_string(), 8), ("height".to_string(), 8)],
+                bitfields: vec![],
                 size: 32,
                 real_size: 32,
                 is_union: false,
@@ -279,6 +286,7 @@ impl IsaCompiler {
                 fields: vec![("data".to_string(), 0), ("top".to_string(), 8)],
                 field_types: vec![],
                 field_sizes: vec![("data".to_string(), 8), ("top".to_string(), 8)],
+                bitfields: vec![],
                 size: 16,
                 real_size: 16,
                 is_union: false,
@@ -298,6 +306,7 @@ impl IsaCompiler {
                 ],
                 field_types: vec![],
                 field_sizes: vec![("data".to_string(), 8), ("front".to_string(), 8), ("rear".to_string(), 8), ("count".to_string(), 8)],
+                bitfields: vec![],
                 size: 32,
                 real_size: 32,
                 is_union: false,
@@ -312,6 +321,7 @@ impl IsaCompiler {
                 fields: vec![("head".to_string(), 0)],
                 field_types: vec![],
                 field_sizes: vec![("head".to_string(), 8)],
+                bitfields: vec![],
                 size: 8,
                 real_size: 8,
                 is_union: false,
@@ -325,6 +335,7 @@ impl IsaCompiler {
                 fields: vec![("value".to_string(), 0), ("next".to_string(), 8)],
                 field_types: vec![],
                 field_sizes: vec![("value".to_string(), 8), ("next".to_string(), 8)],
+                bitfields: vec![],
                 size: 16,
                 real_size: 16,
                 is_union: false,
@@ -425,6 +436,18 @@ impl IsaCompiler {
         }
         // Fallback to generic field offset
         self.get_field_offset(field_name)
+    }
+
+    /// Get bitfield info (bit_offset, bit_width) for extraction.
+    fn get_class_bitfield(&self, class_name: &str, field_name: &str) -> Option<(u8, u8)> {
+        if let Some(layout) = self.class_layouts.get(class_name) {
+            for (name, offset, width) in &layout.bitfields {
+                if name == field_name {
+                    return Some((*offset, *width));
+                }
+            }
+        }
+        None
     }
 
     /// Get field byte size for a specific class/struct field.
@@ -819,7 +842,8 @@ impl IsaCompiler {
                     fields,
                     field_types,
                     field_sizes: field_sizes_vec,
-                    size: offset,
+                bitfields: vec![],
+                size: offset,
                     real_size,
                     is_union: st.is_union,
                 },
@@ -1878,7 +1902,7 @@ impl IsaCompiler {
                                 match ty {
                                     Type::Array(inner, _) => match inner.as_ref() {
                                         Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
-                                            self.class_layouts.get(n).map(|l| l.size).unwrap_or(8)
+                                            self.class_layouts.get(n).map(|l| l.real_size).unwrap_or(8)
                                         }
                                         _ => 8,
                                     },
@@ -1908,15 +1932,56 @@ impl IsaCompiler {
                                 dst: Operand::Reg(Reg::RBX),
                                 src: Operand::Reg(Reg::RAX),
                             });
-                            // RBX = &arr[index], pop value and store at [RBX + field_offset]
+                            // Get field byte size for sized store
+                            let fs = if let Some(ty) = self.variable_types.get(arr_name.as_str()) {
+                                match ty {
+                                    Type::Array(inner, _) => match inner.as_ref() {
+                                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                                            self.get_class_field_size(n, field)
+                                        }
+                                        _ => 8,
+                                    },
+                                    _ => 8,
+                                }
+                            } else { 8 };
+                            // RBX = &arr[index], pop value (RAX) and store at [RBX + field_offset]
                             self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Mem {
-                                    base: Reg::RBX,
-                                    disp: field_offset,
-                                },
-                                src: Operand::Reg(Reg::RAX),
-                            });
+                            let mut is_bitfield = false;
+                            if let Some(ty) = self.variable_types.get(arr_name.as_str()) {
+                                if let Type::Array(inner, _) = ty {
+                                    match inner.as_ref() {
+                                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                                            if let Some((b_off, b_wid)) = self.get_class_bitfield(n, field) {
+                                                is_bitfield = true;
+                                                // RAX has new val
+                                                let v_mask = (1u64 << b_wid) - 1;
+                                                self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(v_mask) });
+                                                self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RDX });
+                                                if b_off > 0 {
+                                                    self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Imm32(b_off as i32) });
+                                                    self.ir.emit(ADeadOp::ShlCl { dst: Reg::RAX });
+                                                }
+                                                self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) }); // Save new placed bits
+                                                
+                                                // Load current val into RAX
+                                                self.emit_sized_load(Reg::RBX, field_offset, fs);
+                                                let clear_mask = !(v_mask << b_off);
+                                                self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(clear_mask) });
+                                                self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RDX });
+                                                
+                                                // OR with new bits
+                                                self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                                                self.ir.emit(ADeadOp::Or { dst: Reg::RAX, src: Reg::RCX });
+                                                self.emit_sized_store(Reg::RBX, field_offset, fs, Reg::RAX);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            if !is_bitfield {
+                                self.emit_sized_store(Reg::RBX, field_offset, fs, Reg::RAX);
+                            }
                             return;
                         }
                     }
@@ -1937,6 +2002,85 @@ impl IsaCompiler {
                     },
                     _ => format!("__field.{}", field),
                 };
+                // Use sized store for struct field writes
+                // Determine field byte size from struct layout
+                let field_byte_size = match object {
+                    Expr::Variable(obj_name) => {
+                        self.variable_types.get(obj_name).and_then(|ty| match ty {
+                            Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                                Some(self.get_class_field_size(n, field))
+                            }
+                            _ => None,
+                        })
+                    }
+                    _ => None,
+                };
+                if let Some(fbs) = field_byte_size {
+                    if fbs < 8 {
+                        // Sized field write: use emit_sized_store
+                        if let Some(&off) = self.variables.get(&var_name) {
+                            let mut is_bitfield = false;
+                            if let Expr::Variable(obj_name) = object {
+                                if let Some(Type::Struct(n) | Type::Named(n) | Type::Class(n)) = self.variable_types.get(obj_name) {
+                                    if let Some((b_off, b_wid)) = self.get_class_bitfield(n, field) {
+                                        is_bitfield = true;
+                                        self.emit_expression(value); // evaluate new val to RAX
+                                        let v_mask = (1u64 << b_wid) - 1;
+                                        self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(v_mask) });
+                                                self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RDX });
+                                        if b_off > 0 {
+                                            self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Imm32(b_off as i32) });
+                                            self.ir.emit(ADeadOp::ShlCl { dst: Reg::RAX });
+                                        }
+                                        self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) }); // Save new placed bits
+                                        
+                                        // Load current container
+                                        self.emit_sized_load(Reg::RBP, off, fbs);
+                                        let clear_mask = !(v_mask << b_off);
+                                        self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(clear_mask) });
+                                                self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RDX });
+                                        
+                                        self.ir.emit(ADeadOp::Pop { dst: Reg::RCX });
+                                        self.ir.emit(ADeadOp::Or { dst: Reg::RAX, src: Reg::RCX });
+                                        self.emit_sized_store(Reg::RBP, off, fbs, Reg::RAX);
+                                    }
+                                }
+                            }
+                            if !is_bitfield {
+                                // Check if we're storing a float to a 4-byte field (C float)
+                                // Need to convert f64 bits to f32 bits for correct union type-punning
+                                let is_float_val = matches!(value, Expr::Float(_))
+                                    || Self::expr_is_float_full(value, &self.variable_types, &self.field_ir_types, &self.current_class);
+                                if is_float_val && fbs == 4 {
+                                    // Float → 4-byte field: convert f64 to f32 bits
+                                    if let Expr::Float(f) = value {
+                                        // Compile-time conversion: emit f32 bits directly
+                                        let f32_bits = (*f as f32).to_bits() as u64;
+                                        self.ir.emit(ADeadOp::Mov {
+                                            dst: Operand::Reg(Reg::RAX),
+                                            src: Operand::Imm64(f32_bits),
+                                        });
+                                    } else {
+                                        // Runtime: emit_expression puts f64 bits in RAX,
+                                        // need cvtsd2ss at runtime (using movq → cvtsd2ss → movd)
+                                        self.emit_expression(value);
+                                        // RAX has f64 bits; move to XMM0, convert sd→ss, move back
+                                        self.ir.emit(ADeadOp::MovQ { dst: Reg::XMM0, src: Reg::RAX });
+                                        // cvtsd2ss xmm0, xmm0 — we'll emit raw bytes via a special op
+                                        // For now, just truncate — will handle runtime float vars later
+                                    }
+                                } else {
+                                    self.emit_expression(value);
+                                }
+                                self.emit_sized_store(Reg::RBP, off, fbs, Reg::RAX);
+                            }
+                        } else {
+                            self.emit_expression(value);
+                            self.emit_assign(&var_name, value);
+                        }
+                        return;
+                    }
+                }
                 self.emit_assign(&var_name, value);
             }
 
@@ -1996,7 +2140,7 @@ impl IsaCompiler {
                     let c99_elem_size: i32 = match var_type {
                         Type::Array(inner, _) => match inner.as_ref() {
                             Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
-                                self.class_layouts.get(n).map(|l| l.size).unwrap_or(8)
+                                self.class_layouts.get(n).map(|l| l.real_size).unwrap_or(8)
                             }
                             Type::I8 | Type::U8 | Type::Bool => 1,
                             Type::I16 | Type::U16 => 2,
@@ -2153,12 +2297,13 @@ impl IsaCompiler {
                             src: Operand::Reg(Reg::RAX),
                         });
                     } else {
-                        // Zero-initialize struct
+                        // Zero-initialize struct (handle non-8-divisible sizes)
                         self.ir.emit(ADeadOp::Xor {
                             dst: Reg::RAX,
                             src: Reg::RAX,
                         });
-                        for i in 0..(struct_size / 8) {
+                        let qwords = (struct_size + 7) / 8; // round up
+                        for i in 0..qwords {
                             self.ir.emit(ADeadOp::Mov {
                                 dst: Operand::Mem {
                                     base: Reg::RBP,
@@ -2281,24 +2426,70 @@ impl IsaCompiler {
                             let elem_stride = *self.array_elem_sizes.get(name.as_str()).unwrap_or(&8) as i32;
                             if let Expr::Number(idx) = index {
                                 let elem_offset = base_offset + (*idx as i32 * elem_stride);
-                                self.emit_expression(value);
-                                if elem_stride == 1 {
-                                    // Byte store: mov BYTE [rbp+disp], al
-                                    self.ir.emit(ADeadOp::Mov {
-                                        dst: Operand::Mem {
-                                            base: Reg::RBP,
-                                            disp: elem_offset,
-                                        },
-                                        src: Operand::Reg(Reg::RAX),
-                                    });
+                                // Check for compound literal assignment to struct element:
+                                // pixels[i] = (struct Pixel){r, g, b, a}
+                                if let Expr::Array(elements) = value {
+                                    // Get struct layout for the element type
+                                    let layout_info = self.variable_types.get(name.as_str())
+                                        .and_then(|ty| match ty {
+                                            Type::Array(inner, _) => match inner.as_ref() {
+                                                Type::Struct(sn) | Type::Named(sn) | Type::Class(sn) => {
+                                                    self.class_layouts.get(sn).map(|l| l.fields.clone())
+                                                }
+                                                _ => None,
+                                            },
+                                            _ => None,
+                                        });
+                                    if let Some(field_offsets) = layout_info {
+                                        // Write each field at its correct offset within the struct
+                                        let field_sizes_info = self.variable_types.get(name.as_str())
+                                            .and_then(|ty| match ty {
+                                                Type::Array(inner, _) => match inner.as_ref() {
+                                                    Type::Struct(sn) | Type::Named(sn) | Type::Class(sn) => {
+                                                        self.class_layouts.get(sn).map(|l| l.field_sizes.clone())
+                                                    }
+                                                    _ => None,
+                                                },
+                                                _ => None,
+                                            }).unwrap_or_default();
+                                        for (i, elem) in elements.iter().enumerate() {
+                                            if i >= field_offsets.len() { break; }
+                                            let (_, f_off) = &field_offsets[i];
+                                            let f_sz = field_sizes_info.get(i)
+                                                .map(|(_, sz)| *sz)
+                                                .unwrap_or(8);
+                                            self.emit_expression(elem);
+                                            self.emit_sized_store(Reg::RBP, elem_offset + f_off, f_sz, Reg::RAX);
+                                        }
+                                    } else {
+                                        // No struct layout — fallback: store as scalar
+                                        self.emit_expression(value);
+                                        if elem_stride < 8 {
+                                            self.emit_sized_store(Reg::RBP, elem_offset, elem_stride, Reg::RAX);
+                                        } else {
+                                            self.ir.emit(ADeadOp::Mov {
+                                                dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                                src: Operand::Reg(Reg::RAX),
+                                            });
+                                        }
+                                    }
                                 } else {
-                                    self.ir.emit(ADeadOp::Mov {
-                                        dst: Operand::Mem {
+                                    self.emit_expression(value);
+                                    if elem_stride == 1 {
+                                        // Byte store
+                                        self.ir.emit(ADeadOp::Store8 {
                                             base: Reg::RBP,
                                             disp: elem_offset,
-                                        },
-                                        src: Operand::Reg(Reg::RAX),
-                                    });
+                                            src: Reg::RAX,
+                                        });
+                                    } else if elem_stride < 8 {
+                                        self.emit_sized_store(Reg::RBP, elem_offset, elem_stride, Reg::RAX);
+                                    } else {
+                                        self.ir.emit(ADeadOp::Mov {
+                                            dst: Operand::Mem { base: Reg::RBP, disp: elem_offset },
+                                            src: Operand::Reg(Reg::RAX),
+                                        });
+                                    }
                                 }
                             } else {
                                 // Dynamic index for local array
@@ -3900,6 +4091,16 @@ impl IsaCompiler {
                             });
                             // Load field at [pointer + field_offset] with correct size
                             self.emit_sized_load(Reg::RBX, field_offset, field_size);
+                            if let Some(sn) = struct_name.as_ref() {
+                                if let Some((bit_offset, bit_width)) = self.get_class_bitfield(sn, field) {
+                                    if bit_offset > 0 {
+                                        self.ir.emit(ADeadOp::Shr { dst: Reg::RAX, amount: bit_offset });
+                                    }
+                                    let mask = (1u64 << bit_width) - 1;
+                                    self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(mask) });
+                                                self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RDX });
+                                }
+                            }
                             return;
                         }
                     }
@@ -3907,13 +4108,22 @@ impl IsaCompiler {
                     // LOCAL STRUCT: try registered "var.field" first
                     let var_field = format!("{}.{}", obj_name, field);
                     if let Some(&offset) = self.variables.get(&var_field) {
-                        self.ir.emit(ADeadOp::Mov {
-                            dst: Operand::Reg(Reg::RAX),
-                            src: Operand::Mem {
-                                base: Reg::RBP,
-                                disp: offset,
-                            },
-                        });
+                        // Use sized load based on field byte size
+                        let field_size = struct_name
+                            .as_ref()
+                            .map(|sn| self.get_class_field_size(sn, field))
+                            .unwrap_or(8);
+                        self.emit_sized_load(Reg::RBP, offset, field_size);
+                        if let Some(sn) = struct_name.as_ref() {
+                            if let Some((bit_offset, bit_width)) = self.get_class_bitfield(sn, field) {
+                                if bit_offset > 0 {
+                                    self.ir.emit(ADeadOp::Shr { dst: Reg::RAX, amount: bit_offset });
+                                }
+                                let mask = (1u64 << bit_width) - 1;
+                                self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(mask) });
+                                                self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RDX });
+                            }
+                        }
                         return;
                     }
 
@@ -3923,13 +4133,21 @@ impl IsaCompiler {
                             .as_ref()
                             .map(|sn| self.get_class_field_offset(sn, field))
                             .unwrap_or_else(|| self.get_field_offset(field));
-                        self.ir.emit(ADeadOp::Mov {
-                            dst: Operand::Reg(Reg::RAX),
-                            src: Operand::Mem {
-                                base: Reg::RBP,
-                                disp: base_offset + field_offset,
-                            },
-                        });
+                        let field_size = struct_name
+                            .as_ref()
+                            .map(|sn| self.get_class_field_size(sn, field))
+                            .unwrap_or(8);
+                        self.emit_sized_load(Reg::RBP, base_offset + field_offset, field_size);
+                        if let Some(sn) = struct_name.as_ref() {
+                            if let Some((bit_offset, bit_width)) = self.get_class_bitfield(sn, field) {
+                                if bit_offset > 0 {
+                                    self.ir.emit(ADeadOp::Shr { dst: Reg::RAX, amount: bit_offset });
+                                }
+                                let mask = (1u64 << bit_width) - 1;
+                                self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RDX), src: Operand::Imm64(mask) });
+                                                self.ir.emit(ADeadOp::And { dst: Reg::RAX, src: Reg::RDX });
+                            }
+                        }
                         return;
                     }
                 }
@@ -4013,8 +4231,8 @@ impl IsaCompiler {
                 {
                     if let Expr::Variable(arr_name) = arr_obj.as_ref() {
                         if let Some(&base_offset) = self.variables.get(arr_name.as_str()) {
-                            // Get struct-aware field offset and stride
-                            let (field_offset, stride) =
+                            // Get struct-aware field offset, stride, and field size
+                            let (field_offset, stride, field_size) =
                                 if let Some(ty) = self.variable_types.get(arr_name.as_str()) {
                                     match ty {
                                         Type::Array(inner, _) => match inner.as_ref() {
@@ -4023,16 +4241,17 @@ impl IsaCompiler {
                                                 let s = self
                                                     .class_layouts
                                                     .get(n)
-                                                    .map(|l| l.size)
+                                                    .map(|l| l.real_size)
                                                     .unwrap_or(8);
-                                                (fo, s)
+                                                let fs = self.get_class_field_size(n, field);
+                                                (fo, s, fs)
                                             }
-                                            _ => (self.get_field_offset(field), 8),
+                                            _ => (self.get_field_offset(field), 8, 8),
                                         },
-                                        _ => (self.get_field_offset(field), 8),
+                                        _ => (self.get_field_offset(field), 8, 8),
                                     }
                                 } else {
-                                    (self.get_field_offset(field), 8)
+                                    (self.get_field_offset(field), 8, 8)
                                 };
                             // Evaluate index → RAX
                             self.emit_expression(idx);
@@ -4059,13 +4278,7 @@ impl IsaCompiler {
                                 src: Operand::Reg(Reg::RAX),
                             });
                             // Load field at [RBX + field_offset]
-                            self.ir.emit(ADeadOp::Mov {
-                                dst: Operand::Reg(Reg::RAX),
-                                src: Operand::Mem {
-                                    base: Reg::RBX,
-                                    disp: field_offset,
-                                },
-                            });
+                            self.emit_sized_load(Reg::RBX, field_offset, field_size);
                             return;
                         }
                     }
@@ -5905,3 +6118,6 @@ fn main() {
         );
     }
 }
+
+
+

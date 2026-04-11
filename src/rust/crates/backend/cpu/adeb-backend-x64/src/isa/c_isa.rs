@@ -149,14 +149,15 @@ impl CIsaCompiler {
             let mut offset = 0i32;
 
             let mut field_type_pairs: Vec<(String, String)> = Vec::new();
+            let mut bitfields: Vec<(String, u8, u8)> = Vec::new();
 
-            // Compute real C99 size for sizeof reporting
-            let mut real_offset = 0i32;
             let mut max_align = 1i32;
 
             // Union tracking: max sizes for union layout
-            let mut union_max_stack = 0i32;
-            let mut union_max_real = 0i32;
+            let mut union_max_size = 0i32;
+
+            let mut current_bitfield_size = 0i32;
+            let mut current_bit_offset = 0i32;
 
             for field in &st.fields {
                 let c99_size = c99_sizeof(&field.field_type);
@@ -169,7 +170,7 @@ impl CIsaCompiler {
                             self.inner
                                 .class_layouts()
                                 .get(name)
-                                .map(|l| l.real_size)
+                                .map(|l| l.size)
                                 .unwrap_or(8)
                         }
                         _ => 8,
@@ -180,52 +181,72 @@ impl CIsaCompiler {
                     c99_size
                 };
 
-                // Stack layout: 8-byte slots (ISA compiler requires qword-width variables)
-                // For nested structs, use their full layout size
-                let stack_slot_size = match &field.field_type {
-                    Type::Struct(name) | Type::Named(name) | Type::Class(name) => {
-                        self.inner
-                            .class_layouts()
-                            .get(name)
-                            .map(|l| l.size)
-                            .unwrap_or(8)
-                    }
-                    _ => 8, // all primitives/pointers use 8-byte slots on stack
-                };
-
                 if st.is_union {
                     // UNION: all fields at offset 0, size = max(field sizes)
                     fields.push((field.name.clone(), 0));
                     field_sizes_vec.push((field.name.clone(), actual_c99_size));
-                    if stack_slot_size > union_max_stack { union_max_stack = stack_slot_size; }
-                    if actual_c99_size > union_max_real { union_max_real = actual_c99_size; }
+                    if actual_c99_size > union_max_size { union_max_size = actual_c99_size; }
                     let fa = c99_align(actual_c99_size);
                     if fa > max_align { max_align = fa; }
                 } else {
-                    // STRUCT: sequential layout
-                    fields.push((field.name.clone(), offset));
-                    field_sizes_vec.push((field.name.clone(), actual_c99_size));
-                    offset += stack_slot_size;
+                    // STRUCT layout
+                    if let Some(bw) = field.bit_width {
+                        // Handle bitfield packing
+                        if current_bitfield_size > 0 && current_bitfield_size == actual_c99_size && current_bit_offset + (bw as i32) <= actual_c99_size * 8 {
+                            // Fits in current storage unit
+                            fields.push((field.name.clone(), offset));
+                            field_sizes_vec.push((field.name.clone(), actual_c99_size));
+                            bitfields.push((field.name.clone(), current_bit_offset as u8, bw));
+                            current_bit_offset += bw as i32;
+                        } else {
+                            // Does not fit, or is a new type. Start new unit.
+                            if current_bitfield_size > 0 {
+                                offset += current_bitfield_size;
+                            }
+                            let fa = c99_align(actual_c99_size);
+                            if fa > max_align { max_align = fa; }
+                            offset = align_to(offset, fa);
+                            
+                            fields.push((field.name.clone(), offset));
+                            field_sizes_vec.push((field.name.clone(), actual_c99_size));
+                            bitfields.push((field.name.clone(), 0, bw));
+                            
+                            current_bitfield_size = actual_c99_size;
+                            current_bit_offset = bw as i32;
+                        }
+                    } else {
+                        // Regular field (closes any active bitfield container)
+                        if current_bitfield_size > 0 {
+                            offset += current_bitfield_size;
+                            current_bitfield_size = 0;
+                            current_bit_offset = 0;
+                        }
 
-                    // Real C99 layout for sizeof
-                    let fa = c99_align(actual_c99_size);
-                    if fa > max_align { max_align = fa; }
-                    real_offset = align_to(real_offset, fa);
-                    real_offset += actual_c99_size;
+                        let fa = c99_align(actual_c99_size);
+                        if fa > max_align { max_align = fa; }
+                        offset = align_to(offset, fa);
+                        fields.push((field.name.clone(), offset));
+                        field_sizes_vec.push((field.name.clone(), actual_c99_size));
+                        offset += actual_c99_size;
+                    }
                 }
             }
 
+            if current_bitfield_size > 0 && !st.is_union {
+                offset += current_bitfield_size;
+            }
+
             let (total_size, real_size) = if st.is_union {
-                // Union: size = max of all fields, aligned
-                let ts = align_to(union_max_stack, 8);
-                let rs = align_to(union_max_real, max_align);
-                (ts, rs)
+                // Union
+                let s = align_to(union_max_size, max_align);
+                (align_to(s, 8), s)
             } else {
-                // Struct: cumulative size
-                let ts = align_to(offset, 8);
-                let rs = align_to(real_offset, max_align);
-                (ts, rs)
+                // Struct: cumulative, aligned to max field alignment
+                let s = align_to(offset, max_align);
+                (align_to(s, 8), s)
             };
+
+            eprintln!("[DEBUG c_isa layout] struct={} max_align={} total_size={} real_size={} fields={:?}", st.name, max_align, total_size, real_size, fields);
 
             self.inner.insert_class_layout(
                 st.name.clone(),
@@ -234,6 +255,7 @@ impl CIsaCompiler {
                     fields,
                     field_types: field_type_pairs,
                     field_sizes: field_sizes_vec,
+                    bitfields,
                     size: total_size,
                     real_size,
                     is_union: st.is_union,

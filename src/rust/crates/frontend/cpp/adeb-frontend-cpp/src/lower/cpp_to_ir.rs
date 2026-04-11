@@ -124,6 +124,7 @@ impl CppToIR {
                 vtable_fields.push(StructField {
                     name: slot.method_name.clone(),
                     field_type: Type::Pointer(Box::new(Type::Void)),
+                    bit_width: None,
                 });
             }
             prog.structs.push(Struct {
@@ -215,6 +216,7 @@ impl CppToIR {
             fields.push(StructField {
                 name: "__vptr".into(),
                 field_type: Type::Pointer(Box::new(Type::Void)),
+                bit_width: None,
             });
         }
 
@@ -223,6 +225,7 @@ impl CppToIR {
             fields.push(StructField {
                 name: format!("__base_{}", base.name),
                 field_type: Type::Struct(base.name.clone()),
+                bit_width: None,
             });
         }
 
@@ -235,6 +238,7 @@ impl CppToIR {
                     fields.push(StructField {
                         name: fname.clone(),
                         field_type: self.convert_type(type_spec),
+                        bit_width: None,
                     });
                 }
                 CppClassMember::Method { return_type, name: mname, params, qualifiers, body, .. } => {
@@ -606,7 +610,7 @@ impl CppToIR {
                 // Assignment as expression evaluates to the assigned value
                 self.convert_expr(value)
             }
-            CppExpr::CompoundAssign { target, value, .. } => {
+            CppExpr::CompoundAssign { value, .. } => {
                 // Compound assignment as expression evaluates to the result
                 self.convert_expr(value)
             }

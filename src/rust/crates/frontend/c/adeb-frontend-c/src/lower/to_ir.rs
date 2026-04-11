@@ -228,6 +228,7 @@ impl CToIR {
                 .map(|f| StructField {
                     name: f.name.clone(),
                     field_type: self.convert_type(&f.field_type),
+                    bit_width: f.bit_width,
                 })
                 .collect(),
             is_packed: false,
