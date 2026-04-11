@@ -32,6 +32,11 @@ pub mod soa_optimizer;
 pub mod vex_emitter;
 pub mod ymm_allocator;
 
+// ── Organized sub-layers (same files, better structure) ──
+pub mod arch;
+pub mod lang;
+pub mod optimize;
+
 // Re-export modular compiler
 pub use compiler::{
     CpuMode as CpuModeModular, IsaCompiler as IsaCompilerModular, Target as TargetModular,

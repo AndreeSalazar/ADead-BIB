@@ -23,24 +23,49 @@ pub mod backend {
             }
 
             pub static DLL_IMPORTS: &[DllImport] = &[
-                // ── Phase 1: C Runtime (msvcrt.dll) — 40 functions ──
+                // ── Phase 1: C Runtime (msvcrt.dll) — 94 functions ──
                 DllImport { dll: "msvcrt.dll", functions: &[
-                    // stdio
+                    // stdio — core
                     "printf", "fprintf", "sprintf", "_snprintf", "scanf", "sscanf",
                     "puts", "putchar", "getchar", "fgets", "fputs",
                     "fopen", "fclose", "fread", "fwrite", "fseek", "ftell", "rewind",
                     "feof", "ferror", "fflush", "perror",
-                    // stdlib
+                    // stdio — extras
+                    "vprintf", "vfprintf", "vsprintf",
+                    "setbuf", "setvbuf", "ungetc", "freopen",
+                    "remove", "rename", "tmpfile", "tmpnam",
+                    "fgetc", "fputc", "clearerr",
+                    // stdlib — core
                     "malloc", "calloc", "realloc", "free",
                     "atoi", "atof", "atol", "strtol", "strtoul", "strtod",
                     "abs", "rand", "srand", "qsort", "bsearch",
                     "exit", "getenv", "system",
-                    // string
+                    // stdlib — extras
+                    "abort", "_exit", "atexit",
+                    "strtoll", "strtoull", "strtof",
+                    "labs", "llabs",
+                    // string — core
                     "memset", "memcpy", "memmove", "memcmp",
                     "strlen", "strcpy", "strncpy", "strcat", "strncat",
                     "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strtok",
-                    // time
+                    // string — extras
+                    "memchr", "strerror", "strpbrk", "strspn", "strcspn",
+                    "strcoll", "strxfrm",
+                    // math (msvcrt.dll exports)
+                    "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+                    "exp", "log", "log10", "pow", "sqrt",
+                    "ceil", "floor", "fabs", "fmod",
+                    "sinh", "cosh", "tanh",
+                    "ldexp", "frexp", "modf",
+                    // time — core + extras
                     "time", "clock", "difftime", "strftime",
+                    "mktime", "localtime", "gmtime", "asctime", "ctime",
+                    // signal
+                    "signal", "raise",
+                    // locale
+                    "setlocale", "localeconv",
+                    // errno
+                    "_errno",
                 ] },
                 // ── Phase 2: Win32 Core — kernel32.dll (30 functions) ──
                 DllImport { dll: "kernel32.dll", functions: &[
