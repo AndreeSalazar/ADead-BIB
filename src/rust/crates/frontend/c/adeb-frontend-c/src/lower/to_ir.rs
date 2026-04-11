@@ -131,7 +131,7 @@ impl CToIR {
             CType::Char => Type::I8,
             CType::Short => Type::I16,
             CType::Int => Type::I32,
-            CType::Long => Type::I64,
+            CType::Long => Type::I32,         // LLP64 (Windows x64): long = 4 bytes
             CType::LongLong => Type::I64,
             CType::Float => Type::F32,
             CType::Double => Type::F64,
@@ -140,7 +140,8 @@ impl CToIR {
                 CType::Char => Type::U8,
                 CType::Short => Type::U16,
                 CType::Int => Type::U32,
-                CType::Long | CType::LongLong => Type::U64,
+                CType::Long => Type::U32,         // LLP64: unsigned long = 4 bytes
+                CType::LongLong => Type::U64,
                 _ => Type::U32,
             },
             CType::Signed(inner) => self.convert_type(inner),

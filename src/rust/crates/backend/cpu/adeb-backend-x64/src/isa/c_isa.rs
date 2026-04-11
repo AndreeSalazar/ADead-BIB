@@ -41,7 +41,7 @@ pub fn c99_sizeof(ty: &Type) -> i32 {
             "char" | "signed char" | "unsigned char" | "_Bool" => 1,
             "short" | "unsigned short" => 2,
             "int" | "unsigned int" | "unsigned" => 4,
-            "long" | "unsigned long" => 8, // LP64 model (Linux/macOS)
+            "long" | "unsigned long" => 4, // LLP64 model (Windows x64)
             "long long" | "unsigned long long" => 8,
             "float" => 4,
             "double" => 8,
@@ -294,7 +294,7 @@ pub fn c99_sizeof_for_expr(ty: &Type) -> i64 {
             "char" | "signed char" | "unsigned char" | "_Bool" => 1,
             "short" | "unsigned short" => 2,
             "int" | "unsigned int" | "unsigned" => 4,
-            "long" | "unsigned long" => 8,
+            "long" | "unsigned long" => 4,
             "long long" | "unsigned long long" => 8,
             "float" => 4,
             "double" => 8,
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(c99_sizeof(&Type::Named("char".to_string())), 1);
         assert_eq!(c99_sizeof(&Type::Named("short".to_string())), 2);
         assert_eq!(c99_sizeof(&Type::Named("int".to_string())), 4);
-        assert_eq!(c99_sizeof(&Type::Named("long".to_string())), 8);
+        assert_eq!(c99_sizeof(&Type::Named("long".to_string())), 4);
         assert_eq!(c99_sizeof(&Type::Named("double".to_string())), 8);
     }
 

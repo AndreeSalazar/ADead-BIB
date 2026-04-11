@@ -145,6 +145,9 @@ pub struct IsaCompiler {
     // Loop label stack for break/continue — each entry is (break_label, continue_label)
     loop_stack: Vec<(Label, Label)>,
 
+    // Goto labels: maps C label names (e.g. "cleanup") to IR Label IDs
+    goto_labels: HashMap<String, Label>,
+
     // Global/static variables — stored at absolute addresses in data section
     // Maps variable name → byte offset within global data area
     global_vars: HashMap<String, u32>,
@@ -365,6 +368,7 @@ impl IsaCompiler {
             temp_alloc: TempAllocator::new(),
             prologue_sub_index: None,
             loop_stack: Vec::new(),
+            goto_labels: HashMap::new(),
             global_vars: HashMap::new(),
             global_data: Vec::new(),
             global_offset: 0,
@@ -874,6 +878,9 @@ impl IsaCompiler {
         self.collect_strings_from_stmts(&program.statements);
 
         // Fase 2: Registrar labels de funciones
+        eprintln!("[DEBUG compile] program.functions={}, names={:?}",
+            program.functions.len(),
+            program.functions.iter().map(|f| f.name.as_str()).collect::<Vec<_>>());
         for func in &program.functions {
             let label = self.ir.new_label();
             self.functions.insert(
@@ -947,6 +954,7 @@ impl IsaCompiler {
 
         // Fase 8: Resolver llamadas a funciones por nombre
         let code = result.code;
+        eprintln!("[DEBUG compile] IR ops={}, code bytes={}, functions={}", self.ir.ops().len(), code.len(), self.functions.len());
         for (offset, name) in &result.unresolved_calls {
             if let Some(func) = self.functions.get(name) {
                 // Necesitamos saber la posición real del label en el código
@@ -2713,6 +2721,28 @@ impl IsaCompiler {
                         target: continue_label,
                     });
                 }
+            }
+
+            // ========== GOTO / LABEL ==========
+            Stmt::LabelDef { name } => {
+                let label = if let Some(&existing) = self.goto_labels.get(name) {
+                    existing
+                } else {
+                    let lbl = self.ir.new_label();
+                    self.goto_labels.insert(name.clone(), lbl);
+                    lbl
+                };
+                self.ir.emit(ADeadOp::Label(label));
+            }
+            Stmt::JumpTo { label: name } => {
+                let target = if let Some(&existing) = self.goto_labels.get(name) {
+                    existing
+                } else {
+                    let lbl = self.ir.new_label();
+                    self.goto_labels.insert(name.clone(), lbl);
+                    lbl
+                };
+                self.ir.emit(ADeadOp::Jmp { target });
             }
 
             _ => {}
