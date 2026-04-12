@@ -1,29 +1,22 @@
+# ADead-BIB Bridge Test Runner — Fase 1: C Standard Library
+# Usage: powershell -File run_tests.ps1
+
 $compiler = 'c:\Users\andre\OneDrive\Documentos\ADead-BIB\src\rust\target\release\adB.exe'
-$testDir = 'c:\Users\andre\OneDrive\Documentos\ADead-BIB\tests\bridge'
-$outDir = Join-Path $testDir 'out'
+$testDir  = 'c:\Users\andre\OneDrive\Documentos\ADead-BIB\tests\bridge\fase1_libc'
+$outDir   = 'c:\Users\andre\OneDrive\Documentos\ADead-BIB\tests\bridge\out'
 if (!(Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 
-$tests = @(
-    '01_console_hello',
-    '02_string_ops',
-    '03_math_logic',
-    '04_memory_alloc',
-    '05_control_flow',
-    '06_structs_unions',
-    '17_recursion_deep',
-    '18_bitfields',
-    '20_enum_switch',
-    '21_linked_list',
-    '23_float_math'
-)
+# Discover all .c files in fase1_libc/ sorted by name
+$testFiles = Get-ChildItem -Path $testDir -Filter '*.c' | Sort-Object Name
 
 $results = @()
 
-foreach ($t in $tests) {
-    $src = Join-Path $testDir ($t + '.c')
-    $exe = Join-Path $outDir ($t + '.exe')
+foreach ($f in $testFiles) {
+    $name = $f.BaseName
+    $src  = $f.FullName
+    $exe  = Join-Path $outDir ($name + '.exe')
     Write-Host '=========================================='
-    Write-Host ('TEST: ' + $t)
+    Write-Host ('TEST: ' + $name)
     Write-Host '=========================================='
 
     Write-Host '--- Compiling ---'
@@ -34,7 +27,7 @@ foreach ($t in $tests) {
 
     if ($compileExit -ne 0) {
         Write-Host 'RESULT: COMPILE FAIL'
-        $results += [PSCustomObject]@{Test=$t; Compile='FAIL'; Run='SKIP'; Status='FAIL'}
+        $results += [PSCustomObject]@{Test=$name; Compile='FAIL'; Run='SKIP'; Status='FAIL'}
         continue
     }
 
@@ -46,10 +39,10 @@ foreach ($t in $tests) {
 
     if ($runExit -eq 0) {
         Write-Host 'RESULT: PASS'
-        $results += [PSCustomObject]@{Test=$t; Compile='OK'; Run='OK'; Status='PASS'}
+        $results += [PSCustomObject]@{Test=$name; Compile='OK'; Run='OK'; Status='PASS'}
     } else {
         Write-Host 'RESULT: RUN FAIL'
-        $results += [PSCustomObject]@{Test=$t; Compile='OK'; Run='FAIL'; Status='FAIL'}
+        $results += [PSCustomObject]@{Test=$name; Compile='OK'; Run='FAIL'; Status='FAIL'}
     }
 }
 

@@ -1,8 +1,8 @@
 # ADead-BIB + ASM-BIB — LISTA TOTAL DE LIBRERÍAS PARA REEMPLAZAR MSVC
 
 > **Objetivo:** Catálogo COMPLETO de todo lo necesario para que ADead-BIB sea alternativa total a MSVC, GCC y LLVM.  
-> **Fecha:** 2026-04-11  
-> **Estado actual:** ADead-BIB v9.0 + ASM-BIB v2.0  
+> **Fecha:** 2026-04-12  
+> **Estado actual:** ADead-BIB v10.0 + ASM-BIB v2.0  
 > **Arquitectura:** 100% Rust — Sin LLVM, Sin GCC, Sin MSVC  
 
 ---
@@ -11,7 +11,7 @@
 
 | Categoría | MSVC tiene | ADead-BIB tiene | FALTA |
 |-----------|-----------|-----------------|-------|
-| C Standard Library (libc) | ~200 funciones | ~80 declaraciones | ~120 funciones |
+| C Standard Library (libc) | ~200 funciones | ~138 IAT + stdlib headers | ~60 funciones (codegen pendiente) |
 | C++ Standard Library (STL) | ~2000+ clases/funciones | ~35 HPP templates | ~1965+ |
 | Win32 API DLLs | 50+ DLLs | 5 DLLs (kernel32, user32, gdi32, opengl32, msvcrt) | 45+ DLLs |
 | COM/OLE | Completo | ❌ Nada | TODO |
@@ -34,68 +34,68 @@
 | Función | MSVC | ADead-BIB | Estado |
 |---------|------|-----------|--------|
 | `printf` | ✅ | ✅ IAT msvcrt | ✅ Funciona |
-| `fprintf` | ✅ | 📋 Declarado | 🔴 Falta IAT |
+| `fprintf` | ✅ | ✅ IAT msvcrt | ✅ IAT listo, codegen pendiente |
 | `sprintf` | ✅ | ✅ IAT msvcrt | ✅ Funciona |
-| `snprintf` | ✅ | ⚠️ _snprintf | 🟡 Parcial |
-| `scanf` | ✅ | 📋 Declarado | 🔴 Falta IAT |
-| `fscanf` | ✅ | ❌ | 🔴 Falta |
-| `sscanf` | ✅ | ❌ | 🔴 Falta |
-| `fopen` | ✅ | ❌ | 🔴 Falta IAT |
-| `fclose` | ✅ | ❌ | 🔴 Falta IAT |
-| `fread` | ✅ | ❌ | 🔴 Falta IAT |
-| `fwrite` | ✅ | ❌ | 🔴 Falta IAT |
-| `fgets` | ✅ | ❌ | 🔴 Falta |
-| `fputs` | ✅ | ❌ | 🔴 Falta |
-| `fgetc` / `getc` | ✅ | ❌ | 🔴 Falta |
-| `fputc` / `putc` | ✅ | ❌ | 🔴 Falta |
-| `puts` | ✅ | ❌ | 🔴 Falta |
-| `getchar` | ✅ | ❌ | 🔴 Falta |
-| `putchar` | ✅ | ❌ | 🔴 Falta |
-| `fseek` | ✅ | ❌ | 🔴 Falta IAT |
-| `ftell` | ✅ | ❌ | 🔴 Falta IAT |
-| `rewind` | ✅ | ❌ | 🔴 Falta |
-| `fflush` | ✅ | ❌ | 🔴 Falta |
-| `feof` | ✅ | ❌ | 🔴 Falta |
-| `ferror` | ✅ | ❌ | 🔴 Falta |
-| `clearerr` | ✅ | ❌ | 🔴 Falta |
-| `remove` | ✅ | ❌ | 🔴 Falta IAT |
-| `rename` | ✅ | ❌ | 🔴 Falta |
-| `tmpfile` | ✅ | ❌ | 🔴 Falta |
-| `tmpnam` | ✅ | ❌ | 🔴 Falta |
-| `perror` | ✅ | ❌ | 🔴 Falta |
-| `setbuf` / `setvbuf` | ✅ | ❌ | 🔴 Falta |
-| `vprintf` / `vfprintf` / `vsprintf` | ✅ | ❌ | 🔴 Falta |
-| `ungetc` | ✅ | ❌ | 🔴 Falta |
-| `freopen` | ✅ | ❌ | 🔴 Falta |
-| `fgetpos` / `fsetpos` | ✅ | ❌ | 🔴 Falta |
+| `snprintf` | ✅ | ✅ IAT (_snprintf) | ✅ Funciona |
+| `scanf` | ✅ | ✅ IAT msvcrt | ✅ Funciona |
+| `fscanf` | ✅ | 🟡 Falta IAT | 🔴 Falta IAT |
+| `sscanf` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fopen` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fclose` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fread` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fwrite` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fgets` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fputs` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fgetc` / `getc` | ✅ | ✅ IAT (fgetc) | ✅ IAT listo |
+| `fputc` / `putc` | ✅ | ✅ IAT (fputc) | ✅ IAT listo |
+| `puts` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `getchar` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `putchar` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fseek` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `ftell` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `rewind` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fflush` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `feof` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `ferror` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `clearerr` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `remove` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `rename` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `tmpfile` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `tmpnam` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `perror` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `setbuf` / `setvbuf` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `vprintf` / `vfprintf` / `vsprintf` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `ungetc` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `freopen` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fgetpos` / `fsetpos` | ✅ | 🟡 Falta IAT | 🔴 Falta IAT |
 
 ### 1.2 `<stdlib.h>` — Utilidades Generales
 
 | Función | MSVC | ADead-BIB | Estado |
 |---------|------|-----------|--------|
 | `malloc` | ✅ | ✅ IAT | ✅ Funciona |
-| `calloc` | ✅ | ✅ IAT | 🟡 Alloc OK, zero-check falla |
-| `realloc` | ✅ | ✅ IAT | 🟡 Parcial |
+| `calloc` | ✅ | ✅ IAT | ✅ IAT listo |
+| `realloc` | ✅ | ✅ IAT | ✅ IAT listo |
 | `free` | ✅ | ✅ IAT | ✅ Funciona |
-| `atoi` | ✅ | ❌ | 🔴 Falta IAT |
-| `atol` / `atoll` | ✅ | ❌ | 🔴 Falta |
-| `atof` | ✅ | ❌ | 🔴 Falta IAT |
-| `strtol` / `strtoul` | ✅ | ❌ | 🔴 Falta IAT |
-| `strtoll` / `strtoull` | ✅ | ❌ | 🔴 Falta |
-| `strtod` / `strtof` / `strtold` | ✅ | ❌ | 🔴 Falta |
-| `abs` / `labs` / `llabs` | ✅ | ❌ | 🔴 Falta |
-| `div` / `ldiv` / `lldiv` | ✅ | ❌ | 🔴 Falta |
-| `rand` / `srand` | ✅ | ❌ | 🔴 Falta IAT |
-| `qsort` | ✅ | ❌ | 🔴 Falta IAT |
-| `bsearch` | ✅ | ❌ | 🔴 Falta IAT |
-| `exit` / `_exit` | ✅ | ✅ ExitProcess | ✅ Funciona |
-| `atexit` | ✅ | ❌ | 🔴 Falta |
-| `abort` | ✅ | ❌ | 🔴 Falta |
-| `getenv` | ✅ | ❌ | 🔴 Falta IAT |
-| `system` | ✅ | ❌ | 🔴 Falta |
-| `mbstowcs` / `wcstombs` | ✅ | ❌ | 🔴 Falta |
-| `mbtowc` / `wctomb` | ✅ | ❌ | 🔴 Falta |
-| `aligned_alloc` (C11) | ✅ | ❌ | 🔴 Falta |
+| `atoi` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `atol` / `atoll` | ✅ | ✅ IAT (atol) | ✅ IAT listo |
+| `atof` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `strtol` / `strtoul` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `strtoll` / `strtoull` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `strtod` / `strtof` / `strtold` | ✅ | ✅ IAT (strtod, strtof) | ✅ IAT listo |
+| `abs` / `labs` / `llabs` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `div` / `ldiv` / `lldiv` | ✅ | 🟡 Falta IAT | 🔴 Falta IAT |
+| `rand` / `srand` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `qsort` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `bsearch` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `exit` / `_exit` | ✅ | ✅ IAT + ExitProcess | ✅ Funciona |
+| `atexit` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `abort` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `getenv` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `system` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `mbstowcs` / `wcstombs` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `mbtowc` / `wctomb` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `aligned_alloc` (C11) | ✅ | ❌ | 🔴 Falta (no en msvcrt) |
 
 ### 1.3 `<string.h>` — Cadenas y Memoria
 
@@ -108,57 +108,57 @@
 | `strncat` | ✅ | ✅ IAT | ❌ | ✅ Funciona |
 | `strcmp` | ✅ | ✅ IAT | ✅ asm_strcmp | ✅ Funciona |
 | `strncmp` | ✅ | ✅ IAT | ❌ | ✅ Funciona |
-| `strchr` | ✅ | ⚠️ | ✅ asm_strchr | 🟡 Falla codegen |
-| `strrchr` | ✅ | ❌ | ❌ | 🔴 Falta |
+| `strchr` | ✅ | ✅ IAT | ✅ asm_strchr | ✅ IAT listo |
+| `strrchr` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
 | `strstr` | ✅ | ✅ IAT | ❌ | ✅ Funciona |
 | `strtok` | ✅ | ✅ IAT | ❌ | ✅ Funciona |
-| `memcpy` | ✅ | ⚠️ | ✅ asm_memcpy | 🟡 Falla codegen |
-| `memmove` | ✅ | ❌ | ❌ | 🔴 Falta |
-| `memset` | ✅ | ⚠️ | ✅ asm_memset | 🟡 Falla codegen |
-| `memcmp` | ✅ | ⚠️ | ✅ asm_memcmp | 🟡 Falla codegen |
-| `memchr` | ✅ | ❌ | ❌ | 🔴 Falta |
-| `strerror` | ✅ | ❌ | ❌ | 🔴 Falta |
-| `strpbrk` | ✅ | ❌ | ❌ | 🔴 Falta |
-| `strspn` / `strcspn` | ✅ | ❌ | ❌ | 🔴 Falta |
-| `strcoll` | ✅ | ❌ | ❌ | 🔴 Falta |
-| `strxfrm` | ✅ | ❌ | ❌ | 🔴 Falta |
+| `memcpy` | ✅ | ✅ IAT | ✅ asm_memcpy | ✅ IAT listo |
+| `memmove` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
+| `memset` | ✅ | ✅ IAT | ✅ asm_memset | ✅ IAT listo |
+| `memcmp` | ✅ | ✅ IAT | ✅ asm_memcmp | ✅ IAT listo |
+| `memchr` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
+| `strerror` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
+| `strpbrk` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
+| `strspn` / `strcspn` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
+| `strcoll` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
+| `strxfrm` | ✅ | ✅ IAT msvcrt | ❌ | ✅ IAT listo |
 
 ### 1.4 `<math.h>` — Matemáticas (REQUIERE SSE/x87 CODEGEN)
 
 | Función | MSVC | ADead-BIB | Estado |
 |---------|------|-----------|--------|
-| `sin` / `cos` / `tan` | ✅ | 📋 Declarado | 🔴 Falta codegen float |
-| `asin` / `acos` / `atan` / `atan2` | ✅ | ❌ | 🔴 Falta |
-| `sinh` / `cosh` / `tanh` | ✅ | ❌ | 🔴 Falta |
-| `exp` / `exp2` / `expm1` | ✅ | ❌ | 🔴 Falta |
-| `log` / `log2` / `log10` / `log1p` | ✅ | ❌ | 🔴 Falta |
-| `pow` | ✅ | 📋 Declarado | 🔴 Falta |
-| `sqrt` / `cbrt` | ✅ | 📋 Declarado | 🔴 Falta |
-| `fabs` | ✅ | ❌ | 🔴 Falta |
-| `ceil` / `floor` / `round` / `trunc` | ✅ | ❌ | 🔴 Falta |
-| `fmod` / `remainder` | ✅ | ❌ | 🔴 Falta |
-| `frexp` / `ldexp` / `modf` | ✅ | ❌ | 🔴 Falta |
-| `hypot` | ✅ | ❌ | 🔴 Falta |
-| `copysign` / `nextafter` | ✅ | ❌ | 🔴 Falta |
-| `isnan` / `isinf` / `isfinite` | ✅ | ❌ | 🔴 Falta |
-| `fma` | ✅ | ❌ | 🔴 Falta |
-| `erf` / `erfc` / `tgamma` / `lgamma` | ✅ | ❌ | 🔴 Falta |
-| `fmin` / `fmax` / `fdim` | ✅ | ❌ | 🔴 Falta |
-| `nearbyint` / `rint` / `lrint` / `llrint` | ✅ | ❌ | 🔴 Falta |
-| `lround` / `llround` | ✅ | ❌ | 🔴 Falta |
+| `sin` / `cos` / `tan` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `asin` / `acos` / `atan` / `atan2` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `sinh` / `cosh` / `tanh` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `exp` / `exp2` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `log` / `log2` / `log10` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `pow` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `sqrt` / `cbrt` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fabs` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `ceil` / `floor` / `round` / `trunc` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fmod` / `remainder` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `frexp` / `ldexp` / `modf` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `hypot` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `copysign` / `nextafter` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `_isnan` / `_finite` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `fma` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `erf` / `erfc` / `tgamma` / `lgamma` | ✅ | ❌ | 🔴 Falta (no en msvcrt) |
+| `fmin` / `fmax` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `nearbyint` / `rint` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `lround` / `llround` | ✅ | ❌ | 🔴 Falta IAT |
 
 ### 1.5 `<time.h>` — Tiempo
 
 | Función | MSVC | ADead-BIB | Estado |
 |---------|------|-----------|--------|
-| `time` | ✅ | 📋 Declarado | 🔴 Falta IAT |
-| `clock` | ✅ | 📋 Declarado | 🔴 Falta |
-| `difftime` | ✅ | ❌ | 🔴 Falta |
-| `mktime` | ✅ | ❌ | 🔴 Falta |
-| `localtime` / `gmtime` | ✅ | ❌ | 🔴 Falta |
-| `asctime` / `ctime` | ✅ | ❌ | 🔴 Falta |
-| `strftime` | ✅ | 📋 Declarado | 🔴 Falta |
-| `timespec_get` (C11) | ✅ | ❌ | 🔴 Falta |
+| `time` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `clock` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `difftime` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `mktime` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `localtime` / `gmtime` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `asctime` / `ctime` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `strftime` | ✅ | ✅ IAT msvcrt | ✅ IAT listo |
+| `timespec_get` (C11) | ✅ | ❌ | 🔴 Falta (no en msvcrt) |
 
 ### 1.6 `<ctype.h>` — Clasificación de Caracteres ✅ COMPLETO
 
@@ -170,9 +170,9 @@
 
 | Función | Estado |
 |---------|--------|
-| `signal` | 🔴 Falta IAT msvcrt |
-| `raise` | 🔴 Falta IAT msvcrt |
-| Constantes: SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM | 🔴 Falta |
+| `signal` | ✅ IAT msvcrt + fastos_signal.rs |
+| `raise` | ✅ IAT msvcrt + fastos_signal.rs |
+| Constantes: SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM | ✅ fastos_signal.rs |
 
 ### 1.8 `<setjmp.h>` — Saltos No-Locales
 
@@ -190,29 +190,31 @@
 
 | Función | Estado |
 |---------|--------|
-| `setlocale`, `localeconv`, `struct lconv` | 🔴 Falta |
+| `setlocale` | ✅ IAT msvcrt + fastos_signal.rs |
+| `localeconv` | ✅ IAT msvcrt |
+| `struct lconv` | ✅ fastos_stdlib.rs |
 
 ### 1.11 `<wchar.h>` — Caracteres Anchos (Unicode)
 
 | Función | Estado |
 |---------|--------|
-| `wprintf` / `fwprintf` / `swprintf` | 🔴 Falta |
-| `wscanf` / `fwscanf` / `swscanf` | 🔴 Falta |
-| `wcscpy` / `wcsncpy` / `wcscat` / `wcsncat` | 🔴 Falta |
-| `wcscmp` / `wcsncmp` / `wcslen` | 🔴 Falta |
-| `wcschr` / `wcsrchr` / `wcsstr` / `wcstok` | 🔴 Falta |
-| `wmemcpy` / `wmemmove` / `wmemset` / `wmemcmp` | 🔴 Falta |
-| `mbrtowc` / `wcrtomb` / `mbrlen` | 🔴 Falta |
-| `fgetwc` / `fputwc` / `fgetws` / `fputws` | 🔴 Falta |
-| `wcstol` / `wcstoul` / `wcstod` / `wcstof` | 🔴 Falta |
-| `wcsftime` | 🔴 Falta |
+| `wprintf` / `fwprintf` / `swprintf` | ✅ IAT msvcrt + fastos_wchar.rs |
+| `wscanf` / `fwscanf` / `swscanf` | 🔴 Falta IAT |
+| `wcscpy` / `wcsncpy` / `wcscat` / `wcsncat` | ✅ IAT msvcrt + fastos_wchar.rs |
+| `wcscmp` / `wcsncmp` / `wcslen` | ✅ IAT msvcrt + fastos_wchar.rs |
+| `wcschr` / `wcsrchr` / `wcsstr` / `wcstok` | ✅ IAT msvcrt + fastos_wchar.rs |
+| `wmemcpy` / `wmemmove` / `wmemset` / `wmemcmp` | 🔴 Falta IAT |
+| `mbrtowc` / `wcrtomb` / `mbrlen` | 🔴 Falta IAT |
+| `fgetwc` / `fputwc` / `fgetws` / `fputws` | 🔴 Falta IAT |
+| `wcstol` / `wcstoul` / `wcstod` | ✅ IAT msvcrt + fastos_wchar.rs |
+| `wcsftime` | 🔴 Falta IAT |
 
 ### 1.12 `<wctype.h>` — Clasificación Caracteres Anchos
 
 | Función | Estado |
 |---------|--------|
-| `iswalpha` / `iswdigit` / `iswalnum` / `iswspace` ... | 🔴 Falta |
-| `towupper` / `towlower` | 🔴 Falta |
+| `iswalpha` / `iswdigit` / `iswalnum` / `iswspace` | ✅ IAT msvcrt + fastos_wchar.rs |
+| `towupper` / `towlower` | ✅ IAT msvcrt + fastos_wchar.rs |
 
 ### 1.13 C11 Headers Adicionales
 

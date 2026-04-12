@@ -7,23 +7,36 @@
 // ============================================================
 
 pub const MATH_FUNCTIONS: &[&str] = &[
+    // Trigonometric
     "sin", "cos", "tan",
     "asin", "acos", "atan", "atan2",
-    "sqrt", "cbrt",
-    "pow", "exp", "exp2",
-    "log", "log2", "log10",
+    "sinh", "cosh", "tanh",
+    // Power/root
+    "sqrt", "cbrt", "pow", "hypot",
+    // Exponential/logarithmic
+    "exp", "exp2", "log", "log2", "log10",
+    "ldexp", "frexp", "modf",
+    // Rounding
     "floor", "ceil", "round", "trunc",
-    "fabs", "fabsf",
+    "nearbyint", "rint",
+    // Absolute/sign
+    "fabs", "fabsf", "copysign", "copysignf",
+    // Modular
     "fmod", "remainder",
-    "hypot",
+    // Min/max
+    "fmin", "fmax", "fminf", "fmaxf",
+    // FMA
+    "fma",
+    // Classification (MSVC names)
+    "isnan", "isinf", "isfinite", "isnormal",
+    "_isnan", "_finite",
+    "nextafter",
+    // Misc
+    "nan", "nanf",
+    "scalbn", "scalbln",
+    // Float variants
     "sinf", "cosf", "tanf", "sqrtf", "powf", "logf",
     "floorf", "ceilf", "roundf", "truncf",
-    "copysign", "copysignf",
-    "fmin", "fmax", "fminf", "fmaxf",
-    "isnan", "isinf", "isfinite", "isnormal",
-    "nan", "nanf",
-    "ldexp", "frexp", "modf",
-    "scalbn", "scalbln",
 ];
 
 pub const MATH_CONSTANTS: &[(&str, &str)] = &[

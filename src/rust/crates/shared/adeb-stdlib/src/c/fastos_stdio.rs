@@ -8,12 +8,23 @@
 
 /// Symbols exported by <stdio.h>
 pub const STDIO_FUNCTIONS: &[&str] = &[
-    "printf", "scanf", "fprintf", "sprintf", "snprintf",
-    "fopen", "fclose", "fread", "fwrite",
-    "fgets", "fputs", "sscanf", "perror",
-    "puts", "putchar", "getchar",
-    "fseek", "ftell", "rewind", "feof", "ferror",
-    "clearerr", "fflush", "remove", "rename", "tmpfile",
+    // Core I/O
+    "printf", "scanf", "fprintf", "fscanf", "sprintf", "snprintf", "sscanf",
+    // File operations
+    "fopen", "fclose", "fread", "fwrite", "freopen",
+    // Character/line I/O
+    "fgets", "fputs", "fgetc", "fputc", "getc", "putc",
+    "puts", "putchar", "getchar", "ungetc",
+    // Positioning
+    "fseek", "ftell", "rewind", "fgetpos", "fsetpos",
+    // Status
+    "feof", "ferror", "clearerr", "fflush", "perror",
+    // File management
+    "remove", "rename", "tmpfile", "tmpnam",
+    // Variadic
+    "vprintf", "vfprintf", "vsprintf",
+    // Buffering
+    "setbuf", "setvbuf",
 ];
 
 pub const STDIO_MACROS: &[(&str, &str)] = &[

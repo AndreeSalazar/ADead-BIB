@@ -1,18 +1,11 @@
 // ============================================================
-// ISA Optimization Layer — Peephole, SoA, register allocation
+// ISA Optimization Layer — DEPRECATED (use monolith/ instead)
 // ============================================================
-// All optimization passes that transform ADeadOp sequences
-// before final encoding to machine code.
+// Alias kept for backward compatibility.
+// New code should use: crate::isa::monolith::optimizer / reg_alloc / etc.
 // ============================================================
 
-#[path = "../optimizer.rs"]
-pub mod optimizer;
-
-#[path = "../soa_optimizer.rs"]
-pub mod soa_optimizer;
-
-#[path = "../reg_alloc.rs"]
-pub mod reg_alloc;
-
-#[path = "../ymm_allocator.rs"]
-pub mod ymm_allocator;
+pub use super::optimizer;
+pub use super::soa_optimizer;
+pub use super::reg_alloc;
+pub use super::ymm_allocator;

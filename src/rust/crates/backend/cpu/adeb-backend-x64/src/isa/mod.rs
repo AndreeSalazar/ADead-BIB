@@ -18,6 +18,43 @@
 // Email: eddi.salazar.dev@gmail.com
 // ============================================================
 
+// ════════════════════════════════════════════════════════════
+// ORGANIZED LAYER STRUCTURE (v10.0)
+// ════════════════════════════════════════════════════════════
+//
+// isa/
+// ├── arch/         ← CRITICAL: x86-64 encoding, decoding, types
+// │   ├── encoder.rs       (ADeadOp → bytes, FASM multi-pass)
+// │   ├── decoder.rs       (bytes → disassembly, 80+ patterns)
+// │   ├── vex_emitter.rs   (AVX/VEX prefix emission)
+// │   └── bit_resolver.rs  (label/jump resolution)
+// │
+// ├── monolith/     ← GENERIC: classic ISA compilation
+// │   ├── isa_compiler.rs  (AST → ADeadOp IR, 261KB monolith)
+// │   ├── c_isa.rs         (C99 sizeof, alignment rules)
+// │   ├── cpp_isa.rs       (C++ vtable, this, inheritance)
+// │   ├── compiler/        (modular split of isa_compiler)
+// │   ├── optimizer.rs     (peephole optimization)
+// │   ├── reg_alloc.rs     (GPR register allocation)
+// │   ├── soa_optimizer.rs (SoA vectorization)
+// │   └── ymm_allocator.rs (AVX2 256-bit registers)
+// │
+// ├── mod.rs        ← THIS FILE: types (Reg, ADeadOp, etc.)
+// ├── codegen.rs    ← alias for isa_compiler
+// │
+// └── [legacy aliases — backward compat]
+//     ├── lang/     → use monolith/ instead
+//     └── optimize/ → use monolith/ instead
+//
+// Flow:
+//   AST → [monolith] → Vec<ADeadOp> → [arch/encoder] → bytes → PE output
+//
+// Both arch/ and monolith/ export to PE independently:
+//   arch/  : raw ADeadOp → bytes (for hand-crafted ISA sequences)
+//   monolith/ : Program → bytes (full C/C++ compilation pipeline)
+// ════════════════════════════════════════════════════════════
+
+// ── Primary source files (canonical locations) ──
 pub mod bit_resolver;
 pub mod c_isa;
 pub mod codegen;
@@ -32,8 +69,11 @@ pub mod soa_optimizer;
 pub mod vex_emitter;
 pub mod ymm_allocator;
 
-// ── Organized sub-layers (same files, better structure) ──
-pub mod arch;
+// ── NEW: Organized layer structure ──
+pub mod arch;      // CRITICAL — architecture-specific, non-generic
+pub mod monolith;  // GENERIC  — classic ISA compilation pipeline
+
+// ── LEGACY: backward-compatible aliases (use arch/ and monolith/ instead) ──
 pub mod lang;
 pub mod optimize;
 

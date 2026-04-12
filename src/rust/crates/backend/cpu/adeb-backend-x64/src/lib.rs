@@ -1,3 +1,31 @@
+// ============================================================
+// adeb-backend-x64 — ADead-BIB x86-64 Backend
+// ============================================================
+//
+// Organized structure (v10.0):
+//
+// lib.rs
+// ├── isa/                  ← ISA Layer (types, encoding, compilation)
+// │   ├── arch/             ← CRITICAL: encoder, decoder, VEX, bit_resolver
+// │   ├── monolith/         ← GENERIC: isa_compiler, c_isa, cpp_isa, optimizer
+// │   └── mod.rs            ← Core types: Reg, ADeadOp, Operand, ADeadIR
+// │
+// ├── backend::cpu::iat_registry  ← IAT v5 (12 DLLs, 241+ slots)
+// ├── pe                    ← PE output (.exe generation)
+// ├── flat_binary           ← Raw binary output (boot sectors)
+// ├── elf                   ← ELF output (stub)
+// └── po                    ← .Po output (FastOS format)
+//
+// Pipeline:
+//   .c/.cpp → Frontend → AST → [isa/monolith] → Vec<ADeadOp>
+//           → [isa/arch/encoder] → bytes → [pe/flat_binary] → .exe
+//
+// Both arch/ and monolith/ can independently produce bytes for PE:
+//   arch/     : hand-crafted ADeadOp → Encoder → bytes
+//   monolith/ : Program AST → IsaCompiler → bytes (full pipeline)
+//
+// ============================================================
+
 pub mod isa;
 
 pub mod frontend {
@@ -23,7 +51,7 @@ pub mod backend {
             }
 
             pub static DLL_IMPORTS: &[DllImport] = &[
-                // ── Phase 1: C Runtime (msvcrt.dll) — 94 functions ──
+                // ── Phase 1: C Runtime (msvcrt.dll) — 138 functions ──
                 DllImport { dll: "msvcrt.dll", functions: &[
                     // stdio — core
                     "printf", "fprintf", "sprintf", "_snprintf", "scanf", "sscanf",
@@ -57,6 +85,19 @@ pub mod backend {
                     "ceil", "floor", "fabs", "fmod",
                     "sinh", "cosh", "tanh",
                     "ldexp", "frexp", "modf",
+                    "hypot", "log2", "exp2", "cbrt",
+                    "round", "trunc", "fmin", "fmax",
+                    "copysign", "nextafter", "_isnan", "_finite",
+                    "fma", "remainder", "nearbyint", "rint",
+                    // wchar (msvcrt.dll exports)
+                    "wprintf", "fwprintf", "swprintf",
+                    "wcscpy", "wcsncpy", "wcscat", "wcsncat",
+                    "wcscmp", "wcsncmp", "wcslen",
+                    "wcschr", "wcsrchr", "wcsstr", "wcstok",
+                    "wcstol", "wcstoul", "wcstod",
+                    "mbstowcs", "wcstombs", "mbtowc", "wctomb",
+                    "iswalpha", "iswdigit", "iswalnum", "iswspace",
+                    "towupper", "towlower",
                     // time — core + extras
                     "time", "clock", "difftime", "strftime",
                     "mktime", "localtime", "gmtime", "asctime", "ctime",

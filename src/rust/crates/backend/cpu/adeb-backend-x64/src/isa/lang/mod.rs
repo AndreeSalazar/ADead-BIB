@@ -1,11 +1,9 @@
 // ============================================================
-// ISA Language Layer — Language-specific code generation
+// ISA Language Layer — DEPRECATED (use monolith/ instead)
 // ============================================================
-// C99 and C++ specific ISA compiler wrappers.
+// Alias kept for backward compatibility.
+// New code should use: crate::isa::monolith::c_isa / cpp_isa
 // ============================================================
 
-#[path = "../c_isa.rs"]
-pub mod c_isa;
-
-#[path = "../cpp_isa.rs"]
-pub mod cpp_isa;
+pub use super::c_isa;
+pub use super::cpp_isa;
