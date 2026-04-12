@@ -16,6 +16,18 @@ pub const WCHAR_FUNCTIONS: &[&str] = &[
     "wcstol", "wcstoul", "wcstod",
     // Multi-byte
     "mbstowcs", "wcstombs", "mbtowc", "wctomb",
+    // Scanning
+    "wscanf", "fwscanf", "swscanf",
+    // Wide memory
+    "wmemcpy", "wmemmove", "wmemset", "wmemcmp", "wmemchr",
+    // Restartable multi-byte
+    "mbrtowc", "wcrtomb", "mbrlen",
+    // Wide character I/O
+    "fgetwc", "fputwc", "fgetws", "fputws", "getwc", "putwc",
+    // Time
+    "wcsftime",
+    // MSVC extension
+    "wcsdup",
 ];
 
 pub const WCTYPE_FUNCTIONS: &[&str] = &[

@@ -37,6 +37,15 @@ pub const MATH_FUNCTIONS: &[&str] = &[
     // Float variants
     "sinf", "cosf", "tanf", "sqrtf", "powf", "logf",
     "floorf", "ceilf", "roundf", "truncf",
+    // Extended rounding
+    "lround", "llround", "lroundf", "llroundf",
+    // Special functions
+    "erf", "erfc", "tgamma", "lgamma",
+    // Exponent manipulation
+    "ilogb", "ilogbf", "logb", "logbf",
+    "scalbnf",
+    // Positive difference
+    "fdim", "fdimf",
 ];
 
 pub const MATH_CONSTANTS: &[(&str, &str)] = &[

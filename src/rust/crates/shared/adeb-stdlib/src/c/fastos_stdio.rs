@@ -22,7 +22,7 @@ pub const STDIO_FUNCTIONS: &[&str] = &[
     // File management
     "remove", "rename", "tmpfile", "tmpnam",
     // Variadic
-    "vprintf", "vfprintf", "vsprintf",
+    "vprintf", "vfprintf", "vsprintf", "vsnprintf",
     // Buffering
     "setbuf", "setvbuf",
 ];

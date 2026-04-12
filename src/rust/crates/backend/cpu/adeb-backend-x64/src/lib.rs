@@ -10,7 +10,7 @@
 // │   ├── monolith/         ← GENERIC: isa_compiler, c_isa, cpp_isa, optimizer
 // │   └── mod.rs            ← Core types: Reg, ADeadOp, Operand, ADeadIR
 // │
-// ├── backend::cpu::iat_registry  ← IAT v5 (12 DLLs, 241+ slots)
+// ├── backend::cpu::iat_registry  ← IAT v5 (18 DLLs, 340+ slots)
 // ├── pe                    ← PE output (.exe generation)
 // ├── flat_binary           ← Raw binary output (boot sectors)
 // ├── elf                   ← ELF output (stub)
@@ -41,9 +41,9 @@ pub mod backend {
             use std::collections::HashMap;
 
             // ── Multi-DLL IAT Registry v5 ─────────────────────────
-            // 13 DLLs, 200+ slots: msvcrt, kernel32, user32, gdi32,
-            // opengl32, ole32, dxgi, d3d9, d3d11, d3d12,
-            // d3dcompiler_47, ws2_32
+            // 18 DLLs, 300+ slots: msvcrt, kernel32, user32, gdi32,
+            // opengl32, ole32, oleaut32, dxgi, d3d9, d3d11, d3d12,
+            // d3dcompiler_47, advapi32, shell32, winmm, comdlg32, ws2_32
 
             pub struct DllImport {
                 pub dll: &'static str,
@@ -51,7 +51,7 @@ pub mod backend {
             }
 
             pub static DLL_IMPORTS: &[DllImport] = &[
-                // ── Phase 1: C Runtime (msvcrt.dll) — 138 functions ──
+                // ── Phase 1: C Runtime (msvcrt.dll) — 334 functions ──
                 DllImport { dll: "msvcrt.dll", functions: &[
                     // stdio — core
                     "printf", "fprintf", "sprintf", "_snprintf", "scanf", "sscanf",
@@ -107,6 +107,83 @@ pub mod backend {
                     "setlocale", "localeconv",
                     // errno
                     "_errno",
+                    // stdio — missing
+                    "fscanf", "fgetpos", "fsetpos", "vsnprintf",
+                    // stdlib — missing
+                    "div", "ldiv", "lldiv",
+                    "_aligned_malloc", "_aligned_free",
+                    "_beginthread", "_endthread", "_beginthreadex", "_endthreadex",
+                    "_stricmp", "_strnicmp",
+                    "_snprintf_s", "sprintf_s", "strcpy_s", "strncpy_s", "strcat_s",
+                    "_open", "_close", "_read", "_write", "_lseek",
+                    "_stat", "_fstat",
+                    "_mkdir", "_rmdir", "_chdir", "_getcwd",
+                    "_findfirst", "_findnext", "_findclose",
+                    "_access",
+                    "_itoa", "_ltoa", "_ui64toa",
+                    "_fullpath", "_makepath", "_splitpath",
+                    // security
+                    "__security_init_cookie", "__security_check_cookie",
+                    // math — missing
+                    "lround", "llround", "lroundf", "llroundf",
+                    "scalbn", "scalbnf", "scalbln", "scalblnf",
+                    "ilogb", "ilogbf", "logb", "logbf",
+                    "nan", "nanf",
+                    "fdim", "fdimf",
+                    // wchar — missing
+                    "wscanf", "fwscanf", "swscanf",
+                    "wmemcpy", "wmemmove", "wmemset", "wmemcmp", "wmemchr",
+                    "_mbrtowc", "_wcrtomb", "_mbrlen",
+                    "fgetwc", "fputwc", "fgetws", "fputws", "getwc", "putwc",
+                    "wcsftime",
+                    "iswprint", "iswpunct", "iswcntrl", "iswxdigit", "iswgraph",
+                    "iswupper", "iswlower",
+                    // MSVC CRT extras
+                    "_wfopen", "_wfreopen",
+                    "_setmode", "_fileno",
+                    "_isatty",
+                    "_putenv", "_wgetenv",
+                    "_strdup", "_wcsdup",
+                    "_strlwr", "_strupr",
+                    "_gcvt", "_ecvt", "_fcvt",
+                    "_swab",
+                    "_sleep",
+                    // setjmp/longjmp
+                    "setjmp", "longjmp", "_setjmp", "_longjmp",
+                    // math — float variants still missing
+                    "sinf", "cosf", "tanf", "asinf", "acosf", "atanf", "atan2f",
+                    "expf", "logf", "log10f", "log2f", "powf", "sqrtf",
+                    "ceilf", "floorf", "fabsf", "fmodf",
+                    "sinhf", "coshf", "tanhf",
+                    "hypotf", "cbrtf", "exp2f",
+                    "copysignf", "nextafterf",
+                    "fmaf", "remainderf", "nearbyintf", "rintf",
+                    "erff", "erfcf", "tgammaf", "lgammaf",
+                    // math — special functions
+                    "erf", "erfc", "tgamma", "lgamma",
+                    // stdlib — still missing
+                    "strtold", "atoll",
+                    "_ultoa", "_i64toa",
+                    "_wtoi", "_wtol", "_wtof",
+                    "_wcsicmp", "_wcsnicmp",
+                    // string — still missing
+                    "_strnset", "_strrev", "_strset",
+                    // locale — still missing
+                    "_setmbcp", "_getmbcp",
+                    "_ismbblead",
+                    // errno — (strerror already present above)
+                    // process
+                    "_spawnl", "_spawnlp", "_spawnle",
+                    "_getpid",
+                    // UCRT wide I/O
+                    "_vsnwprintf", "vswprintf",
+                    "_vscwprintf",
+                    // UCRT extras
+                    "_dup", "_dup2", "_pipe",
+                    "_umask", "_chmod",
+                    "_unlink",
+                    "_tempnam",
+                    "_hypot",
                 ] },
                 // ── Phase 2: Win32 Core — kernel32.dll (30 functions) ──
                 DllImport { dll: "kernel32.dll", functions: &[
@@ -133,6 +210,55 @@ pub mod backend {
                     "GetCommandLineA", "GetSystemInfo",
                     // Debug
                     "OutputDebugStringA", "IsDebuggerPresent",
+                    // Threading — extended
+                    "ExitThread", "ResumeThread", "SuspendThread",
+                    "WaitForMultipleObjects",
+                    "CreateMutexA", "ReleaseMutex",
+                    "CreateEventA", "SetEvent", "ResetEvent",
+                    "CreateSemaphoreA", "ReleaseSemaphore",
+                    // Critical sections
+                    "InitializeCriticalSection", "EnterCriticalSection",
+                    "LeaveCriticalSection", "DeleteCriticalSection",
+                    "TryEnterCriticalSection",
+                    // Atomics / Interlocked
+                    "InterlockedIncrement", "InterlockedDecrement",
+                    "InterlockedExchange", "InterlockedCompareExchange",
+                    "InterlockedExchangeAdd",
+                    // Process
+                    "CreateProcessA", "TerminateProcess", "GetExitCodeProcess",
+                    // Memory-mapped files
+                    "CreateFileMappingA", "MapViewOfFile", "UnmapViewOfFile",
+                    // Pipes
+                    "CreatePipe",
+                    // File ops — extended
+                    "SetEndOfFile", "FlushFileBuffers",
+                    "GetFileSizeEx",
+                    "GetFileAttributesA", "SetFileAttributesA",
+                    "FindFirstFileA", "FindNextFileA", "FindClose",
+                    "CreateDirectoryA", "RemoveDirectoryA",
+                    "DeleteFileA", "MoveFileA", "CopyFileA",
+                    "GetTempPathA", "GetTempFileNameA",
+                    "GetFullPathNameA",
+                    // Time — extended
+                    "GetSystemTime", "GetLocalTime",
+                    "SystemTimeToFileTime", "FileTimeToSystemTime",
+                    "GetTickCount64",
+                    // System info
+                    "GetNativeSystemInfo",
+                    "GetComputerNameA",
+                    // Error handling
+                    "SetLastError", "FormatMessageA",
+                    // Modules — extended
+                    "GetModuleFileNameA",
+                    // TLS
+                    "TlsAlloc", "TlsFree", "TlsGetValue", "TlsSetValue",
+                    // Console — extended
+                    "ReadConsoleA", "SetConsoleTextAttribute",
+                    "GetConsoleScreenBufferInfo",
+                    // Misc
+                    "GetVersionExA",
+                    "MultiByteToWideChar", "WideCharToMultiByte",
+                    "SetUnhandledExceptionFilter",
                 ] },
                 // ── Phase 2: Win32 UI — user32.dll (40 functions) ──
                 DllImport { dll: "user32.dll", functions: &[
@@ -200,10 +326,30 @@ pub mod backend {
                     "glColorMaterial", "glFlush",
                     "glGetString", "glGetError",
                 ] },
-                // ── Phase 3: COM — ole32.dll (6 functions) ──
+                // ── Phase 3: COM — ole32.dll (20 functions) ──
                 DllImport { dll: "ole32.dll", functions: &[
                     "CoInitialize", "CoInitializeEx", "CoUninitialize",
-                    "CoCreateInstance", "CoTaskMemAlloc", "CoTaskMemFree",
+                    "CoCreateInstance", "CoGetClassObject",
+                    "CoTaskMemAlloc", "CoTaskMemRealloc", "CoTaskMemFree",
+                    "StringFromCLSID", "CLSIDFromString",
+                    "StringFromGUID2", "IIDFromString", "StringFromIID",
+                    "CoRegisterClassObject", "CoRevokeClassObject",
+                    "PropVariantClear",
+                    "OleInitialize", "OleUninitialize",
+                    "CoMarshalInterThreadInterfaceInStream",
+                    "CoGetInterfaceAndReleaseStream",
+                ] },
+                // ── Phase 3: COM Automation — oleaut32.dll (20 functions) ──
+                DllImport { dll: "oleaut32.dll", functions: &[
+                    "SysAllocString", "SysAllocStringLen",
+                    "SysFreeString", "SysStringLen", "SysStringByteLen",
+                    "SysReAllocString", "SysReAllocStringLen",
+                    "VariantInit", "VariantClear", "VariantCopy",
+                    "VariantChangeType", "VariantChangeTypeEx",
+                    "SafeArrayCreate", "SafeArrayCreateVector",
+                    "SafeArrayDestroy", "SafeArrayAccessData", "SafeArrayUnaccessData",
+                    "SafeArrayGetLBound", "SafeArrayGetUBound",
+                    "RegisterTypeLib",
                 ] },
                 // ── Phase 3: DXGI — dxgi.dll (3 functions) ──
                 DllImport { dll: "dxgi.dll", functions: &[
@@ -226,6 +372,42 @@ pub mod backend {
                 DllImport { dll: "d3dcompiler_47.dll", functions: &[
                     "D3DCompile", "D3DCompile2",
                     "D3DCompileFromFile", "D3DReflect",
+                ] },
+                // ── Phase 4: Security & Registry — advapi32.dll (20 functions) ──
+                DllImport { dll: "advapi32.dll", functions: &[
+                    "RegOpenKeyExA", "RegCloseKey",
+                    "RegQueryValueExA", "RegSetValueExA",
+                    "RegCreateKeyExA", "RegDeleteKeyA", "RegDeleteValueA",
+                    "RegEnumKeyExA", "RegEnumValueA",
+                    "OpenProcessToken", "GetTokenInformation",
+                    "LookupPrivilegeValueA", "AdjustTokenPrivileges",
+                    "GetUserNameA",
+                    "CryptAcquireContextA", "CryptGenRandom", "CryptReleaseContext",
+                    "InitializeSecurityDescriptor", "SetSecurityDescriptorDacl",
+                    "GetSecurityDescriptorDacl",
+                ] },
+                // ── Phase 4: Shell — shell32.dll (10 functions) ──
+                DllImport { dll: "shell32.dll", functions: &[
+                    "ShellExecuteA", "ShellExecuteExA",
+                    "SHGetFolderPathA", "SHGetKnownFolderPath",
+                    "SHBrowseForFolderA", "SHGetPathFromIDListA",
+                    "SHFileOperationA",
+                    "DragAcceptFiles", "DragQueryFileA", "DragFinish",
+                ] },
+                // ── Phase 4: Multimedia — winmm.dll (12 functions) ──
+                DllImport { dll: "winmm.dll", functions: &[
+                    "PlaySoundA",
+                    "waveOutOpen", "waveOutClose", "waveOutWrite",
+                    "waveOutPrepareHeader", "waveOutUnprepareHeader",
+                    "waveOutSetVolume", "waveOutGetVolume",
+                    "timeGetTime", "timeBeginPeriod", "timeEndPeriod",
+                    "joyGetPosEx",
+                ] },
+                // ── Phase 4: Common Dialogs — comdlg32.dll (6 functions) ──
+                DllImport { dll: "comdlg32.dll", functions: &[
+                    "GetOpenFileNameA", "GetSaveFileNameA",
+                    "ChooseColorA", "ChooseFontA",
+                    "PrintDlgA", "CommDlgExtendedError",
                 ] },
                 // ── Phase 4: Networking — ws2_32.dll (20 functions) ──
                 DllImport { dll: "ws2_32.dll", functions: &[
