@@ -14,8 +14,8 @@
 | C Standard Library (libc) | ~200 funciones | ~218 IAT + stdlib headers + 6 C11 modules | ~20 funciones (codegen pendiente) |
 | C++ Standard Library (STL) | ~2000+ clases/funciones | ~35 HPP templates | ~1965+ |
 | Win32 API DLLs | 50+ DLLs | 5 DLLs (kernel32, user32, gdi32, opengl32, msvcrt) | 45+ DLLs |
-| COM/OLE | Completo | ❌ Nada | TODO |
-| DirectX (9-12) | SDK completo | ❌ Headers parciales, codegen vacío | TODO |
+| COM/OLE | Completo | ✅ fastos_com.rs + ole32 IAT (20 fn) | vtable codegen |
+| DirectX (9-12) | SDK completo | ✅ 5 stdlib headers + 39 IAT fn | vtable codegen |
 | Vulkan | SDK completo | Declaraciones | Runtime/loader |
 | Kernel headers (ntddk) | Completo | fastos_kernel.rs parcial | ~95% |
 | Linker features | LINK.exe completo | PE Writer básico | DLL, LIB, PDB, LTCG |
@@ -518,9 +518,13 @@
 
 ### 3.1 DirectX 9 (`d3d9.dll`)
 
-#### IAT Necesario:
-- `Direct3DCreate9` — P0
-- `Direct3DCreate9Ex` — P1
+#### IAT Necesario (9 funciones — ✅ IAT listo):
+- `Direct3DCreate9` — ✅ IAT
+- `Direct3DCreate9Ex` — ✅ IAT
+- `D3DPERF_BeginEvent`, `D3DPERF_EndEvent` — ✅ IAT
+- `D3DPERF_SetMarker`, `D3DPERF_SetRegion` — ✅ IAT
+- `D3DPERF_QueryRepeatFrame`, `D3DPERF_SetOptions`, `D3DPERF_GetStatus` — ✅ IAT
+- **stdlib header:** `fastos_d3d9.rs` — ✅ completo (funciones, interfaces, tipos, constantes)
 
 #### Interfaces COM (vtable):
 
@@ -564,10 +568,11 @@
 
 ### 3.2 DirectX 11 (`d3d11.dll` + `dxgi.dll`)
 
-#### IAT Necesario:
-- `d3d11.dll` → `D3D11CreateDevice`, `D3D11CreateDeviceAndSwapChain` — P0
-- `dxgi.dll` → `CreateDXGIFactory`, `CreateDXGIFactory1`, `CreateDXGIFactory2` — P0
-- `d3dcompiler_47.dll` → `D3DCompile`, `D3DCompileFromFile`, `D3DReflect`, `D3DCreateBlob` — P0
+#### IAT Necesario (22 funciones — ✅ IAT listo):
+- `d3d11.dll` (3) → `D3D11CreateDevice`, `D3D11CreateDeviceAndSwapChain`, `D3D11On12CreateDevice` — ✅ IAT
+- `dxgi.dll` (4) → `CreateDXGIFactory`, `CreateDXGIFactory1`, `CreateDXGIFactory2`, `DXGIGetDebugInterface1` — ✅ IAT
+- `d3dcompiler_47.dll` (15) → `D3DCompile`, `D3DCompile2`, `D3DCompileFromFile`, `D3DReflect`, `D3DCreateBlob`, `D3DDisassemble`, `D3DGetBlobPart`, `D3DStripShader`, `D3DReadFileToBlob`, `D3DWriteBlobToFile`, `D3DPreprocess`, `D3DGetDebugInfo`, `D3DGetInputSignatureBlob`, `D3DGetOutputSignatureBlob`, `D3DGetInputAndOutputSignatureBlob` — ✅ IAT
+- **stdlib headers:** `fastos_dxgi.rs`, `fastos_d3d11.rs` — ✅ completo
 
 #### Interfaces COM (vtable) — DXGI:
 
@@ -607,9 +612,10 @@
 
 ### 3.3 DirectX 12 (`d3d12.dll` + `dxgi.dll`)
 
-#### IAT Necesario:
-- `d3d12.dll` → `D3D12CreateDevice`, `D3D12GetDebugInterface`, `D3D12SerializeRootSignature`, `D3D12SerializeVersionedRootSignature` — P0
-- `dxgi.dll` → `CreateDXGIFactory2` — P0
+#### IAT Necesario (8 funciones — ✅ IAT listo):
+- `d3d12.dll` (8) → `D3D12CreateDevice`, `D3D12GetDebugInterface`, `D3D12SerializeRootSignature`, `D3D12SerializeVersionedRootSignature`, `D3D12CreateRootSignatureDeserializer`, `D3D12CreateVersionedRootSignatureDeserializer`, `D3D12EnableExperimentalFeatures`, `D3D12GetInterface` — ✅ IAT
+- `dxgi.dll` → `CreateDXGIFactory2` — ✅ IAT (compartido con DX11)
+- **stdlib header:** `fastos_d3d12.rs` — ✅ completo (funciones, interfaces, tipos, constantes, IIDs, raytracing)
 
 #### Interfaces COM (vtable):
 

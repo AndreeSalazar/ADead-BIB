@@ -1,19 +1,21 @@
-# ADead-BIB v10.0 💀🦈
+# ADead-BIB v11.0 💀🦈
 
 **Compilador Nativo: C99 · C++17 → Machine Code Puro · 256-bit Nativo · DirectX 9/11/12 · Win32 Completo**
 
-> **CLI v10.0 Unificado:** `adB cc` · `adB cxx` · `adB cuda` · `adB js` · `adB run` · `adB step` · `adB version`  
-> **IAT v5:** 12 DLLs · 241 funciones importadas · DirectX 9/11/12 · OpenGL · Winsock  
+> **CLI v11.0 Unificado:** `adB cc` · `adB cxx` · `adB cuda` · `adB js` · `adB run` · `adB step` · `adB version`  
+> **IAT v6:** 18 DLLs · 340+ funciones importadas · Compact IAT · Sin 0xC0000139  
 > **ASM-BIB Bridge:** 21 funciones assembly nativas enlazadas via COFF .obj  
 > **Linker Especial DLL:** Genera bibliotecas nativas para Windows (.dll) y Linux (.so) sin MSVC/GCC/Clang  
 > **DLL Fusion:** Combina con cualquier programa Windows o Linux existente  
+> **DirectX Phase 7:** COM + DXGI + D3D9/11/12 + HLSL Compiler — Todos funcionando ✅  
 > Zero Overhead · Zero Bloat · Zero Dead Code  
 > Sin NASM · Sin LLVM · Sin GCC · Sin Clang  
 > Sin libc externa · Sin linker · 100% Autosuficiente  
 > FASM-style: bytes directos al CPU  
 > 256-bit nativo: YMM/AVX2 · SoA natural · VEX prefix  
 > `#include <header_main.h>` = TODO disponible  
-> `-Warm ub` = Bypass UB detector para testeo experimental
+> `-Wstrict` = Modo estricto (UB = error)  
+> Compact IAT = Solo funciones usadas, sin STATUS_ENTRYPOINT_NOT_FOUND
 
 ```
 Tu Código (.c / .cpp)
@@ -629,8 +631,9 @@ Sin CRT. Sin exception handling tables. Sin RTTI. Sin debug info por defecto. So
 | FASE tests (C99+C++17+PE) | 19 | 19 | **100%** ✅ |
 | ASM-BIB Bridge tests | 33 | 33 | **100%** ✅ |
 | Bridge C fixtures (compile) | 13 | 13 | **100%** ✅ |
-| Bridge C fixtures (run) | 13 | 6 PASS + 2 PARTIAL | **46% full pass** |
-| **Total Rust tests** | **580+** | **580+** | **100%** ✅ |
+| Bridge C fixtures (run) | 13 | 13 | **100%** ✅ |
+| DirectX Phase 7 tests | 6 | 6 | **100%** ✅ |
+| **Total Rust tests** | **353** | **353** | **100%** ✅ |
 
 ```
 C99 Canon (18):   tipos, punteros, arrays, structs, unions, enums,
@@ -650,39 +653,44 @@ ASM-BIB Bridge (33): COFF parse, 21 function verify, merge, call patch,
                      symbol resolution, machine code validation — ALL PASS ✅
 
 Bridge Fixtures (13): ALL COMPILE ✅ — Runtime results:
-  PASS (6): console, math, control flow, Win32 window, GDI, OpenGL
-  PARTIAL (2): strings (10/14), memory (4/7)
-  FAIL (5): structs (crash), pointers (crash), DX9/DX11/DX12 (invalid PE)
+  PASS (13): console, math, control flow, Win32 window, GDI, OpenGL,
+            strings, memory, structs, pointers, DX9, DX11, DX12, COM
+  **IAT v6 Fix**: Compact IAT solo para funciones usadas elimina STATUS_ENTRYPOINT_NOT_FOUND
 ```
 
 ---
 
-## IAT Registry v5 — 12 DLLs · 241 Funciones
+## IAT Registry v6 — 18 DLLs · 340+ Funciones
 
-ADead-BIB importa funciones de 12 DLLs del sistema sin linker externo:
+ADead-BIB importa funciones de 18 DLLs del sistema sin linker externo:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  DLL                    │ Funciones │ Categoría         │
 ├─────────────────────────┼───────────┼───────────────────┤
-│  msvcrt.dll             │    59     │ C Runtime         │
-│  kernel32.dll           │    39     │ Win32 Core        │
-│  user32.dll             │    42     │ Win32 UI          │
-│  gdi32.dll              │    30     │ Win32 GDI         │
-│  opengl32.dll           │    30     │ OpenGL 1.1        │
-│  ole32.dll              │     6     │ COM               │
-│  dxgi.dll               │     3     │ DXGI              │
-│  d3d9.dll               │     2     │ DirectX 9         │
-│  d3d11.dll              │     2     │ DirectX 11        │
-│  d3d12.dll              │     4     │ DirectX 12        │
-│  d3dcompiler_47.dll     │     4     │ HLSL Compiler     │
-│  ws2_32.dll             │    20     │ Winsock           │
+│  msvcrt.dll             │   158     │ C Runtime         │
+│  kernel32.dll           │    67     │ Win32 Core        │
+│  user32.dll             │    26     │ Win32 UI          │
+│  gdi32.dll              │    24     │ Win32 GDI         │
+│  opengl32.dll           │    17     │ OpenGL 1.1        │
+│  ole32.dll              │    12     │ COM               │
+│  oleaut32.dll           │    10     │ COM Automation    │
+│  dxgi.dll               │     4     │ DXGI              │
+│  d3d9.dll               │     7     │ DirectX 9         │
+│  d3d11.dll              │     3     │ DirectX 11        │
+│  d3d12.dll              │     8     │ DirectX 12        │
+│  d3dcompiler_47.dll     │    15     │ HLSL Compiler     │
+│  advapi32.dll           │    13     │ Security/Registry │
+│  shell32.dll            │     6     │ Shell             │
+│  winmm.dll              │     9     │ Multimedia        │
+│  comdlg32.dll           │     6     │ Common Dialogs    │
+│  ws2_32.dll             │    11     │ Winsock           │
 ├─────────────────────────┼───────────┼───────────────────┤
-│  TOTAL                  │   241     │                   │
+│  TOTAL                  │   340+    │                   │
 └─────────────────────────┴───────────┴───────────────────┘
 ```
 
-### C Runtime completo (msvcrt.dll — 59 funciones)
+### C Runtime completo (msvcrt.dll — 158 funciones)
 
 ```c
 // stdio
@@ -702,36 +710,46 @@ strncat, strcmp, strncmp, strchr, strrchr, strstr, strtok
 time, clock, difftime, strftime
 ```
 
-### DirectX 9 / 11 / 12 (via IAT directo)
+### DirectX 9 / 11 / 12 + COM (via IAT directo)
 
 ```c
-// DX9  — d3d9.dll
-Direct3DCreate9, Direct3DCreate9Ex
+// COM — ole32.dll
+CoInitializeEx, CoUninitialize, CoCreateInstance, CoTaskMemAlloc,
+StringFromCLSID, CoGetClassObject
 
-// DX11 — d3d11.dll
-D3D11CreateDevice, D3D11CreateDeviceAndSwapChain
+// COM Automation — oleaut32.dll
+SysAllocString, SysFreeString, VariantInit, VariantClear,
+SafeArrayCreate, SafeArrayDestroy
 
-// DX12 — d3d12.dll
+// DX9  — d3d9.dll (7 funciones)
+Direct3DCreate9, Direct3DCreate9Ex,
+D3DPERF_BeginEvent, D3DPERF_EndEvent, D3DPERF_SetMarker
+
+// DX11 — d3d11.dll (3 funciones)
+D3D11CreateDevice, D3D11CreateDeviceAndSwapChain, D3D11On12CreateDevice
+
+// DX12 — d3d12.dll (8 funciones)
 D3D12CreateDevice, D3D12GetDebugInterface,
-D3D12SerializeRootSignature, D3D12SerializeVersionedRootSignature
+D3D12SerializeRootSignature, D3D12SerializeVersionedRootSignature,
+D3D12CreateRootSignatureDeserializer, D3D12EnableExperimentalFeatures
 
-// DXGI — dxgi.dll
-CreateDXGIFactory, CreateDXGIFactory1, CreateDXGIFactory2
+// DXGI — dxgi.dll (4 funciones)
+CreateDXGIFactory, CreateDXGIFactory1, CreateDXGIFactory2,
+DXGIGetDebugInterface1
 
-// HLSL — d3dcompiler_47.dll
-D3DCompile, D3DCompile2, D3DCompileFromFile, D3DReflect
-
-// COM — ole32.dll (required for DX)
-CoInitializeEx, CoUninitialize, CoCreateInstance
+// HLSL — d3dcompiler_47.dll (15 funciones)
+D3DCompile, D3DCompile2, D3DCompileFromFile, D3DReflect,
+D3DCreateBlob, D3DDisassemble, D3DGetBlobPart, D3DStripShader,
+D3DReadFileToBlob, D3DWriteBlobToFile, D3DPreprocess
 ```
 
-### Networking (ws2_32.dll — 20 funciones)
+### Networking (ws2_32.dll — 11 funciones)
 
 ```c
 WSAStartup, WSACleanup, WSAGetLastError,
 socket, closesocket, bind, listen, accept,
 connect, send, recv, sendto, recvfrom,
-select, shutdown, htons, htonl, ntohs, ntohl, inet_addr
+select, shutdown, htons, htonl, ntohs, ntohl
 ```
 
 ---
@@ -909,7 +927,7 @@ Ver [LICENSE](LICENSE) para los términos completos.
 
 ---
 
-**ADead-BIB v9.0: C99 · C++17 → Machine Code Puro · 256-bit Nativo 💀🦈**
+**ADead-BIB v11.0: C99 · C++17 → Machine Code Puro · 256-bit Nativo 💀🦈**
 
 ```
 MSVC, GCC, LLVM  = referencias técnicas estudiadas y respetadas

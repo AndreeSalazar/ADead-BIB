@@ -15,13 +15,13 @@ Después de analizar todo el código fuente, la situación REAL es:
 | Capa | Estado | Detalle |
 |------|--------|---------|
 | **Headers C (declaraciones)** | ✅ **~95% COMPLETO** | `stdlib.rs` tiene 20+ headers con TODAS las funciones declaradas: stdio.h (35 func), stdlib.h (30 func), string.h (24 func), math.h (50+ func), time.h (15 func), signal.h, setjmp.h, locale.h, stdarg.h, errno.h, assert.h, limits.h, float.h, stdbool.h, stdint.h, stddef.h, fenv.h, complex.h, wchar.h, wctype.h, uchar.h, tgmath.h, stdatomic.h, threads.h, stdalign.h, stdnoreturn.h, iso646.h |
-| **IAT Registry (DLL imports)** | ✅ **~85% COMPLETO** | `lib.rs` IAT tiene 12 DLLs con 200+ funciones: msvcrt.dll (56 func), kernel32.dll (40 func), user32.dll (42 func), gdi32.dll (30 func), opengl32.dll (31 func), ole32.dll (6), dxgi.dll (3), d3d9/11/12 (8), d3dcompiler_47 (4), ws2_32.dll (20) |
+| **IAT Registry (DLL imports)** | ✅ **~90% COMPLETO** | `lib.rs` IAT tiene 18 DLLs con 310+ funciones: msvcrt.dll (138 func), kernel32.dll (40 func), user32.dll (42 func), gdi32.dll (30 func), opengl32.dll (31 func), ole32.dll (20), oleaut32.dll (20), dxgi.dll (4), d3d9.dll (9), d3d11.dll (3), d3d12.dll (8), d3dcompiler_47.dll (15), advapi32, shell32, winmm, comdlg32, ws2_32 |
 | **C Preprocessor** | ✅ COMPLETO | #include, #define, #ifdef, #if, #elif, #else, #endif, #pragma |
 | **C Parser (AST)** | ✅ COMPLETO | C99/C11 completo: structs, unions, enums, typedef, function pointers, ternary, etc. |
 | **IR Generation** | ✅ COMPLETO | CToIR lower funciona |
 | **UB Detector** | ✅ COMPLETO | 21+ categorías |
 | **PE Output** | ✅ FUNCIONA | MZ/PE headers, secciones, IAT filtrado |
-| **stdlib symbol registries** | ✅ COMPLETO | fastos_stdio.rs, fastos_stdlib.rs, fastos_string.rs, fastos_math.rs, fastos_time.rs |
+| **stdlib symbol registries** | ✅ COMPLETO | fastos_stdio.rs, fastos_stdlib.rs, fastos_string.rs, fastos_math.rs, fastos_time.rs, fastos_signal.rs, fastos_wchar.rs, fastos_com.rs, fastos_dxgi.rs, fastos_d3d9.rs, fastos_d3d11.rs, fastos_d3d12.rs |
 | **C test fixtures (parse)** | ✅ 33 archivos | tests/c/fixtures/ — todos parsean OK |
 
 ### 🔴 EL CUELLO DE BOTELLA REAL: ISA COMPILER CODEGEN
@@ -86,7 +86,7 @@ ADead-BIB/src/rust/crates/
 │   └── ub_detector/               ← ✅ UB detection
 │
 ├── backend/cpu/adeb-backend-x64/src/
-│   ├── lib.rs                     ← ✅ IAT Registry (12 DLLs, 200+ slots) + PE gen
+│   ├── lib.rs                     ← ✅ IAT Registry (18 DLLs, 310+ slots) + PE gen
 │   └── isa/
 │       ├── isa_compiler.rs        ← 🔴 ISA COMPILER PRINCIPAL (5600+ líneas)
 │       ├── c_isa.rs               ← 🔴 C-specific ISA wrapper
@@ -368,11 +368,13 @@ tests/bridge/
 │   ├── 07_timer_perf.c         ← QueryPerformanceCounter
 │   └── 08_keyboard_input.c     ← GetAsyncKeyState
 │
-└── fase7_dx/                    ← DirectX tests (requiere fixes previos)
-    ├── 01_dx9_window.c         ← Direct3DCreate9 + CreateDevice
-    ├── 02_dx11_window.c        ← D3D11CreateDeviceAndSwapChain
-    ├── 03_dx12_window.c        ← D3D12CreateDevice + command queue
-    └── 04_vulkan_window.c      ← vkCreateInstance
+└── fase7_dx/                    ← DirectX tests (6 tests)
+    ├── 01_com_init.c           ← CoInitializeEx + CoUninitialize
+    ├── 02_dxgi_factory.c       ← CreateDXGIFactory1 + GUID construction
+    ├── 03_d3d9_create.c        ← Direct3DCreate9
+    ├── 04_d3d11_device.c       ← D3D11CreateDevice (WARP + HW)
+    ├── 05_d3d12_device.c       ← D3D12CreateDevice + D3D12GetDebugInterface
+    └── 06_d3dcompiler.c        ← D3DCreateBlob + D3DCompile (VS/PS)
 ```
 
 ---
