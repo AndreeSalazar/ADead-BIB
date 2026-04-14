@@ -249,6 +249,15 @@ pub fn get_header(name: &str) -> Option<&'static str> {
         "fastos_types.h" => Some(HEADER_STDINT),
         "fastos_ctype.h" => Some(HEADER_CTYPE),
 
+        // ==========================================
+        // DirectX / DXGI / HLSL (Fase 3)
+        // ==========================================
+        "d3d9.h" => Some(crate::compiler_extensions::HEADER_D3D9),
+        "d3d11.h" => Some(crate::compiler_extensions::HEADER_D3D11),
+        "d3d12.h" => Some(crate::compiler_extensions::HEADER_D3D12),
+        "dxgi.h" | "dxgi1_2.h" | "dxgi1_3.h" | "dxgi1_4.h" | "dxgi1_5.h" | "dxgi1_6.h" => Some(crate::compiler_extensions::HEADER_DXGI),
+        "d3dcompiler.h" => Some(crate::compiler_extensions::HEADER_D3DCOMPILER),
+
         _ => None,
     }
 }

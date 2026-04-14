@@ -1,0 +1,6 @@
+=== DX Test 04: D3D11 Cube ===
+D3D11 Device created (WARP), feature level 0x0
+VS compiled OK, size=0
+PS compiled OK, size=0
+Device released
+=== Test 04 DONE ===
