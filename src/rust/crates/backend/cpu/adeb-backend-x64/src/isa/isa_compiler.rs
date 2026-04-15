@@ -854,16 +854,114 @@ impl IsaCompiler {
             );
         }
 
+        // Fase 1: Recolectar strings (must be before global allocation so
+        // string_offsets are available for string-pointer globals)
+        self.collect_all_strings(program);
+        self.collect_strings_from_stmts(&program.statements);
+
         // Fase 0.5: Pre-register global variables (top-level VarDecl statements)
         // These are stored in the data section, not on any function's stack
         for stmt in &program.statements {
-            if let Stmt::VarDecl { name, value, .. } = stmt {
-                let init = if let Some(Expr::Number(n)) = value {
-                    *n
-                } else {
-                    0
-                };
-                self.alloc_global(name, init);
+            if let Stmt::VarDecl { var_type, name, value } = stmt {
+                match value {
+                    Some(Expr::Number(n)) => {
+                        self.alloc_global(name, *n);
+                    }
+                    Some(Expr::String(s)) => {
+                        // String pointer global: store the address of the string in data section
+                        let processed = s
+                            .replace("\\n", "\n")
+                            .replace("\\t", "\t")
+                            .replace("\\r", "\r");
+                        let addr = self.get_string_address(&processed);
+                        self.alloc_global(name, addr as i64);
+                    }
+                    Some(Expr::Array(elements)) => {
+                        // Struct initializer list or array initializer
+                        let struct_name = match var_type {
+                            Type::Struct(n) | Type::Named(n) | Type::Class(n) => Some(n.clone()),
+                            _ => None,
+                        };
+
+                        if let Some(sn) = struct_name {
+                            if let Some(layout) = self.class_layouts.get(&sn).cloned() {
+                                // Serialize struct fields into global data
+                                let offset = self.global_offset;
+                                self.global_vars.insert(name.clone(), offset);
+
+                                // Allocate layout.size bytes, zero-initialized
+                                let alloc_size = ((layout.size + 7) & !7) as usize; // align to 8
+                                let base = self.global_data.len();
+                                self.global_data.resize(base + alloc_size, 0);
+                                self.global_offset += alloc_size as u32;
+
+                                // Write each element into its field position
+                                for (i, elem) in elements.iter().enumerate() {
+                                    if i >= layout.fields.len() { break; }
+                                    let (_, field_off) = &layout.fields[i];
+                                    let field_size = layout.field_sizes.get(i)
+                                        .map(|(_, sz)| *sz)
+                                        .unwrap_or(8);
+
+                                    if let Expr::Number(n) = elem {
+                                        let pos = base + *field_off as usize;
+                                        match field_size {
+                                            1 => {
+                                                if pos < self.global_data.len() {
+                                                    self.global_data[pos] = *n as u8;
+                                                }
+                                            }
+                                            2 => {
+                                                let bytes = (*n as u16).to_le_bytes();
+                                                for (j, b) in bytes.iter().enumerate() {
+                                                    if pos + j < self.global_data.len() {
+                                                        self.global_data[pos + j] = *b;
+                                                    }
+                                                }
+                                            }
+                                            4 => {
+                                                let bytes = (*n as u32).to_le_bytes();
+                                                for (j, b) in bytes.iter().enumerate() {
+                                                    if pos + j < self.global_data.len() {
+                                                        self.global_data[pos + j] = *b;
+                                                    }
+                                                }
+                                            }
+                                            _ => {
+                                                let bytes = (*n as i64).to_le_bytes();
+                                                for (j, b) in bytes.iter().enumerate() {
+                                                    if pos + j < self.global_data.len() {
+                                                        self.global_data[pos + j] = *b;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // Handle nested array in struct field (e.g., GUID.Data4[8])
+                                    if let Expr::Array(sub_elems) = elem {
+                                        let pos = base + *field_off as usize;
+                                        for (k, sub_elem) in sub_elems.iter().enumerate() {
+                                            if let Expr::Number(n) = sub_elem {
+                                                if pos + k < self.global_data.len() {
+                                                    self.global_data[pos + k] = *n as u8;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // No layout - allocate as 0
+                                self.alloc_global(name, 0);
+                            }
+                        } else {
+                            // Plain array - allocate as 0 for now
+                            self.alloc_global(name, 0);
+                        }
+                    }
+                    _ => {
+                        self.alloc_global(name, 0);
+                    }
+                }
             }
         }
         // Also scan functions for static locals
@@ -872,10 +970,6 @@ impl IsaCompiler {
                 self.scan_static_locals(stmt, &func.name);
             }
         }
-
-        // Fase 1: Recolectar strings
-        self.collect_all_strings(program);
-        self.collect_strings_from_stmts(&program.statements);
 
         // Fase 2: Registrar labels de funciones
         eprintln!("[DEBUG compile] program.functions={}, names={:?}",
@@ -2083,7 +2177,7 @@ impl IsaCompiler {
                                 self.emit_sized_store(Reg::RBP, off, fbs, Reg::RAX);
                             }
                         } else {
-                            self.emit_expression(value);
+                            // Field slot not yet registered - resolve from parent base
                             self.emit_assign(&var_name, value);
                         }
                         return;
@@ -3286,6 +3380,34 @@ impl IsaCompiler {
 
         let offset = if let Some(&off) = self.variables.get(name) {
             off
+        } else if name.contains('.') {
+            // Dotted name: resolve from parent struct base + field offset
+            let parts: Vec<&str> = name.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                let obj_name = parts[0];
+                let field_name = parts[1];
+                if let Some(&base_offset) = self.variables.get(obj_name) {
+                    let field_off = self.variable_types.get(obj_name).and_then(|ty| match ty {
+                        Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                            Some(self.get_class_field_offset(n, field_name))
+                        }
+                        _ => None,
+                    }).unwrap_or(0);
+                    let resolved = base_offset + field_off;
+                    self.variables.insert(name.to_string(), resolved);
+                    resolved
+                } else {
+                    self.stack_offset -= 8;
+                    let off = self.stack_offset;
+                    self.variables.insert(name.to_string(), off);
+                    off
+                }
+            } else {
+                self.stack_offset -= 8;
+                let off = self.stack_offset;
+                self.variables.insert(name.to_string(), off);
+                off
+            }
         } else {
             self.stack_offset -= 8;
             let off = self.stack_offset;
@@ -4953,6 +5075,66 @@ impl IsaCompiler {
                                 disp: offset,
                             },
                         });
+                    } else if self.global_vars.contains_key(name.as_str()) {
+                        // Global variable: load its absolute address
+                        if let Some(abs_addr) = self.get_global_address(name) {
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Imm64(abs_addr),
+                            });
+                        }
+                    } else if let Some(func_name) = &self.current_function.clone() {
+                        // Try static-local mangled name
+                        let mangled = format!("{}::{}", func_name, name);
+                        if let Some(abs_addr) = self.get_global_address(&mangled) {
+                            self.ir.emit(ADeadOp::Mov {
+                                dst: Operand::Reg(Reg::RAX),
+                                src: Operand::Imm64(abs_addr),
+                            });
+                        } else {
+                            self.ir.emit(ADeadOp::Xor {
+                                dst: Reg::RAX,
+                                src: Reg::RAX,
+                            });
+                        }
+                    } else {
+                        self.ir.emit(ADeadOp::Xor {
+                            dst: Reg::RAX,
+                            src: Reg::RAX,
+                        });
+                    }
+                } else if let Expr::FieldAccess { object, field } = inner.as_ref() {
+                    // &obj.field — compute address of struct field
+                    if let Expr::Variable(obj_name) = object.as_ref() {
+                        let flat = format!("{}.{}", obj_name, field);
+                        if let Some(&off) = self.variables.get(flat.as_str()) {
+                            self.ir.emit(ADeadOp::Lea {
+                                dst: Reg::RAX,
+                                src: Operand::Mem {
+                                    base: Reg::RBP,
+                                    disp: off,
+                                },
+                            });
+                        } else if let Some(&base_offset) = self.variables.get(obj_name.as_str()) {
+                            let field_off = self.variable_types.get(obj_name.as_str()).and_then(|ty| match ty {
+                                Type::Struct(n) | Type::Named(n) | Type::Class(n) => {
+                                    Some(self.get_class_field_offset(n, field))
+                                }
+                                _ => None,
+                            }).unwrap_or(0);
+                            self.ir.emit(ADeadOp::Lea {
+                                dst: Reg::RAX,
+                                src: Operand::Mem {
+                                    base: Reg::RBP,
+                                    disp: base_offset + field_off,
+                                },
+                            });
+                        } else {
+                            self.ir.emit(ADeadOp::Xor {
+                                dst: Reg::RAX,
+                                src: Reg::RAX,
+                            });
+                        }
                     } else {
                         self.ir.emit(ADeadOp::Xor {
                             dst: Reg::RAX,
