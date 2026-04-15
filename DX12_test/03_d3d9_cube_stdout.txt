@@ -1,2 +1,0 @@
-=== DX Test 03: D3D9 Cube ===
-Direct3DCreate9 FAILED
