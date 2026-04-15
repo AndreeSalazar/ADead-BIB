@@ -1,8 +1,8 @@
 # tests/c — ADead-BIB C Test Suite
 
-> Suite de pruebas y fixtures del compilador C de ADead-BIB
-> 33 fixture files covering C89/C99/C11, all 29 ISO C headers, OpenGL, production patterns
-> 250+ total tests (frontend + driver/integration + production validation)
+> Suite completa de pruebas del compilador C de ADead-BIB
+> 35 fixture files: Básico → Intermedio → Avanzado → Producción
+> Cobertura total de punteros, structs, memory management, algorithms
 
 ---
 
@@ -12,69 +12,101 @@
 tests/c/
 ├── README.md
 └── fixtures/
-    ├── 01_ctype_basic.c              ctype.h basics
-    ├── 02_ctype_extended.c           ctype.h extended
-    ├── 03_ctype_loop_parser.c        ctype.h real usage patterns
-    ├── 04_ctype_edge_cases.c         ctype.h boundary cases
-    ├── 05_control_flow.c             if/else, while, for, switch, goto
-    ├── 06_pointers_arrays.c          pointers, arrays, multi-dim
-    ├── 07_structs_enums.c            structs, enums, typedefs, unions
-    ├── 08_preprocessor.c             #include, #define, #ifdef, macros
-    ├── 09_c99_features.c             _Static_assert, inline, mixed decls
-    ├── 10_c11_headers.c              fenv, stdatomic, threads, stdalign
-    ├── 11_ub_detection.c             UB detector test
-    ├── 12_expressions.c              All operators, casts, sizeof, ternary
-    ├── 13_stdio.c                    printf, sprintf, puts, putchar
-    ├── 14_stdlib.c                   malloc, free, abs, atoi
-    ├── 15_string.c                   strlen, strcpy, strcmp, memset
-    ├── 16_math.c                     sin, cos, sqrt, pow, floor, ceil
-    ├── 17_stdint_limits.c            int8-64, INT_MAX, CHAR_BIT
-    ├── 18_errno_assert.c             errno codes, assert macro
-    ├── 19_signal.c                   SIGINT, raise, signal handler
-    ├── 20_setjmp.c                   setjmp, longjmp, jmp_buf
-    ├── 21_time.c                     time, clock, strftime
-    ├── 22_locale.c                   setlocale, localeconv
-    ├── 23_stdarg.c                   va_list, va_arg variadic funcs
-    ├── 24_complex.c                  _Complex, creal, cimag, cabs
-    ├── 25_wchar_wctype.c             wchar_t, wcslen, iswalpha
-    ├── 26_iso646_stdalign_noreturn.c and/or/not, alignof, noreturn
-    ├── 27_uchar_tgmath.c             char16_t, char32_t
-    ├── 28_production_types.c         [PROD] sizeof, limits, casting
-    ├── 29_production_memory.c        [PROD] malloc/calloc/realloc/free
-    ├── 30_production_strings.c       [PROD] all string operations
-    ├── 31_production_control.c       [PROD] fib, bsearch, primes, FSM
-    ├── 32_production_structs.c       [PROD] linked list, fn pointers
-    └── 33_production_opengl_parse.c  [PROD] GL types, constants, pipeline
+    │
+    │ ── BÁSICO (01-10) ──────────────────────────────
+    ├── 01_types_basic.c            Tipos: int, char, short, long, unsigned, stdint
+    ├── 02_arithmetic_ops.c         Aritmética: +, -, *, /, %, ++, --, compound
+    ├── 03_bitwise_ops.c            Bitwise: &, |, ^, ~, <<, >>, máscaras
+    ├── 04_comparison_logical.c     Comparación: ==, !=, <, >, &&, ||, !, ternary
+    ├── 05_control_flow.c           Control: if, else, for, while, switch, goto, break
+    ├── 06_functions.c              Funciones: params, retorno, recursión, prototipos
+    ├── 07_arrays_basic.c           Arrays: 1D, 2D, init, sort, strings como arrays
+    ├── 08_strings_char.c           Strings: literals, escape, manual strlen/strcpy
+    ├── 09_structs_basic.c          Structs: declaración, campos (.), typedef, nested
+    ├── 10_enums_unions.c           Enums y Unions: valores, type punning, sizeof
+    │
+    │ ── INTERMEDIO: PUNTEROS (11-18) ────────────────
+    ├── 11_pointers_basic.c         Punteros: *, &, NULL, swap, const ptr
+    ├── 12_pointer_arithmetic.c     Aritmética ptr: p+n, p-q, arrays como ptrs
+    ├── 13_pointer_to_pointer.c     ** y ***: doble/triple indirección, char**
+    ├── 14_pointer_structs.c        Punteros a structs: ->, malloc struct, linked list
+    ├── 15_function_pointers.c      Function ptrs: callbacks, dispatch table, typedef
+    ├── 16_void_pointer.c           void*: generic swap, tagged values, opaque handles
+    ├── 17_memory_management.c      Memoria: malloc, calloc, realloc, free, dynamic arrays
+    ├── 18_cast_sizeof.c            Casts: int↔ptr, truncamiento, sizeof
+    │
+    │ ── INTERMEDIO: LENGUAJE (19-27) ────────────────
+    ├── 19_preprocessor.c           Preprocessor: #define, macros, #ifdef, stringify
+    ├── 20_ctype_full.c             <ctype.h>: isalpha, isdigit, toupper, tolower
+    ├── 21_stdio_full.c             <stdio.h>: printf formats, sprintf, puts, putchar
+    ├── 22_stdlib_full.c            <stdlib.h>: atoi, strtol, rand, abs, getenv
+    ├── 23_string_full.c            <string.h>: str*, mem*, strtok completo
+    ├── 24_math_basic.c             <math.h>: sin, cos, sqrt, pow, floor, ceil
+    ├── 25_expressions_full.c       Expresiones: precedencia, comma, complex
+    ├── 26_c99_features.c           C99: bool, inline, designated init, compound literals
+    ├── 27_scope_lifetime.c         Scope: static, global, block scope, shadowing
+    │
+    │ ── AVANZADO (28-35) ────────────────────────────
+    ├── 28_advanced_pointers.c      Ptr avanzados: ptr a array, fn ptr pipeline, const
+    ├── 29_bitfield_packed.c        Bitfields: struct flags, Color565, register encoding
+    ├── 30_algorithms.c             Algoritmos: bsearch, quicksort, stack, hash table
+    ├── 31_linked_list_full.c       Lista enlazada: insert, delete, reverse, merge sort
+    ├── 32_binary_tree.c            BST: insert, search, traversals, height
+    ├── 33_state_machine.c          FSM: fn ptrs + enum + switch state machine
+    ├── 34_memory_patterns.c        Memoria avanzada: arena, ring buffer, pool allocator
+    └── 35_production_complete.c    PRODUCCIÓN: entity system, tokenizer, hashmap, todo junto
 ```
 
-## Test Categories
+## Niveles de Cobertura
 
-| Category | Fixtures | Description |
-|---|---|---|
-| stdlib (C89) | 01-04, 13-18 | Standard library headers with strict validation |
-| language | 05-07, 12 | Control flow, pointers, structs, expressions |
-| preprocessor | 08 | #include, #define, #ifdef, macros |
-| C99/C11 | 09-10, 24-27 | C99/C11 features and headers |
-| UB | 11 | Undefined behavior detection |
-| signal/setjmp/time/locale/stdarg | 19-23 | Remaining C89 headers |
-| **PRODUCTION** | **28-33** | **Strict pass/fail tests for .exe validation** |
+| Nivel | Tests | Qué Cubre |
+|-------|-------|-----------|
+| **Básico** | 01-10 | Tipos, operadores, control flow, funciones, arrays, structs, enums |
+| **Punteros** | 11-18 | *, &, **, ***, ->, fn ptrs, void*, malloc/free, casts |
+| **Lenguaje** | 19-27 | Preprocessor, stdlib headers, C99, scope/lifetime |
+| **Avanzado** | 28-35 | Algorithms, data structures, memory patterns, production code |
 
-## ISO C Header Coverage (29/29 = 100%)
+## Cobertura de Punteros (Foco Principal)
 
-Every ISO C header has at least one dedicated test fixture.
+| Concepto | Test(s) | Detalle |
+|----------|---------|---------|
+| `*p` deref, `&x` address-of | 11 | Básico: leer/escribir via puntero |
+| `p++`, `p+n`, `p-q` | 12 | Aritmética de punteros completa |
+| `int**`, `int***` | 13 | Doble/triple indirección |
+| `struct->field`, malloc struct | 14 | Punteros a structs, linked list |
+| `int (*fn)(int)`, callbacks | 15 | Function pointers, dispatch tables |
+| `void*` casting, generic ops | 16 | Type erasure, opaque handles |
+| malloc/calloc/realloc/free | 17 | Dynamic arrays, 2D matrices |
+| Casts: int↔ptr, uintptr_t | 18 | Todos los casts válidos |
+| `int (*arr)[N]`, `const int*` | 28 | Ptr a array fijo, const correctness |
+| Arena/pool/ring via ptrs | 34 | Memory allocators con void* |
+| Entity system con fn ptrs | 35 | Producción: structs + ptrs + fn ptrs |
 
-## How to use
+## Cómo Usar
 
 ```bash
-# Compile a fixture
-adB cc tests/c/fixtures/05_control_flow.c -o test.exe
+# Compilar un fixture
+adB cc tests/c/fixtures/11_pointers_basic.c -o test.exe
 
-# Compile and run
-adB run tests/c/fixtures/28_production_types.c
-
-# Run production test suite (strict — returns exit code on failure)
-for /L %i in (28,1,33) do adB run tests/c/fixtures/%i_production_*.c
+# Compilar y ejecutar
+adB run tests/c/fixtures/35_production_complete.c
 
 # Run Rust unit tests
 cargo test -p adeb-frontend-c
+
+# Ejecutar todos los tests de producción
+for /L %i in (28,1,35) do adB run tests/c/fixtures/%i_*.c
 ```
+
+## Dependencias de Codegen
+
+| Fix Necesario | Tests que lo requieren |
+|---------------|----------------------|
+| C-01: Struct field access | 09, 14, 29, 31, 32, 33, 34, 35 |
+| C-02: Float/double SSE2 | 24 |
+| C-03: Byte-level memory | 08, 23, 34 |
+| C-04: Function pointers | 15, 28, 33, 35 |
+| C-07: Global/static vars | 27, 35 |
+| C-08: Array initializers | 07, 12, 25, 26, 28, 30 |
+| C-09: Cast codegen | 16, 18 |
+| C-10: sizeof codegen | 01, 18, 29 |
