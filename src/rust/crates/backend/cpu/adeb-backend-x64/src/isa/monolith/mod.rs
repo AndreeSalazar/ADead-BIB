@@ -28,6 +28,9 @@
 // Autor: Eddi Andreé Salazar Matos
 // ============================================================
 
+// ── New dedicated modules ──
+pub mod facade;
+
 // Re-export canonical modules from parent (isa/) for clean access.
 // The actual source files live at isa/*.rs — this module provides
 // the organized "monolith" grouping as a facade.
@@ -41,3 +44,6 @@ pub use super::reg_alloc;
 pub use super::soa_optimizer;
 pub use super::ymm_allocator;
 pub use super::codegen;
+
+// Re-export the MonolithCompiler facade for convenient access
+pub use facade::{MonolithCompiler, Language, CompilationResult, CompilationMetrics};

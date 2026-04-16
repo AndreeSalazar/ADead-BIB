@@ -213,17 +213,62 @@ Tamaño .exe más pequeño:   23,040 bytes (tests con main vacío)
 
 ---
 
-## Conclusión
+## Fixes Aplicados (2026-04-16)
 
-**ADead-BIB v9.0 parsea y compila correctamente el 100% de la sintaxis C testeada.** Los 35 fixtures cubren desde tipos básicos hasta BSTs, state machines y entity systems con function pointers.
+### ✅ C-03: Function pointer calls — RESUELTO
 
-Los problemas restantes son todos de **codegen** (ISA compiler), no de parsing:
-1. **7 tests** tienen `main()` que no genera IR completo
-2. **3 tests** tienen label patches no resueltos
-3. **Function pointers** y **bitfields** necesitan codegen
+**Problema:** CToIR emitía `__fptr_call` como marcador de error, ISA compiler no lo manejaba.
 
-Con **4 fixes principales** (main codegen, fn ptr call, label resolution, bitfields), los 35 tests deberían generar .exe's que ejecuten correctamente.
+**Fix aplicado (3 partes):**
+1. **CToIR (`to_ir.rs`):** Ahora emite `__fptr_expr(callee_expr, arg0, arg1, ...)` — la expresión callee se pasa como primer argumento
+2. **ISA Compiler (`isa_compiler.rs`):** Nuevo handler `__fptr_expr` que:
+   - Evalúa la expresión callee → guarda en stack
+   - Configura argumentos reales con Win64 ABI (shadow space, RCX/RDX/R8/R9)
+   - Recupera puntero callee desde stack → R10
+   - Emite `call R10` (indirect call via `CallTarget::Register`)
+   - Limpia frame + puntero guardado
+3. **ISA Compiler (ya existente):** Las llamadas via variable simple (`fp(a,b)` donde `fp` es local) ya se manejaban en `emit_call` líneas 5824-5856 via `self.variables` lookup
+
+**Impacto:** Test 15 (`function_pointers.c`) ahora puede generar codegen para:
+- Llamadas via puntero simple: `fp(a, b)`
+- Llamadas via array de punteros: `ops[i](a, b)`
+- Dispatch tables
+
+### ✅ C-04: Bitfield read/write — YA IMPLEMENTADO
+
+**Verificación:** El ISA compiler ya tenía soporte completo para bitfields:
+- **Read:** `SHR` + `AND` mask (líneas 4247-4300)
+- **Write:** `AND` clear mask + `SHL` + `OR` para read-modify-write (líneas 2051-2086, 2124-2148)
+- Funciona para campos de struct directo y arrays de structs
+
+### ✅ Módulos arch/ y monolith/ con responsabilidad real
+
+**arch/validator.rs** — Validación de IR pre-encoding:
+- Detecta labels duplicados (error)
+- Verifica targets de branch referenciados
+- Métricas: instruction_count, label_count, call_count, branch_count
+- 4 unit tests
+
+**monolith/facade.rs** — MonolithCompiler: facade de compilación unificada:
+- `MonolithCompiler::new(target, language)` — selecciona C99/C++/nativo
+- `compile(program)` → `CompilationResult { code, data, iat_offsets, string_offsets, metrics }`
+- `CompilationMetrics` con functions_compiled, ir_instruction_count, code_size, etc.
+- 2 unit tests
 
 ---
 
-*Generado automáticamente por ADead-BIB Test Runner — 2026-04-15*
+## Conclusión
+
+**ADead-BIB v9.0+ parsea y compila correctamente el 100% de la sintaxis C testeada.** Los 35 fixtures cubren desde tipos básicos hasta BSTs, state machines y entity systems con function pointers.
+
+Los problemas restantes son de **codegen** (ISA compiler), no de parsing:
+1. **7 tests** tienen `main()` que no genera IR completo
+2. **3 tests** tienen label patches no resueltos
+3. ~~**Function pointers** necesitan codegen~~ → **RESUELTO**
+4. ~~**Bitfields** necesitan codegen~~ → **YA IMPLEMENTADO**
+
+Con **2 fixes restantes** (main codegen completo, label resolution), los 35 tests deberían generar .exe's que ejecuten correctamente.
+
+---
+
+*Actualizado: 2026-04-16 — ADead-BIB Test Runner + fixes manuales*

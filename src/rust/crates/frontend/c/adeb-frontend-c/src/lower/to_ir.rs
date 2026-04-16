@@ -1127,16 +1127,6 @@ impl CToIR {
             CExpr::Call { func, args } => {
                 let name = match func.as_ref() {
                     CExpr::Identifier(n) => n.clone(),
-                    CExpr::Identifier(var_name) => {
-                        // Function pointer variable call: fp(args) → __fptr_<var>(args)
-                        // The ISA compiler will load the variable and emit call rax
-                        let a: Result<Vec<Expr>, String> =
-                            args.iter().map(|a| self.convert_expr(a)).collect();
-                        return Ok(Expr::Call {
-                            name: format!("__fptr_{}", var_name),
-                            args: a?,
-                        });
-                    }
                     _ => {
                         // Complex function pointer expression call (e.g. ops[i](a,b))
                         // Convert the callee expression and embed as first arg

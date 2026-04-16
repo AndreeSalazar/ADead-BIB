@@ -28,6 +28,7 @@
 // ── New dedicated modules ──
 pub mod types;
 pub mod pipeline;
+pub mod validator;
 
 // ── Re-export canonical modules from parent (isa/) ──
 

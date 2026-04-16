@@ -5652,6 +5652,87 @@ impl IsaCompiler {
             return;
         }
 
+        // ========== Function pointer expression call: __fptr_expr(callee_expr, arg0, arg1, ...) ==========
+        // The first argument is the callee expression (e.g. ops[i]), rest are the real args.
+        // We evaluate the callee, save it, then set up args and call through R10.
+        if name == "__fptr_expr" && !args.is_empty() {
+            let callee_expr = &args[0];
+            let real_args = &args[1..];
+
+            // Evaluate callee expression → save on stack
+            self.emit_expression(callee_expr);
+            self.ir.emit(ADeadOp::Push { src: Operand::Reg(Reg::RAX) });
+
+            // Set up real args using standard ABI
+            let total_args = real_args.len();
+            let reg_args = total_args.min(4);
+            let stack_args = if total_args > 4 { total_args - 4 } else { 0 };
+            let total_stack = (stack_args * 8) + 32;
+            let frame_size = (total_stack + 15) & !15;
+
+            if frame_size > 0 {
+                self.ir.emit(ADeadOp::Sub {
+                    dst: Operand::Reg(Reg::RSP),
+                    src: Operand::Imm32(frame_size as i32),
+                });
+            }
+
+            // Stack args
+            if stack_args > 0 {
+                for i in 4..total_args {
+                    self.emit_expression(&real_args[i]);
+                    let offset = 32 + ((i - 4) * 8) as i32;
+                    self.ir.emit(ADeadOp::Mov {
+                        dst: Operand::Mem { base: Reg::RSP, disp: offset },
+                        src: Operand::Reg(Reg::RAX),
+                    });
+                }
+            }
+
+            // Register args → shadow space
+            for i in 0..reg_args {
+                self.emit_expression(&real_args[i]);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Mem { base: Reg::RSP, disp: (i * 8) as i32 },
+                    src: Operand::Reg(Reg::RAX),
+                });
+            }
+
+            // Load register args from shadow space
+            for i in (0..reg_args).rev() {
+                let dst = self.arg_register(i);
+                self.ir.emit(ADeadOp::Mov {
+                    dst: Operand::Reg(dst),
+                    src: Operand::Mem { base: Reg::RSP, disp: (i * 8) as i32 },
+                });
+            }
+
+            // Retrieve callee pointer from saved position on stack
+            // It's at [RSP + frame_size] because we pushed it before allocating the frame
+            self.ir.emit(ADeadOp::Mov {
+                dst: Operand::Reg(Reg::R10),
+                src: Operand::Mem {
+                    base: Reg::RSP,
+                    disp: frame_size as i32,
+                },
+            });
+
+            self.ir.emit(ADeadOp::Cld);
+            self.ir.emit(ADeadOp::Call {
+                target: CallTarget::Register(Reg::R10),
+            });
+
+            // Clean up frame + the saved callee pointer
+            let cleanup = frame_size + 8;
+            if cleanup > 0 {
+                self.ir.emit(ADeadOp::Add {
+                    dst: Operand::Reg(Reg::RSP),
+                    src: Operand::Imm32(cleanup as i32),
+                });
+            }
+            return;
+        }
+
         // Windows x64 ABI: first 4 args in RCX, RDX, R8, R9
         // Args 5+ go on the stack at [rsp+32], [rsp+40], etc. (after shadow space)
         let total_args = args.len();
