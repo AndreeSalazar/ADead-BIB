@@ -1127,13 +1127,27 @@ impl CToIR {
             CExpr::Call { func, args } => {
                 let name = match func.as_ref() {
                     CExpr::Identifier(n) => n.clone(),
-                    _ => {
-                        // Function pointer call — not yet supported, emit as error marker
+                    CExpr::Identifier(var_name) => {
+                        // Function pointer variable call: fp(args) → __fptr_<var>(args)
+                        // The ISA compiler will load the variable and emit call rax
                         let a: Result<Vec<Expr>, String> =
                             args.iter().map(|a| self.convert_expr(a)).collect();
                         return Ok(Expr::Call {
-                            name: "__fptr_call".to_string(),
+                            name: format!("__fptr_{}", var_name),
                             args: a?,
+                        });
+                    }
+                    _ => {
+                        // Complex function pointer expression call (e.g. ops[i](a,b))
+                        // Convert the callee expression and embed as first arg
+                        let callee = self.convert_expr(func)?;
+                        let mut all_args = vec![callee];
+                        for a in args {
+                            all_args.push(self.convert_expr(a)?);
+                        }
+                        return Ok(Expr::Call {
+                            name: "__fptr_expr".to_string(),
+                            args: all_args,
                         });
                     }
                 };

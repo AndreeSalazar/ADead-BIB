@@ -28,15 +28,15 @@
 | # | Test | Exit | Funciones | IR Ops | Code Bytes | PE Size | Notas |
 |---|------|------|-----------|--------|------------|---------|-------|
 | 01 | `types_basic.c` | ✅ 0 | 1 (main) | 329 | 1,645 | 24,576 | Tipos, sizeof, limits |
-| 02 | `arithmetic_ops.c` | ✅ 0 | 0* | 20 | 45 | 23,040 | ⚠️ main no detectado como función |
+| 02 | `arithmetic_ops.c` | ✅ 0 | 0* | 20 | 45 | 23,040 | ⚠️ main no detectado como función | -> No imprime nada
 | 03 | `bitwise_ops.c` | ✅ 0 | 1 (main) | 562 | 2,730 | 25,600 | AND/OR/XOR/shifts completo |
 | 04 | `comparison_logical.c` | ✅ 0 | 1 (main) | 540 | 2,419 | 25,088 | Comparaciones + ternario |
 | 05 | `control_flow.c` | ✅ 0 | 11 | 1,020 | 3,488 | 26,112 | if/for/while/switch/goto |
 | 06 | `functions.c` | ✅ 0 | 14 | 961 | 3,203 | 26,112 | Recursión, prototipos, 6 params |
 | 07 | `arrays_basic.c` | ✅ 0 | 6 | 1,013 | 3,911 | 26,624 | 1D/2D, sort, reverse |
-| 08 | `strings_char.c` | ✅ 0 | 7* | 20 | 45 | 23,040 | ⚠️ main no compiló IR (solo funciones auxiliares) |
+| 08 | `strings_char.c` | ✅ 0 | 7* | 20 | 45 | 23,040 | ⚠️ main no compiló IR (solo funciones auxiliares) | -> No imprime nada
 | 09 | `structs_basic.c` | ✅ 0 | 5 | 639 | 2,634 | 25,600 | Layout correcto: Point(8), Rect(16) |
-| 10 | `enums_unions.c` | ✅ 0 | 2* | 20 | 45 | 23,040 | ⚠️ main no compiló IR |
+| 10 | `enums_unions.c` | ✅ 0 | 2* | 20 | 45 | 23,040 | ⚠️ main no compiló IR | -> No imprime nada
 
 **Observaciones Básico:**
 - Tests 02, 08, 10: `main()` genera solo 20 IR ops / 45 bytes → indica que el cuerpo de main no se compiló completamente (probablemente por variables locales sin uso en IR o funciones que retornan `const char*`)
@@ -50,12 +50,12 @@
 | # | Test | Exit | Funciones | IR Ops | Code Bytes | PE Size | Notas |
 |---|------|------|-----------|--------|------------|---------|-------|
 | 11 | `pointers_basic.c` | ✅ 0 | 5 | 499 | 2,030 | 24,576 | *, &, swap, const ptr |
-| 12 | `pointer_arithmetic.c` | ✅ 0 | 4 | 837 | 3,480 | 26,112 | p+n, p-q, p[i], 0[p] |
-| 13 | `pointer_to_pointer.c` | ✅ 0 | 5 | 677 | 2,855 | 25,600 | **, ***, alloc via ** |
-| 14 | `pointer_structs.c` | ✅ 0 | 13 | 1,212 | 4,438 | 27,136 | ->, malloc struct, linked list |
-| 15 | `function_pointers.c` | ✅ 0 | 11* | 20 | 45 | 23,040 | ⚠️ main no compiló (fn ptr en main) |
-| 16 | `void_pointer.c` | ✅ 0 | 9 | 972 | 3,848 | 26,624 | ⚠️ 1 unresolved label patch |
-| 17 | `memory_management.c` | ✅ 0 | 7* | 20 | 45 | 23,040 | ⚠️ main no compiló IR |
+| 12 | `pointer_arithmetic.c` | ✅ 0 | 4 | 837 | 3,480 | 26,112 | p+n, p-q, p[i], 0[p] | -> Falta mejorar más
+| 13 | `pointer_to_pointer.c` | ✅ 0 | 5 | 677 | 2,855 | 25,600 | **, ***, alloc via ** | -> Falta Mejorar más
+| 14 | `pointer_structs.c` | ✅ 0 | 13 | 1,212 | 4,438 | 27,136 | ->, malloc struct, linked list | -> No imprime nada
+| 15 | `function_pointers.c` | ✅ 0 | 11* | 20 | 45 | 23,040 | ⚠️ main no compiló (fn ptr en main) | -> No imprime nada
+| 16 | `void_pointer.c` | ✅ 0 | 9 | 972 | 3,848 | 26,624 | ⚠️ 1 unresolved label patch | -> Falta Mejorar más
+| 17 | `memory_management.c` | ✅ 0 | 7* | 20 | 45 | 23,040 | ⚠️ main no compiló IR | -> No imprime nada
 | 18 | `cast_sizeof.c` | ✅ 0 | 1 | 633 | 3,095 | 26,112 | casts + sizeof completo |
 
 **Observaciones Punteros:**
@@ -71,12 +71,12 @@
 
 | # | Test | Exit | Funciones | IR Ops | Code Bytes | PE Size | Notas |
 |---|------|------|-----------|--------|------------|---------|-------|
-| 19 | `preprocessor.c` | ✅ 0 | 0* | 22 | 59 | 23,040 | ⚠️ Macros no expandidas al IR |
+| 19 | `preprocessor.c` | ✅ 0 | 0* | 22 | 59 | 23,040 | ⚠️ Macros no expandidas al IR | -> No imprime nada
 | 20 | `ctype_full.c` | ✅ 0 | 18 | 1,287 | 4,311 | 27,136 | Todas inline: isalpha..ispunct ✅ |
 | 21 | `stdio_full.c` | ✅ 0 | 1 | 607 | 3,048 | 25,600 | printf formats completo |
-| 22 | `stdlib_full.c` | ✅ 0 | 1 | 693 | 3,213 | 26,112 | atoi, strtol, rand, getenv |
-| 23 | `string_full.c` | ✅ 0 | 1 | 790 | 3,926 | 26,624 | str*, mem*, strtok |
-| 24 | `math_basic.c` | ✅ 0 | 1 | 705 | 3,349 | 26,112 | sin, cos, sqrt (via IAT) |
+| 22 | `stdlib_full.c` | ✅ 0 | 1 | 693 | 3,213 | 26,112 | atoi, strtol, rand, getenv | -> No imprime nada
+| 23 | `string_full.c` | ✅ 0 | 1 | 790 | 3,926 | 26,624 | str*, mem*, strtok | -> no completa todo lo necesario
+| 24 | `math_basic.c` | ✅ 0 | 1 | 705 | 3,349 | 26,112 | sin, cos, sqrt (via IAT) | -> No imprime nada
 | 25 | `expressions_full.c` | ✅ 0 | 1 | 630 | 2,852 | 25,600 | Precedencia, comma, ternary |
 | 26 | `c99_features.c` | ✅ 0 | 3 | 598 | 2,622 | 25,600 | bool, inline, designated init |
 | 27 | `scope_lifetime.c` | ✅ 0 | 5 | 468 | 1,773 | 24,576 | static, shadow, block scope |
@@ -94,14 +94,14 @@
 
 | # | Test | Exit | Funciones | IR Ops | Code Bytes | PE Size | Notas |
 |---|------|------|-----------|--------|------------|---------|-------|
-| 28 | `advanced_pointers.c` | ✅ 0 | 9 | 825 | 3,382 | 26,112 | ⚠️ 3 unresolved labels |
-| 29 | `bitfield_packed.c` | ✅ 0 | 1* | 20 | 45 | 23,040 | ⚠️ Bitfields parseados pero main no compiló |
-| 30 | `algorithms.c` | ✅ 0 | 17 | 2,089 | 7,899 | 30,720 | **Más grande** — quicksort+hash+stack |
-| 31 | `linked_list_full.c` | ✅ 0 | 15 | 1,256 | 4,071 | 26,624 | Merge sort en lista enlazada ✅ |
-| 32 | `binary_tree.c` | ✅ 0 | 12 | 1,156 | 3,891 | 26,624 | BST completo, traversals recursivos |
-| 33 | `state_machine.c` | ✅ 0 | 9 | 944 | 3,408 | 26,112 | FSM con void* casting |
-| 34 | `memory_patterns.c` | ✅ 0 | 14 | 1,532 | 5,559 | 28,160 | Arena, ring buffer, pool |
-| 35 | `production_complete.c` | ✅ 0 | 15 | 2,058 | 7,653 | 30,208 | ⚠️ 1 unresolved label |
+| 28 | `advanced_pointers.c` | ✅ 0 | 9 | 825 | 3,382 | 26,112 | ⚠️ 3 unresolved labels | -Falta Mejorar
+| 29 | `bitfield_packed.c` | ✅ 0 | 1* | 20 | 45 | 23,040 | ⚠️ Bitfields parseados pero main no compiló | -Falta Mejorar
+| 30 | `algorithms.c` | ✅ 0 | 17 | 2,089 | 7,899 | 30,720 | **Más grande** — quicksort+hash+stack | -> No imprime completo
+| 31 | `linked_list_full.c` | ✅ 0 | 15 | 1,256 | 4,071 | 26,624 | Merge sort en lista enlazada ✅ | -> No imprime nada
+| 32 | `binary_tree.c` | ✅ 0 | 12 | 1,156 | 3,891 | 26,624 | BST completo, traversals recursivos | -> No imprime nada
+| 33 | `state_machine.c` | ✅ 0 | 9 | 944 | 3,408 | 26,112 | FSM con void* casting | -> No imprime nada
+| 34 | `memory_patterns.c` | ✅ 0 | 14 | 1,532 | 5,559 | 28,160 | Arena, ring buffer, pool | -> No imprime nada
+| 35 | `production_complete.c` | ✅ 0 | 15 | 2,058 | 7,653 | 30,208 | ⚠️ 1 unresolved label | -> No imprime nada
 
 **Observaciones Avanzado:**
 - Test 30: **Struct layouts grandes** — Stack=408B, HashTable=768B — compilados correctamente ✅
