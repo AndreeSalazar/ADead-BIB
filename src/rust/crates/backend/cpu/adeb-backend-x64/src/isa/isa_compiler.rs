@@ -619,6 +619,60 @@ impl IsaCompiler {
         }
     }
 
+    /// Check if an expression resolves to a pointer/array type.
+    /// Returns Some(stride) if it's a pointer, where stride is the element size in bytes.
+    /// Returns None if it's not a pointer type.
+    fn expr_pointer_stride(&self, expr: &Expr) -> Option<u8> {
+        match expr {
+            Expr::Variable(name) => {
+                if let Some(ty) = self.variable_types.get(name.as_str()) {
+                    match ty {
+                        Type::Pointer(inner) | Type::Array(inner, _) => {
+                            Some(self.inner_type_size(inner))
+                        }
+                        _ => None,
+                    }
+                } else if self.array_vars.contains(name.as_str()) {
+                    // Local array treated as pointer — use stored elem size
+                    Some(*self.array_elem_sizes.get(name.as_str()).unwrap_or(&8))
+                } else {
+                    None
+                }
+            }
+            Expr::AddressOf(_) => Some(1), // &x produces a pointer, but stride unknown → 1
+            Expr::Cast { target_type, .. } => {
+                match target_type {
+                    Type::Pointer(inner) => Some(self.inner_type_size(inner)),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Get the byte size for an inner type (used by pointer arithmetic scaling).
+    fn inner_type_size(&self, ty: &Type) -> u8 {
+        match ty {
+            Type::I8 | Type::U8 | Type::Bool => 1,
+            Type::I16 | Type::U16 => 2,
+            Type::I32 | Type::U32 | Type::F32 => 4,
+            Type::I64 | Type::U64 | Type::F64 | Type::Pointer(_) => 8,
+            Type::Named(name) => {
+                let s = crate::isa::c_isa::c99_sizeof(&Type::Named(name.clone()));
+                if s > 0 && s <= 255 { s as u8 } else { 8 }
+            }
+            Type::Struct(name) | Type::Class(name) => {
+                if let Some(layout) = self.class_layouts.get(name.as_str()) {
+                    layout.real_size as u8
+                } else {
+                    8
+                }
+            }
+            Type::Void => 1, // void* arithmetic: treat as byte pointer
+            _ => 8,
+        }
+    }
+
     /// Check if an expression produces a float value (for SSE codegen path)
     fn expr_is_float_full(
         expr: &Expr,
@@ -3858,11 +3912,38 @@ impl IsaCompiler {
                     self.ir.emit(ADeadOp::MovQ { dst: Reg::RAX, src: Reg::XMM0 });
                 } else {
                     // Integer path: use GPR registers
+                    // Pointer arithmetic: detect if left is pointer and scale right by element stride
+                    let ptr_stride = if matches!(op, BinOp::Add | BinOp::Sub) {
+                        self.expr_pointer_stride(left)
+                    } else {
+                        None
+                    };
+
                     self.emit_expression(left);
                     self.ir.emit(ADeadOp::Push {
                         src: Operand::Reg(Reg::RAX),
                     });
                     self.emit_expression(right);
+
+                    // Scale the integer operand by element stride for pointer arithmetic
+                    if let Some(stride) = ptr_stride {
+                        if stride > 1 {
+                            match stride {
+                                2 => self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 1 }),
+                                4 => self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 2 }),
+                                8 => self.ir.emit(ADeadOp::Shl { dst: Reg::RAX, amount: 3 }),
+                                _ => {
+                                    // Non-power-of-2: multiply
+                                    self.ir.emit(ADeadOp::Mov {
+                                        dst: Operand::Reg(Reg::RBX),
+                                        src: Operand::Imm32(stride as i32),
+                                    });
+                                    self.ir.emit(ADeadOp::Mul { dst: Reg::RAX, src: Reg::RBX });
+                                }
+                            }
+                        }
+                    }
+
                     self.ir.emit(ADeadOp::Mov {
                         dst: Operand::Reg(Reg::RBX),
                         src: Operand::Reg(Reg::RAX),

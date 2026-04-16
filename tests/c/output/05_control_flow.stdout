@@ -1,0 +1,10 @@
+abs(-5)=5 abs(3)=3
+classify: 5=1 0=0 -3=-1
+sum_for(10)=55
+sum_while(10)=55
+sum_do_while(10)=55
+switch: 0=10 2=30 9=-1
+fallthrough: 2=0 4=200
+break_continue=25
+goto_loop(10)=10
+nested_loops=5

@@ -1,0 +1,9 @@
+p1=(0,0) p2=(0,0)
+p3=(100,200)
+p4=(5,15)
+dist_sq=0
+color=(0,0,0,0)
+area=0 perimeter=0
+size=0x0
+copy=(0,0)
+sum_x=4324344 sum_y=0

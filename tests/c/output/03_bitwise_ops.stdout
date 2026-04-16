@@ -1,0 +1,8 @@
+AND: 15 0 255 0
+OR:  255 255 0
+XOR: 0 255 255
+NOT: -1 -256
+SHL: 1 16 -2147483648
+SHR: 16 15 32768
+compound: 340
+masks: low=239 high=13 bit5=1

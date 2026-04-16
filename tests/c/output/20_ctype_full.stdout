@@ -1,0 +1,20 @@
+'4161'(4161): alpha alnum upper print xdigit 
+'4218'(4218): alpha alnum lower print 
+'4173'(4173): alpha alnum upper print 
+'4144'(4144): digit alnum print xdigit 
+'4153'(4153): digit alnum print xdigit 
+'4193'(4193): alpha alnum lower print xdigit 
+'4166'(4166): alpha alnum upper print xdigit 
+'4128'(4128): space print 
+'4159'(4105): space cntrl 
+'4159'(4106): space cntrl 
+'4129'(4129): punct print 
+'4142'(4142): punct print 
+'4160'(4160): punct print 
+'4159'(4096): cntrl 
+'4159'(4223): cntrl 
+
+toupper: a->4161 z->4186 A->4161 5->4149
+tolower: A->4193 Z->4218 a->4193 5->4149
+
+Counts: upper=4122 lower=4122 digit=4106

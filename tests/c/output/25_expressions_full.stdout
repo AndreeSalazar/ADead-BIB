@@ -1,0 +1,15 @@
+2+3*4=14
+(2+3)*4=20
+1<<4|1<<2=20
+100-50-25=25
+100/10/5=2
+chain assign: a=42 b=0 c=0
+comma: x=5
+for comma: i=5 y=60
+label=1073771639
+complex1=10
+complex2=10
+complex3=1
+*p + *(p+2)=10
+sizeof sum=13
+nested_ternary=2

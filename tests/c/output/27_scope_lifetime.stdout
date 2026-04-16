@@ -1,0 +1,8 @@
+global=42
+id: 0 0 0
+call_count=0
+accumulated=60
+block_var=100
+shadow=-2
+for_scope total=10
+nested: 1 2 3

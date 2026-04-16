@@ -1,0 +1,23 @@
+int->char->int: 65 -> '65' -> 65
+truncate: 0x305419896 -> short=0x22136 char=0x120
+sign_ext: char=-1 int=-1 uint=255
+signed->unsigned: -1 -> -1
+unsigned->signed: -1 -> -1
+ptr cast: -559038737
+uintptr: addr=0x1441448 val=42
+sizeof char=1
+sizeof short=2
+sizeof int=4
+sizeof long=4
+sizeof long long=8
+sizeof float=4
+sizeof double=8
+sizeof void*=8
+sizeof SmallStruct=8
+sizeof LargeStruct=400
+sizeof arr=40
+sizeof arr[0]=8
+arr count=5
+sizeof(1+2)=8
+sizeof(1.0)=8
+7/2 as double=0

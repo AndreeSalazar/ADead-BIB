@@ -1,0 +1,12 @@
+x=42 *p=42
+&x=1441576 p=1441576
+after *p=100: x=100
+before swap: a=10 b=20
+after swap:  a=20 b=10
+triple(5)=15
+set_to_zero: z=0
+null_ptr=0
+ptr_to_const=30 const_ptr=50
+add_via_ptr=300
+**pp=100
+re-pointed: *p=77

@@ -1,0 +1,6 @@
+char=1 short=2 int=4 long=4 ll=8 ptr=8
+CHAR_MIN=0 CHAR_MAX=0
+SHRT_MIN=0 SHRT_MAX=0
+INT_MIN=0 INT_MAX=0
+UINT_MAX=0
+char='65'(65) int=42 long=100000

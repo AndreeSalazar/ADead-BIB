@@ -1,0 +1,14 @@
+a=10
+b=20
+c=30
+true=1 false=0
+sizeof(bool)=1
+&&=0 ||=1 !=0
+for_decl sum=45
+square(5)=25 cube(3)=27
+config: 0x0 depth=0 fs=0
+designated: [0]=100 [5]=0 [9]=0 [3]=0
+int8_max=0 int16_max=0
+int32_max=0
+int64_max=0
+compound: 10 0 20
