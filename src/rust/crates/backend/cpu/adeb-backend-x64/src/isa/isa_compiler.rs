@@ -767,6 +767,52 @@ impl IsaCompiler {
         }
     }
 
+    /// Check if an expression is a C string (char*/const char*) using type info.
+    /// Unlike expr_yields_string (which only checks literal patterns), this uses
+    /// variable_types and function return types for proper classification.
+    fn expr_is_c_string(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::String(_) => true,
+            Expr::Variable(name) => {
+                match self.variable_types.get(name) {
+                    Some(Type::Str) => true,
+                    Some(Type::Pointer(inner)) => matches!(inner.as_ref(), Type::I8 | Type::U8),
+                    Some(Type::Array(inner, _)) => matches!(inner.as_ref(), Type::I8 | Type::U8),
+                    _ => {
+                        self.array_vars.contains(name.as_str())
+                            && self.array_elem_sizes.get(name.as_str()) == Some(&1)
+                    }
+                }
+            }
+            Expr::Call { name, .. } => {
+                // Check if function returns char* (Pointer(I8))
+                if let Some(func) = self.functions.get(name) {
+                    // Check stored return type if available
+                    let _ = func; // TODO: store return types in CompiledFunction
+                }
+                false
+            }
+            Expr::Ternary { then_expr, else_expr, .. } => {
+                self.expr_is_c_string(then_expr) || self.expr_is_c_string(else_expr)
+            }
+            Expr::Cast { target_type, .. } => {
+                matches!(target_type, Type::Pointer(inner) if matches!(inner.as_ref(), Type::I8 | Type::U8))
+            }
+            Expr::Deref(inner) => {
+                // *ptr where ptr is char** → char
+                if let Expr::Variable(name) = inner.as_ref() {
+                    if let Some(Type::Pointer(inner_ty)) = self.variable_types.get(name) {
+                        if let Type::Pointer(innermost) = inner_ty.as_ref() {
+                            return matches!(innermost.as_ref(), Type::I8 | Type::U8);
+                        }
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
     /// Check if a variable is a heap pointer (not a local array on stack)
     fn is_heap_pointer(&self, var_name: &str) -> bool {
         if self.array_vars.contains(var_name) {
@@ -1270,10 +1316,20 @@ impl IsaCompiler {
                 Self::collect_calls_from_expr_dce(ptr, calls);
                 Self::collect_calls_from_expr_dce(new_size, calls);
             }
+            Expr::SizeOf(arg) => {
+                if let crate::frontend::ast::SizeOfArg::Expr(e) = arg.as_ref() {
+                    Self::collect_calls_from_expr_dce(e, calls);
+                }
+            }
             Expr::New { args, .. } => {
                 for a in args { Self::collect_calls_from_expr_dce(a, calls); }
             }
-            _ => {} // Leaf nodes: Number, Float, String, Variable, etc.
+            Expr::Variable(name) => {
+                // Function pointer references: if a variable name matches a known function,
+                // the reachability check in collect_reachable_functions will include it
+                calls.push(name.clone());
+            }
+            _ => {} // Leaf nodes: Number, Float, String, etc.
         }
     }
 
@@ -2871,29 +2927,9 @@ impl IsaCompiler {
                 }
             }
 
-            // ========== GOTO / LABEL ==========
-            Stmt::LabelDef { name } => {
-                let label = if let Some(&existing) = self.goto_labels.get(name) {
-                    existing
-                } else {
-                    let lbl = self.ir.new_label();
-                    self.goto_labels.insert(name.clone(), lbl);
-                    lbl
-                };
-                self.ir.emit(ADeadOp::Label(label));
+            _ => {
+                eprintln!("   ⚠️  ISA: unhandled statement: {:?}", std::mem::discriminant(stmt));
             }
-            Stmt::JumpTo { label: name } => {
-                let target = if let Some(&existing) = self.goto_labels.get(name) {
-                    existing
-                } else {
-                    let lbl = self.ir.new_label();
-                    self.goto_labels.insert(name.clone(), lbl);
-                    lbl
-                };
-                self.ir.emit(ADeadOp::Jmp { target });
-            }
-
-            _ => {}
         }
     }
 
@@ -3177,17 +3213,29 @@ impl IsaCompiler {
             self.emit_expression(expr);
 
             // Check if variable is a string type — use %s instead of %d
+            // C strings are: Type::Str, Pointer(I8), Pointer(U8), Array(I8, _), Array(U8, _)
             let is_string_var = if let Expr::Variable(name) = expr {
-                matches!(self.variable_types.get(name), Some(Type::Str))
+                match self.variable_types.get(name) {
+                    Some(Type::Str) => true,
+                    Some(Type::Pointer(inner)) => matches!(inner.as_ref(), Type::I8 | Type::U8),
+                    Some(Type::Array(inner, _)) => matches!(inner.as_ref(), Type::I8 | Type::U8),
+                    _ => {
+                        // Also check if this is a local array with char element size
+                        self.array_vars.contains(name.as_str())
+                            && self.array_elem_sizes.get(name.as_str()) == Some(&1)
+                    }
+                }
             } else {
                 false
             };
 
-            // Check if expression yields a string pointer (ternary with string branches)
-            let is_string_expr = Self::expr_yields_string(expr);
+            // Check if expression yields a string pointer (ternary with string branches,
+            // call to function returning char*, cast to char*, etc.)
+            let is_string_expr = Self::expr_yields_string(expr) || self.expr_is_c_string(expr);
 
-            let is_float = matches!(expr, Expr::Float(_));
-            let is_integer = !is_string_var && !is_string_expr && matches!(
+            let is_float = matches!(expr, Expr::Float(_))
+                || Self::expr_is_float_full(expr, &self.variable_types, &self.field_ir_types, &self.current_class);
+            let is_integer = !is_string_var && !is_string_expr && !is_float && matches!(
                 expr,
                 Expr::Number(_)
                     | Expr::Variable(_)
@@ -5325,6 +5373,60 @@ impl IsaCompiler {
                             }
                         }
                         Expr::String(s) => (s.len() + 1) as i64,
+                        Expr::Deref(ptr_expr) => {
+                            // sizeof(*ptr) → size of pointee type
+                            if let Expr::Variable(name) = ptr_expr.as_ref() {
+                                if let Some(ty) = self.variable_types.get(name.as_str()) {
+                                    match ty {
+                                        Type::Pointer(inner) => self.sizeof_type(inner),
+                                        _ => 8,
+                                    }
+                                } else { 8 }
+                            } else { 8 }
+                        }
+                        Expr::Index { object, .. } => {
+                            // sizeof(arr[i]) → size of element type
+                            if let Expr::Variable(name) = object.as_ref() {
+                                if let Some(ty) = self.variable_types.get(name.as_str()) {
+                                    match ty {
+                                        Type::Array(inner, _) => self.sizeof_type(inner),
+                                        Type::Pointer(inner) => self.sizeof_type(inner),
+                                        _ => 8,
+                                    }
+                                } else { 8 }
+                            } else { 8 }
+                        }
+                        Expr::FieldAccess { object, field } => {
+                            // sizeof(obj.field) → size of field type
+                            if let Expr::Variable(name) = object.as_ref() {
+                                if let Some(ty) = self.variable_types.get(name.as_str()) {
+                                    match ty {
+                                        Type::Struct(sn) | Type::Named(sn) | Type::Class(sn) => {
+                                            self.get_class_field_size(sn, field) as i64
+                                        }
+                                        _ => 8,
+                                    }
+                                } else { 8 }
+                            } else { 8 }
+                        }
+                        Expr::ArrowAccess { pointer, field } => {
+                            // sizeof(ptr->field) → size of field type
+                            if let Expr::Variable(name) = pointer.as_ref() {
+                                if let Some(ty) = self.variable_types.get(name.as_str()) {
+                                    match ty {
+                                        Type::Pointer(inner) => match inner.as_ref() {
+                                            Type::Struct(sn) | Type::Named(sn) | Type::Class(sn) => {
+                                                self.get_class_field_size(sn, field) as i64
+                                            }
+                                            _ => 8,
+                                        },
+                                        _ => 8,
+                                    }
+                                } else { 8 }
+                            } else { 8 }
+                        }
+                        Expr::Cast { target_type, .. } => self.sizeof_type(target_type),
+                        Expr::Number(_) => 4, // sizeof(literal int) = 4 in C
                         _ => 8,
                     },
                 };
@@ -5347,15 +5449,18 @@ impl IsaCompiler {
             }
             // ========== REALLOC ==========
             Expr::Realloc { ptr, new_size } => {
-                // For now, just call malloc with new_size (simplified)
+                // realloc(ptr, new_size) — Windows x64 ABI: RCX=ptr, RDX=new_size
                 self.emit_expression(new_size);
+                self.ir.emit(ADeadOp::Push {
+                    src: Operand::Reg(Reg::RAX),
+                });
+                self.emit_expression(ptr);
                 self.ir.emit(ADeadOp::Mov {
                     dst: Operand::Reg(Reg::RCX),
                     src: Operand::Reg(Reg::RAX),
                 });
-                // Call malloc via dynamic IAT lookup
-                self.emit_call_iat("malloc");
-                let _ = ptr; // TODO: proper realloc with ptr as first arg
+                self.ir.emit(ADeadOp::Pop { dst: Reg::RDX });
+                self.emit_call_iat("realloc");
             }
             // ========== CAST ==========
             Expr::Cast {
