@@ -4040,6 +4040,9 @@ impl IsaCompiler {
             Expr::Call { name, args } => {
                 self.emit_call(name, args);
             }
+            Expr::IndirectCall { target, args } => {
+                self.emit_indirect_call(target, args);
+            }
             Expr::Comparison { .. } => self.emit_condition(expr),
             Expr::Input => {
                 self.emit_input();
@@ -6133,6 +6136,49 @@ impl IsaCompiler {
                 src: Operand::Imm32(frame_size as i32),
             });
         }
+    }
+
+    fn emit_indirect_call(&mut self, target: &Expr, args: &[Expr]) {
+        // Evaluate target first and save it on stack
+        self.emit_expression(target);
+        self.ir.emit(ADeadOp::Push {
+            src: Operand::Reg(Reg::RAX),
+        });
+
+        // Evaluate arguments
+        let arg_count = args.len().min(4);
+        for arg in args.iter().take(4) {
+            self.emit_expression(arg);
+            self.ir.emit(ADeadOp::Push {
+                src: Operand::Reg(Reg::RAX),
+            });
+        }
+
+        // Pop args into correct registers
+        for i in (0..arg_count).rev() {
+            let dst = self.arg_register(i);
+            self.ir.emit(ADeadOp::Pop { dst });
+        }
+
+        // Pop target back into RAX
+        self.ir.emit(ADeadOp::Pop { dst: Reg::RAX });
+
+        // Shadow space for Windows x64 ABI
+        self.ir.emit(ADeadOp::Sub {
+            dst: Operand::Reg(Reg::RSP),
+            src: Operand::Imm8(32),
+        });
+
+        // Call indirect
+        self.ir.emit(ADeadOp::Call {
+            target: CallTarget::Register(Reg::RAX),
+        });
+
+        // Clean shadow space
+        self.ir.emit(ADeadOp::Add {
+            dst: Operand::Reg(Reg::RSP),
+            src: Operand::Imm8(32),
+        });
     }
 
     fn emit_input(&mut self) {

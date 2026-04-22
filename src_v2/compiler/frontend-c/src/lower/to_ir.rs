@@ -1129,14 +1129,13 @@ impl CToIR {
                     CExpr::Identifier(n) => n.clone(),
                     _ => {
                         // Complex function pointer expression call (e.g. ops[i](a,b))
-                        // Convert the callee expression and embed as first arg
                         let callee = self.convert_expr(func)?;
-                        let mut all_args = vec![callee];
+                        let mut all_args = Vec::new();
                         for a in args {
                             all_args.push(self.convert_expr(a)?);
                         }
-                        return Ok(Expr::Call {
-                            name: "__fptr_expr".to_string(),
+                        return Ok(Expr::IndirectCall {
+                            target: Box::new(callee),
                             args: all_args,
                         });
                     }

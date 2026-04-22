@@ -354,6 +354,15 @@ pub struct CStructField {
     pub bit_width: Option<u8>,
 }
 
+/// Calling convention
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum CCallConv {
+    #[default]
+    Cdecl,
+    Stdcall,
+    Fastcall,
+}
+
 /// Storage class and specifiers for declarations
 #[derive(Debug, Clone, Default)]
 pub struct CDeclSpecifiers {
@@ -364,6 +373,7 @@ pub struct CDeclSpecifiers {
     pub is_noreturn: bool,        // _Noreturn
     pub is_thread_local: bool,    // _Thread_local
     pub align: Option<usize>,     // _Alignas(N)
+    pub call_conv: CCallConv,     // __stdcall, __cdecl
 }
 
 /// Complete C translation unit (a .c file)

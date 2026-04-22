@@ -31,6 +31,10 @@ pub enum Expr {
         name: String,
         args: Vec<Expr>,
     },
+    IndirectCall {
+        target: Box<Expr>,
+        args: Vec<Expr>,
+    },
     // Arrays y colecciones
     Array(Vec<Expr>),
     Index {

@@ -114,7 +114,12 @@ impl CParser {
             | CToken::Union
             | CToken::Alignas
             | CToken::Noreturn
-            | CToken::ThreadLocal => true,
+            | CToken::ThreadLocal
+            | CToken::StdCall
+            | CToken::Cdecl
+            | CToken::FastCall
+            | CToken::DeclSpec
+            | CToken::WinApi => true,
             CToken::Identifier(name) => self.typedef_names.contains(name),
             _ => false,
         }
@@ -153,13 +158,16 @@ impl CParser {
                 CToken::Const => {
                     self.advance();
                 }
-                CToken::Noreturn | CToken::ThreadLocal | CToken::Alignas => {
+                CToken::Noreturn | CToken::ThreadLocal | CToken::Alignas | CToken::DeclSpec => {
                     self.advance();
-                    // Skip _Alignas(expr) or _Alignas(type)
+                    // Skip _Alignas(expr) or __declspec(xxx)
                     if matches!(self.current(), CToken::LParen) {
                         self.advance();
                         self.skip_balanced_parens();
                     }
+                }
+                CToken::StdCall | CToken::Cdecl | CToken::FastCall | CToken::WinApi => {
+                    self.advance();
                 }
                 _ => break,
             }
@@ -557,6 +565,10 @@ impl CParser {
             if self.is_function_pointer_param() {
                 let ret_type = self.parse_type()?;
                 self.expect(&CToken::LParen)?; // (
+                // Skip calling convention if present
+                while matches!(self.current(), CToken::StdCall | CToken::Cdecl | CToken::FastCall | CToken::WinApi) {
+                    self.advance();
+                }
                 self.eat(&CToken::Star); // *
                 let name = if let CToken::Identifier(_) = self.current() {
                     Some(self.expect_identifier()?)
@@ -647,9 +659,16 @@ impl CParser {
                     // Could be typedef name or struct name after struct keyword
                     i += 1;
                 }
+                CToken::StdCall | CToken::Cdecl | CToken::FastCall | CToken::WinApi | CToken::DeclSpec => {
+                    i += 1;
+                }
                 CToken::LParen => {
-                    // Check if next is * — that's the function pointer indicator
-                    if i + 1 < self.tokens.len() && self.tokens[i + 1] == CToken::Star {
+                    // Check if next is * (or calling conv then *) — that's the function pointer indicator
+                    let mut j = i + 1;
+                    while j < self.tokens.len() && matches!(self.tokens[j], CToken::StdCall | CToken::Cdecl | CToken::FastCall | CToken::WinApi) {
+                        j += 1;
+                    }
+                    if j < self.tokens.len() && self.tokens[j] == CToken::Star {
                         return true;
                     }
                     return false;

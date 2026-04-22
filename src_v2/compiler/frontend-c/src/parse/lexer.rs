@@ -60,6 +60,13 @@ pub enum CToken {
     StringLiteral(String),
     CharLiteral(char),
 
+    // MSVC Extensions
+    StdCall,
+    Cdecl,
+    FastCall,
+    DeclSpec,
+    WinApi,
+
     // Operators
     Plus,
     Minus,
@@ -510,6 +517,11 @@ impl CLexer {
                     "_Noreturn" | "noreturn" => CToken::Noreturn,
                     "_Thread_local" | "thread_local" => CToken::ThreadLocal,
                     "NULL" | "nullptr" => CToken::Identifier("NULL".to_string()),
+                    "__stdcall" | "_stdcall" => CToken::StdCall,
+                    "__cdecl" | "_cdecl" => CToken::Cdecl,
+                    "__fastcall" | "_fastcall" => CToken::FastCall,
+                    "__declspec" | "_declspec" => CToken::DeclSpec,
+                    "WINAPI" | "CALLBACK" | "APIENTRY" => CToken::StdCall,
                     _ => CToken::Identifier(ident),
                 }
             }

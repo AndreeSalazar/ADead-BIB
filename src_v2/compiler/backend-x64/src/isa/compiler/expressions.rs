@@ -98,6 +98,9 @@ impl IsaCompiler {
             Expr::Call { name, args } => {
                 self.emit_call(name, args);
             }
+            Expr::IndirectCall { target, args } => {
+                self.emit_indirect_call(target, args);
+            }
             Expr::Comparison { .. } => self.emit_condition(expr),
             Expr::Input => {
                 self.emit_input();
