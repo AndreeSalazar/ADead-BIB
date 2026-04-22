@@ -141,6 +141,18 @@ typedef long long      LONG_PTR;
 typedef unsigned long long ULONG_PTR;
 typedef unsigned long long SIZE_T;
 typedef long long      SSIZE_T;
+typedef HANDLE         HGLOBAL;
+
+enum Win32Constants {
+    NULL = 0,
+    HEAP_ZERO_MEMORY = 8,
+    MEM_COMMIT = 0x1000,
+    MEM_RESERVE = 0x2000,
+    MEM_RELEASE = 0x8000,
+    PAGE_READWRITE = 0x04,
+    GMEM_MOVEABLE = 0x0002,
+    GMEM_ZEROINIT = 0x0040
+};
 
 typedef struct _SECURITY_ATTRIBUTES {
     DWORD nLength;

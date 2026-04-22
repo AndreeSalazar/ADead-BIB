@@ -16,6 +16,7 @@ pub struct CParser {
     /// Known typedef names so we can recognize them as type starters
     typedef_names: std::collections::HashSet<String>,
     anonymous_struct_fields: Vec<CStructField>,
+    pending_top_levels: Vec<CTopLevel>,
 }
 
 impl CParser {
@@ -26,6 +27,7 @@ impl CParser {
             pos: 0,
             typedef_names: std::collections::HashSet::new(),
             anonymous_struct_fields: Vec::new(),
+            pending_top_levels: Vec::new(),
         }
     }
 
@@ -315,6 +317,7 @@ impl CParser {
                     unit.declarations.push(decl);
                 }
                 Err(_e) => {
+                    println!("[ERROR] Parser error at pos {}: {}", self.pos, _e);
                     // Resilient parsing: skip to next ; or } at depth 0, then continue
                     self.pos = save;
                     self.skip_to_next_top_level();
@@ -391,6 +394,10 @@ impl CParser {
     }
 
     fn parse_top_level(&mut self) -> Result<CTopLevel, String> {
+        if let Some(pending) = self.pending_top_levels.pop() {
+            return Ok(pending);
+        }
+
         // Typedef
         if *self.current() == CToken::Typedef {
             return self.parse_typedef();
@@ -964,18 +971,54 @@ impl CParser {
             self.advance(); // skip {
             let fields = self.parse_struct_fields()?;
             self.expect(&CToken::RBrace)?;
-            let is_ptr = self.eat(&CToken::Star);
-            let new_name = self.expect_identifier()?;
-            self.typedef_names.insert(new_name.clone());
+            let mut aliases = Vec::new();
+            loop {
+                let is_ptr = self.eat(&CToken::Star);
+                if let CToken::Identifier(_) = self.current() {
+                    let alias = self.expect_identifier()?;
+                    self.typedef_names.insert(alias.clone());
+                    aliases.push((is_ptr, alias));
+                } else {
+                    break;
+                }
+                if !self.eat(&CToken::Comma) {
+                    break;
+                }
+            }
             self.expect(&CToken::Semicolon)?;
-            if is_ptr {
-                return Ok(CTopLevel::TypedefDecl {
-                    original: CType::Pointer(Box::new(CType::Struct(new_name.clone()))),
-                    new_name,
+
+            // Push extra aliases to pending_top_levels (in reverse order)
+            // For anonymous structs, we use the first non-ptr alias as the underlying struct name
+            // If all are ptrs, we just use the first alias as the struct name
+            let base_name = aliases.first().map(|(_, n)| n.clone()).unwrap_or_else(|| "anon_struct".to_string());
+            
+            for (is_ptr, alias) in aliases.iter().skip(1).rev() {
+                let orig = if *is_ptr {
+                    CType::Pointer(Box::new(CType::Struct(base_name.clone())))
+                } else {
+                    CType::Struct(base_name.clone())
+                };
+                self.pending_top_levels.push(CTopLevel::TypedefDecl {
+                    original: orig,
+                    new_name: alias.clone(),
                 });
             }
+
+            // Return the struct definition (which also acts as the first typedef if non-ptr)
+            let (first_is_ptr, first_alias) = aliases.first().unwrap();
+            if *first_is_ptr {
+                self.pending_top_levels.push(CTopLevel::StructDef {
+                    name: base_name.clone(),
+                    fields,
+                });
+                return Ok(CTopLevel::TypedefDecl {
+                    original: CType::Pointer(Box::new(CType::Struct(base_name))),
+                    new_name: first_alias.clone(),
+                });
+            }
+            
             return Ok(CTopLevel::StructDef {
-                name: new_name,
+                name: first_alias.clone(),
                 fields,
             });
         }
@@ -990,29 +1033,61 @@ impl CParser {
                     self.advance(); // skip {
                     let fields = self.parse_struct_fields()?;
                     self.expect(&CToken::RBrace)?;
-                    // Check for pointer alias: } *Name;
-                    let is_ptr = self.eat(&CToken::Star);
-                    if let CToken::Identifier(_) = self.current() {
-                        let alias = self.expect_identifier()?;
-                        self.typedef_names.insert(alias.clone());
-                        self.expect(&CToken::Semicolon)?;
-                        if is_ptr {
-                            return Ok(CTopLevel::TypedefDecl {
-                                original: CType::Pointer(Box::new(CType::Struct(struct_name))),
-                                new_name: alias,
-                            });
+                    // Check for pointer alias: } *Name, Alias2, *Alias3;
+                    let mut aliases = Vec::new();
+                    loop {
+                        let is_ptr = self.eat(&CToken::Star);
+                        if let CToken::Identifier(_) = self.current() {
+                            let alias = self.expect_identifier()?;
+                            self.typedef_names.insert(alias.clone());
+                            aliases.push((is_ptr, alias));
+                        } else {
+                            break;
                         }
-                        return Ok(CTopLevel::StructDef {
-                            name: alias,
-                            fields,
-                        });
-                    } else {
-                        self.expect(&CToken::Semicolon)?;
+                        if !self.eat(&CToken::Comma) {
+                            break;
+                        }
+                    }
+                    self.expect(&CToken::Semicolon)?;
+
+                    if aliases.is_empty() {
                         return Ok(CTopLevel::StructDef {
                             name: struct_name,
                             fields,
                         });
                     }
+
+                    // Push extra aliases to pending_top_levels (in reverse order)
+                    for (is_ptr, alias) in aliases.iter().skip(1).rev() {
+                        let orig = if *is_ptr {
+                            CType::Pointer(Box::new(CType::Struct(struct_name.clone())))
+                        } else {
+                            CType::Struct(struct_name.clone())
+                        };
+                        self.pending_top_levels.push(CTopLevel::TypedefDecl {
+                            original: orig,
+                            new_name: alias.clone(),
+                        });
+                    }
+                    
+                    // Push the struct definition to pending_top_levels (so it gets processed)
+                    self.pending_top_levels.push(CTopLevel::StructDef {
+                        name: struct_name.clone(),
+                        fields,
+                    });
+
+                    // Return the first alias
+                    let (first_is_ptr, first_alias) = aliases.first().unwrap();
+                    if *first_is_ptr {
+                        return Ok(CTopLevel::TypedefDecl {
+                            original: CType::Pointer(Box::new(CType::Struct(struct_name))),
+                            new_name: first_alias.clone(),
+                        });
+                    }
+                    return Ok(CTopLevel::TypedefDecl {
+                        original: CType::Struct(struct_name),
+                        new_name: first_alias.clone(),
+                    });
                 }
             }
         }
