@@ -1,0 +1,16 @@
+[package]
+name = "adeb-middle"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "ADead-BIB middle end - IR, optimizations, UB detection"
+
+[dependencies]
+adeb-core = { workspace = true }
+
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+rayon = { workspace = true }

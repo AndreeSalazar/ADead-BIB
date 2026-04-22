@@ -1,0 +1,326 @@
+// ============================================================
+// fastos_d3d12.rs — Direct3D 12 support
+// ============================================================
+// DLL: d3d12.dll
+// The latest low-level DirectX API for maximum GPU control.
+// ============================================================
+
+// ── D3D12 Functions (d3d12.dll) ──
+pub const D3D12_FUNCTIONS: &[&str] = &[
+    "D3D12CreateDevice",
+    "D3D12GetDebugInterface",
+    "D3D12SerializeRootSignature",
+    "D3D12SerializeVersionedRootSignature",
+    "D3D12CreateRootSignatureDeserializer",
+    "D3D12CreateVersionedRootSignatureDeserializer",
+    "D3D12EnableExperimentalFeatures",
+    "D3D12GetInterface",
+];
+
+// ── D3D12 Interfaces ──
+pub const D3D12_INTERFACES: &[&str] = &[
+    // Device
+    "ID3D12Device", "ID3D12Device1", "ID3D12Device2",
+    "ID3D12Device3", "ID3D12Device4", "ID3D12Device5",
+    "ID3D12Device6", "ID3D12Device7", "ID3D12Device8", "ID3D12Device9",
+    // Command
+    "ID3D12CommandQueue",
+    "ID3D12CommandAllocator",
+    "ID3D12GraphicsCommandList", "ID3D12GraphicsCommandList1",
+    "ID3D12GraphicsCommandList2", "ID3D12GraphicsCommandList3",
+    "ID3D12GraphicsCommandList4", "ID3D12GraphicsCommandList5",
+    "ID3D12GraphicsCommandList6",
+    "ID3D12CommandList",
+    "ID3D12CommandSignature",
+    // Pipeline
+    "ID3D12PipelineState",
+    "ID3D12PipelineLibrary", "ID3D12PipelineLibrary1",
+    "ID3D12StateObject", "ID3D12StateObjectProperties",
+    // Root Signature
+    "ID3D12RootSignature",
+    "ID3D12RootSignatureDeserializer",
+    "ID3D12VersionedRootSignatureDeserializer",
+    // Descriptors
+    "ID3D12DescriptorHeap",
+    // Resources
+    "ID3D12Resource", "ID3D12Resource1", "ID3D12Resource2",
+    "ID3D12Heap", "ID3D12Heap1",
+    // Sync
+    "ID3D12Fence", "ID3D12Fence1",
+    // Query
+    "ID3D12QueryHeap",
+    // Debug
+    "ID3D12Debug", "ID3D12Debug1", "ID3D12Debug2", "ID3D12Debug3",
+    "ID3D12Debug4", "ID3D12Debug5", "ID3D12Debug6",
+    "ID3D12InfoQueue", "ID3D12InfoQueue1",
+    "ID3D12DebugDevice", "ID3D12DebugDevice1", "ID3D12DebugDevice2",
+    "ID3D12DebugCommandQueue", "ID3D12DebugCommandList",
+    // Misc
+    "ID3D12Pageable",
+    "ID3D12Object",
+    "ID3D12DeviceChild",
+    "ID3D12LifetimeOwner", "ID3D12LifetimeTracker",
+    "ID3D12SwapChainAssistant",
+    "ID3D12ProtectedResourceSession", "ID3D12ProtectedResourceSession1",
+    "ID3D12SharingContract",
+    "ID3D12SDKConfiguration",
+    // Raytracing
+    "ID3D12DeviceRemovedExtendedDataSettings",
+    "ID3D12DeviceRemovedExtendedData",
+    "ID3D12MetaCommand",
+    "ID3D12ShaderCacheSession",
+    "ID3D12Tools",
+];
+
+// ── D3D12 Types / Structs ──
+pub const D3D12_TYPES: &[&str] = &[
+    // Command
+    "D3D12_COMMAND_QUEUE_DESC",
+    "D3D12_COMMAND_LIST_TYPE",
+    // Pipeline
+    "D3D12_GRAPHICS_PIPELINE_STATE_DESC",
+    "D3D12_COMPUTE_PIPELINE_STATE_DESC",
+    "D3D12_PIPELINE_STATE_STREAM_DESC",
+    "D3D12_INPUT_LAYOUT_DESC",
+    "D3D12_INPUT_ELEMENT_DESC",
+    "D3D12_SHADER_BYTECODE",
+    "D3D12_STREAM_OUTPUT_DESC",
+    "D3D12_SO_DECLARATION_ENTRY",
+    // Render
+    "D3D12_BLEND_DESC",
+    "D3D12_RENDER_TARGET_BLEND_DESC",
+    "D3D12_RASTERIZER_DESC",
+    "D3D12_DEPTH_STENCIL_DESC", "D3D12_DEPTH_STENCIL_DESC1",
+    "D3D12_DEPTH_STENCILOP_DESC",
+    // Root signature
+    "D3D12_ROOT_SIGNATURE_DESC", "D3D12_VERSIONED_ROOT_SIGNATURE_DESC",
+    "D3D12_ROOT_PARAMETER", "D3D12_ROOT_PARAMETER1",
+    "D3D12_ROOT_DESCRIPTOR_TABLE", "D3D12_ROOT_DESCRIPTOR_TABLE1",
+    "D3D12_DESCRIPTOR_RANGE", "D3D12_DESCRIPTOR_RANGE1",
+    "D3D12_ROOT_CONSTANTS",
+    "D3D12_ROOT_DESCRIPTOR", "D3D12_ROOT_DESCRIPTOR1",
+    "D3D12_STATIC_SAMPLER_DESC",
+    // Resources
+    "D3D12_RESOURCE_DESC", "D3D12_RESOURCE_DESC1",
+    "D3D12_HEAP_DESC", "D3D12_HEAP_PROPERTIES",
+    "D3D12_CLEAR_VALUE",
+    "D3D12_RESOURCE_BARRIER",
+    "D3D12_RESOURCE_TRANSITION_BARRIER",
+    "D3D12_RESOURCE_ALIASING_BARRIER",
+    "D3D12_RESOURCE_UAV_BARRIER",
+    "D3D12_PLACED_SUBRESOURCE_FOOTPRINT",
+    "D3D12_SUBRESOURCE_FOOTPRINT",
+    "D3D12_TEXTURE_COPY_LOCATION",
+    "D3D12_SUBRESOURCE_DATA",
+    "D3D12_RANGE",
+    // Descriptors
+    "D3D12_DESCRIPTOR_HEAP_DESC",
+    "D3D12_CPU_DESCRIPTOR_HANDLE",
+    "D3D12_GPU_DESCRIPTOR_HANDLE",
+    "D3D12_CONSTANT_BUFFER_VIEW_DESC",
+    "D3D12_SHADER_RESOURCE_VIEW_DESC",
+    "D3D12_UNORDERED_ACCESS_VIEW_DESC",
+    "D3D12_RENDER_TARGET_VIEW_DESC",
+    "D3D12_DEPTH_STENCIL_VIEW_DESC",
+    "D3D12_SAMPLER_DESC",
+    // Views
+    "D3D12_VERTEX_BUFFER_VIEW",
+    "D3D12_INDEX_BUFFER_VIEW",
+    "D3D12_STREAM_OUTPUT_BUFFER_VIEW",
+    // Viewport / Scissor
+    "D3D12_VIEWPORT",
+    "D3D12_RECT",
+    "D3D12_BOX",
+    // Query
+    "D3D12_QUERY_HEAP_DESC",
+    // Feature
+    "D3D12_FEATURE_DATA_D3D12_OPTIONS",
+    "D3D12_FEATURE_DATA_ARCHITECTURE",
+    "D3D12_FEATURE_DATA_FORMAT_SUPPORT",
+    // Misc
+    "D3D12_TILE_REGION_SIZE",
+    "D3D12_TILED_RESOURCE_COORDINATE",
+    "D3D12_DISPATCH_ARGUMENTS",
+    "D3D12_DRAW_ARGUMENTS",
+    "D3D12_DRAW_INDEXED_ARGUMENTS",
+    // Raytracing
+    "D3D12_RAYTRACING_GEOMETRY_DESC",
+    "D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS",
+    "D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC",
+    "D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS",
+    "D3D12_DISPATCH_RAYS_DESC",
+    "D3D12_RAYTRACING_PIPELINE_CONFIG",
+    "D3D12_STATE_OBJECT_DESC",
+    "D3D12_STATE_SUBOBJECT",
+];
+
+// ── D3D12 Constants ──
+pub const D3D12_CONSTANTS: &[(&str, &str)] = &[
+    // Command list types
+    ("D3D12_COMMAND_LIST_TYPE_DIRECT", "0"),
+    ("D3D12_COMMAND_LIST_TYPE_BUNDLE", "1"),
+    ("D3D12_COMMAND_LIST_TYPE_COMPUTE", "2"),
+    ("D3D12_COMMAND_LIST_TYPE_COPY", "3"),
+    // Descriptor heap types
+    ("D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV", "0"),
+    ("D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER", "1"),
+    ("D3D12_DESCRIPTOR_HEAP_TYPE_RTV", "2"),
+    ("D3D12_DESCRIPTOR_HEAP_TYPE_DSV", "3"),
+    ("D3D12_DESCRIPTOR_HEAP_FLAG_NONE", "0"),
+    ("D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE", "1"),
+    // Resource states
+    ("D3D12_RESOURCE_STATE_COMMON", "0"),
+    ("D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER", "0x1"),
+    ("D3D12_RESOURCE_STATE_INDEX_BUFFER", "0x2"),
+    ("D3D12_RESOURCE_STATE_RENDER_TARGET", "0x4"),
+    ("D3D12_RESOURCE_STATE_UNORDERED_ACCESS", "0x8"),
+    ("D3D12_RESOURCE_STATE_DEPTH_WRITE", "0x10"),
+    ("D3D12_RESOURCE_STATE_DEPTH_READ", "0x20"),
+    ("D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE", "0x40"),
+    ("D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE", "0x80"),
+    ("D3D12_RESOURCE_STATE_COPY_DEST", "0x400"),
+    ("D3D12_RESOURCE_STATE_COPY_SOURCE", "0x800"),
+    ("D3D12_RESOURCE_STATE_GENERIC_READ", "0x1 | 0x2 | 0x40 | 0x80 | 0x200 | 0x800"),
+    ("D3D12_RESOURCE_STATE_PRESENT", "0"),
+    // Resource barrier
+    ("D3D12_RESOURCE_BARRIER_TYPE_TRANSITION", "0"),
+    ("D3D12_RESOURCE_BARRIER_TYPE_ALIASING", "1"),
+    ("D3D12_RESOURCE_BARRIER_TYPE_UAV", "2"),
+    ("D3D12_RESOURCE_BARRIER_FLAG_NONE", "0"),
+    ("D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES", "0xFFFFFFFF"),
+    // Heap types
+    ("D3D12_HEAP_TYPE_DEFAULT", "1"),
+    ("D3D12_HEAP_TYPE_UPLOAD", "2"),
+    ("D3D12_HEAP_TYPE_READBACK", "3"),
+    ("D3D12_HEAP_TYPE_CUSTOM", "4"),
+    ("D3D12_HEAP_FLAG_NONE", "0"),
+    // Resource dimension
+    ("D3D12_RESOURCE_DIMENSION_UNKNOWN", "0"),
+    ("D3D12_RESOURCE_DIMENSION_BUFFER", "1"),
+    ("D3D12_RESOURCE_DIMENSION_TEXTURE1D", "2"),
+    ("D3D12_RESOURCE_DIMENSION_TEXTURE2D", "3"),
+    ("D3D12_RESOURCE_DIMENSION_TEXTURE3D", "4"),
+    // Resource flags
+    ("D3D12_RESOURCE_FLAG_NONE", "0"),
+    ("D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET", "0x1"),
+    ("D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL", "0x2"),
+    ("D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS", "0x4"),
+    ("D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE", "0x8"),
+    ("D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER", "0x10"),
+    // Texture layout
+    ("D3D12_TEXTURE_LAYOUT_UNKNOWN", "0"),
+    ("D3D12_TEXTURE_LAYOUT_ROW_MAJOR", "1"),
+    // Root signature flags
+    ("D3D12_ROOT_SIGNATURE_FLAG_NONE", "0"),
+    ("D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT", "0x1"),
+    ("D3D12_ROOT_SIGNATURE_FLAG_DENY_VERTEX_SHADER_ROOT_ACCESS", "0x2"),
+    ("D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS", "0x10"),
+    // Root parameter type
+    ("D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE", "0"),
+    ("D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS", "1"),
+    ("D3D12_ROOT_PARAMETER_TYPE_CBV", "2"),
+    ("D3D12_ROOT_PARAMETER_TYPE_SRV", "3"),
+    ("D3D12_ROOT_PARAMETER_TYPE_UAV", "4"),
+    // Descriptor range type
+    ("D3D12_DESCRIPTOR_RANGE_TYPE_SRV", "0"),
+    ("D3D12_DESCRIPTOR_RANGE_TYPE_UAV", "1"),
+    ("D3D12_DESCRIPTOR_RANGE_TYPE_CBV", "2"),
+    ("D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER", "3"),
+    // Shader visibility
+    ("D3D12_SHADER_VISIBILITY_ALL", "0"),
+    ("D3D12_SHADER_VISIBILITY_VERTEX", "1"),
+    ("D3D12_SHADER_VISIBILITY_HULL", "2"),
+    ("D3D12_SHADER_VISIBILITY_DOMAIN", "3"),
+    ("D3D12_SHADER_VISIBILITY_GEOMETRY", "4"),
+    ("D3D12_SHADER_VISIBILITY_PIXEL", "5"),
+    // Primitive topology type
+    ("D3D12_PRIMITIVE_TOPOLOGY_TYPE_UNDEFINED", "0"),
+    ("D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT", "1"),
+    ("D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE", "2"),
+    ("D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE", "3"),
+    ("D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH", "4"),
+    // Blend
+    ("D3D12_BLEND_ZERO", "1"),
+    ("D3D12_BLEND_ONE", "2"),
+    ("D3D12_BLEND_SRC_ALPHA", "5"),
+    ("D3D12_BLEND_INV_SRC_ALPHA", "6"),
+    ("D3D12_BLEND_OP_ADD", "1"),
+    ("D3D12_COLOR_WRITE_ENABLE_ALL", "15"),
+    ("D3D12_LOGIC_OP_NOOP", "5"),
+    // Fill/cull
+    ("D3D12_FILL_MODE_WIREFRAME", "2"),
+    ("D3D12_FILL_MODE_SOLID", "3"),
+    ("D3D12_CULL_MODE_NONE", "1"),
+    ("D3D12_CULL_MODE_FRONT", "2"),
+    ("D3D12_CULL_MODE_BACK", "3"),
+    // Comparison
+    ("D3D12_COMPARISON_FUNC_LESS", "2"),
+    ("D3D12_COMPARISON_FUNC_LESS_EQUAL", "4"),
+    ("D3D12_COMPARISON_FUNC_ALWAYS", "8"),
+    // Depth write mask
+    ("D3D12_DEPTH_WRITE_MASK_ZERO", "0"),
+    ("D3D12_DEPTH_WRITE_MASK_ALL", "1"),
+    // Stencil op
+    ("D3D12_STENCIL_OP_KEEP", "1"),
+    // Input classification
+    ("D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA", "0"),
+    ("D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA", "1"),
+    // Clear flags
+    ("D3D12_CLEAR_FLAG_DEPTH", "0x1"),
+    ("D3D12_CLEAR_FLAG_STENCIL", "0x2"),
+    // Fence flags
+    ("D3D12_FENCE_FLAG_NONE", "0"),
+    ("D3D12_FENCE_FLAG_SHARED", "0x1"),
+    // Command queue flags
+    ("D3D12_COMMAND_QUEUE_FLAG_NONE", "0"),
+    ("D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT", "0x1"),
+    // Default values
+    ("D3D12_DEFAULT_SAMPLE_MASK", "0xFFFFFFFF"),
+    ("D3D12_APPEND_ALIGNED_ELEMENT", "0xFFFFFFFF"),
+    ("D3D12_DEFAULT_DEPTH_BIAS", "0"),
+    ("D3D12_DEFAULT_DEPTH_BIAS_CLAMP", "0.0"),
+    ("D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS", "0.0"),
+    ("D3D12_DEFAULT_STENCIL_READ_MASK", "0xFF"),
+    ("D3D12_DEFAULT_STENCIL_WRITE_MASK", "0xFF"),
+    // Memory pool
+    ("D3D12_MEMORY_POOL_UNKNOWN", "0"),
+    ("D3D12_CPU_PAGE_PROPERTY_UNKNOWN", "0"),
+    // Raytracing
+    ("D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE", "0"),
+    ("D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE", "0x2"),
+    ("D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD", "0x4"),
+    ("D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL", "0"),
+    ("D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL", "1"),
+    ("D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES", "0"),
+    ("D3D12_RAYTRACING_GEOMETRY_FLAG_NONE", "0"),
+    ("D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE", "0x1"),
+    // State object type
+    ("D3D12_STATE_OBJECT_TYPE_COLLECTION", "0"),
+    ("D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE", "3"),
+];
+
+// ── Well-known D3D12 IIDs ──
+pub const D3D12_IIDS: &[(&str, &str)] = &[
+    ("IID_ID3D12Device", "{189819f1-1db6-4b57-be54-1821339b85f7}"),
+    ("IID_ID3D12Device2", "{30baa41e-b15b-475c-a0bb-1af5c5b64328}"),
+    ("IID_ID3D12Device5", "{8b4f173b-2fea-4b80-8f58-4307191ab95d}"),
+    ("IID_ID3D12CommandQueue", "{0ec870a6-5d7e-4c22-8cfc-5baae07616ed}"),
+    ("IID_ID3D12CommandAllocator", "{6102dee4-af59-4b09-b999-b44d73f09b24}"),
+    ("IID_ID3D12GraphicsCommandList", "{5b160d0f-ac1b-4185-8ba8-b3ae42a5a455}"),
+    ("IID_ID3D12PipelineState", "{765a30f3-f624-4c6f-a828-ace948622445}"),
+    ("IID_ID3D12RootSignature", "{c54a6b66-72df-4ee8-8be5-a946a1429214}"),
+    ("IID_ID3D12DescriptorHeap", "{8efb471d-616c-4f49-90f7-127bb763fa51}"),
+    ("IID_ID3D12Resource", "{696442be-a72e-4059-bc79-5b5c98040fad}"),
+    ("IID_ID3D12Fence", "{0a753dcf-c4d8-4b91-adf6-be5a60d95a76}"),
+    ("IID_ID3D12Debug", "{344488b7-6846-474b-b989-f027448245e0}"),
+    ("IID_ID3D12Debug1", "{affaa4ca-63fe-4d8e-b8ad-159000af4304}"),
+    ("IID_ID3D12InfoQueue", "{0742a90b-c387-483f-b946-30a7e4e61458}"),
+];
+
+pub fn is_d3d12_symbol(name: &str) -> bool {
+    D3D12_FUNCTIONS.contains(&name)
+        || D3D12_INTERFACES.contains(&name)
+        || D3D12_TYPES.contains(&name)
+        || D3D12_CONSTANTS.iter().any(|(n, _)| *n == name)
+        || D3D12_IIDS.iter().any(|(n, _)| *n == name)
+}

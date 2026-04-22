@@ -1,0 +1,55 @@
+[workspace]
+members = [
+    "bin/adeb-main",
+    "compiler/frontend-c",
+    "compiler/middle",
+    "compiler/backend-x64",
+    "compiler/backend-gpu",
+    "core/adeb-core",
+    "core/adeb-platform",
+    "core/adeb-stdlib",
+    "core/adeb-bridge",
+    "core/adeb-bg",
+]
+resolver = "2"
+
+[workspace.package]
+version = "7.0.0"
+edition = "2021"
+authors = ["ADead-BIB Team"]
+license = "Techne (τέχνη)"
+repository = "https://github.com/AndreeSalazar/ADead-BIB"
+rust-version = "1.70"
+
+[workspace.dependencies]
+# Core dependencies
+thiserror = "1.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.0"
+indicatif = "0.17"
+
+# Text processing
+regex = "1.10"
+
+# Parallelism
+rayon = "1.8"
+
+# GPU (features enabled in individual crates)
+wgpu = { version = "0.19" }
+ash = { version = "0.37" }
+
+# Internal crates
+adeb-core = { path = "core/adeb-core" }
+adeb-frontend-c = { path = "compiler/frontend-c" }
+adeb-middle = { path = "compiler/middle" }
+adeb-backend-x64 = { path = "compiler/backend-x64" }
+adeb-backend-gpu = { path = "compiler/backend-gpu" }
+adeb-platform = { path = "core/adeb-platform" }
+adeb-stdlib = { path = "core/adeb-stdlib" }
+adeb-bridge = { path = "core/adeb-bridge" }
+adeb-bg = { path = "core/adeb-bg" }

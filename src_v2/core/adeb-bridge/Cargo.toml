@@ -1,0 +1,12 @@
+[package]
+name = "adeb-bridge"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "ASM-BIB COFF .obj bridge — imports ASM-BIB assembled objects into ADead-BIB linker"
+
+[dependencies]
+adeb-core = { workspace = true }
