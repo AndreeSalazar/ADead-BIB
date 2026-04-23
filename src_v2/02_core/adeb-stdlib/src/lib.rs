@@ -1,9 +1,7 @@
-//! ADead-BIB Standard Library
+//! ADead-BIB Standard Library — C ABI Only
 //!
-//! Librería estándar para C, C++, GPU, I/O, y utilidades.
+//! Complete C standard library + GPU (OpenGL/Vulkan/DirectX) + Platform (Win32/Linux)
+//! No C++ — Pure C ABI ecosystem
 
 pub mod c;
-pub mod cpp;
 pub mod gpu;
-
-pub use gpu::*;
