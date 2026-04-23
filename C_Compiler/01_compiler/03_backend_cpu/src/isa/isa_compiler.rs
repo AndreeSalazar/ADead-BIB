@@ -1081,25 +1081,25 @@ impl IsaCompiler {
         };
 
         // Fase 3.5: Para PE (Windows), generar wrapper _start que llama a main() y ExitProcess
-        // DEBE ser lo primero en el código para que AddressOfEntryPoint funcione
+        // DEBE ser lo primero en el código para que el AddressOfEntryPoint funcione
         // Las funciones YA están registradas arriba (líneas 1057-1067)
         let mut start_label = None;
+        let mut wrapper_ops = Vec::new();  // Guardar ops del wrapper para insertar al inicio después
         if self.target == Target::Windows {
             let has_main = program.functions.iter().any(|f| f.name == "main");
             let has_start = program.functions.iter().any(|f| f.name == "_start");
             
             if has_main && !has_start {
-                // Generar _start wrapper al INICIO del código
+                // NO emitir todavía - guardar para después de compilar main
                 let lbl = self.ir.new_label();
-                self.ir.emit(ADeadOp::Label(lbl));
                 start_label = Some(lbl);
                 
-                // Usar CallTarget::Name para ambas - el encoder las dejará como unresolved
-                // y las parchearemos después del encode con los offsets correctos
-                self.ir.emit(ADeadOp::Call { target: CallTarget::Name("main".to_string()) });
-                self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Reg(Reg::RAX) });
-                self.ir.emit(ADeadOp::Call { target: CallTarget::Name("ExitProcess".to_string()) });
-                self.ir.emit(ADeadOp::Nop);  // Should never reach here
+                // Guardar ops del wrapper temporalmente
+                wrapper_ops.push(ADeadOp::Label(lbl));
+                wrapper_ops.push(ADeadOp::Call { target: CallTarget::Name("main".to_string()) });
+                wrapper_ops.push(ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Reg(Reg::RAX) });
+                wrapper_ops.push(ADeadOp::Call { target: CallTarget::Name("ExitProcess".to_string()) });
+                wrapper_ops.push(ADeadOp::Nop);
                 
                 // Registrar _start como función para que el entry point funcione
                 self.functions.insert("_start".to_string(), CompiledFunction {
@@ -1108,8 +1108,8 @@ impl IsaCompiler {
                     params: vec![],
                 });
                 
-                // Actualizar entry_name a _start para que el jmp apunte al wrapper
-                entry_name = "_start";
+                // NO cambiar entry_name - dejar como "main" para que main se compile
+                // El wrapper se insertará al inicio después
             }
         }
 
@@ -1148,9 +1148,19 @@ impl IsaCompiler {
         }
 
         // Fase 6: Compilar entry point (main, _start, o kernel_main)
+        eprintln!("[DEBUG compile] entry_name={}, program.functions={:?}", entry_name, program.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
         for func in &program.functions {
             if func.name == entry_name {
+                eprintln!("[DEBUG compile] Compiling entry point: {}", func.name);
                 self.compile_function(func);
+            }
+        }
+
+        // Insertar wrapper _start al INICIO del IR (ahora que main ya está compilado)
+        if !wrapper_ops.is_empty() {
+            let ops = self.ir.ops_mut();
+            for op in wrapper_ops.into_iter().rev() {
+                ops.insert(0, op);
             }
         }
 
@@ -1167,6 +1177,7 @@ impl IsaCompiler {
         // Parchear llamadas internas (como main) usando label_positions
         let mut code = code;
         let mut internal_call_offsets = Vec::new();  // Para PE generator
+        let mut iat_call_offsets = result.iat_call_offsets.clone();  // Copiar para agregar llamadas externas
         for (offset, name) in &result.unresolved_calls {
             if let Some(func) = self.functions.get(name) {
                 // Función interna: parchear con offset relativo al label
@@ -1181,7 +1192,15 @@ impl IsaCompiler {
                     internal_call_offsets.push((*offset, name.clone()));
                 }
             } else {
-                // Función externa (ej: ExitProcess) - dejar para IAT patching
+                // Función externa (ej: ExitProcess) - convertir CALL rel32 a IAT call
+                // CALL rel32: E8 [disp32] → IAT call: FF 15 [disp32]
+                // El disp32 original era 0, lo cambiamos para apuntar a IAT
+                eprintln!("[DEBUG patch] External function {} at offset {} - converting to IAT call", name, offset);
+                // Cambiar opcode E8 a FF 15
+                code[*offset] = 0xFF;
+                code[*offset + 1] = 0x15;
+                // Agregar a iat_call_offsets para que PE generator lo parchee
+                iat_call_offsets.push(*offset);
             }
         }
 
@@ -1191,7 +1210,7 @@ impl IsaCompiler {
         (
             code,
             data,
-            result.iat_call_offsets,
+            iat_call_offsets,
             result.string_imm64_offsets,
             internal_call_offsets,
         )
@@ -1621,6 +1640,7 @@ impl IsaCompiler {
     // ========================================
 
     fn compile_function(&mut self, func: &Function) {
+        eprintln!("[DEBUG compile_function] START: {}", func.name);
         self.current_function = Some(func.name.clone());
         self.variables.clear();
         self.variable_types.clear();
@@ -1644,9 +1664,13 @@ impl IsaCompiler {
         let is_naked = func.attributes.is_naked;
 
         // Label de entrada
+        eprintln!("[DEBUG compile_function] func.name={}, functions.keys={:?}", func.name, self.functions.keys().collect::<Vec<_>>());
         if let Some(compiled) = self.functions.get(&func.name) {
             let label = compiled.label;
+            eprintln!("[DEBUG compile_function] Emitting Label {} for {}", label.0, func.name);
             self.ir.emit(ADeadOp::Label(label));
+        } else {
+            eprintln!("[DEBUG compile_function] WARNING: No compiled function found for {}", func.name);
         }
 
         if is_interrupt || is_exception {

@@ -194,7 +194,7 @@ pub fn compile_c_file(
 
     println!("   Phase 6: Compiling to native code...");
     let mut compiler = CIsaCompiler::new(Target::Windows);
-    let (code, data, iat_offsets, string_offsets) = compiler.compile(&pipeline.program);
+    let (code, data, iat_offsets, string_offsets, _internal_call_offsets) = compiler.compile(&pipeline.program);
 
     if step_mode {
         print_backend_step(&code, &data, &iat_offsets, &string_offsets);
