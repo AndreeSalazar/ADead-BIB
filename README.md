@@ -24,7 +24,7 @@ Tu Código (.c)
 ┌───────────────────────────────────────────┐
 │         ADead-BIB Compiler (adb)          │
 │                                           │
-│  .c  → Preprocessor → Lexer → Parser     │
+│  .c  → Preprocessor → Lexer → Parser      │
 │                    ↓                      │
 │             CToIR (C ABI)                 │
 │                    ↓                      │
@@ -59,21 +59,38 @@ Tu Código (.c)
 
 ## Tabla de Contenidos
 
-1. [Filosofía](#filosofía)
-2. [Arquitectura C ABI](#arquitectura-c-abi)
-3. [ASM-BIB — El Fundamento](#asm-bib--el-fundamento)
-4. [Instalación](#instalación)
-5. [Inicio Rápido](#inicio-rápido)
-6. [Step Compiler](#step-compiler)
-7. [Frontend C99](#frontend-c99)
-8. [256-bit Pipeline (v9.0)](#256-bit-pipeline-v90)
-9. [Linker Especial DLL](#linker-especial-dll)
-10. [GPU Backend — C ABI Completo](#gpu-backend--c-abi-completo)
-11. [Referencia Técnica](#referencia-técnica)
-12. [Estructura del Proyecto (src_v2)](#estructura-del-proyecto-src_v2)
-13. [Tamaños de Binario](#tamaños-de-binario)
-14. [Resultados de Tests](#resultados-de-tests)
-15. [Comandos CLI](#comandos-cli)
+- [ADead-BIB v12.0 💀🦈](#adead-bib-v120-)
+  - [Tabla de Contenidos](#tabla-de-contenidos)
+  - [Filosofía](#filosofía)
+    - [¿Por qué existe ADead-BIB?](#por-qué-existe-adead-bib)
+    - [Canon: C99](#canon-c99)
+    - [¿Por qué ADead-BIB está escrito en Rust?](#por-qué-adead-bib-está-escrito-en-rust)
+    - [Eliminación Absoluta](#eliminación-absoluta)
+  - [Arquitectura C ABI](#arquitectura-c-abi)
+  - [ASM-BIB — El Fundamento](#asm-bib--el-fundamento)
+  - [Instalación](#instalación)
+  - [Inicio Rápido](#inicio-rápido)
+  - [Step Compiler](#step-compiler)
+  - [Frontend C99](#frontend-c99)
+  - [256-bit Pipeline (v9.0)](#256-bit-pipeline-v90)
+  - [GPU Backend — C ABI Completo](#gpu-backend--c-abi-completo)
+    - [OpenGL 1.0 — 4.6 (Completo)](#opengl-10--46-completo)
+    - [Vulkan 1.3 (Completo — 7 módulos)](#vulkan-13-completo--7-módulos)
+    - [DirectX 9 / 11 / 12 + COM](#directx-9--11--12--com)
+    - [Win32 API Nativo](#win32-api-nativo)
+  - [Referencia Técnica](#referencia-técnica)
+    - [Calling Conventions](#calling-conventions)
+    - [Encoding FASM-Style (Bytes Directos)](#encoding-fasm-style-bytes-directos)
+    - [Optimizaciones](#optimizaciones)
+  - [Estructura del Proyecto (src\_v2)](#estructura-del-proyecto-src_v2)
+  - [Tamaños de Binario](#tamaños-de-binario)
+  - [Resultados de Tests](#resultados-de-tests)
+    - [Rust Unit Tests (adeb-stdlib)](#rust-unit-tests-adeb-stdlib)
+    - [Win32 Intensive Tests (C)](#win32-intensive-tests-c)
+  - [IAT Registry v6 — 18 DLLs · 340+ Funciones](#iat-registry-v6--18-dlls--340-funciones)
+  - [Comandos CLI](#comandos-cli)
+  - [Autor](#autor)
+  - [Licencia](#licencia)
 
 ---
 
@@ -139,34 +156,34 @@ ADead-BIB tiene un ecosistema completo de C ABI — cada API del sistema, cada l
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    adeb-stdlib (C ABI Only)                      │
+│                    adeb-stdlib (C ABI Only)                     │
 ├─────────────────────────┬───────────────────────────────────────┤
 │    c/ — Platform & DX   │      gpu/ — Graphics APIs             │
 ├─────────────────────────┼───────────────────────────────────────┤
-│ C99 Standard Library:   │ fastos_gpu.rs    — GPU Header          │
-│  stdio, stdlib, string  │ fastos_com.rs    — COM Types Gen       │
-│  math, time, assert     │                                        │
-│  errno, limits, types   │ opengl/ (18+ módulos):                 │
+│ C99 Standard Library:   │ fastos_gpu.rs    — GPU Header         │
+│  stdio, stdlib, string  │ fastos_com.rs    — COM Types Gen      │
+│  math, time, assert     │                                       │
+│  errno, limits, types   │ opengl/ (18+ módulos):                │
 │  ctype, signal, wchar   │  GL 1.0-4.6 completo                  │
 │  setjmp, fenv, complex  │  GLSL, shader_bridge                  │
-│  stdatomic, threads     │  loader, optimizer                     │
-│  inttypes               │                                        │
-│                         │ vulkan/ (7 módulos):                   │
-│ Platform APIs:          │  vk_types — 30 handles + constants     │
+│  stdatomic, threads     │  loader, optimizer                    │
+│  inttypes               │                                       │
+│                         │ vulkan/ (7 módulos):                  │
+│ Platform APIs:          │  vk_types — 30 handles + constants    │
 │  fastos_win32 — Win32   │  vk_enums — 12 categorías, 250+ vals  │
-│  fastos_linux — Linux   │  vk_structs — 85+ structs              │
-│                         │  vk_functions — 130+ funciones         │
-│ DirectX / COM:          │  vk_loader — DLL/SO paths              │
-│  fastos_com — COM       │  vk_symbols — checker unificado        │
-│  fastos_dxgi — DXGI     │                                        │
-│  fastos_d3d9 — DX9      │                                        │
-│  fastos_d3d11 — DX11    │                                        │
-│  fastos_d3d12 — DX12    │                                        │
-│                         │                                        │
-│ Kernel:                 │                                        │
-│  fastos_kernel — OS API │                                        │
-│  fastos_io — I/O x86-64 │                                        │
-│  fastos_asm — builtins  │                                        │
+│  fastos_linux — Linux   │  vk_structs — 85+ structs             │
+│                         │  vk_functions — 130+ funciones        │
+│ DirectX / COM:          │  vk_loader — DLL/SO paths             │
+│  fastos_com — COM       │  vk_symbols — checker unificado       │
+│  fastos_dxgi — DXGI     │                                       │
+│  fastos_d3d9 — DX9      │                                       │
+│  fastos_d3d11 — DX11    │                                       │
+│  fastos_d3d12 — DX12    │                                       │
+│                         │                                       │
+│ Kernel:                 │                                       │
+│  fastos_kernel — OS API │                                       │
+│  fastos_io — I/O x86-64 │                                       │
+│  fastos_asm — builtins  │                                       │
 └─────────────────────────┴───────────────────────────────────────┘
 ```
 
