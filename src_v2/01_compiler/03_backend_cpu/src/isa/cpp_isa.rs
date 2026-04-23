@@ -83,7 +83,7 @@ impl CppIsaCompiler {
     }
 
     /// Compile a C++98 program with vtable and this-pointer semantics.
-    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
+    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>, Vec<(usize, String)>) {
         // Register C++ class layouts with inheritance and vtable awareness
         self.register_cpp_layouts(program);
 

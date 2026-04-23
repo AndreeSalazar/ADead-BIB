@@ -108,7 +108,7 @@ impl MonolithCompiler {
             match self.language {
                 Language::C99 => {
                     let mut compiler = CIsaCompiler::new(self.target);
-                    let (code, data, iat_off, str_off) = compiler.compile(program);
+                    let (code, data, iat_off, str_off, _) = compiler.compile(program);
                     let ir_count = compiler.ir().ops().len();
                     let func_count = program.functions.len();
                     let string_count = str_off.len();
@@ -117,7 +117,7 @@ impl MonolithCompiler {
                 }
                 Language::ADeadBIB | Language::Cpp => {
                     let mut compiler = IsaCompiler::new(self.target);
-                    let (code, data, iat_off, str_off) = compiler.compile(program);
+                    let (code, data, iat_off, str_off, _) = compiler.compile(program);
                     let ir_count = compiler.ir().ops().len();
                     let func_count = program.functions.len();
                     let string_count = str_off.len();

@@ -112,11 +112,17 @@ pub fn generate_pe_filtered(
     let headers_size = 0x200u32;
     let text_raw_ptr = headers_size;
     let idata_raw_ptr = text_raw_ptr + text_raw_size;
+    let reloc_raw_ptr = idata_raw_ptr + idata_raw_size;
 
     let text_virtual_size = code.len() as u32;
     let idata_virtual_size = idata.len() as u32;
+    
+    // .reloc section - contains base relocation directory
+    let reloc_rva: u32 = idata_rva + align_up_u32(idata_virtual_size, section_alignment);
+    let reloc_raw_size = align_up_u32(0x1000, file_alignment);  // Min reloc section size
+    let reloc_virtual_size = 0x1000u32;  // Fixed size for simplicity
 
-    let size_of_image = align_up_u32(idata_rva + idata_virtual_size, section_alignment);
+    let size_of_image = align_up_u32(reloc_rva + reloc_virtual_size, section_alignment);
     let size_of_headers = headers_size;
 
     let e_lfanew: u32 = 0x80;
@@ -124,8 +130,8 @@ pub fn generate_pe_filtered(
     dos[0..2].copy_from_slice(b"MZ");
     dos[0x3C..0x40].copy_from_slice(&e_lfanew.to_le_bytes());
 
-    let number_of_sections: u16 = 2;
-    let size_of_optional_header: u16 = 0xF0;
+    let number_of_sections: u16 = 3;  // .text, .idata, .reloc
+    let size_of_optional_header: u16 = 0xE8;  // 232 bytes - tamaño actual generado
     let characteristics: u16 = 0x0022;
 
     let mut headers = Vec::new();
@@ -147,23 +153,21 @@ pub fn generate_pe_filtered(
     push_u32(&mut opt, text_raw_size);
     push_u32(&mut opt, idata_raw_size);
     push_u32(&mut opt, 0);
-    push_u32(&mut opt, text_rva);
-    push_u32(&mut opt, text_rva);
+    push_u32(&mut opt, text_rva);  // AddressOfEntryPoint - entry at start of .text
+    push_u32(&mut opt, text_rva);  // BaseOfCode
     push_u64(&mut opt, image_base);
     push_u32(&mut opt, section_alignment);
     push_u32(&mut opt, file_alignment);
-    push_u16(&mut opt, 6);
-    push_u16(&mut opt, 0);
-    push_u16(&mut opt, 0);
-    push_u16(&mut opt, 0);
-    push_u16(&mut opt, 6);
-    push_u16(&mut opt, 0);
     push_u32(&mut opt, 0);
-    push_u32(&mut opt, size_of_image);
-    push_u32(&mut opt, size_of_headers);
-    push_u32(&mut opt, 0);
-    push_u16(&mut opt, 3);
-    push_u16(&mut opt, 0x8100);
+    push_u16(&mut opt, 6);  // OS version
+    push_u16(&mut opt, 0);
+    push_u16(&mut opt, 6);  // Image version
+    push_u16(&mut opt, 0);
+    push_u16(&mut opt, 6);  // Subsystem version
+    push_u16(&mut opt, 0);
+    push_u32(&mut opt, 0);  // Win32Version
+    push_u16(&mut opt, 3);  // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CONSOLE
+    push_u16(&mut opt, 0);  // DLL characteristics
     push_u64(&mut opt, 0x100000);
     push_u64(&mut opt, 0x1000);
     push_u64(&mut opt, 0x100000);
@@ -175,6 +179,10 @@ pub fn generate_pe_filtered(
         if dir_index == 1 {
             push_u32(&mut opt, idata_result.import_dir_rva);
             push_u32(&mut opt, idata_result.import_dir_size);
+        } else if dir_index == 5 {
+            // Directory 5: Base Relocation (.reloc)
+            push_u32(&mut opt, reloc_rva);
+            push_u32(&mut opt, reloc_virtual_size);
         } else if dir_index == 12 {
             push_u32(&mut opt, idata_result.iat_rva);
             push_u32(&mut opt, idata_result.iat_size);
@@ -222,6 +230,20 @@ pub fn generate_pe_filtered(
     push_u16(&mut sh, 0);
     push_u32(&mut sh, 0xC0000040);
 
+    // .reloc section header
+    let mut name3 = [0u8; 8];
+    name3[..6].copy_from_slice(b".reloc");
+    sh.extend_from_slice(&name3);
+    push_u32(&mut sh, reloc_virtual_size);
+    push_u32(&mut sh, reloc_rva);
+    push_u32(&mut sh, reloc_raw_size);
+    push_u32(&mut sh, reloc_raw_ptr);
+    push_u32(&mut sh, 0);
+    push_u32(&mut sh, 0);
+    push_u16(&mut sh, 0);
+    push_u16(&mut sh, 0);
+    push_u32(&mut sh, 0x42000040);  // IMAGE_SCN_CNT_INITIALIZED | IMAGE_SCN_MEM_READ
+
     headers.extend_from_slice(&sh);
 
     if headers.len() > headers_size as usize {
@@ -241,6 +263,20 @@ pub fn generate_pe_filtered(
     idata_raw.resize(idata_raw_size as usize, 0);
     out.resize(idata_raw_ptr as usize, 0);
     out.extend_from_slice(&idata_raw);
+
+    // .reloc section - base relocation directory
+    // For now, just include the image base relocation (minimum required)
+    let mut reloc_data = Vec::new();
+    // VirtualAddress of block = 0 (relocations from image base)
+    push_u32(&mut reloc_data, 0);
+    // SizeOfBlock = 12 (8 for header + 4 for one reloc entry)
+    push_u32(&mut reloc_data, 12);
+    // TypeOffset entry: IMAGE_REL_BASED_DIR64 (0xA000) | 0 (offset 0)
+    push_u32(&mut reloc_data, 0xA0000000);
+    
+    reloc_data.resize(reloc_raw_size as usize, 0);
+    out.resize(reloc_raw_ptr as usize, 0);
+    out.extend_from_slice(&reloc_data);
 
     let final_len = align_up_usize(out.len(), file_alignment as usize);
     out.resize(final_len, 0);

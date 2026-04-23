@@ -1,14 +1,15 @@
 [workspace]
 members = [
-    "bin/adeb-main",
-    "compiler/frontend-c",
-    "compiler/middle",
-    "compiler/backend-x64",
-    "compiler/backend-gpu",
-    "core/adeb-core",
-    "core/adeb-platform",
-    "core/adeb-stdlib",
-    "core/adeb-bridge",
+    "00_bin/adeb-cli",
+    "01_compiler/01_frontend",
+    "01_compiler/02_middle",
+    "01_compiler/03_backend_cpu",
+    "01_compiler/04_backend_gpu",
+    "02_core/adeb-core",
+    "02_core/adeb-platform",
+    "02_core/adeb-stdlib",
+    "02_core/adeb-bridge",
+    "02_core/adeb-bg",
 ]
 resolver = "2"
 
@@ -43,11 +44,12 @@ wgpu = { version = "0.19" }
 ash = { version = "0.37" }
 
 # Internal crates
-adeb-core = { path = "core/adeb-core" }
-adeb-frontend-c = { path = "compiler/frontend-c" }
-adeb-middle = { path = "compiler/middle" }
-adeb-backend-x64 = { path = "compiler/backend-x64" }
-adeb-backend-gpu = { path = "compiler/backend-gpu" }
-adeb-platform = { path = "core/adeb-platform" }
-adeb-stdlib = { path = "core/adeb-stdlib" }
-adeb-bridge = { path = "core/adeb-bridge" }
+adeb-core = { path = "02_core/adeb-core" }
+adeb-frontend-c = { path = "01_compiler/01_frontend" }
+adeb-middle = { path = "01_compiler/02_middle" }
+adeb-backend-x64 = { path = "01_compiler/03_backend_cpu" }
+adeb-backend-gpu = { path = "01_compiler/04_backend_gpu" }
+adeb-platform = { path = "02_core/adeb-platform" }
+adeb-stdlib = { path = "02_core/adeb-stdlib" }
+adeb-bridge = { path = "02_core/adeb-bridge" }
+adeb-bg = { path = "02_core/adeb-bg" }

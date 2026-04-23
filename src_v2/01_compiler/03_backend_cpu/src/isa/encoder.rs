@@ -26,6 +26,8 @@ pub struct EncodeResult {
     /// FASM-inspired: exact offsets of 64-bit string address immediates (48 B8+ [imm64])
     /// Each entry is the code offset of the 8-byte imm64 field
     pub string_imm64_offsets: Vec<usize>,
+    /// Posiciones de los labels en el código: label_id -> offset
+    pub label_positions: HashMap<u32, usize>,
 }
 
 /// Tipo de patch pendiente para resolución de saltos.
@@ -214,6 +216,7 @@ impl Encoder {
             unresolved_calls: self.unresolved_calls.clone(),
             iat_call_offsets: self.iat_call_offsets.clone(),
             string_imm64_offsets: self.string_imm64_offsets.clone(),
+            label_positions: self.label_positions.clone(),
         }
     }
 

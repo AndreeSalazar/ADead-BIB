@@ -1,0 +1,15 @@
+[package]
+name = "adeb-bg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "ADead-BIB Binary Guardian - static analysis, security"
+
+[dependencies]
+adeb-core = { workspace = true }
+
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }

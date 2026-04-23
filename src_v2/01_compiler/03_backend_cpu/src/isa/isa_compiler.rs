@@ -861,8 +861,8 @@ impl IsaCompiler {
         self.class_layouts.insert(name, layout);
     }
 
-    /// Compila un programa completo y retorna (code_bytes, data_bytes, iat_offsets, string_offsets).
-    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
+    /// Compila un programa completo y retorna (code, data, iat_offsets, string_offsets, internal_call_offsets).
+    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>, Vec<(usize, String)>) {
         // Fase 0: Registrar layouts de structs/clases del programa (MSVC ABI style)
         for st in &program.structs {
             let mut fields = Vec::new();
@@ -1068,7 +1068,7 @@ impl IsaCompiler {
 
         // Fase 3: Determinar entry point
         // Para binarios flat (bare metal), buscar _start o kernel_main primero
-        let entry_name = if self.target == Target::Raw {
+        let mut entry_name = if self.target == Target::Raw {
             if program.functions.iter().any(|f| f.name == "_start") {
                 "_start"
             } else if program.functions.iter().any(|f| f.name == "kernel_main") {
@@ -1079,6 +1079,39 @@ impl IsaCompiler {
         } else {
             "main"
         };
+
+        // Fase 3.5: Para PE (Windows), generar wrapper _start que llama a main() y ExitProcess
+        // DEBE ser lo primero en el código para que AddressOfEntryPoint funcione
+        // Las funciones YA están registradas arriba (líneas 1057-1067)
+        let mut start_label = None;
+        if self.target == Target::Windows {
+            let has_main = program.functions.iter().any(|f| f.name == "main");
+            let has_start = program.functions.iter().any(|f| f.name == "_start");
+            
+            if has_main && !has_start {
+                // Generar _start wrapper al INICIO del código
+                let lbl = self.ir.new_label();
+                self.ir.emit(ADeadOp::Label(lbl));
+                start_label = Some(lbl);
+                
+                // Usar CallTarget::Name para ambas - el encoder las dejará como unresolved
+                // y las parchearemos después del encode con los offsets correctos
+                self.ir.emit(ADeadOp::Call { target: CallTarget::Name("main".to_string()) });
+                self.ir.emit(ADeadOp::Mov { dst: Operand::Reg(Reg::RCX), src: Operand::Reg(Reg::RAX) });
+                self.ir.emit(ADeadOp::Call { target: CallTarget::Name("ExitProcess".to_string()) });
+                self.ir.emit(ADeadOp::Nop);  // Should never reach here
+                
+                // Registrar _start como función para que el entry point funcione
+                self.functions.insert("_start".to_string(), CompiledFunction {
+                    name: "_start".to_string(),
+                    label: lbl,
+                    params: vec![],
+                });
+                
+                // Actualizar entry_name a _start para que el jmp apunte al wrapper
+                entry_name = "_start";
+            }
+        }
 
         let has_entry = program.functions.iter().any(|f| f.name == entry_name);
         let entry_label = self.functions.get(entry_name).map(|f| f.label);
@@ -1128,14 +1161,27 @@ impl IsaCompiler {
         // Fase 8: Resolver llamadas a funciones por nombre
         let code = result.code;
         eprintln!("[DEBUG compile] IR ops={}, code bytes={}, functions={}", self.ir.ops().len(), code.len(), self.functions.len());
+        eprintln!("[DEBUG compile] unresolved_calls={:?}", result.unresolved_calls);
+        eprintln!("[DEBUG compile] label_positions={:?}", result.label_positions);
+        
+        // Parchear llamadas internas (como main) usando label_positions
+        let mut code = code;
+        let mut internal_call_offsets = Vec::new();  // Para PE generator
         for (offset, name) in &result.unresolved_calls {
             if let Some(func) = self.functions.get(name) {
-                // Necesitamos saber la posición real del label en el código
-                // El encoder ya resolvió los labels internos, pero las llamadas
-                // por nombre quedan pendientes. Re-encode para obtener posiciones.
-                // Por ahora, las llamadas internas usan CallTarget::Relative(label)
-                // y solo Name() se usa para funciones externas no resueltas.
-                let _ = (offset, func);
+                // Función interna: parchear con offset relativo al label
+                if let Some(&label_pos) = result.label_positions.get(&func.label.0) {
+                    // call rel32: offset = target - (current + 5)
+                    let rel_offset = (label_pos as i32) - (*offset as i32 + 5);
+                    code[*offset..*offset + 4].copy_from_slice(&rel_offset.to_le_bytes());
+                    eprintln!("[DEBUG patch] Patched {} at offset {} to label {} (rel_offset={})", name, offset, label_pos, rel_offset);
+                } else {
+                    // Label no encontrado (ej: main compilado después del wrapper)
+                    // Pasar al PE generator para parchear después
+                    internal_call_offsets.push((*offset, name.clone()));
+                }
+            } else {
+                // Función externa (ej: ExitProcess) - dejar para IAT patching
             }
         }
 
@@ -1147,6 +1193,7 @@ impl IsaCompiler {
             data,
             result.iat_call_offsets,
             result.string_imm64_offsets,
+            internal_call_offsets,
         )
     }
 
@@ -3722,7 +3769,7 @@ impl IsaCompiler {
                                         src: Reg::RBX,
                                     });
                                     // RAX now has packed struct: [field1:32 | field0:32]
-                                    // Fall through to epilogue
+                                    // Epilogue will be emitted by compile_function
                                 }
                             } else {
                                 self.emit_expression(e);
@@ -3745,21 +3792,7 @@ impl IsaCompiler {
                 src: Reg::EAX,
             });
         }
-        // Full epilogue inline: must match emit_prologue's callee-saved register saves
-        // Prologue pushes: RBP, then RBX, R12, RSI, RDI (at RBP-8..-32)
-        self.ir.emit(ADeadOp::Lea {
-            dst: Reg::RSP,
-            src: Operand::Mem {
-                base: Reg::RBP,
-                disp: -32,
-            },
-        });
-        self.ir.emit(ADeadOp::Pop { dst: Reg::RDI });
-        self.ir.emit(ADeadOp::Pop { dst: Reg::RSI });
-        self.ir.emit(ADeadOp::Pop { dst: Reg::R12 });
-        self.ir.emit(ADeadOp::Pop { dst: Reg::RBX });
-        self.ir.emit(ADeadOp::Pop { dst: Reg::RBP });
-        self.ir.emit(ADeadOp::Ret);
+        // Epilogue is emitted by compile_function, not here
     }
 
     // ========================================
@@ -6231,7 +6264,7 @@ fn main() {
 "#;
         let program = Parser::parse_program(source).unwrap();
         let mut compiler = IsaCompiler::new(Target::Windows);
-        let (code, data, _, _) = compiler.compile(&program);
+        let (code, data, _, _, _) = compiler.compile(&program);
         assert!(!code.is_empty(), "Code should not be empty");
         assert!(!data.is_empty(), "Data should contain strings");
     }
@@ -6248,7 +6281,7 @@ fn main() {
 "#;
         let program = Parser::parse_program(source).unwrap();
         let mut compiler = IsaCompiler::new(Target::Windows);
-        let (code, _data, _, _) = compiler.compile(&program);
+        let (code, _data, _, _, _) = compiler.compile(&program);
         assert!(!code.is_empty());
     }
 
@@ -6287,7 +6320,7 @@ fn main() {
         use crate::frontend::c::compile_c_to_program;
         let program = compile_c_to_program(c_source).expect("C parse failed");
         let mut compiler = IsaCompiler::new(Target::Windows);
-        let (code, data, _, _) = compiler.compile(&program);
+        let (code, data, _, _, _) = compiler.compile(&program);
         let ir_len = compiler.ir().ops().len();
         // Verify every IR op is displayable
         for op in compiler.ir().ops() {
@@ -6622,7 +6655,7 @@ fn main() {
         let program =
             crate::frontend::c::compile_c_to_program(&source).expect("hello.c should parse");
         let mut compiler = IsaCompiler::new(Target::Windows);
-        let (code, data, _, _) = compiler.compile(&program);
+        let (code, data, _, _, _) = compiler.compile(&program);
         assert!(!code.is_empty(), "hello.c should generate code");
         assert!(!data.is_empty(), "hello.c should have string data");
         assert!(

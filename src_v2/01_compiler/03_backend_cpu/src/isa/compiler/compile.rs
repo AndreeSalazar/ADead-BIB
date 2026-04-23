@@ -9,7 +9,7 @@ use crate::isa::ADeadOp;
 
 impl IsaCompiler {
     /// Compila un programa completo
-    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
+    pub fn compile(&mut self, program: &Program) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>, Vec<(usize, String)>) {
         // Fase 1: Recolectar strings
         self.collect_all_strings(program);
         self.collect_strings_from_stmts(&program.statements);
@@ -72,10 +72,13 @@ impl IsaCompiler {
 
         // Fase 8: Resolver llamadas por nombre
         let code = result.code;
+        let mut internal_call_offsets = Vec::new();
         for (offset, name) in &result.unresolved_calls {
             if let Some(func) = self.functions.get(name) {
                 let _ = (offset, func);
+                // TODO: parchear llamadas internas aquí
             }
+            internal_call_offsets.push((*offset, name.clone()));
         }
 
         // Fase 9: Generar sección de datos
@@ -86,6 +89,7 @@ impl IsaCompiler {
             data,
             result.iat_call_offsets,
             result.string_imm64_offsets,
+            internal_call_offsets,
         )
     }
 

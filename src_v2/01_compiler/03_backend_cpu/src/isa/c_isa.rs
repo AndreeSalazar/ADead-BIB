@@ -128,7 +128,7 @@ impl CIsaCompiler {
     pub fn compile(
         &mut self,
         program: &crate::frontend::ast::Program,
-    ) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>) {
+    ) -> (Vec<u8>, Vec<u8>, Vec<usize>, Vec<usize>, Vec<(usize, String)>) {
         // Override struct layouts with C99-compliant offsets BEFORE compilation
         self.register_c99_layouts(program);
 
