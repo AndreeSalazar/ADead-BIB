@@ -396,15 +396,22 @@ impl Encoder {
             (Operand::Reg(r), Operand::Mem { base, disp }) => {
                 self.encode_rm_disp(0x8B, r, base, *disp);
             }
-            // mov [base+disp], r64 — FASM: basic_mem_reg (89 /r)
+            // mov [base+disp], r — FASM: basic_mem_reg (89 /r)
             (Operand::Mem { base, disp }, Operand::Reg(r)) => {
                 self.encode_rm_disp(0x89, r, base, *disp);
             }
-            // mov r64, r64 — FASM: mov_reg_reg (89 /r)
+            // mov [base+disp], imm32 — FASM: mov_mem_imm (C7 /0 id)
+            (Operand::Mem { base, disp }, Operand::Imm32(v)) => {
+                self.encode_ext_rm_disp(0xC7, 0, base, *disp, true); // wide=true for qword write
+                self.emit_i32(*v);
+            }
+            // mov r, r — FASM: mov_reg_reg (89 /r)
             (Operand::Reg(dst_r), Operand::Reg(src_r)) => {
                 self.encode_rr(0x89, src_r, dst_r);
             }
-            _ => {}
+            _ => {
+                eprintln!("   ⚠️  Encoder: Unsupported MOV combination: {:?} -> {:?}", src, dst);
+            }
         }
     }
 
@@ -432,26 +439,30 @@ impl Encoder {
     // Arithmetic: ADD, SUB, MUL, DIV
     // ========================================
 
-    /// FASM-inspired: generic ADD — supports ALL register/immediate combinations
+    /// FASM-inspired: generic ADD — supports ALL register/memory/immediate combinations
     fn encode_add(&mut self, dst: &Operand, src: &Operand) {
         match (dst, src) {
-            // add r64, r64 — FASM: basic_reg_reg (01 /r)
+            // add r, r — FASM: basic_reg_reg (01 /r)
             (Operand::Reg(d), Operand::Reg(s)) => self.encode_rr(0x01, s, d),
-            // add r64, imm — FASM: basic_reg_imm with auto imm8/imm32 (/0)
+            // add r, imm — FASM: basic_reg_imm with auto imm8/imm32 (/0)
             (Operand::Reg(r), Operand::Imm8(v)) => self.encode_alu_ri(0, r, *v as i32),
             (Operand::Reg(r), Operand::Imm32(v)) => self.encode_alu_ri(0, r, *v),
+            // add [mem], r — FASM: basic_mem_reg (01 /r)
+            (Operand::Mem { base, disp }, Operand::Reg(r)) => self.encode_rm_disp(0x01, r, base, *disp),
             _ => {}
         }
     }
 
-    /// FASM-inspired: generic SUB — supports ALL register/immediate combinations
+    /// FASM-inspired: generic SUB — supports ALL register/memory/immediate combinations
     fn encode_sub(&mut self, dst: &Operand, src: &Operand) {
         match (dst, src) {
-            // sub r64, r64 — FASM: basic_reg_reg (29 /r)
+            // sub r, r — FASM: basic_reg_reg (29 /r)
             (Operand::Reg(d), Operand::Reg(s)) => self.encode_rr(0x29, s, d),
-            // sub r64, imm — FASM: basic_reg_imm with auto imm8/imm32 (/5)
+            // sub r, imm — FASM: basic_reg_imm with auto imm8/imm32 (/5)
             (Operand::Reg(r), Operand::Imm8(v)) => self.encode_alu_ri(5, r, *v as i32),
             (Operand::Reg(r), Operand::Imm32(v)) => self.encode_alu_ri(5, r, *v),
+            // sub [mem], r — FASM: basic_mem_reg (29 /r)
+            (Operand::Mem { base, disp }, Operand::Reg(r)) => self.encode_rm_disp(0x29, r, base, *disp),
             _ => {}
         }
     }
@@ -523,7 +534,7 @@ impl Encoder {
             }
             Operand::Mem { base, disp } => {
                 // INC [base+disp]: REX.W FF /0
-                self.encode_ext_rm_disp(0xFF, 0, base, *disp);
+                self.encode_ext_rm_disp(0xFF, 0, base, *disp, true);
             }
             _ => {}
         }
@@ -541,7 +552,7 @@ impl Encoder {
             }
             Operand::Mem { base, disp } => {
                 // DEC [base+disp]: REX.W FF /1
-                self.encode_ext_rm_disp(0xFF, 1, base, *disp);
+                self.encode_ext_rm_disp(0xFF, 1, base, *disp, true);
             }
             _ => {}
         }
@@ -834,14 +845,19 @@ impl Encoder {
         (mode << 6) | ((reg & 7) << 3) | (rm & 7)
     }
 
-    /// Generic reg-reg encoding: REX.W + opcode + ModR/M(11, src, dst)
+    /// Generic reg-reg encoding: REX + opcode + ModR/M(11, src, dst)
     /// FASM pattern: basic_instruction with register operands
     fn encode_rr(&mut self, opcode: u8, reg: &Reg, rm: &Reg) {
         let (reg_idx, reg_ext) = reg_index(reg);
         let (rm_idx, rm_ext) = reg_index(rm);
-        let rex = self.rex_wrxb(true, reg_ext, rm_ext);
+        let w = reg.is_64bit() || rm.is_64bit();
+        let rex = self.rex_wrxb(w, reg_ext, rm_ext);
         let modrm = self.modrm(3, reg_idx, rm_idx);
-        self.emit(&[rex, opcode, modrm]);
+        if w || reg_ext || rm_ext {
+            self.emit(&[rex, opcode, modrm]);
+        } else {
+            self.emit(&[opcode, modrm]);
+        }
     }
 
     /// Generic reg-[base+disp] encoding with auto disp8/disp32 selection
@@ -849,24 +865,30 @@ impl Encoder {
     fn encode_rm_disp(&mut self, opcode: u8, reg: &Reg, base: &Reg, disp: i32) {
         let (reg_idx, reg_ext) = reg_index(reg);
         let (base_idx, base_ext) = reg_index(base);
-        let rex = self.rex_wrxb(true, reg_ext, base_ext);
+        let w = reg.is_64bit();
+        let rex = self.rex_wrxb(w, reg_ext, base_ext);
         let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
         let requires_sib = base_idx == 4; // RSP or R12
+        
+        if w || reg_ext || base_ext {
+            self.emit(&[rex]);
+        }
+        
         if disp == 0 && base_idx != 5 {
             // [base] — mod=00 (but RBP(5) always needs disp8)
             let modrm = self.modrm(0, reg_idx, base_idx);
-            self.emit(&[rex, opcode, modrm]);
+            self.emit(&[opcode, modrm]);
             if requires_sib { self.emit(&[0x24]); }
         } else if fits_i8 {
             // [base+disp8] — mod=01 (saves 3 bytes vs disp32!)
             let modrm = self.modrm(1, reg_idx, base_idx);
-            self.emit(&[rex, opcode, modrm]);
+            self.emit(&[opcode, modrm]);
             if requires_sib { self.emit(&[0x24]); }
             self.emit(&[disp as u8]);
         } else {
             // [base+disp32] — mod=10
             let modrm = self.modrm(2, reg_idx, base_idx);
-            self.emit(&[rex, opcode, modrm]);
+            self.emit(&[opcode, modrm]);
             if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);
         }
@@ -1084,19 +1106,28 @@ impl Encoder {
     }
 
     /// Generic reg-[base+disp] with extension opcode (e.g. INC, DEC, NEG /reg_field)
-    fn encode_ext_rm_disp(&mut self, opcode: u8, reg_field: u8, base: &Reg, disp: i32) {
+    fn encode_ext_rm_disp(&mut self, opcode: u8, reg_field: u8, base: &Reg, disp: i32, wide: bool) {
         let (base_idx, base_ext) = reg_index(base);
-        let rex = self.rex_wrxb(true, false, base_ext);
+        let rex = self.rex_wrxb(wide, false, base_ext);
         let fits_i8 = disp >= -128 && disp <= 127 && disp != 0;
         let requires_sib = base_idx == 4;
-        if fits_i8 {
+        
+        if wide || base_ext {
+            self.emit(&[rex]);
+        }
+        
+        if disp == 0 && base_idx != 5 {
+            let modrm = self.modrm(0, reg_field, base_idx);
+            self.emit(&[opcode, modrm]);
+            if requires_sib { self.emit(&[0x24]); }
+        } else if fits_i8 {
             let modrm = self.modrm(1, reg_field, base_idx);
-            self.emit(&[rex, opcode, modrm]);
+            self.emit(&[opcode, modrm]);
             if requires_sib { self.emit(&[0x24]); }
             self.emit(&[disp as u8]);
         } else {
             let modrm = self.modrm(2, reg_field, base_idx);
-            self.emit(&[rex, opcode, modrm]);
+            self.emit(&[opcode, modrm]);
             if requires_sib { self.emit(&[0x24]); }
             self.emit_i32(disp);
         }

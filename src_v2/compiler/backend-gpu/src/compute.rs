@@ -2,49 +2,36 @@
 // ADead-BIB - Unified Compute API
 // ============================================================
 // API unificada para computación paralela que abstrae:
-// - CUDA (NVIDIA) - Tu RTX 3060
-// - HIP-CPU (Fallback CPU con SIMD)
-// - Vulkan Compute (Portable)
+// - Vulkan Compute (Portable - SPIR-V)
+// - CPU Parallel (Rayon - fallback)
 //
-// Filosofía: Escribes una vez, corre en cualquier backend
+// Filosofía: SPIR-V portable para OpenGL/Vulkan, CPU fallback con Rayon
 // ============================================================
 
-use super::hip::{detect_hip_backend, get_device_info, HipBackend, HipDeviceInfo};
-use super::hip::{Dim3, HipCpuConfig, HipCpuRuntime, SendPtr, ThreadIdx};
+use rayon::prelude::*;
 
 /// Backend de compute seleccionado
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComputeBackend {
-    /// CUDA nativo (NVIDIA)
-    Cuda,
-    /// HIP-CPU (fallback paralelo en CPU)
-    HipCpu,
-    /// Vulkan Compute
+    /// Vulkan Compute (SPIR-V)
     Vulkan,
-    /// CPU secuencial (último fallback)
-    CpuSequential,
+    /// CPU Parallel (Rayon fallback)
+    CpuParallel,
 }
 
 impl ComputeBackend {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Cuda => "CUDA",
-            Self::HipCpu => "HIP-CPU",
-            Self::Vulkan => "Vulkan",
-            Self::CpuSequential => "CPU (Sequential)",
+            Self::Vulkan => "Vulkan (SPIR-V)",
+            Self::CpuParallel => "CPU (Rayon)",
         }
     }
 
     /// Detecta el mejor backend disponible
     pub fn detect_best() -> Self {
-        let hip_backend = detect_hip_backend();
-
-        match hip_backend {
-            HipBackend::Cuda => Self::Cuda,
-            HipBackend::Rocm => Self::Cuda, // ROCm usa misma API
-            HipBackend::Cpu => Self::HipCpu,
-            HipBackend::None => Self::CpuSequential,
-        }
+        // Por ahora, siempre usar CPU Parallel
+        // TODO: Detectar Vulkan cuando esté implementado
+        Self::CpuParallel
     }
 }
 
@@ -53,14 +40,10 @@ impl ComputeBackend {
 pub struct ComputeConfig {
     /// Backend preferido (None = auto-detect)
     pub preferred_backend: Option<ComputeBackend>,
-    /// Número de threads para HIP-CPU
+    /// Número de threads para CPU (0 = auto)
     pub cpu_threads: usize,
-    /// Habilitar SIMD en CPU
-    pub enable_simd: bool,
     /// Verbose logging
     pub verbose: bool,
-    /// Tamaño de bloque por defecto
-    pub default_block_size: (u32, u32, u32),
 }
 
 impl Default for ComputeConfig {
@@ -68,9 +51,7 @@ impl Default for ComputeConfig {
         Self {
             preferred_backend: None,
             cpu_threads: 0, // Auto
-            enable_simd: true,
             verbose: false,
-            default_block_size: (256, 1, 1),
         }
     }
 }
@@ -79,8 +60,6 @@ impl Default for ComputeConfig {
 pub struct ComputeRuntime {
     backend: ComputeBackend,
     config: ComputeConfig,
-    hip_cpu: HipCpuRuntime,
-    device_info: HipDeviceInfo,
 }
 
 impl ComputeRuntime {
@@ -95,26 +74,13 @@ impl ComputeRuntime {
             .preferred_backend
             .unwrap_or_else(ComputeBackend::detect_best);
 
-        let hip_config = HipCpuConfig {
-            num_threads: config.cpu_threads,
-            enable_simd: config.enable_simd,
-            block_size: config.default_block_size,
-            verbose: config.verbose,
-        };
-
-        let hip_cpu = HipCpuRuntime::new(hip_config);
-        let device_info = get_device_info();
-
         if config.verbose {
             println!("[Compute] Backend: {}", backend.name());
-            println!("[Compute] Device: {}", device_info.device_name);
         }
 
         Self {
             backend,
             config,
-            hip_cpu,
-            device_info,
         }
     }
 
@@ -130,60 +96,25 @@ impl ComputeRuntime {
         self.backend
     }
 
-    /// Obtiene información del dispositivo
-    pub fn device_info(&self) -> &HipDeviceInfo {
-        &self.device_info
-    }
-
     // ========================================
     // API de Alto Nivel
     // ========================================
 
-    /// Ejecuta una operación paralela sobre un rango
-    ///
-    /// # Ejemplo
-    /// ```ignore
-    /// runtime.parallel_for(1000, |i| {
-    ///     result[i] = a[i] + b[i];
-    /// });
-    /// ```
+    /// Ejecuta una operación paralela sobre un rango usando Rayon
     pub fn parallel_for<F>(&self, n: usize, kernel: F)
     where
         F: Fn(usize) + Sync + Send,
     {
-        match self.backend {
-            ComputeBackend::Cuda => {
-                // Para CUDA real, generaríamos código y lo ejecutaríamos
-                // Por ahora, fallback a HIP-CPU
-                self.hip_cpu.parallel_for(n, kernel);
-            }
-            ComputeBackend::HipCpu | ComputeBackend::CpuSequential => {
-                self.hip_cpu.parallel_for(n, kernel);
-            }
-            ComputeBackend::Vulkan => {
-                // Vulkan compute requiere más setup
-                self.hip_cpu.parallel_for(n, kernel);
-            }
-        }
+        (0..n).into_par_iter().for_each(kernel);
     }
 
-    /// Lanza un kernel con dimensiones grid/block
-    pub fn launch<F>(&self, grid: impl Into<Dim3>, block: impl Into<Dim3>, kernel: F)
+    /// Lanza un kernel con dimensiones grid/block (simplificado para CPU)
+    pub fn launch<F>(&self, grid: (u32, u32, u32), block: (u32, u32, u32), kernel: F)
     where
-        F: Fn(ThreadIdx) + Sync + Send,
+        F: Fn(usize) + Sync + Send,
     {
-        let grid = grid.into();
-        let block = block.into();
-
-        match self.backend {
-            ComputeBackend::Cuda => {
-                // CUDA real usaría nvcc
-                self.hip_cpu.launch_kernel(grid, block, kernel);
-            }
-            _ => {
-                self.hip_cpu.launch_kernel(grid, block, kernel);
-            }
-        }
+        let total = (grid.0 * block.0) as usize;
+        self.parallel_for(total, kernel);
     }
 
     // ========================================
@@ -195,80 +126,60 @@ impl ComputeRuntime {
         assert_eq!(a.len(), b.len());
         assert_eq!(a.len(), c.len());
 
-        match self.backend {
-            ComputeBackend::Cuda => {
-                // TODO: CUDA nativo
-                self.hip_cpu.vector_add(a, b, c);
-            }
-            _ => {
-                self.hip_cpu.vector_add(a, b, c);
-            }
-        }
+        a.par_iter()
+            .zip(b.par_iter())
+            .zip(c.par_iter_mut())
+            .for_each(|((&x, &y), z)| *z = x + y);
     }
 
     /// SAXPY: y = alpha * x + y
     pub fn saxpy(&self, alpha: f32, x: &[f32], y: &mut [f32]) {
         assert_eq!(x.len(), y.len());
 
-        match self.backend {
-            ComputeBackend::Cuda => {
-                self.hip_cpu.saxpy(alpha, x, y);
-            }
-            _ => {
-                self.hip_cpu.saxpy(alpha, x, y);
-            }
-        }
+        x.par_iter()
+            .zip(y.par_iter_mut())
+            .for_each(|(&xi, yi)| *yi = alpha * xi + *yi);
     }
 
     /// Vector Scale: y = alpha * x
     pub fn vector_scale(&self, alpha: f32, x: &[f32], y: &mut [f32]) {
         assert_eq!(x.len(), y.len());
-        let n = x.len();
 
-        self.parallel_for(n, |i| unsafe {
-            *y.as_ptr().add(i).cast_mut() = alpha * *x.get_unchecked(i);
-        });
+        x.par_iter()
+            .zip(y.par_iter_mut())
+            .for_each(|(&xi, yi)| *yi = alpha * xi);
     }
 
     /// Dot Product: result = sum(a[i] * b[i])
     pub fn dot_product(&self, a: &[f32], b: &[f32]) -> f32 {
         assert_eq!(a.len(), b.len());
-        let n = a.len();
 
-        // Producto elemento a elemento
-        let mut products = vec![0.0f32; n];
-        let products_ptr = SendPtr::new(products.as_mut_ptr());
-        let a_ptr = SendPtr::from_const(a.as_ptr());
-        let b_ptr = SendPtr::from_const(b.as_ptr());
-
-        self.parallel_for(n, |i| unsafe {
-            products_ptr.write(i, a_ptr.read(i) * b_ptr.read(i));
-        });
-
-        // Reducción
-        self.hip_cpu.reduce_sum(&products)
+        a.par_iter()
+            .zip(b.par_iter())
+            .map(|(&x, &y)| x * y)
+            .sum()
     }
 
     // ========================================
     // Operaciones de Matrices
     // ========================================
 
-    /// Matrix Multiply: C = A * B
+    /// Matrix Multiply: C = A * B (simplificado con Rayon)
     /// A: m x k, B: k x n, C: m x n
     pub fn matmul(&self, a: &[f32], b: &[f32], c: &mut [f32], m: usize, n: usize, k: usize) {
         assert_eq!(a.len(), m * k);
         assert_eq!(b.len(), k * n);
         assert_eq!(c.len(), m * n);
 
-        match self.backend {
-            ComputeBackend::Cuda => {
-                // TODO: cuBLAS
-                self.hip_cpu.matmul_tiled(a, b, c, m, n, k);
+        (0..m).into_par_iter().for_each(|i| {
+            for j in 0..n {
+                let mut sum = 0.0f32;
+                for l in 0..k {
+                    sum += a[i * k + l] * b[l * n + j];
+                }
+                c[i * n + j] = sum;
             }
-            _ => {
-                self.hip_cpu.matmul_tiled(a, b, c, m, n, k);
-            }
-        }
+        });
     }
 
     /// Matrix Transpose: B = A^T
@@ -276,14 +187,9 @@ impl ComputeRuntime {
         assert_eq!(a.len(), rows * cols);
         assert_eq!(b.len(), rows * cols);
 
-        let a_ptr = SendPtr::from_const(a.as_ptr());
-        let b_ptr = SendPtr::new(b.as_mut_ptr());
-
-        self.parallel_for(rows, |row| {
+        (0..rows).into_par_iter().for_each(|row| {
             for col in 0..cols {
-                unsafe {
-                    b_ptr.write(col * rows + row, a_ptr.read(row * cols + col));
-                }
+                b[col * rows + row] = a[row * cols + col];
             }
         });
     }
@@ -294,7 +200,7 @@ impl ComputeRuntime {
 
     /// Reduce Sum
     pub fn reduce_sum(&self, data: &[f32]) -> f32 {
-        self.hip_cpu.reduce_sum(data)
+        data.par_iter().sum()
     }
 
     /// Reduce Max
@@ -302,25 +208,7 @@ impl ComputeRuntime {
         if data.is_empty() {
             return f32::NEG_INFINITY;
         }
-
-        let num_threads = self.config.cpu_threads.max(1);
-        let chunk_size = (data.len() + num_threads - 1) / num_threads;
-
-        let partial_maxs: Vec<f32> = std::thread::scope(|s| {
-            data.chunks(chunk_size)
-                .map(|chunk| {
-                    s.spawn(move || chunk.iter().cloned().fold(f32::NEG_INFINITY, f32::max))
-                })
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|h| h.join().unwrap())
-                .collect()
-        });
-
-        partial_maxs
-            .iter()
-            .cloned()
-            .fold(f32::NEG_INFINITY, f32::max)
+        data.par_iter().cloned().fold(f32::NEG_INFINITY, f32::max)
     }
 
     /// Reduce Min
@@ -328,20 +216,7 @@ impl ComputeRuntime {
         if data.is_empty() {
             return f32::INFINITY;
         }
-
-        let num_threads = self.config.cpu_threads.max(1);
-        let chunk_size = (data.len() + num_threads - 1) / num_threads;
-
-        let partial_mins: Vec<f32> = std::thread::scope(|s| {
-            data.chunks(chunk_size)
-                .map(|chunk| s.spawn(move || chunk.iter().cloned().fold(f32::INFINITY, f32::min)))
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|h| h.join().unwrap())
-                .collect()
-        });
-
-        partial_mins.iter().cloned().fold(f32::INFINITY, f32::min)
+        data.par_iter().cloned().fold(f32::INFINITY, f32::min)
     }
 
     // ========================================
@@ -351,29 +226,10 @@ impl ComputeRuntime {
     /// Imprime información del runtime
     pub fn print_info(&self) {
         println!("╔══════════════════════════════════════════════════════════════╗");
-        println!("║              ADead-BIB Compute Runtime                        ║");
+        println!("║              ADead-BIB Compute Runtime                       ║");
         println!("╠══════════════════════════════════════════════════════════════╣");
-        println!("║ Backend:     {:<48} ║", self.backend.name());
-        println!(
-            "║ Device:      {:<48} ║",
-            if self.device_info.device_name.len() > 48 {
-                &self.device_info.device_name[..48]
-            } else {
-                &self.device_info.device_name
-            }
-        );
-        println!(
-            "║ Memory:      {} MB                                         ║",
-            self.device_info.total_memory_mb
-        );
-        println!(
-            "║ Compute:     {}.{}                                             ║",
-            self.device_info.compute_capability.0, self.device_info.compute_capability.1
-        );
-        println!(
-            "║ SIMD:        {}                                              ║",
-            if self.config.enable_simd { "ON" } else { "OFF" }
-        );
+        println!("║ Backend:     {:<48}                                          ║", self.backend.name());
+        println!("║ Threads:     {:<48}                                          ║", rayon::current_num_threads());
         println!("╚══════════════════════════════════════════════════════════════╝");
     }
 
@@ -504,9 +360,9 @@ pub fn create_runtime() -> ComputeRuntime {
     ComputeRuntime::new()
 }
 
-/// Crea un runtime forzando HIP-CPU
+/// Crea un runtime forzando CPU Parallel
 pub fn create_cpu_runtime() -> ComputeRuntime {
-    ComputeRuntime::with_backend(ComputeBackend::HipCpu)
+    ComputeRuntime::with_backend(ComputeBackend::CpuParallel)
 }
 
 /// Detecta el mejor backend disponible
@@ -521,10 +377,7 @@ mod tests {
     #[test]
     fn test_create_runtime() {
         let runtime = ComputeRuntime::new();
-        assert!(
-            runtime.backend() != ComputeBackend::CpuSequential
-                || runtime.backend() == ComputeBackend::HipCpu
-        );
+        assert_eq!(runtime.backend(), ComputeBackend::CpuParallel);
     }
 
     #[test]

@@ -9,7 +9,6 @@ members = [
     "core/adeb-platform",
     "core/adeb-stdlib",
     "core/adeb-bridge",
-    "core/adeb-bg",
 ]
 resolver = "2"
 
@@ -52,4 +51,3 @@ adeb-backend-gpu = { path = "compiler/backend-gpu" }
 adeb-platform = { path = "core/adeb-platform" }
 adeb-stdlib = { path = "core/adeb-stdlib" }
 adeb-bridge = { path = "core/adeb-bridge" }
-adeb-bg = { path = "core/adeb-bg" }

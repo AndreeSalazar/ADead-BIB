@@ -108,8 +108,6 @@ pub enum YmmState {
     AllocatedSoA { name: String },
     /// Allocated as a temporary for arithmetic
     AllocatedTemp { purpose: String },
-    /// Reserved for BG (Binary Guardian) checks
-    ReservedBG,
 }
 
 // ============================================================
@@ -124,13 +122,10 @@ pub enum YmmState {
 /// # Allocation Strategy
 /// 1. SoA arrays get lowest-numbered YMM registers (YMM0, YMM1, ...)
 /// 2. Temporaries get next available
-/// 3. YMM15 is reserved for BG checks (if BG is active)
-/// 4. Spill = store to stack-aligned 32B temp, reload later
+/// 3. Spill = store to stack-aligned 32B temp, reload later
 pub struct YmmAllocator {
     /// State of each YMM register (0-15)
     states: [YmmState; 16],
-    /// Whether BG reserves YMM15
-    bg_reserved: bool,
     /// High water mark — max YMM registers ever simultaneously in use
     high_water: u8,
     /// Current count of allocated registers
@@ -139,21 +134,16 @@ pub struct YmmAllocator {
 
 impl YmmAllocator {
     /// Create a new allocator
-    pub fn new(reserve_bg: bool) -> Self {
-        let mut states = [
+    pub fn new() -> Self {
+        let states = [
             YmmState::Free, YmmState::Free, YmmState::Free, YmmState::Free,
             YmmState::Free, YmmState::Free, YmmState::Free, YmmState::Free,
             YmmState::Free, YmmState::Free, YmmState::Free, YmmState::Free,
             YmmState::Free, YmmState::Free, YmmState::Free, YmmState::Free,
         ];
 
-        if reserve_bg {
-            states[15] = YmmState::ReservedBG;
-        }
-
         Self {
             states,
-            bg_reserved: reserve_bg,
             high_water: 0,
             allocated_count: 0,
         }
@@ -179,8 +169,7 @@ impl YmmAllocator {
     /// Allocate a YMM register for a temporary computation
     pub fn alloc_temp(&mut self, purpose: &str) -> Option<YmmReg> {
         // Search from high to low (temps get higher registers)
-        let limit = if self.bg_reserved { 15 } else { 16 };
-        for i in (0..limit).rev() {
+        for i in (0..16).rev() {
             if self.states[i as usize] == YmmState::Free {
                 self.states[i as usize] = YmmState::AllocatedTemp {
                     purpose: purpose.to_string(),
@@ -198,11 +187,9 @@ impl YmmAllocator {
     /// Free a YMM register
     pub fn free(&mut self, reg: YmmReg) {
         let idx = reg.index() as usize;
-        if self.states[idx] != YmmState::ReservedBG {
-            self.states[idx] = YmmState::Free;
-            if self.allocated_count > 0 {
-                self.allocated_count -= 1;
-            }
+        self.states[idx] = YmmState::Free;
+        if self.allocated_count > 0 {
+            self.allocated_count -= 1;
         }
     }
 
@@ -229,8 +216,7 @@ impl YmmAllocator {
 
     /// Number of free registers
     pub fn free_count(&self) -> u8 {
-        let total = if self.bg_reserved { 15u8 } else { 16u8 };
-        total.saturating_sub(self.allocated_count)
+        16u8.saturating_sub(self.allocated_count)
     }
 
     /// High water mark
@@ -238,14 +224,6 @@ impl YmmAllocator {
         self.high_water
     }
 
-    /// Get the BG register (YMM15) if reserved
-    pub fn bg_register(&self) -> Option<YmmReg> {
-        if self.bg_reserved {
-            Some(YmmReg(15))
-        } else {
-            None
-        }
-    }
 
     /// Generate VZEROUPPER instruction data if any YMM was used.
     /// Required before calling into non-AVX code (Windows ABI, library calls).
@@ -258,11 +236,10 @@ impl fmt::Display for YmmAllocator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "YmmAlloc(used={}, free={}, hwm={}, bg={})",
+            "YmmAlloc(used={}, free={}, hwm={})",
             self.allocated_count,
             self.free_count(),
             self.high_water,
-            self.bg_reserved,
         )
     }
 }
@@ -345,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_ymm_allocator_basic() {
-        let mut alloc = YmmAllocator::new(false);
+        let mut alloc = YmmAllocator::new();
         assert_eq!(alloc.free_count(), 16);
 
         let r0 = alloc.alloc_soa("pos_x").unwrap();
@@ -361,47 +338,27 @@ mod tests {
         assert_eq!(alloc.high_water_mark(), 2);
     }
 
-    #[test]
-    fn test_ymm_allocator_bg_reserve() {
-        let mut alloc = YmmAllocator::new(true);
-        assert_eq!(alloc.free_count(), 15); // YMM15 reserved
-
-        let bg = alloc.bg_register();
-        assert!(bg.is_some());
-        assert_eq!(bg.unwrap().index(), 15);
-
-        // Allocate 15 SoA registers — should fill 0-14
-        for i in 0..15u8 {
-            let r = alloc.alloc_soa(&format!("arr_{}", i));
-            assert!(r.is_some(), "Failed to allocate YMM{}", i);
-        }
-
-        // 16th should fail (YMM15 reserved for BG)
-        let r = alloc.alloc_soa("overflow");
-        assert!(r.is_none());
-    }
 
     #[test]
     fn test_ymm_allocator_used_mask() {
-        let mut alloc = YmmAllocator::new(true);
+        let mut alloc = YmmAllocator::new();
         alloc.alloc_soa("a");
         alloc.alloc_soa("b");
 
         let mask = alloc.used_mask();
-        // YMM0, YMM1 allocated + YMM15 reserved for BG
+        // YMM0, YMM1 allocated
         assert_eq!(mask & 0x03, 0x03); // bits 0,1
-        assert_eq!(mask & 0x8000, 0x8000); // bit 15 (BG)
     }
 
     #[test]
     fn test_ymm_allocator_temp() {
-        let mut alloc = YmmAllocator::new(true);
-        // Temps should allocate from high end (before BG)
+        let mut alloc = YmmAllocator::new();
+        // Temps should allocate from high end
         let t = alloc.alloc_temp("mul_result").unwrap();
-        assert_eq!(t.index(), 14); // highest free before YMM15
+        assert_eq!(t.index(), 15); // highest free
 
         let t2 = alloc.alloc_temp("add_result").unwrap();
-        assert_eq!(t2.index(), 13);
+        assert_eq!(t2.index(), 14);
     }
 
     #[test]
@@ -417,7 +374,7 @@ mod tests {
 
     #[test]
     fn test_vzeroupper_needed() {
-        let mut alloc = YmmAllocator::new(false);
+        let mut alloc = YmmAllocator::new();
         assert!(!alloc.needs_vzeroupper());
 
         alloc.alloc_soa("data");

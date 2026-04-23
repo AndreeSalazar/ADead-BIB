@@ -166,7 +166,8 @@ pub static DLL_IMPORTS: &[DllImport] = &[
         "GetCurrentThread", "GetCurrentThreadId",
         // Memory
         "VirtualAlloc", "VirtualFree", "VirtualProtect",
-        "HeapCreate", "HeapDestroy", "HeapAlloc", "HeapFree",
+        "GetProcessHeap", "HeapCreate", "HeapDestroy", "HeapAlloc", "HeapFree",
+        "GlobalAlloc", "GlobalLock", "GlobalUnlock", "GlobalFree",
         // File I/O
         "CreateFileA", "ReadFile", "WriteFile", "CloseHandle",
         "GetFileSize", "SetFilePointer",

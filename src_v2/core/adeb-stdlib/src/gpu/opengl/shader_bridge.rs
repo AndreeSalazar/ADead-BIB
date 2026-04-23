@@ -4,7 +4,7 @@
 //! - **GLSL**      → nativo OpenGL (.glsl, .vert, .frag, .geom, .comp, .tesc, .tese)
 //! - **SPIR-V**    → Vulkan/OpenGL 4.6+ (.spv)
 //! - **HLSL/DXBC** → DirectX 12 (.hlsl, .dxbc)
-//! - **PTX**       → CUDA/CUDead-BIB (.ptx)
+//! - **PTX**       → CUDA PTX legacy (mapped to compute shaders)
 //!
 //! Filosofía: Un solo punto de entrada para cualquier shader → OpenGL lo consume.
 //!
@@ -28,7 +28,7 @@ pub enum ShaderFormat {
     Hlsl,
     /// DXBC bytecode — DirectX compiled, cross-compiled to SPIR-V
     Dxbc,
-    /// PTX assembly — CUDA/CUDead, mapped to compute shaders
+    /// PTX assembly — CUDA PTX legacy, mapped to compute shaders
     Ptx,
 }
 

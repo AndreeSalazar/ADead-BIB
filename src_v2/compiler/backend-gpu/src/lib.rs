@@ -1,12 +1,9 @@
 //! ADead-BIB GPU Backend Library
 //! 
-//! Generación de código GPU: PTX, SPIR-V, WGSL, HIP.
+//! Generación de código GPU: SPIR-V, WGSL (OpenGL/Vulkan)
 
-pub mod cudead;
 pub mod spirv;
 pub mod wgsl;
-pub mod hip;
 
 // Re-exports
-pub use cudead::{CudeadDriver, PtxEmitter, KernelDef};
 pub use spirv::bytecode::{BytecodeToSpirV, ADeadGpuOp, ADeadGpuInstr};

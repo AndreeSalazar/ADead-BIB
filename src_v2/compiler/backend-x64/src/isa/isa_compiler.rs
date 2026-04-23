@@ -402,29 +402,8 @@ impl IsaCompiler {
                 }
             }
         }
-        // Fallback to hardcoded common offsets (MSVC x64 ABI: 8-byte aligned)
-        match field_name {
-            "value" => 0,
-            "max_value" => 8,
-            "x" => 0,
-            "y" => 8,
-            "z" => 16,
-            "w" => 8,
-            "width" => 16, // After origin (Point2D = 16 bytes)
-            "h" => 16,
-            "height" => 24,
-            "data" => 0,
-            "top" => 8,
-            "front" => 8,
-            "rear" => 16,
-            "count" => 24,
-            "head" => 0,
-            "next" => 8,
-            "id" => 0,
-            "radius" => 8,
-            "origin" => 0,
-            _ => 0,
-        }
+        // No hardcoded fallbacks — stable C requires explicit struct definitions
+        0
     }
 
     /// Get field offset for a specific class/struct (MSVC x64 ABI)
@@ -1769,11 +1748,14 @@ impl IsaCompiler {
             } else {
                 0
             };
+            // Initial pushes: RBP, RBX, R12, RSI, RDI = 5 * 8 = 40 bytes.
+            // To be 16-byte aligned, we need (40 + frame_size) % 16 == 0.
+            // So (8 + frame_size) % 16 == 0.
+            // This means frame_size should be 16*N + 8.
             let raw_size = locals_size + shadow_space;
-            // Align to 16 bytes (required by x64 ABI)
-            let aligned_size = ((raw_size + 15) / 16) * 16;
+            let aligned_size = ((raw_size + 15) / 16) * 16 + 8;
             // Minimum 32 bytes for small functions (Windows shadow space)
-            let final_size = if aligned_size < 32 { 32 } else { aligned_size };
+            let final_size = if aligned_size < 40 { 40 } else { aligned_size };
 
             if let Some(op) = self.ir.ops_mut().get_mut(idx) {
                 *op = ADeadOp::Sub {
@@ -1926,6 +1908,12 @@ impl IsaCompiler {
             }
             Stmt::IntCall { vector } => {
                 self.ir.emit(ADeadOp::Int { vector: *vector });
+            }
+            Stmt::Rdmsr => {
+                self.ir.emit(ADeadOp::Rdmsr);
+            }
+            Stmt::Wrmsr => {
+                self.ir.emit(ADeadOp::Wrmsr);
             }
             Stmt::RegAssign { reg_name, value } => {
                 self.emit_reg_assign(reg_name, value);
@@ -2418,8 +2406,8 @@ impl IsaCompiler {
                         if let Some(layout) = self.class_layouts.get(&struct_name) {
                             (layout.size, layout.fields.clone())
                         } else {
-                            // Fallback: common C struct fields
-                            (16, vec![("x".to_string(), 0), ("y".to_string(), 8)])
+                            // Default to empty struct if not found - prevents invalid memory access
+                            (0, vec![])
                         };
 
                     // Allocate stack space
@@ -2927,6 +2915,7 @@ impl IsaCompiler {
                 }
             }
 
+            Stmt::LineMarker(_) => {}
             _ => {
                 eprintln!("   ⚠️  ISA: unhandled statement: {:?}", std::mem::discriminant(stmt));
             }

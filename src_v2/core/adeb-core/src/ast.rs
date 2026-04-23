@@ -386,6 +386,12 @@ pub enum Stmt {
     /// cpuid — Execute CPUID instruction
     Cpuid,
 
+    /// rdmsr — Read from Model Specific Register
+    Rdmsr,
+
+    /// wrmsr — Write to Model Specific Register
+    Wrmsr,
+
     // ========== LABELS Y JUMPS (v3.3-Boot) ==========
     /// label_name: — Define a named label at current position
     LabelDef {

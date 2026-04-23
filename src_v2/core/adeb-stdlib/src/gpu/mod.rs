@@ -2,7 +2,7 @@
 // ADead-BIB GPU Stdlib
 // ============================================================
 // Soporte GPU para compilación C/C++ → nativo
-// Integración con CUDead-BIB y FastOS
+// Integración con SPIR-V y FastOS
 // ============================================================
 
 pub mod fastos_gpu;
