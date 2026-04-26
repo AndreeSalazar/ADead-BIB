@@ -10,6 +10,7 @@ pub mod cpu_detect;
 pub mod dispatcher;
 pub mod gpu_dispatcher;
 pub mod gpu_misuse_detector;
+pub mod killer_v2;
 
 pub use cpu_detect::{CPUFeatures, ComputeBackend};
 pub use dispatcher::{AutoDispatcher, PerformanceEstimator, SystemInfo};
