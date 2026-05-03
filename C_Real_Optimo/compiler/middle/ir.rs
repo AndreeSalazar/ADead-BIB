@@ -341,7 +341,8 @@ impl IrFunction {
 pub struct IrModule {
     pub name: String,
     pub functions: Vec<IrFunction>,
-    pub globals: HashMap<String, (IrType, Option<IrConst>)>,
+    pub globals: Vec<(String, IrType)>,
+    pub strings: Vec<String>,
     pub structs: HashMap<String, Vec<(String, IrType)>>,
 }
 
@@ -350,7 +351,8 @@ impl IrModule {
         Self {
             name: name.into(),
             functions: Vec::new(),
-            globals: HashMap::new(),
+            globals: Vec::new(),
+            strings: Vec::new(),
             structs: HashMap::new(),
         }
     }
@@ -502,6 +504,19 @@ impl IrBuilder {
         dst
     }
     
+
+    // Globals
+    pub fn add_global(&mut self, name: &str, ty: IrType) {
+        self.module.globals.push((name.to_string(), ty));
+    }
+    
+    // Strings
+    pub fn add_string(&mut self, s: &str) -> usize {
+        let idx = self.module.strings.len();
+        self.module.strings.push(s.to_string());
+        idx
+    }
+
     pub fn finish(self) -> IrModule {
         self.module
     }

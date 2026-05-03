@@ -9,7 +9,6 @@
 pub mod frontend;
 pub mod middle;
 pub mod backend;
-pub mod cli;
 
 // Re-exportar tipos principales
 pub use frontend::lexer::Lexer;

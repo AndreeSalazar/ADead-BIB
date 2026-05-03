@@ -1,4 +1,11 @@
-//! adB CLI - Pipeline Completo
+#!/usr/bin/env python3
+"""Genera cli/main.rs con pipeline completo conectado"""
+
+from pathlib import Path
+
+CLI_PATH = Path(r"C:\Users\andre\OneDrive\Documentos\ADead-BIB\C_Real_Optimo\compiler\cli")
+
+MAIN_RS = '''//! adB CLI - Pipeline Completo
 //! source → Lexer → Parser → IR → Optimizer → UB → Codegen → PE
 #![allow(dead_code)]
 
@@ -7,13 +14,13 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
-use adeb_compiler::frontend::lexer::Lexer;
-use adeb_compiler::frontend::parser::Parser;
-use adeb_compiler::middle::ast_to_ir::ast_to_ir;
-use adeb_compiler::middle::optimizer::Optimizer;
-use adeb_compiler::middle::ub_detector::UbDetector;
-use adeb_compiler::backend::codegen::Codegen;
-use adeb_compiler::backend::pe::PeBuilder;
+use crate::frontend::lexer::Lexer;
+use crate::frontend::parser::Parser;
+use crate::middle::ast_to_ir::ast_to_ir;
+use crate::middle::optimizer::Optimizer;
+use crate::middle::ub_detector::UbDetector;
+use crate::backend::codegen::Codegen;
+use crate::backend::pe::PeBuilder;
 
 const VERSION: &str = "1.0.0";
 
@@ -42,7 +49,7 @@ fn cmd_compile_c(args: &[String]) {
         }
     }
     
-    println!("\x1b[36m[adB] C Compiler v{}\x1b[0m", VERSION);
+    println!("\\x1b[36m[adB] C Compiler v{}\\x1b[0m", VERSION);
     println!("  {} → {}", input, output);
     
     if !Path::new(input).exists() {
@@ -78,20 +85,17 @@ fn compile_pipeline(input: &str, output: &str) {
     
     // [5] OPTIMIZER
     print!("  [5/7] Optimizer... ");
-    let mut ir = ir;
-    let mut opt = Optimizer::new();
-    opt.run(&mut ir);
+    let ir = Optimizer::run(ir);
     println!("optimized");
     
     // [6] UB DETECTOR
     print!("  [6/7] UB Check... ");
-    let mut ub = UbDetector::new();
-    ub.analyze(&ir);
-    if ub.reports.is_empty() {
+    let issues = UbDetector::check(&ir);
+    if issues.is_empty() {
         println!("clean");
     } else {
-        println!("{} warnings", ub.reports.len());
-        for issue in &ub.reports {
+        println!("{} warnings", issues.len());
+        for issue in &issues {
             eprintln!("    ⚠ {:?}", issue);
         }
     }
@@ -109,7 +113,7 @@ fn compile_pipeline(input: &str, output: &str) {
     fs::write(output, &exe).expect("write failed");
     println!("{} bytes", exe.len());
     
-    println!("\x1b[32m  ✓ {}\x1b[0m", output);
+    println!("\\x1b[32m  ✓ {}\\x1b[0m", output);
 }
 
 fn cmd_run(args: &[String]) {
@@ -118,7 +122,7 @@ fn cmd_run(args: &[String]) {
     let temp = "temp_run.exe";
     compile_pipeline(input, temp);
     
-    println!("\n\x1b[32m[Running]\x1b[0m {}\n", temp);
+    println!("\\n\\x1b[32m[Running]\\x1b[0m {}\\n", temp);
     let status = process::Command::new(temp).status().expect("run failed");
     let _ = fs::remove_file(temp);
     process::exit(status.code().unwrap_or(1));
@@ -133,3 +137,13 @@ fn print_usage() {
     println!("adB cc <file.c> [-o out]");
     println!("adB run <file.c>");
 }
+'''
+
+def main():
+    print("🔧 Generando cli/main.rs (pipeline)...")
+    path = CLI_PATH / "main.rs"
+    path.write_text(MAIN_RS, encoding='utf-8')
+    print(f"  ✅ main.rs → {MAIN_RS.count(chr(10))} líneas")
+
+if __name__ == "__main__":
+    main()
