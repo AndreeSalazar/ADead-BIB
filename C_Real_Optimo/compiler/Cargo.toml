@@ -1,0 +1,37 @@
+[package]
+name = "adeb-compiler"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Workspace dependencies
+tree-sitter.workspace = true
+tree-sitter-c.workspace = true
+tree-sitter-cpp.workspace = true
+logos.workspace = true
+codespan-reporting.workspace = true
+cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
+cranelift-module.workspace = true
+cranelift-object.workspace = true
+object.workspace = true
+goblin.workspace = true
+pelite.workspace = true
+gimli.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rmp-serde.workspace = true
+rayon.workspace = true
+dashmap.workspace = true
+indexmap.workspace = true
+string-interner.workspace = true
+ash.workspace = true
+gpu-allocator.workspace = true
+
+[lib]
+name = "adeb_compiler"
+path = "lib.rs"
+
+[[bin]]
+name = "adB"
+path = "cli/main.rs"

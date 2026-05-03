@@ -1,0 +1,16 @@
+[package]
+name = "adeb-runtime"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+rmp-serde.workspace = true
+rayon.workspace = true
+dashmap.workspace = true
+
+[lib]
+name = "adeb_runtime"
+path = "lib.rs"
+crate-type = ["cdylib", "rlib"]

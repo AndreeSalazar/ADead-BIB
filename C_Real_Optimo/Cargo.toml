@@ -1,0 +1,48 @@
+[workspace]
+members = [
+    "compiler",
+    "runtime",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+authors = ["ADead-BIB Team"]
+
+[workspace.dependencies]
+# Parser y análisis
+tree-sitter = "0.22"
+tree-sitter-c = "0.21"
+tree-sitter-cpp = "0.22"
+logos = "0.14"
+codespan-reporting = "0.11"
+
+# Codegen
+cranelift-codegen = "0.109"
+cranelift-frontend = "0.109"
+cranelift-module = "0.109"
+cranelift-object = "0.109"
+
+# Binarios
+object = { version = "0.36", features = ["write_core"] }
+goblin = "0.7"
+pelite = "0.10"
+gimli = "0.31"
+
+# Serialización
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmp-serde = "1"
+
+# Concurrency
+rayon = "1"
+dashmap = "6"
+indexmap = "2"
+string-interner = "0.17"
+
+# Python bindings
+pyo3 = "0.22"
+
+# GPU
+ash = "0.38"
+gpu-allocator = "0.27"
