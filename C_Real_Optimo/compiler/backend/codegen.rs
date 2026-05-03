@@ -13,8 +13,8 @@ pub struct Codegen {
     pub encoder: X86Encoder,
     pub data_section: Vec<u8>,
     pub strings: Vec<(String, u32)>,  // (string, offset in data)
-    reg_alloc: HashMap<u32, Reg64>,   // IR reg -> x86 reg
-    stack_offset: i32,
+    var_offsets: HashMap<u32, i32>, // IR reg id -> direct stack offset from RBP
+    next_offset: i32,                // next available offset
     label_offsets: HashMap<BlockId, usize>,
     pending_jumps: Vec<(usize, BlockId)>,  // (patch offset, target block)
 }
@@ -31,8 +31,8 @@ impl Codegen {
             encoder: X86Encoder::new(),
             data_section: Vec::new(),
             strings: Vec::new(),
-            reg_alloc: HashMap::new(),
-            stack_offset: 0,
+            var_offsets: HashMap::new(),
+            next_offset: -8,  // First var at [RBP-8]
             label_offsets: HashMap::new(),
             pending_jumps: Vec::new(),
         }
@@ -47,44 +47,36 @@ impl Codegen {
     }
  
     fn generate_function(&mut self, func: &IrFunction) {
-        self.reg_alloc.clear();
+        self.var_offsets.clear();
         self.label_offsets.clear();
         self.pending_jumps.clear();
- 
-        // Prologue
-        self.emit_prologue(func);
- 
-        // Copy params from ABI regs to stack
-        for (i, (name, _ty)) in func.params.iter().enumerate() {
+        self.next_offset = -8;  // Reset for each function
+
+        // Pre-calculate stack space needed
+        let num_vars = func.next_reg as i32;
+        let stack_size = align16((num_vars * 8) + SHADOW_SPACE + 8);
+        
+        // Prologue: push rbp; mov rbp, rsp; sub rsp, stack_size
+        self.encoder.push_r(Reg64::RBP);
+        self.encoder.mov_rr(Reg64::RBP, Reg64::RSP);
+        if stack_size > 0 {
+            self.encoder.sub_ri(Reg64::RSP, stack_size);
+        }
+
+        // Copy params from ABI regs to stack slots
+        for (i, (_name, _ty)) in func.params.iter().enumerate() {
             if i < ARG_REGS.len() {
-                let offset = -((i as i32 + 1) * 8) - SHADOW_SPACE;
+                let offset = -((i as i32 + 1) * 8);
                 self.encoder.mov_mr_disp(Reg64::RBP, offset, ARG_REGS[i]);
             }
         }
- 
+
         // Generate blocks
         for block in &func.blocks {
             self.label_offsets.insert(block.id, self.encoder.len());
             for instr in &block.instrs {
                 self.generate_instr(instr);
             }
-        }
-    }
- 
-    fn emit_prologue(&mut self, func: &IrFunction) {
-        // push rbp
-        self.encoder.push_r(Reg64::RBP);
-        // mov rbp, rsp
-        self.encoder.mov_rr(Reg64::RBP, Reg64::RSP);
- 
-        // Calculate stack space needed
-        let locals = func.next_reg as i32 * 8;
-        let stack_size = align16(locals + SHADOW_SPACE + 8);
-        self.stack_offset = -SHADOW_SPACE - 8;
- 
-        if stack_size > 0 {
-            // sub rsp, stack_size
-            self.encoder.sub_ri(Reg64::RSP, stack_size);
         }
     }
  
@@ -96,87 +88,100 @@ impl Codegen {
         // ret
         self.encoder.ret();
     }
+
+    // Get or allocate stack slot for IR reg (direct variable storage)
+    fn get_var_offset(&mut self, id: u32) -> i32 {
+        if let Some(&offset) = self.var_offsets.get(&id) {
+            return offset;
+        }
+        // Allocate new slot
+        let offset = self.next_offset;
+        self.next_offset -= 8;
+        self.var_offsets.insert(id, offset);
+        offset
+    }
+
+    // Store register value directly to stack slot
+    fn store_var(&mut self, ir_reg: IrReg, src: Reg64) {
+        let offset = self.get_var_offset(ir_reg.id);
+        self.encoder.mov_mr_disp(Reg64::RBP, offset, src);
+    }
+
+    // Load value directly from stack slot
+    fn load_var(&mut self, dst: Reg64, ir_reg: IrReg) {
+        let offset = self.get_var_offset(ir_reg.id);
+        self.encoder.mov_rm_disp(dst, Reg64::RBP, offset);
+    }
  
     fn generate_instr(&mut self, instr: &IrInstr) {
         match instr {
             IrInstr::Add { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.add_rr(Reg64::RAX, Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Sub { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.sub_rr(Reg64::RAX, Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Mul { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.imul_rr(Reg64::RAX, Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Div { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.cqo();  // sign extend RAX to RDX:RAX
                 self.encoder.idiv_r(Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Mod { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.cqo();
                 self.encoder.idiv_r(Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RDX);  // remainder in RDX
+                self.store_var(*dst, Reg64::RDX);  // remainder in RDX
             }
             IrInstr::Neg { dst, src } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, src);
                 self.encoder.neg_r(Reg64::RAX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::And { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.and_rr(Reg64::RAX, Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Or { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.or_rr(Reg64::RAX, Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Xor { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.xor_rr(Reg64::RAX, Reg64::RCX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Shl { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 self.encoder.shl_rcl(Reg64::RAX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Shr { dst, lhs, rhs } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, lhs);
                 self.load_value(Reg64::RCX, rhs);
                 // Use SAR for signed shift
                 self.encoder.emit(0x48); self.encoder.emit(0xD3); self.encoder.emit(0xF8);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Eq { dst, lhs, rhs } => {
                 self.emit_compare(*dst, lhs, rhs, 0x04); // SETE
@@ -197,21 +202,32 @@ impl Codegen {
                 self.emit_compare(*dst, lhs, rhs, 0x0D); // SETGE
             }
             IrInstr::Alloca { dst, ty, count: _ } => {
-                let r_dst = self.alloc_reg(*dst);
-                self.stack_offset -= ty.size() as i32;
-                self.stack_offset = align8(self.stack_offset);
-                // lea dst, [rbp + offset]
-                self.encoder.lea(r_dst, Reg64::RBP, self.stack_offset);
+                // For simple codegen, just allocate a slot - treat as direct var storage
+                let offset = self.get_var_offset(dst.id);
+                // No code needed - slot is pre-allocated in prologue
             }
             IrInstr::Load { dst, ptr } => {
-                let r_dst = self.alloc_reg(*dst);
-                self.load_value(Reg64::RAX, ptr);
-                self.encoder.mov_rm(r_dst, Reg64::RAX);
+                // For simple codegen with direct var storage, load from slot directly
+                if let IrValue::Reg(r) = ptr {
+                    self.load_var(Reg64::RAX, r);
+                    self.store_var(*dst, Reg64::RAX);
+                } else {
+                    self.load_value(Reg64::RAX, ptr);
+                    self.encoder.mov_rm(Reg64::RAX, Reg64::RAX);
+                    self.store_var(*dst, Reg64::RAX);
+                }
             }
             IrInstr::Store { ptr, val } => {
-                self.load_value(Reg64::RAX, ptr);
-                self.load_value(Reg64::RCX, val);
-                self.encoder.mov_mr(Reg64::RAX, Reg64::RCX);
+                // For simple codegen with direct var storage, store to slot directly
+                if let IrValue::Reg(r) = ptr {
+                    self.load_value(Reg64::RCX, val);
+                    let offset = self.get_var_offset(r.id);
+                    self.encoder.mov_mr_disp(Reg64::RBP, offset, Reg64::RCX);
+                } else {
+                    self.load_value(Reg64::RAX, ptr);
+                    self.load_value(Reg64::RCX, val);
+                    self.encoder.mov_mr(Reg64::RAX, Reg64::RCX);
+                }
             }
             IrInstr::Jmp { target } => {
                 let patch_offset = self.encoder.len() + 1;
@@ -221,11 +237,11 @@ impl Codegen {
             IrInstr::JmpIf { cond, then_bb, else_bb } => {
                 self.load_value(Reg64::RAX, cond);
                 self.encoder.test_rr(Reg64::RAX, Reg64::RAX);
- 
+
                 let patch_then = self.encoder.len() + 2;
                 self.encoder.jne_rel32(0); // if true, jump to then
                 self.pending_jumps.push((patch_then, *then_bb));
- 
+
                 let patch_else = self.encoder.len() + 1;
                 self.encoder.jmp_rel32(0); // else, jump to else
                 self.pending_jumps.push((patch_else, *else_bb));
@@ -243,29 +259,27 @@ impl Codegen {
                 }
                 // CALL rel32 (placeholder, needs relocation)
                 self.encoder.call_rel32(0);
- 
+
                 if let Some(d) = dst {
-                    let r_dst = self.alloc_reg(*d);
-                    self.encoder.mov_rr(r_dst, Reg64::RAX);
+                    self.store_var(*d, Reg64::RAX);
                 }
             }
             IrInstr::Copy { dst, src } => {
-                let r_dst = self.alloc_reg(*dst);
-                self.load_value(r_dst, src);
+                self.load_value(Reg64::RAX, src);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Cast { dst, src, to_ty: _ } => {
-                let r_dst = self.alloc_reg(*dst);
-                self.load_value(r_dst, src);
+                self.load_value(Reg64::RAX, src);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Not { dst, src } => {
-                let r_dst = self.alloc_reg(*dst);
                 self.load_value(Reg64::RAX, src);
                 self.encoder.not_r(Reg64::RAX);
-                self.encoder.mov_rr(r_dst, Reg64::RAX);
+                self.store_var(*dst, Reg64::RAX);
             }
             IrInstr::Phi { dst, incoming: _ } => {
                 // PHI nodes should be lowered before codegen
-                let _ = self.alloc_reg(*dst);
+                let _ = self.get_var_offset(dst.id);
             }
             IrInstr::Nop => {
                 self.encoder.nop();
@@ -274,13 +288,13 @@ impl Codegen {
     }
  
     fn emit_compare(&mut self, dst: IrReg, lhs: &IrValue, rhs: &IrValue, cc: u8) {
-        let r_dst = self.alloc_reg(dst);
         self.load_value(Reg64::RAX, lhs);
         self.load_value(Reg64::RCX, rhs);
         self.encoder.cmp_rr(Reg64::RAX, Reg64::RCX);
-        // XOR to clear, then SETcc
-        self.encoder.xor_rr(r_dst, r_dst);
-        self.encoder.setcc(cc, r_dst);
+        // XOR to clear RAX, then SETcc to AL, store to stack
+        self.encoder.xor_rr(Reg64::RAX, Reg64::RAX);
+        self.encoder.setcc(cc, Reg64::RAX);
+        self.store_var(dst, Reg64::RAX);
     }
  
     fn load_value(&mut self, dst: Reg64, val: &IrValue) {
@@ -298,46 +312,21 @@ impl Codegen {
                 self.encoder.mov_ri(dst, imm);
             }
             IrValue::Reg(r) => {
-                if let Some(&src) = self.reg_alloc.get(&r.id) {
-                    if src != dst {
-                        self.encoder.mov_rr(dst, src);
-                    }
-                } else {
-                    // Load from stack
-                    let offset = self.reg_stack_offset(r.id);
-                    self.encoder.mov_rm_disp(dst, Reg64::RBP, offset);
-                }
+                // Load from direct variable slot
+                let offset = self.get_var_offset(r.id);
+                self.encoder.mov_rm_disp(dst, Reg64::RBP, offset);
             }
             IrValue::Global(_name) => {
                 // Will need relocation
                 self.encoder.mov_ri(dst, 0);
             }
             IrValue::Param(idx) => {
-                let offset = -((*idx as i32 + 1) * 8) - SHADOW_SPACE;
+                let offset = -((*idx as i32 + 1) * 8);
                 self.encoder.mov_rm_disp(dst, Reg64::RBP, offset);
             }
         }
     }
  
-    fn alloc_reg(&mut self, ir_reg: IrReg) -> Reg64 {
-        // Simple: spill to stack, use RAX/RCX for temps
-        // For real compiler: proper register allocation
-        if let Some(&r) = self.reg_alloc.get(&ir_reg.id) {
-            return r;
-        }
- 
-        // Spill to stack
-        self.stack_offset -= 8;
-        let offset = self.stack_offset;
- 
-        // Store to stack and remember offset
-        self.reg_alloc.insert(ir_reg.id, Reg64::R10); // temp marker
-        Reg64::R10
-    }
- 
-    fn reg_stack_offset(&self, id: u32) -> i32 {
-        -SHADOW_SPACE - 8 - (id as i32 * 8)
-    }
  
     fn patch_jumps(&mut self) {
         for (patch_offset, target_block) in &self.pending_jumps {
