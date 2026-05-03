@@ -1,4 +1,11 @@
-//! adB CLI - ADead-BIB Compiler Command Line
+#!/usr/bin/env python3
+"""Genera cli/ - adB command line interface"""
+
+from pathlib import Path
+
+CLI_PATH = Path(r"C:\Users\andre\OneDrive\Documentos\ADead-BIB\C_Real_Optimo\compiler\cli")
+
+MAIN_RS = '''//! adB CLI - ADead-BIB Compiler Command Line
 //! Generado automáticamente
 #![allow(dead_code)]
 
@@ -10,10 +17,10 @@ use std::process;
 const VERSION: &str = "1.0.0";
 const BANNER: &str = r#"
     _    ____                 _       ____ ___ ____  
-   / \  |  _ \  ___  __ _  __| |     | __ )_ _| __ ) 
-  / _ \ | | | |/ _ \/ _` |/ _` |_____|  _ \| ||  _ \ 
- / ___ \| |_| |  __/ (_| | (_| |_____| |_) | || |_) |
-/_/   \_\____/ \___|\__,_|\__,_|     |____/___|____/ 
+   / \\  |  _ \\  ___  __ _  __| |     | __ )_ _| __ ) 
+  / _ \\ | | | |/ _ \\/ _` |/ _` |_____|  _ \\| ||  _ \\ 
+ / ___ \\| |_| |  __/ (_| | (_| |_____| |_) | || |_) |
+/_/   \\_\\____/ \\___|\\__,_|\\__,_|     |____/___|____/ 
 "#;
 
 pub fn main() {
@@ -68,7 +75,7 @@ fn cmd_compile_c(args: &[String]) {
         i += 1;
     }
     
-    println!("{}[adB] C Compiler v{}{}", "\x1b[36m", VERSION, "\x1b[0m");
+    println!("{}[adB] C Compiler v{}{}", "\\x1b[36m", VERSION, "\\x1b[0m");
     println!("  Input:  {}", input);
     println!("  Output: {}", output);
     
@@ -109,7 +116,7 @@ fn cmd_compile_cpp(args: &[String]) {
         i += 1;
     }
     
-    println!("{}[adB] C++ Compiler v{}{}", "\x1b[35m", VERSION, "\x1b[0m");
+    println!("{}[adB] C++ Compiler v{}{}", "\\x1b[35m", VERSION, "\\x1b[0m");
     println!("  Input:  {}", input);
     println!("  Output: {}", output);
     
@@ -143,7 +150,7 @@ fn cmd_run(args: &[String]) {
         process::exit(1);
     }
     
-    println!("\n{}[Running]{} {}\n", "\x1b[32m", "\x1b[0m", temp_exe);
+    println!("\\n{}[Running]{} {}\\n", "\\x1b[32m", "\\x1b[0m", temp_exe);
     
     let status = process::Command::new(temp_exe)
         .status()
@@ -168,7 +175,7 @@ fn cmd_step(args: &[String]) {
 }
 
 fn cmd_version() {
-    println!("{}{}{}\n", "\x1b[36m", BANNER, "\x1b[0m");
+    println!("{}{}{}\\n", "\\x1b[36m", BANNER, "\\x1b[0m");
     println!("ADead-BIB Compiler v{}", VERSION);
     println!("  Target: x86-64 Windows/Linux");
     println!("  Backend: Native code generation");
@@ -218,7 +225,7 @@ fn compile_c(input: &str, output: &str, strict: bool) {
     let pe = minimal_pe();
     fs::write(output, &pe).expect("Failed to write output");
     
-    println!("{}  ✓ Success: {}{}", "\x1b[32m", output, "\x1b[0m");
+    println!("{}  ✓ Success: {}{}", "\\x1b[32m", output, "\\x1b[0m");
 }
 
 fn compile_cpp(input: &str, output: &str) {
@@ -234,45 +241,45 @@ fn compile_cpp(input: &str, output: &str) {
     let pe = minimal_pe();
     fs::write(output, &pe).expect("Failed to write output");
     
-    println!("{}  ✓ Success: {}{}", "\x1b[32m", output, "\x1b[0m");
+    println!("{}  ✓ Success: {}{}", "\\x1b[32m", output, "\\x1b[0m");
 }
 
 fn compile_step(input: &str, lang: &str) {
-    println!("{}═══ STEP COMPILATION ═══{}", "\x1b[33m", "\x1b[0m");
+    println!("{}═══ STEP COMPILATION ═══{}", "\\x1b[33m", "\\x1b[0m");
     println!("Language: {}", lang.to_uppercase());
     println!();
     
     let source = fs::read_to_string(input).expect("Failed to read file");
     
-    println!("{}[1] SOURCE{}", "\x1b[36m", "\x1b[0m");
+    println!("{}[1] SOURCE{}", "\\x1b[36m", "\\x1b[0m");
     println!("    File: {}", input);
     println!("    Size: {} bytes", source.len());
     println!("    Lines: {}", source.lines().count());
     println!();
     
-    println!("{}[2] LEXER{}", "\x1b[36m", "\x1b[0m");
+    println!("{}[2] LEXER{}", "\\x1b[36m", "\\x1b[0m");
     println!("    Tokenizing...");
     // Show first few tokens
     println!();
     
-    println!("{}[3] PARSER{}", "\x1b[36m", "\x1b[0m");
+    println!("{}[3] PARSER{}", "\\x1b[36m", "\\x1b[0m");
     println!("    Building AST...");
     println!();
     
-    println!("{}[4] IR{}", "\x1b[36m", "\x1b[0m");
+    println!("{}[4] IR{}", "\\x1b[36m", "\\x1b[0m");
     println!("    Generating intermediate representation...");
     println!();
     
-    println!("{}[5] UB DETECTOR{}", "\x1b[36m", "\x1b[0m");
+    println!("{}[5] UB DETECTOR{}", "\\x1b[36m", "\\x1b[0m");
     println!("    Analyzing for undefined behavior...");
     println!("    No issues found");
     println!();
     
-    println!("{}[6] CODEGEN{}", "\x1b[36m", "\x1b[0m");
+    println!("{}[6] CODEGEN{}", "\\x1b[36m", "\\x1b[0m");
     println!("    Generating x86-64 machine code...");
     println!();
     
-    println!("{}═══ COMPLETE ═══{}", "\x1b[32m", "\x1b[0m");
+    println!("{}═══ COMPLETE ═══{}", "\\x1b[32m", "\\x1b[0m");
 }
 
 fn minimal_pe() -> Vec<u8> {
@@ -285,7 +292,7 @@ fn minimal_pe() -> Vec<u8> {
     while pe.len() < 0x80 { pe.push(0); }
     
     // PE Signature
-    pe.extend_from_slice(&[0x50, 0x45, 0x00, 0x00]); // "PE\0\0"
+    pe.extend_from_slice(&[0x50, 0x45, 0x00, 0x00]); // "PE\\0\\0"
     
     // COFF Header
     pe.extend_from_slice(&0x8664u16.to_le_bytes()); // Machine (AMD64)
@@ -305,3 +312,21 @@ fn minimal_pe() -> Vec<u8> {
     
     pe
 }
+'''
+
+MOD_RS = '''//! CLI Module
+pub mod main;
+'''
+
+def main():
+    print("🔧 Generando cli/...")
+    CLI_PATH.mkdir(parents=True, exist_ok=True)
+    
+    (CLI_PATH / "main.rs").write_text(MAIN_RS, encoding='utf-8')
+    print(f"  ✅ main.rs → {MAIN_RS.count(chr(10))} líneas")
+    
+    (CLI_PATH / "mod.rs").write_text(MOD_RS, encoding='utf-8')
+    print(f"  ✅ mod.rs → {MOD_RS.count(chr(10))} líneas")
+
+if __name__ == "__main__":
+    main()

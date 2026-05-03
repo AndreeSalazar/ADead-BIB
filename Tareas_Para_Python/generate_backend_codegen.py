@@ -1,4 +1,11 @@
-//! IR → x86-64 Code Generator
+#!/usr/bin/env python3
+"""Genera backend/codegen.rs - IR → x86-64 codegen"""
+ 
+from pathlib import Path
+ 
+BACKEND_PATH = Path(r"C:\Users\andre\OneDrive\Documentos\ADead-BIB\C_Real_Optimo\compiler\backend")
+ 
+CODEGEN_RS = '''//! IR → x86-64 Code Generator
 //! Windows x64 ABI: RCX, RDX, R8, R9, shadow space 32 bytes
 //! Generado automáticamente
 #![allow(dead_code)]
@@ -388,3 +395,14 @@ mod tests {
         assert!(!code.is_empty());
     }
 }
+'''
+
+def main():
+    print("🔧 Generando backend/codegen.rs...")
+    path = BACKEND_PATH / "codegen.rs"
+    path.write_text(CODEGEN_RS, encoding='utf-8')
+    print(f"  ✅ codegen.rs → {CODEGEN_RS.count(chr(10))} líneas")
+ 
+if __name__ == "__main__":
+    main()
+ 
