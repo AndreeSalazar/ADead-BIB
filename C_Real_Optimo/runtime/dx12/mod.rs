@@ -1071,7 +1071,7 @@ pub unsafe extern "C" fn d3d12_command_queue_signal_inline(queue: *mut core::ffi
 
 /// d3d12_command_queue_enqueue_callback - from vkd3d-proton/vkd3d_private.h
 #[no_mangle]
-pub unsafe extern "C" fn d3d12_command_queue_enqueue_callback(queue: *mut core::ffi::c_void, callback: ()) {
+pub unsafe extern "C" fn d3d12_command_queue_enqueue_callback(queue: *mut core::ffi::c_void, callback: *mut core::ffi::c_void) {
 
 }
 
@@ -1083,7 +1083,7 @@ pub unsafe extern "C" fn d3d12_device_get_nv_shader_extn(device: *mut core::ffi:
 
 /// d3d12_device_add_queue_timeline_deferred_decref - from vkd3d-proton/vkd3d_private.h
 #[no_mangle]
-pub unsafe extern "C" fn d3d12_device_add_queue_timeline_deferred_decref(device: *mut core::ffi::c_void, inc_call: ()) {
+pub unsafe extern "C" fn d3d12_device_add_queue_timeline_deferred_decref(device: *mut core::ffi::c_void, inc_call: *mut core::ffi::c_void) {
 
 }
 

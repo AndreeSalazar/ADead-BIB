@@ -6597,7 +6597,7 @@ pub unsafe extern "C" fn getMinLogLevel() -> usize {
 
 /// demo_window_set_expose_func - from vkd3d-proton/demo_win32.h
 #[no_mangle]
-pub unsafe extern "C" fn demo_window_set_expose_func(window: *mut core::ffi::c_void, expose_func: ()) {
+pub unsafe extern "C" fn demo_window_set_expose_func(window: *mut core::ffi::c_void, expose_func: *mut core::ffi::c_void) {
 
 }
 

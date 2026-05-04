@@ -3831,7 +3831,7 @@ pub unsafe extern "C" fn _hurd_malloc_fork_child() {
 
 /// _hurd_startup - from glibc/hurdstartup.h
 #[no_mangle]
-pub unsafe extern "C" fn _hurd_startup(argptr: *mut *mut core::ffi::c_void, main: ()) {
+pub unsafe extern "C" fn _hurd_startup(argptr: *mut *mut core::ffi::c_void, main: *mut core::ffi::c_void) {
 
 }
 
@@ -4365,7 +4365,7 @@ pub unsafe extern "C" fn _dl_close_worker(map: *mut core::ffi::c_void, force: us
 
 /// _dlerror_run - from glibc/dlfcn.h
 #[no_mangle]
-pub unsafe extern "C" fn _dlerror_run(operate: ()) -> i32 {
+pub unsafe extern "C" fn _dlerror_run(operate: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -5019,7 +5019,7 @@ pub unsafe extern "C" fn nss_files_parse_line(line: *mut i8, result: *mut core::
 
 /// _nss_files_init - from glibc/nss_files.h
 #[no_mangle]
-pub unsafe extern "C" fn _nss_files_init(cb: ()) {
+pub unsafe extern "C" fn _nss_files_init(cb: *mut core::ffi::c_void) {
 
 }
 
@@ -5169,7 +5169,7 @@ pub unsafe extern "C" fn __run_postfork_handlers(who: usize, do_locking: usize, 
 
 /// __register_atfork - from glibc/register-atfork.h
 #[no_mangle]
-pub unsafe extern "C" fn __register_atfork(__prepare: ()) -> i32 {
+pub unsafe extern "C" fn __register_atfork(__prepare: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -5973,19 +5973,19 @@ pub unsafe extern "C" fn __add_to_environ(name: *mut i8, value: *mut i8, combine
 
 /// __on_exit - from glibc/stdlib.h
 #[no_mangle]
-pub unsafe extern "C" fn __on_exit(__func: ()) -> i32 {
+pub unsafe extern "C" fn __on_exit(__func: *mut core::ffi::c_void) -> i32 {
     0
 }
 
 /// __cxa_atexit - from glibc/stdlib.h
 #[no_mangle]
-pub unsafe extern "C" fn __cxa_atexit(func: ()) -> i32 {
+pub unsafe extern "C" fn __cxa_atexit(func: *mut core::ffi::c_void) -> i32 {
     0
 }
 
 /// __cxa_thread_atexit_impl - from glibc/stdlib.h
 #[no_mangle]
-pub unsafe extern "C" fn __cxa_thread_atexit_impl(func: ()) -> i32 {
+pub unsafe extern "C" fn __cxa_thread_atexit_impl(func: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -8253,7 +8253,7 @@ pub unsafe extern "C" fn _IO_legacy_file(fp: *mut core::ffi::c_void) -> usize {
 
 /// IO_set_accept_foreign_vtables - from glibc/libioP.h
 #[no_mangle]
-pub unsafe extern "C" fn IO_set_accept_foreign_vtables(flag: ()) {
+pub unsafe extern "C" fn IO_set_accept_foreign_vtables(flag: *mut core::ffi::c_void) {
 
 }
 
@@ -8727,13 +8727,13 @@ pub unsafe extern "C" fn malloc_info(__options: i32, __fp: *mut core::ffi::c_voi
 
 /// mcheck - from glibc/mcheck.h
 #[no_mangle]
-pub unsafe extern "C" fn mcheck(__abortfunc: ()) -> i32 {
+pub unsafe extern "C" fn mcheck(__abortfunc: *mut core::ffi::c_void) -> i32 {
     0
 }
 
 /// mcheck_pedantic - from glibc/mcheck.h
 #[no_mangle]
-pub unsafe extern "C" fn mcheck_pedantic(__abortfunc: ()) -> i32 {
+pub unsafe extern "C" fn mcheck_pedantic(__abortfunc: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -9393,7 +9393,7 @@ pub unsafe extern "C" fn check_posix(buf: *mut i8, rv: i32, line: i32, funcname:
 
 /// one_test - from glibc/unknown
 #[no_mangle]
-pub unsafe extern "C" fn one_test(func: ()) {
+pub unsafe extern "C" fn one_test(func: *mut core::ffi::c_void) {
 
 }
 
@@ -9477,7 +9477,7 @@ pub unsafe extern "C" fn bench_buf_latency(len: usize) -> f64 {
 
 /// run_bench - from glibc/unknown
 #[no_mangle]
-pub unsafe extern "C" fn run_bench(json_ctx: *mut core::ffi::c_void, name: *mut i8, fnames: *mut *mut i8, fnameslen: usize, bench: ()) {
+pub unsafe extern "C" fn run_bench(json_ctx: *mut core::ffi::c_void, name: *mut i8, fnames: *mut *mut i8, fnameslen: usize, bench: *mut core::ffi::c_void) {
 
 }
 

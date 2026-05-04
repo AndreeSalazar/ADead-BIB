@@ -65,21 +65,24 @@ impl ElfBuilder {
     pub fn build(&self) -> Vec<u8> {
         let mut elf = Vec::new();
         
-        // ELF Header (64 bytes)
+        // ELF Header (64 bytes) — e_phoff hardcoded to 64 (right after ehdr)
         self.write_elf_header(&mut elf);
+        debug_assert_eq!(elf.len() as u64, 64, "ehdr must be exactly 64 bytes");
         
-        // Program Headers
+        // Program Headers (start at phdr_offset = 64)
         let phdr_offset = elf.len() as u64;
+        debug_assert_eq!(phdr_offset, 64);
         self.write_program_headers(&mut elf);
         
-        // Align to page
+        // Align .text to page boundary (PT_LOAD requires p_offset == p_vaddr mod p_align)
         align_to(&mut elf, PAGE_SIZE as usize);
         
-        // .text section
-        let text_offset = elf.len();
+        // .text section starts at file offset = PAGE_SIZE (0x1000)
+        let text_offset = elf.len() as u64;
+        debug_assert_eq!(text_offset, PAGE_SIZE);
         elf.extend_from_slice(&self.code);
         
-        // .data section (if any)
+        // .data section: page-aligned
         if !self.data.is_empty() {
             align_to(&mut elf, PAGE_SIZE as usize);
             elf.extend_from_slice(&self.data);

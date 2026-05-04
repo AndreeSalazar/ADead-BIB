@@ -454,6 +454,88 @@ impl IrBuilder {
         dst
     }
     
+    pub fn rem(&mut self, ty: IrType, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::Mod { dst, lhs, rhs });
+        dst
+    }
+    
+    // Bitwise
+    pub fn bit_and(&mut self, ty: IrType, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::And { dst, lhs, rhs });
+        dst
+    }
+    
+    pub fn bit_or(&mut self, ty: IrType, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::Or { dst, lhs, rhs });
+        dst
+    }
+    
+    pub fn bit_xor(&mut self, ty: IrType, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::Xor { dst, lhs, rhs });
+        dst
+    }
+    
+    pub fn shl(&mut self, ty: IrType, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::Shl { dst, lhs, rhs });
+        dst
+    }
+    
+    pub fn shr(&mut self, ty: IrType, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::Shr { dst, lhs, rhs });
+        dst
+    }
+    
+    // Comparisons
+    pub fn cmp_eq(&mut self, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(IrType::I32);
+        self.emit(IrInstr::Eq { dst, lhs, rhs });
+        dst
+    }
+    pub fn cmp_ne(&mut self, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(IrType::I32);
+        self.emit(IrInstr::Ne { dst, lhs, rhs });
+        dst
+    }
+    pub fn cmp_lt(&mut self, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(IrType::I32);
+        self.emit(IrInstr::Lt { dst, lhs, rhs });
+        dst
+    }
+    pub fn cmp_le(&mut self, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(IrType::I32);
+        self.emit(IrInstr::Le { dst, lhs, rhs });
+        dst
+    }
+    pub fn cmp_gt(&mut self, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(IrType::I32);
+        self.emit(IrInstr::Gt { dst, lhs, rhs });
+        dst
+    }
+    pub fn cmp_ge(&mut self, lhs: IrValue, rhs: IrValue) -> IrReg {
+        let dst = self.new_reg(IrType::I32);
+        self.emit(IrInstr::Ge { dst, lhs, rhs });
+        dst
+    }
+    
+    // Unary
+    pub fn neg(&mut self, ty: IrType, src: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::Neg { dst, src });
+        dst
+    }
+    
+    pub fn bit_not(&mut self, ty: IrType, src: IrValue) -> IrReg {
+        let dst = self.new_reg(ty);
+        self.emit(IrInstr::Not { dst, src });
+        dst
+    }
+    
     // Memory
     pub fn alloca(&mut self, ty: IrType) -> IrReg {
         let ptr_ty = match ty {

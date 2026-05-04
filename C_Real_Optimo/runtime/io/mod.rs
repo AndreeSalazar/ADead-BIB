@@ -6003,13 +6003,13 @@ pub unsafe extern "C" fn PyThread__init_thread() {
 
 /// PyThread_start_joinable_thread - from cpython/thread_nt.h
 #[no_mangle]
-pub unsafe extern "C" fn PyThread_start_joinable_thread(func: ()) -> i32 {
+pub unsafe extern "C" fn PyThread_start_joinable_thread(func: *mut core::ffi::c_void) -> i32 {
     0
 }
 
 /// PyThread_start_new_thread - from cpython/thread_nt.h
 #[no_mangle]
-pub unsafe extern "C" fn PyThread_start_new_thread(func: ()) -> u64 {
+pub unsafe extern "C" fn PyThread_start_new_thread(func: *mut core::ffi::c_void) -> u64 {
     0
 }
 
@@ -6123,7 +6123,7 @@ pub unsafe extern "C" fn pythread_wrapper(arg: *mut core::ffi::c_void) -> *mut c
 
 /// do_start_joinable_thread - from cpython/thread_pthread.h
 #[no_mangle]
-pub unsafe extern "C" fn do_start_joinable_thread(func: ()) -> i32 {
+pub unsafe extern "C" fn do_start_joinable_thread(func: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -6249,7 +6249,7 @@ pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut core::ffi::c_void) -> i
 
 /// pthread_key_create - from cpython/thread_pthread_stubs.h
 #[no_mangle]
-pub unsafe extern "C" fn pthread_key_create(key: *mut core::ffi::c_void, destr_function: ()) -> i32 {
+pub unsafe extern "C" fn pthread_key_create(key: *mut core::ffi::c_void, destr_function: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -9597,7 +9597,7 @@ pub unsafe extern "C" fn pthread_once_wrapper(once: usize, parameter: *mut core:
 
 /// pthread_once - from vkd3d-proton/vkd3d_threads.h
 #[no_mangle]
-pub unsafe extern "C" fn pthread_once(once: *mut core::ffi::c_void, func: ()) {
+pub unsafe extern "C" fn pthread_once(once: *mut core::ffi::c_void, func: *mut core::ffi::c_void) {
 
 }
 

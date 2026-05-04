@@ -17,6 +17,9 @@ pub struct Codegen {
     next_offset: i32,                // next available offset
     label_offsets: HashMap<BlockId, usize>,
     pending_jumps: Vec<(usize, BlockId)>,  // (patch offset, target block)
+    pub func_offsets: HashMap<String, usize>, // function name → code offset
+    pub pending_calls: Vec<(usize, String)>,  // (patch offset, func name)
+    pub external_calls: Vec<(usize, String)>, // (patch offset, external func)
 }
  
 // Windows x64 ABI registers
@@ -35,6 +38,9 @@ impl Codegen {
             next_offset: -8,  // First var at [RBP-8]
             label_offsets: HashMap::new(),
             pending_jumps: Vec::new(),
+            func_offsets: HashMap::new(),
+            pending_calls: Vec::new(),
+            external_calls: Vec::new(),
         }
     }
  
@@ -43,6 +49,7 @@ impl Codegen {
             self.generate_function(func);
         }
         self.patch_jumps();
+        self.patch_calls();
         self.encoder.code.clone()
     }
  
@@ -51,6 +58,9 @@ impl Codegen {
         self.label_offsets.clear();
         self.pending_jumps.clear();
         self.next_offset = -8;  // Reset for each function
+        
+        // Record function entry offset for intra-module calls
+        self.func_offsets.insert(func.name.clone(), self.encoder.len());
 
         // Pre-calculate stack space needed
         let num_vars = func.next_reg as i32;
@@ -253,12 +263,20 @@ impl Codegen {
                 self.emit_epilogue();
             }
             IrInstr::Call { dst, func, args } => {
-                // Push args in reverse, first 4 go to regs
+                // Load first 4 args to ABI regs (Win64 fastcall)
                 for (i, arg) in args.iter().enumerate().take(4) {
                     self.load_value(ARG_REGS[i], arg);
                 }
-                // CALL rel32 (placeholder, needs relocation)
+                // Reserve shadow space (Win64 ABI requires 32 bytes)
+                self.encoder.sub_ri(Reg64::RSP, SHADOW_SPACE);
+                
+                // Emit CALL rel32 with placeholder, record patch site
+                let patch_offset = self.encoder.len() + 1; // +1 to skip 0xE8 opcode
                 self.encoder.call_rel32(0);
+                self.pending_calls.push((patch_offset, func.clone()));
+                
+                // Restore shadow space
+                self.encoder.add_ri(Reg64::RSP, SHADOW_SPACE);
 
                 if let Some(d) = dst {
                     self.store_var(*d, Reg64::RAX);
@@ -341,6 +359,26 @@ impl Codegen {
                 self.encoder.code[*patch_offset + 3] = bytes[3];
             }
         }
+    }
+    
+    fn patch_calls(&mut self) {
+        // Resolve intra-module function calls; unknown ones become external symbols
+        let mut still_pending = Vec::new();
+        for (patch_offset, fname) in self.pending_calls.drain(..).collect::<Vec<_>>() {
+            if let Some(&target) = self.func_offsets.get(&fname) {
+                let rel = (target as i32) - (patch_offset as i32) - 4;
+                let bytes = rel.to_le_bytes();
+                self.encoder.code[patch_offset] = bytes[0];
+                self.encoder.code[patch_offset + 1] = bytes[1];
+                self.encoder.code[patch_offset + 2] = bytes[2];
+                self.encoder.code[patch_offset + 3] = bytes[3];
+            } else {
+                // External symbol: PE/ELF builder will resolve via IAT/PLT
+                self.external_calls.push((patch_offset, fname.clone()));
+                still_pending.push((patch_offset, fname));
+            }
+        }
+        self.pending_calls = still_pending;
     }
  
     pub fn add_string(&mut self, s: &str) -> u32 {

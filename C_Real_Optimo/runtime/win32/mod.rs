@@ -19269,7 +19269,7 @@ pub unsafe extern "C" fn HrAddColumns(arg0: usize, arg1: usize, arg2: usize, arg
 
 /// HrAddColumnsEx - from wine/mapiutil.h
 #[no_mangle]
-pub unsafe extern "C" fn HrAddColumnsEx(arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: ()) -> i32 {
+pub unsafe extern "C" fn HrAddColumnsEx(arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -57081,7 +57081,7 @@ pub unsafe extern "C" fn option_callback(optc: i32, optarg: *mut i8) {
 
 /// parse_options - from wine/unknown
 #[no_mangle]
-pub unsafe extern "C" fn parse_options(argc: i32, argv: *mut *mut i8, short_opts: *mut i8, long_opts: *mut core::ffi::c_void, callback: ()) {
+pub unsafe extern "C" fn parse_options(argc: i32, argv: *mut *mut i8, short_opts: *mut i8, long_opts: *mut core::ffi::c_void, callback: *mut core::ffi::c_void) {
 
 }
 
@@ -72399,7 +72399,7 @@ pub unsafe extern "C" fn TextCompare(pFC: *mut core::ffi::c_void, phMapping0: *m
 
 /// FindHandler - from reactos/fsutil.h
 #[no_mangle]
-pub unsafe extern "C" fn FindHandler(argc: i32, argv: *mut core::ffi::c_void, HandlersList: *mut core::ffi::c_void, HandlerListCount: i32, UsageHelper: ()) -> i32 {
+pub unsafe extern "C" fn FindHandler(argc: i32, argv: *mut core::ffi::c_void, HandlersList: *mut core::ffi::c_void, HandlerListCount: i32, UsageHelper: *mut core::ffi::c_void) -> i32 {
     0
 }
 
@@ -80439,19 +80439,19 @@ pub unsafe extern "C" fn got_one(arg0: *mut core::ffi::c_void) {
 
 /// add_timeout - from reactos/dhcpd.h
 #[no_mangle]
-pub unsafe extern "C" fn add_timeout(arg0: usize, arg1: ()) {
+pub unsafe extern "C" fn add_timeout(arg0: usize, arg1: *mut core::ffi::c_void) {
 
 }
 
 /// cancel_timeout - from reactos/dhcpd.h
 #[no_mangle]
-pub unsafe extern "C" fn cancel_timeout(arg0: ()) {
+pub unsafe extern "C" fn cancel_timeout(arg0: *mut core::ffi::c_void) {
 
 }
 
 /// add_protocol - from reactos/dhcpd.h
 #[no_mangle]
-pub unsafe extern "C" fn add_protocol(arg0: *mut i8, arg1: i32, arg2: ()) {
+pub unsafe extern "C" fn add_protocol(arg0: *mut i8, arg1: i32, arg2: *mut core::ffi::c_void) {
 
 }
 
@@ -83787,7 +83787,7 @@ pub unsafe extern "C" fn cache_get_brush_data(colour_code: usize, idx: usize) ->
 
 /// channel_register - from reactos/unknown
 #[no_mangle]
-pub unsafe extern "C" fn channel_register(name: *mut i8, flags: usize, callback: ()) -> *mut core::ffi::c_void {
+pub unsafe extern "C" fn channel_register(name: *mut i8, flags: usize, callback: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
     core::ptr::null_mut()
 }
 

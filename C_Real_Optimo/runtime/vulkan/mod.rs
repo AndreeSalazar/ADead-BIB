@@ -17427,7 +17427,7 @@ pub unsafe extern "C" fn demo_cleanup(demo: *mut core::ffi::c_void) {
 
 /// demo_set_idle_func - from vkd3d-proton/demo_win32.h
 #[no_mangle]
-pub unsafe extern "C" fn demo_set_idle_func(demo: *mut core::ffi::c_void, idle_func: ()) {
+pub unsafe extern "C" fn demo_set_idle_func(demo: *mut core::ffi::c_void, idle_func: *mut core::ffi::c_void) {
 
 }
 

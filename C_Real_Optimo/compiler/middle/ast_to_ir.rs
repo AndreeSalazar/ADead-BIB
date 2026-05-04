@@ -201,13 +201,88 @@ impl AstToIr {
                 let ty = IrType::I32; // simplified
                 
                 let reg = match op {
-                    BinOp::Add => self.builder.add(ty, l, r),
-                    BinOp::Sub => self.builder.sub(ty, l, r),
-                    BinOp::Mul => self.builder.mul(ty, l, r),
-                    BinOp::Div => self.builder.div(ty, l, r),
-                    _ => self.builder.add(ty, l, r), // fallback
+                    BinOp::Add    => self.builder.add(ty, l, r),
+                    BinOp::Sub    => self.builder.sub(ty, l, r),
+                    BinOp::Mul    => self.builder.mul(ty, l, r),
+                    BinOp::Div    => self.builder.div(ty, l, r),
+                    BinOp::Mod    => self.builder.rem(ty, l, r),
+                    BinOp::BitAnd => self.builder.bit_and(ty, l, r),
+                    BinOp::BitOr  => self.builder.bit_or(ty, l, r),
+                    BinOp::BitXor => self.builder.bit_xor(ty, l, r),
+                    BinOp::Shl    => self.builder.shl(ty, l, r),
+                    BinOp::Shr    => self.builder.shr(ty, l, r),
+                    BinOp::Eq     => self.builder.cmp_eq(l, r),
+                    BinOp::Ne     => self.builder.cmp_ne(l, r),
+                    BinOp::Lt     => self.builder.cmp_lt(l, r),
+                    BinOp::Le     => self.builder.cmp_le(l, r),
+                    BinOp::Gt     => self.builder.cmp_gt(l, r),
+                    BinOp::Ge     => self.builder.cmp_ge(l, r),
+                    BinOp::LogAnd => self.builder.bit_and(ty, l, r),
+                    BinOp::LogOr  => self.builder.bit_or(ty, l, r),
                 };
                 IrValue::Reg(reg)
+            }
+            
+            Expr::Unary(op, inner) => {
+                let v = self.convert_expr(inner);
+                let ty = IrType::I32;
+                let reg = match op {
+                    UnaryOp::Neg    => self.builder.neg(ty, v),
+                    UnaryOp::BitNot => self.builder.bit_not(ty, v),
+                    UnaryOp::Not    => self.builder.cmp_eq(v, IrValue::Const(IrConst::I32(0))),
+                };
+                IrValue::Reg(reg)
+            }
+            
+            Expr::CompoundAssign(op, lhs, rhs) => {
+                // x += rhs  →  x = x + rhs
+                let r = self.convert_expr(rhs);
+                if let Expr::Ident(name) = lhs.as_ref() {
+                    if let Some(&(ptr, ty_var)) = self.vars.get(name) {
+                        let ir_ty = ty_var;
+                        let cur = self.builder.load(ir_ty, IrValue::Reg(ptr));
+                        let new_reg = match op {
+                            BinOp::Add => self.builder.add(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::Sub => self.builder.sub(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::Mul => self.builder.mul(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::Div => self.builder.div(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::Mod => self.builder.rem(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::BitAnd => self.builder.bit_and(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::BitOr  => self.builder.bit_or(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::BitXor => self.builder.bit_xor(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::Shl    => self.builder.shl(ir_ty, IrValue::Reg(cur), r),
+                            BinOp::Shr    => self.builder.shr(ir_ty, IrValue::Reg(cur), r),
+                            _ => self.builder.add(ir_ty, IrValue::Reg(cur), r),
+                        };
+                        self.builder.store(IrValue::Reg(ptr), IrValue::Reg(new_reg));
+                        return IrValue::Reg(new_reg);
+                    }
+                }
+                IrValue::Const(IrConst::I32(0))
+            }
+            
+            Expr::PreInc(inner) | Expr::PostInc(inner) => {
+                if let Expr::Ident(name) = inner.as_ref() {
+                    if let Some(&(ptr, ty_var)) = self.vars.get(name) {
+                        let cur = self.builder.load(ty_var, IrValue::Reg(ptr));
+                        let new_reg = self.builder.add(ty_var, IrValue::Reg(cur), IrValue::Const(IrConst::I32(1)));
+                        self.builder.store(IrValue::Reg(ptr), IrValue::Reg(new_reg));
+                        return match expr { Expr::PreInc(_) => IrValue::Reg(new_reg), _ => IrValue::Reg(cur) };
+                    }
+                }
+                IrValue::Const(IrConst::I32(0))
+            }
+            
+            Expr::PreDec(inner) | Expr::PostDec(inner) => {
+                if let Expr::Ident(name) = inner.as_ref() {
+                    if let Some(&(ptr, ty_var)) = self.vars.get(name) {
+                        let cur = self.builder.load(ty_var, IrValue::Reg(ptr));
+                        let new_reg = self.builder.sub(ty_var, IrValue::Reg(cur), IrValue::Const(IrConst::I32(1)));
+                        self.builder.store(IrValue::Reg(ptr), IrValue::Reg(new_reg));
+                        return match expr { Expr::PreDec(_) => IrValue::Reg(new_reg), _ => IrValue::Reg(cur) };
+                    }
+                }
+                IrValue::Const(IrConst::I32(0))
             }
             
             Expr::Call(func_expr, args) => {

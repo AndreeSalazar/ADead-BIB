@@ -5,7 +5,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.0"
+version = "12.0.0"
 edition = "2021"
 authors = ["ADead-BIB Team"]
 
