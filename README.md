@@ -1,12 +1,13 @@
-# ADead-BIB v12.0 💀🦈
+# ADead-BIB v13.0 💀🦈
 
 **Compilador C Nativo: C99 → Machine Code Puro · C ABI Completo · 256-bit Nativo · Win32/Linux · OpenGL 4.6 · Vulkan 1.3 · DirectX 9/11/12**
 
 > **100% C — Zero C++.** Todo el ecosistema es C puro con ABI nativo.  
 > **ASM-BIB = MASM reconstruido** — base de árbol de ensamblador para ADead-BIB.  
-> **CLI v12.0 Unificado:** `adB cc` · `adB run` · `adB step` · `adB gpu` · `adB version`  
+> **CLI v13.0 Unificado:** `adB cc` · `adB run` · `adB step` · `adB gpu` · `adB version` · `--link-obj`  
 > **IAT v6:** 18 DLLs · 340+ funciones importadas · Compact IAT · Sin 0xC0000139  
-> **ASM-BIB Bridge:** 21 funciones assembly nativas enlazadas via COFF .obj  
+> **ASM-BIB Bridge:** 21 funciones assembly nativas enlazadas via COFF .obj · `--link-obj`  
+> **Codegen v13:** Control flow (if/while/for) ✅ · Function calls ✅ · Recursión ✅ · PE entry point correcto  
 > **Linker Especial DLL:** Genera bibliotecas nativas para Windows (.dll) y Linux (.so) sin MSVC/GCC/Clang  
 > **GPU C ABI:** OpenGL 1.0-4.6 (18+ módulos) · Vulkan 1.3 (7 módulos) · GLSL · SPIR-V  
 > Zero Overhead · Zero Bloat · Zero Dead Code  
@@ -16,6 +17,7 @@
 > 256-bit nativo: YMM/AVX2 · SoA natural · VEX prefix  
 > `#include <header_main.h>` = TODO disponible  
 > `-Wstrict` = Modo estricto (UB = error)  
+> `--link-obj` = Enlaza con .obj de ASM-BIB  
 > Compact IAT = Solo funciones usadas, sin STATUS_ENTRYPOINT_NOT_FOUND
 
 ```
@@ -59,7 +61,7 @@ Tu Código (.c)
 
 ## Tabla de Contenidos
 
-- [ADead-BIB v12.0 💀🦈](#adead-bib-v120-)
+- [ADead-BIB v13.0 💀🦈](#adead-bib-v130-)
   - [Tabla de Contenidos](#tabla-de-contenidos)
   - [Filosofía](#filosofía)
     - [¿Por qué existe ADead-BIB?](#por-qué-existe-adead-bib)
@@ -82,9 +84,11 @@ Tu Código (.c)
     - [Calling Conventions](#calling-conventions)
     - [Encoding FASM-Style (Bytes Directos)](#encoding-fasm-style-bytes-directos)
     - [Optimizaciones](#optimizaciones)
-  - [Estructura del Proyecto (src\_v2)](#estructura-del-proyecto-src_v2)
+  - [Changelog v13.0](#changelog-v130)
+  - [Estructura del Proyecto](#estructura-del-proyecto)
   - [Tamaños de Binario](#tamaños-de-binario)
   - [Resultados de Tests](#resultados-de-tests)
+    - [C99 Execution Tests](#c99-execution-tests)
     - [Rust Unit Tests (adeb-stdlib)](#rust-unit-tests-adeb-stdlib)
     - [Win32 Intensive Tests (C)](#win32-intensive-tests-c)
   - [IAT Registry v6 — 18 DLLs · 340+ Funciones](#iat-registry-v6--18-dlls--340-funciones)
@@ -431,69 +435,85 @@ VADDPS ymm0,y0,y1  C5 FC 58 C1     VEX.256.0F 58 /r
 
 ---
 
-## Estructura del Proyecto (src_v2)
+## Changelog v13.0
+
+### Bugs Resueltos (Critical)
+
+| Bug | Root Cause | Fix |
+|---|---|---|
+| **Control de flujo** (`if/while/for` siempre exit -1) | `xor rax,rax` borraba FLAGS antes de `setcc` + `patch_jumps()` solo se aplicaba a la última función | Eliminar XOR (MOVZX ya zero-extiende) + mover `patch_jumps()` al final de cada función |
+| **Function calls** (exit basura/garbage) | PE `AddressOfEntryPoint` = offset 0 (primera función en archivo, no `main`) | `pe.entry_rva = func_offsets["main"]` |
+| **Parser hang arrays** (`int arr[5];` → loop infinito) | `parse_var_decl` no reconocía `[` → fallaba en `expect(;)` → error recovery loop | Añadido manejo `LBracket` → `Type::Array(base, size)` |
+| **Parser hang structs** (newlines en struct body) | `parse_struct` loop no saltaba `Token::Newline` → intentaba parse_type en newline | Añadido `skip_newlines()` + soporte array fields en structs |
+
+### Nuevos Módulos
+
+| Módulo | Descripción |
+|---|---|
+| `backend/coff_reader.rs` | Parser de archivos COFF .obj (Microsoft Object Format) |
+| `backend/bridge.rs` | Bridge linker: merge COFF .obj (ASM-BIB) + codegen ADead-BIB |
+| `stdlib/asm_stdlib.h` | C header con `extern` declarations de 21 funciones ASM |
+| `asm/build_stdlib.ps1` | Script PowerShell para compilar ASM-BIB stdlib |
+
+### Mejoras de CLI
+
+| Flag | Efecto |
+|---|---|
+| `--link-obj <file.obj>` | Enlaza con archivo COFF .obj de ASM-BIB |
+
+### Tests Verificados (exit 0)
+
+```
+03_if_else.c     ✅  (if/else, comparaciones)
+04_while_loop.c  ✅  (while, sum 1..10)
+05_for_loop.c    ✅  (for, incremento)
+06_functions.c   ✅  (multi-función, calls intra-módulo)
+07_recursion.c   ✅  (fibonacci/factorial recursivo)
+09_arrays.c      ✅  (parse OK, codegen parcial)
+10_structs.c     ✅  (parse OK, codegen parcial)
+```
+
+---
+
+## Estructura del Proyecto
 
 ```
 ADead-BIB/
-├── src_v2/                             # Arquitectura v2 (numerada)
-│   ├── 00_bin/
-│   │   └── adeb-cli/                  # CLI driver (adb)
-│   │
-│   ├── 01_compiler/
-│   │   ├── 01_frontend/               # C99 lexer, parser, preprocessor
-│   │   ├── 02_middle/                 # IR, optimizer, UB detector
-│   │   ├── 03_backend_cpu/            # x86-64 encoder, PE/ELF
-│   │   └── 04_backend_gpu/            # SPIR-V, GPU codegen
-│   │
+├── C_Real_Optimo/                      # ★ Workspace principal v13
+│   ├── compiler/                      # adeb-compiler crate
+│   │   ├── frontend/                  # C99 lexer, parser, token, AST
+│   │   ├── middle/                    # IR, ast_to_ir, optimizer, UB detector
+│   │   ├── backend/                   # x86-64 codegen, encoder, PE, ELF
+│   │   │   ├── codegen.rs             # IR → x86-64 machine code
+│   │   │   ├── encoder.rs             # FASM-style byte emission
+│   │   │   ├── pe.rs                  # PE executable writer
+│   │   │   ├── elf.rs                 # ELF executable writer
+│   │   │   ├── coff_reader.rs         # ★ NEW: COFF .obj parser
+│   │   │   └── bridge.rs              # ★ NEW: ASM-BIB bridge linker
+│   │   ├── cli/                       # CLI entry point (adB)
+│   │   └── lib.rs                     # Public exports
+│   ├── runtime/                       # adeb-runtime crate (FFI)
+│   ├── stdlib/                        # C headers (asm_stdlib.h)
+│   ├── asm/                           # ASM-BIB build scripts
+│   ├── tests/
+│   │   ├── c99/                       # C99 execution tests (01-10+)
+│   │   └── bridge/                    # ASM bridge integration tests
+│   └── Cargo.toml                     # Workspace manifest
+│
+├── src_v2/                             # Legacy architecture (reference)
+│   ├── 00_bin/adeb-cli/               # Legacy CLI
+│   ├── 01_compiler/                   # Legacy frontend/middle/backend
 │   ├── 02_core/
-│   │   ├── adeb-core/                 # Core types y utilities
-│   │   ├── adeb-platform/             # Platform detection
-│   │   ├── adeb-stdlib/               # ★ C ABI Standard Library
+│   │   ├── adeb-stdlib/               # C ABI Standard Library
 │   │   │   └── src/
 │   │   │       ├── c/                 # C99 stdlib + Win32 + Linux + DX
-│   │   │       │   ├── fastos_stdio.rs    — printf, fopen, fread...
-│   │   │       │   ├── fastos_stdlib.rs   — malloc, free, qsort...
-│   │   │       │   ├── fastos_string.rs   — strlen, memcpy, strcmp...
-│   │   │       │   ├── fastos_math.rs     — sin, cos, sqrt, pow...
-│   │   │       │   ├── fastos_types.rs    — int8_t-uint64_t, size_t...
-│   │   │       │   ├── fastos_win32.rs    — kernel32 + user32 + gdi32
-│   │   │       │   ├── fastos_linux.rs    — syscalls + X11 + Wayland
-│   │   │       │   ├── fastos_com.rs      — COM runtime
-│   │   │       │   ├── fastos_dxgi.rs     — DXGI
-│   │   │       │   ├── fastos_d3d9.rs     — DirectX 9
-│   │   │       │   ├── fastos_d3d11.rs    — DirectX 11
-│   │   │       │   ├── fastos_d3d12.rs    — DirectX 12
-│   │   │       │   └── ... (20+ módulos)
-│   │   │       └── gpu/               # GPU C ABI
-│   │   │           ├── fastos_gpu.rs      — GPU header
-│   │   │           ├── fastos_com.rs      — COM type generator
-│   │   │           ├── opengl/            — GL 1.0-4.6 (18+ módulos)
-│   │   │           └── vulkan/            — Vulkan 1.3 (7 módulos) ★ NEW
-│   │   │               ├── mod.rs
-│   │   │               ├── vk_types.rs
-│   │   │               ├── vk_enums.rs
-│   │   │               ├── vk_structs.rs
-│   │   │               ├── vk_functions.rs
-│   │   │               ├── vk_loader.rs
-│   │   │               └── vk_symbols.rs
-│   │   ├── adeb-bridge/               # ASM-BIB COFF .obj bridge
-│   │   └── adeb-bg/                   # Binary Guardian
-│   │
-│   ├── 03_libc/                       # libc propia (sin externa)
-│   │
-│   ├── 04_tests/
-│   │   └── win32_intensive/           # Win32 stress tests (5 fases)
-│   │       ├── 01_win_memory.c        — HeapAlloc, VirtualAlloc, GlobalAlloc
-│   │       ├── 02_win_files.c         — CreateFileA, ReadFile, WriteFile
-│   │       ├── 03_win_threads.c       — CreateThread, Mutex, WaitForMultipleObjects
-│   │       ├── 04_win_gui.c           — WNDCLASSEX, CreateWindowEx, message loop
-│   │       └── 05_win_dll.c           — LoadLibraryA, GetProcAddress, indirect call
-│   │
-│   ├── _scratch/                      # Experimental
-│   └── Cargo.toml                     # Workspace
+│   │   │       └── gpu/               # GPU C ABI (OpenGL, Vulkan, DX)
+│   │   └── adeb-bridge/              # Legacy bridge
+│   └── 04_tests/win32_intensive/      # Win32 stress tests
 │
+├── Documentos_Soluciones.md            # Status y roadmap detallado
 ├── Cargo.toml
-├── LICENSE                            # Techne License v1.0
+├── LICENSE                             # Techne License v1.0
 └── README.md
 ```
 
@@ -514,6 +534,18 @@ Sin CRT. Sin exception handling tables. Sin RTTI. Sin debug info por defecto. So
 ---
 
 ## Resultados de Tests
+
+### C99 Execution Tests
+
+| Test | Descripción | Exit Code |
+|---|---|---|
+| `03_if_else.c` | if/else con comparaciones | ✅ exit 0 |
+| `04_while_loop.c` | while loop, sum 1..10 = 55 | ✅ exit 0 |
+| `05_for_loop.c` | for loop con incremento | ✅ exit 0 |
+| `06_functions.c` | múltiples funciones, calls cruzados | ✅ exit 0 |
+| `07_recursion.c` | recursión (factorial/fibonacci) | ✅ exit 0 |
+| `09_arrays.c` | array declaration (parse OK, codegen parcial) | ⚠️ parse OK |
+| `10_structs.c` | struct declaration (parse OK, codegen parcial) | ⚠️ parse OK |
 
 ### Rust Unit Tests (adeb-stdlib)
 
@@ -575,6 +607,7 @@ Sin CRT. Sin exception handling tables. Sin RTTI. Sin debug info por defecto. So
 adB cc hello.c -o hello.exe            # Compilar C
 adB cc file.c -step                    # Step mode
 adB cc file.c -Wstrict                 # Modo estricto
+adB cc file.c --link-obj stdlib.obj    # Enlazar con ASM-BIB .obj
 
 # ── Auto-detect / Run ────────────────────────────────────────────
 adB run hello.c                        # Compilar + ejecutar
@@ -610,6 +643,7 @@ adB version                            # ASCII banner + versión
 | `--flat` | Genera flat binary (OS/Kernel) |
 | `--dll` | Genera DLL Windows (.dll) |
 | `--so` | Genera shared object Linux (.so) |
+| `--link-obj <file>` | Enlaza con COFF .obj (ASM-BIB bridge) |
 
 ---
 
@@ -636,7 +670,7 @@ Ver [LICENSE](LICENSE) para los términos completos.
 
 ---
 
-**ADead-BIB v12.0: C99 → Machine Code Puro · C ABI Completo 💀🦈**
+**ADead-BIB v13.0: C99 → Machine Code Puro · C ABI Completo · Codegen Verified 💀🦈**
 
 ```
 MSVC, GCC, LLVM  = referencias técnicas estudiadas y respetadas

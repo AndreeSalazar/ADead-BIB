@@ -336,8 +336,9 @@ mod tests {
         
         // Shift by 32 on i32 is UB
         let x = builder.alloca(IrType::I32);
+        let dst = builder.new_reg(IrType::I32);
         builder.emit(IrInstr::Shl {
-            dst: builder.new_reg(IrType::I32),
+            dst,
             lhs: IrValue::Reg(x),
             rhs: IrValue::Const(IrConst::I32(32)),
         });

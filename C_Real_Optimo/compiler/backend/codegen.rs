@@ -48,7 +48,6 @@ impl Codegen {
         for func in &module.functions {
             self.generate_function(func);
         }
-        self.patch_jumps();
         self.patch_calls();
         self.encoder.code.clone()
     }
@@ -88,6 +87,9 @@ impl Codegen {
                 self.generate_instr(instr);
             }
         }
+
+        // Patch jumps immediately while label_offsets are still valid
+        self.patch_jumps();
     }
  
     fn emit_epilogue(&mut self) {
@@ -309,10 +311,9 @@ impl Codegen {
         self.load_value(Reg64::RAX, lhs);
         self.load_value(Reg64::RCX, rhs);
         self.encoder.cmp_rr(Reg64::RAX, Reg64::RCX);
-        // XOR to clear RAX, then SETcc to AL, then MOVZX to zero-extend to full RAX
-        self.encoder.xor_rr(Reg64::RAX, Reg64::RAX);
+        // SETcc AL based on flags, then MOVZX to zero-extend to full RAX
+        // NOTE: Do NOT xor rax before setcc — it would clobber the flags from cmp!
         self.encoder.setcc(cc, Reg64::RAX);
-        // MOVZX AL to RAX (zero-extend) - CRITICAL for SETcc
         self.encoder.movzx_rr(Reg64::RAX, Reg64::RAX);
         self.store_var(dst, Reg64::RAX);
     }

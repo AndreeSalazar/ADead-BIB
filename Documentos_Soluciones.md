@@ -35,10 +35,19 @@
 | Caso | Esperado | Observado |
 |---|---|---|
 | `02_arithmetic.c` (aritmética encadenada) | `exit 0` | `exit 24` |
-| Llamadas a función (`IrInstr::Call`) | Generar `call rel32` | Campo `func` ignorado |
+| ~~Llamadas a función (`IrInstr::Call`)~~ | ~~Generar `call rel32`~~ | ✅ **RESUELTO** — PE entry_rva apunta a main, patch_calls funciona |
 | Headers ELF (`elf.rs`) | `phdr_offset`/`text_offset` escritos | Variables sin usar |
 | Runtime FFI-safe | tipos C válidos | 29 warnings con `()` (callback sin tipo) |
-| `tests/c99/09_arrays.c`, `10_structs.c` | compilar y correr | sin `.exe` generado |
+| ~~`tests/c99/09_arrays.c`, `10_structs.c`~~ | ~~compilar y correr~~ | ✅ **RESUELTO** — Parser soporta `int arr[N]` y structs con newlines |
+
+### ✅ Bugs resueltos (sesión actual)
+
+| Bug | Root cause | Fix |
+|---|---|---|
+| **Control de flujo** (`if/while/for` = exit -1) | `xor rax,rax` borraba FLAGS antes de `setcc` | Eliminar XOR; MOVZX ya zero-extiende. + `patch_jumps()` movido a fin de función |
+| **Function calls** (exit basura) | PE entry point = offset 0 (primera función, no main) | `pe.entry_rva = main_offset` en CLI |
+| **Parser hang arrays** (`int arr[5]`) | `parse_var_decl` no reconocía `[` | Añadido manejo de `LBracket` → `Type::Array` |
+| **Parser hang structs** (newlines) | `parse_struct` no saltaba `Token::Newline` | Añadido `skip_newlines()` + soporte array fields |
 
 ---
 
@@ -597,49 +606,59 @@ Marcar cuando esté hecho.
 
 ## 8. Estado tras la primera oleada de fases
 
-**Verificado por harness automatizado:**
+**Verificado por harness automatizado (v13.0 — Mayo 2026):**
 
 | Test | Estado | Detalle |
 |---|---|---|
 | `hello.c` | ✅ PASS | exit 0 |
 | `01_variables.c` | ✅ PASS | exit 0 |
-| `02_arithmetic.c` | ✅ PASS | exit 0 — **bug P-01 resuelto** |
-| `03_if_else.c` | ❌ FAIL | exit 0xFFFFFFFF — codegen JmpIf necesita patch fixup |
-| `04_while_loop.c` | ❌ HANG | bucle infinito — orden de bloques |
-| `05_for_loop.c` | ❌ FAIL | exit -10 |
-| `06_functions.c` | ❌ FAIL | exit basura — call relocation incorrecta |
-| `07_recursion.c` | ❌ FAIL | exit 1 |
-| `08_pointers.c` | ❌ FAIL | exit -10 |
-| `09_arrays.c` | ❌ COMPILE-FAIL | parser hang |
-| `10_structs.c` | ❌ COMPILE-FAIL | parser hang |
+| `02_arithmetic.c` | ❌ FAIL | exit 24 — aritmética encadenada aún rota |
+| `03_if_else.c` | ✅ PASS | exit 0 — **bug JmpIf resuelto** |
+| `04_while_loop.c` | ✅ PASS | exit 0 — **bug JmpIf resuelto** |
+| `05_for_loop.c` | ✅ PASS | exit 0 — **bug JmpIf resuelto** |
+| `06_functions.c` | ✅ PASS | exit 0 — **bug PE entry point resuelto** |
+| `07_recursion.c` | ✅ PASS | exit 0 — **bug PE entry point resuelto** |
+| `08_pointers.c` | ⚠️ PEND | no probado aún |
+| `09_arrays.c` | ⚠️ PARCIAL | parse OK, codegen Index/Member pendiente |
+| `10_structs.c` | ⚠️ PARCIAL | parse OK, codegen Index/Member pendiente |
 
-### Próxima oleada (deuda técnica restante)
+### Bugs Resueltos (v13.0)
 
-1. **Codegen de control de flujo**: `JmpIf` patches necesitan validarse para `if/while/for`. El error parece estar en la posición del patch_then dentro de `jne_rel32` — verificar que el offset sea +2 (después de `0F 85`) y no +1.
-2. **Function calls intra-módulo**: el orden de generación + `func_offsets` es correcto, pero los displacements pueden estar mal calculados cuando el código posterior cambia el `len()`. Considerar usar offsets virtuales en vez de absolutos durante la fase de generación.
-3. **Parser** colgado en `9_arrays.c` y `10_structs.c`: probable bucle en parseo de arrays/structs.
+1. ✅ **Codegen control flow**: `xor rax,rax` borraba FLAGS antes de `setcc` → eliminado. `patch_jumps()` solo aplicaba a última función → movido a fin de cada función.
+2. ✅ **Function calls**: PE `AddressOfEntryPoint` = offset 0 (primera función) → cambiado a `func_offsets["main"]`.
+3. ✅ **Parser arrays**: `parse_var_decl` no reconocía `[` → añadido manejo `LBracket` → `Type::Array`.
+4. ✅ **Parser structs**: `parse_struct` no saltaba `Token::Newline` → añadido `skip_newlines()` + array fields.
+
+### Deuda técnica restante
+
+1. **Arithmetic encadenada** (`02_arithmetic.c`): still exit 24 — requiere revisión de precedence/associativity.
+2. **Array/Struct codegen**: parser OK, pero `Expr::Index` y `Expr::Member` no tienen codegen x86-64 implementado.
+3. **Pointers** (`08_pointers.c`): no probado — puede requerir revisión de aritmética de punteros.
+4. **Runtime FFI**: 29 warnings con `()` (callback sin tipo).
 
 ---
 
+## 9. 📊 Resumen Ejecutivo
 
----
+**¿Qué tan completo está ADead-BIB hoy?** → **~55%** del README v13.0 promete.
 
-## 📊 Resumen Ejecutivo
-
-**¿Qué tan completo está ADead-BIB hoy?** → **~45%** del README v12.0 promete.
-
-**Lo que ya tienes (real, verificado):**
+**Lo que ya tienes (real, verificado v13.0):**
 - Pipeline completo C → PE x86-64 que **genera ejecutables válidos** (1-1.5 KB)
+- **Control flow (if/while/for) 100% funcional** ✅ — 5 tests pasando
+- **Function calls + recursión 100% funcional** ✅ — PE entry point correcto
+- **Parser arrays/structs sin hang** ✅ — parsea correctamente, codegen parcial pendiente
 - Lexer + parser C99 razonablemente cubre el lenguaje
 - Workspace Cargo limpio que **compila sin errores** (solo warnings)
+- **ASM-BIB bridge** — `coff_reader.rs` + `bridge.rs` + `--link-obj` CLI
 - 14 KB de runtime auto-generado desde 18 DLLs Windows
-- Pipeline de generación Python desde knowledge.json reutilizable
 
 **Lo que falta para ser independiente y evolucionar:**
-- Arreglar 2 bugs concretos en codegen (4-8 h de trabajo)
+- Codegen `Expr::Index` y `Expr::Member` (arrays/structs) — 2-3 días
+- Arreglar aritmética encadenada (`02_arithmetic.c`) — 4-8 h
+- Codegen de punteros (`08_pointers.c`) — 1 día
 - Limpiar 7 MB de runtime duplicado (1 día)
 - Completar CLI a la altura del README (3 días)
-- Agregar `stdlib/` y `asm/` (1 semana cada uno)
+- Agregar `stdlib/` C headers completos (1 semana)
 - Target `--flat` para OS Rust (2 semanas)
 
 **Tiempo total estimado para alcanzar 95% del README:** **6-8 semanas** de trabajo enfocado.

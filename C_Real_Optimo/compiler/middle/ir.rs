@@ -422,7 +422,7 @@ impl IrBuilder {
         }
     }
     
-    fn emit(&mut self, instr: IrInstr) {
+    pub fn emit(&mut self, instr: IrInstr) {
         let block_id = self.current_block;
         if let Some(func) = self.current_function() {
             func.push_instr(block_id, instr);

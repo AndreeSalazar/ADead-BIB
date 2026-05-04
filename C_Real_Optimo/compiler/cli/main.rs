@@ -203,6 +203,10 @@ fn compile_pipeline(opts: &Options) {
             let mut pe = PeBuilder::new().console();
             pe.code = final_code;
             pe.data = final_data;
+            // Set entry point to main's offset within the code section
+            if let Some(&main_offset) = codegen.func_offsets.get("main") {
+                pe.entry_rva = main_offset as u32;
+            }
             pe.build()
         }
         Target::Elf | Target::ElfSo => {

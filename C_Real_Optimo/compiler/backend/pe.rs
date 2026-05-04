@@ -161,7 +161,8 @@ impl PeBuilder {
         pe.extend_from_slice(&(self.code.len() as u32).to_le_bytes()); // SizeOfCode
         pe.extend_from_slice(&(self.data.len() as u32).to_le_bytes()); // SizeOfInitializedData
         pe.extend_from_slice(&0u32.to_le_bytes()); // SizeOfUninitializedData
-        pe.extend_from_slice(&text_rva.to_le_bytes()); // AddressOfEntryPoint
+        let entry_point = text_rva + self.entry_rva;
+        pe.extend_from_slice(&entry_point.to_le_bytes()); // AddressOfEntryPoint
         pe.extend_from_slice(&text_rva.to_le_bytes()); // BaseOfCode
         pe.extend_from_slice(&IMAGE_BASE.to_le_bytes()); // ImageBase
         pe.extend_from_slice(&SECTION_ALIGNMENT.to_le_bytes());

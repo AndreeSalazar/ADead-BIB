@@ -214,6 +214,21 @@ impl Parser {
     }
     
     fn parse_var_decl(&mut self, ty: Type, name: String) -> Result<Decl, String> {
+        // Handle array declarations: int arr[5];
+        let final_ty = if matches!(self.peek(), Token::LBracket) {
+            self.advance(); // consume '['
+            let size = if let Token::IntLit(n) = self.peek().clone() {
+                self.advance();
+                Some(n as usize)
+            } else {
+                None
+            };
+            self.expect(Token::RBracket)?;
+            Type::Array(Box::new(ty), size)
+        } else {
+            ty
+        };
+
         let init = if matches!(self.peek(), Token::Eq) {
             self.advance();
             Some(self.parse_expr()?)
@@ -223,7 +238,7 @@ impl Parser {
         self.expect(Token::Semicolon)?;
         
         Ok(Decl {
-            ty,
+            ty: final_ty,
             name,
             init,
             is_static: false,
@@ -254,10 +269,26 @@ impl Parser {
             self.advance();
             let mut fields = Vec::new();
             while !matches!(self.peek(), Token::RBrace | Token::Eof) {
+                self.skip_newlines();
+                if matches!(self.peek(), Token::RBrace) { break; }
                 let ty = self.parse_type()?;
                 let name = self.parse_ident()?;
+                // Handle array fields: int data[10];
+                let final_ty = if matches!(self.peek(), Token::LBracket) {
+                    self.advance();
+                    let size = if let Token::IntLit(n) = self.peek().clone() {
+                        self.advance();
+                        Some(n as usize)
+                    } else {
+                        None
+                    };
+                    self.expect(Token::RBracket)?;
+                    Type::Array(Box::new(ty), size)
+                } else {
+                    ty
+                };
                 self.expect(Token::Semicolon)?;
-                fields.push(Decl { ty, name, init: None, is_static: false, is_extern: false, is_const: false });
+                fields.push(Decl { ty: final_ty, name, init: None, is_static: false, is_extern: false, is_const: false });
             }
             self.expect(Token::RBrace)?;
             fields
