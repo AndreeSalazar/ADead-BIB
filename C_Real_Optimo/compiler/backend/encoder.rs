@@ -160,6 +160,27 @@ impl X86Encoder {
         self.emit(0x99);
     }
     
+    /// CDQ (sign extend EAX to EDX:EAX for 32-bit IDIV)
+    pub fn cdq(&mut self) {
+        self.emit(0x99);
+    }
+    
+    /// MOVZX r64, r8 (zero-extend 8-bit to 64-bit)
+    pub fn movzx_rr(&mut self, dst: Reg64, src: Reg64) {
+        self.rex_w(dst, src);
+        self.emit(0x0F);
+        self.emit(0xB6);
+        self.modrm(0b11, dst.code(), src.code());
+    }
+    
+    /// MOVSX r64, r8 (sign-extend 8-bit to 64-bit)
+    pub fn movsx_rr(&mut self, dst: Reg64, src: Reg64) {
+        self.rex_w(dst, src);
+        self.emit(0x0F);
+        self.emit(0xBE);
+        self.modrm(0b11, dst.code(), src.code());
+    }
+    
     /// NEG r64
     pub fn neg_r(&mut self, dst: Reg64) {
         self.rex_w(Reg64::RAX, dst);

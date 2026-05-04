@@ -1,0 +1,197 @@
+{
+  "source": "chibicc/codegen.c analysis for C_Real_Optimo/compiler/backend/codegen.rs",
+  "target": "ADead-BIB C_Real_Optimo codegen.rs",
+  
+  "critical_patterns_from_chibicc": {
+    "comparison_with_setcc": {
+      "chibicc_code": {
+        "lines_1148-1171": [
+          "println(\"  cmp %s, %s\", di, ax);",
+          "if (node->kind == ND_EQ) {",
+          "  println(\"  sete %%al\");",
+          "} else if (node->kind == ND_NE) {",
+          "  println(\"  setne %%al\");",
+          "} else if (node->kind == ND_LT) {",
+          "  if (node->lhs->ty->is_unsigned)",
+          "    println(\"  setb %%al\");",
+          "  else",
+          "    println(\"  setl %%al\");",
+          "} else if (node->kind == ND_LE) {",
+          "  if (node->lhs->ty->is_unsigned)",
+          "    println(\"  setbe %%al\");",
+          "  else",
+          "    println(\"  setle %%al\");",
+          "}",
+          "println(\"  movzb %%al, %%rax\");  // CRITICAL: zero-extend"
+        ]
+      },
+      "pattern": "cmp lhs, rhs; setcc al; movzb al, rax",
+      "critical_insight": "SETcc only sets the low byte (AL). Upper bytes of RAX contain garbage. MUST use MOVZX (movzb) to zero-extend before using as 64-bit value.",
+      "byte_encoding": {
+        "setcc": "0x0F 0x9X (X = condition code: E=0x94, NE=0x95, L=0x9C, LE=0x9E, G=0x9F, GE=0x9D)",
+        "movzb_al_to_rax": "0x48 0x0F 0xB6 0xC0 (REX.W + MOVZX RAX, AL)"
+      },
+      "current_codegen_rs_status": "Manually added MOVZX bytes in emit_compare, but should be encoder method movzx_rr"
+    },
+    
+    "multiplication": {
+      "chibicc_code": {
+        "line_1121": "println(\"  imul %s, %s\", di, ax);"
+      },
+      "pattern": "imul destination, source",
+      "description": "Signed multiply: result in destination register",
+      "encoder_check": "Verify imul_rr in encoder.rs emits correct bytes"
+    },
+    
+    "division": {
+      "chibicc_code": {
+        "lines_1123-1138": [
+          "if (node->ty->is_unsigned) {",
+          "  println(\"  mov $0, %s\", dx);",
+          "  println(\"  div %s\", di);",
+          "} else {",
+          "  if (node->lhs->ty->size == 8)",
+          "    println(\"  cqo\");",
+          "  else",
+          "    println(\"  cdq\");",
+          "  println(\"  idiv %s\", di);",
+          "}",
+          "if (node->kind == ND_MOD)",
+          "  println(\"  mov %%rdx, %%rax\");"
+        ]
+      },
+      "pattern_signed_64bit": "cqo; idiv divisor",
+      "pattern_signed_32bit": "cdq; idiv divisor",
+      "pattern_unsigned": "mov $0, %%rdx; div divisor",
+      "mod_result": "mov %%rdx, %%rax (remainder in RDX)",
+      "byte_encoding": {
+        "cqo": "0x48 0x99 (REX.W + CDQ)",
+        "cdq": "0x99",
+        "idiv": "0xF7 /7 (IDIV r/m64)"
+      },
+      "current_codegen_rs_status": "Has cqo and idiv_r, need to verify encoding correctness"
+    },
+    
+    "if_else_jumps": {
+      "chibicc_code": {
+        "lines_1192-1203": [
+          "int c = count();",
+          "gen_expr(node->cond);",
+          "cmp_zero(node->cond->ty);",
+          "println(\"  je  .L.else.%d\", c);",
+          "gen_stmt(node->then);",
+          "println(\"  jmp .L.end.%d\", c);",
+          "println(\".L.else.%d:\", c);",
+          "if (node->els)",
+          "  gen_stmt(node->els);",
+          "println(\".L.end.%d:\", c);"
+        ]
+      },
+      "pattern": "gen_expr(cond); cmp_zero; je .L.else.N; gen_expr(then); jmp .L.end.N; .L.else.N: gen_expr(els); .L.end.N:",
+      "label_format": ".L.name.N (N = counter)",
+      "current_codegen_rs_status": "Uses block IDs and pending_jumps patching - different approach but should work"
+    },
+    
+    "loop_jumps": {
+      "chibicc_code": {
+        "lines_1205-1221": [
+          "int c = count();",
+          "if (node->init)",
+          "  gen_stmt(node->init);",
+          "println(\".L.begin.%d:\", c);",
+          "if (node->cond) {",
+          "  gen_expr(node->cond);",
+          "  cmp_zero(node->cond->ty);",
+          "  println(\"  je %s\", node->brk_label);",
+          "}",
+          "gen_stmt(node->body);",
+          "if (node->inc)",
+          "  gen_expr(node->inc);",
+          "println(\"  jmp .L.begin.%d\", c);",
+          "println(\"%s:\", node->brk_label);"
+        ]
+      },
+      "pattern": ".L.begin.N: gen_expr(cond); je .L.end.N; gen_expr(body); gen_expr(inc); jmp .L.begin.N; .L.end.N:",
+      "current_codegen_rs_status": "Should be similar to if/else pattern"
+    }
+  },
+  
+  "encoder_methods_needed_in_encoder_rs": {
+    "movzx_rr": {
+      "description": "MOVZX r64, r8 - zero-extend 8-bit register to 64-bit",
+      "signature": "pub fn movzx_rr(&mut self, dst: Reg64, src: Reg64)",
+      "encoding": "0x48 0x0F 0xB6 /r (REX.W + MOVZX r64, r/m8)",
+      "critical_for": "SETcc results - MUST zero-extend AL to RAX before using as 64-bit value",
+      "implementation": "Currently manually emitting bytes in emit_compare - should be encoder method"
+    },
+    "movsx_rr": {
+      "description": "MOVSX r64, r8 - sign-extend 8-bit register to 64-bit",
+      "signature": "pub fn movsx_rr(&mut self, dst: Reg64, src: Reg64)",
+      "encoding": "0x48 0x0F 0xBE /r (REX.W + MOVSX r64, r/m8)",
+      "use_case": "Signed comparisons where result needs sign extension"
+    },
+    "cqo": {
+      "description": "CQO - sign-extend RAX to RDX:RAX (64-bit)",
+      "signature": "pub fn cqo(&mut self)",
+      "encoding": "0x48 0x99 (REX.W + CDQ)",
+      "use_case": "IDIV 64-bit - dividend in RDX:RAX"
+    },
+    "cdq": {
+      "description": "CDQ - sign-extend EAX to EDX:EAX (32-bit)",
+      "signature": "pub fn cdq(&mut self)",
+      "encoding": "0x99",
+      "use_case": "IDIV 32-bit - dividend in EDX:EAX"
+    }
+  },
+  
+  "fixes_needed_in_codegen_rs": {
+    "1_add_movzx_method": {
+      "file": "encoder.rs",
+      "add_method": "pub fn movzx_rr(&mut self, dst: Reg64, src: Reg64) { self.rex_w(dst, src); self.emit(0x0F); self.emit(0xB6); self.modrm(0b11, dst.code(), src.code()); }",
+      "replace_manual_bytes": "In emit_compare, replace manual byte emission with self.encoder.movzx_rr(Reg64::RAX, Reg64::RAX)"
+    },
+    "2_verify_imul_encoding": {
+      "file": "encoder.rs",
+      "check": "imul_rr should emit 0x48 0x0F 0xAF /r for 64-bit",
+      "test": "Test multiplication with test_mul.c"
+    },
+    "3_verify_idiv_encoding": {
+      "file": "encoder.rs",
+      "check": "idiv_r should emit 0xF7 /7 for 64-bit",
+      "test": "Test division with individual test"
+    },
+    "4_check_jump_patching": {
+      "file": "codegen.rs",
+      "verify": "pending_jumps patching works correctly for forward jumps",
+      "compare_with_chibicc": "Chibicc uses direct label emission (.L.N) during generation, codegen.rs uses patching - both valid approaches"
+    }
+  },
+  
+  "test_strategy": {
+    "arithmetic_individual": "Test each operation (add, sub, mul, div, mod) separately with simple C programs",
+    "comparison_individual": "Test each comparison (eq, ne, lt, le, gt, ge) with simple if statements",
+    "control_flow": "Test if/else and loops with known conditions",
+    "debug_output": "Add hex dump of generated code to verify instruction encoding"
+  },
+  
+  "summary": {
+    "chibicc_key_insights": [
+      "SETcc MUST be followed by MOVZX to zero-extend result to full register",
+      "IDIV requires CQO/CDQ before to sign-extend dividend",
+      "Labels use .L.name.N format with counter for uniqueness",
+      "All comparisons follow pattern: cmp; setcc; movzb"
+    ],
+    "current_codegen_rs_gaps": [
+      "Missing movzx_rr method in encoder.rs",
+      "Manual byte emission for MOVZX in emit_compare (should use encoder method)",
+      "Need to verify IMUL/IDIV encodings are correct",
+      "Jump patching approach differs from chibicc but should work"
+    ],
+    "priority_fixes": [
+      "1. Add movzx_rr to encoder.rs",
+      "2. Replace manual MOVZX bytes with encoder method call",
+      "3. Test arithmetic operations individually",
+      "4. Test comparisons individually"
+    ]
+  }
+}

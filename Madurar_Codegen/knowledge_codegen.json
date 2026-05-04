@@ -1,0 +1,57 @@
+{
+  "imul": {
+    "pattern": "imul %s, %s",
+    "description": "Signed multiply: imul destination, source. Result in destination register.",
+    "example": "imul %rdi, %rax  ; rax = rax * rdi"
+  },
+  "idiv": {
+    "pattern": "idiv %s",
+    "description": "Signed divide: idiv divisor. RDX:RAX / divisor -> quotient in RAX, remainder in RDX.",
+    "prelude_64bit": "cqo  ; Sign-extend RAX to RDX:RAX",
+    "prelude_32bit": "cdq  ; Sign-extend EAX to EDX:EAX",
+    "example": "cqo; idiv %rdi  ; RDX:RAX / RDI -> RAX=quotient, RDX=remainder"
+  },
+  "setcc": {
+    "pattern": "setcc %al",
+    "description": "Set byte on condition. Sets AL to 1 if condition true, 0 if false.",
+    "variants": {
+      "sete": "sete %al  ; Set if equal (ZF=1)",
+      "setne": "setne %al  ; Set if not equal (ZF=0)",
+      "setl": "setl %al  ; Set if less (signed, SF!=OF)",
+      "setle": "setle %al  ; Set if less or equal (signed, SF!=OF or ZF=1)",
+      "setg": "setg %al  ; Set if greater (signed, SF=OF and ZF=0)",
+      "setge": "setge %al  ; Set if greater or equal (signed, SF=OF)",
+      "setb": "setb %al  ; Set if below (unsigned, CF=1)",
+      "setbe": "setbe %al  ; Set if below or equal (unsigned, CF=1 or ZF=1)",
+      "seta": "seta %al  ; Set if above (unsigned, CF=0 and ZF=0)",
+      "setae": "setae %al  ; Set if above or equal (unsigned, CF=0)"
+    },
+    "postlude": "movzb %al, %rax  ; Zero-extend AL to RAX (important!)",
+    "example": "cmp %rdi, %rax; setl %al; movzb %al, %rax  ; RAX = (RAX < RDI) ? 1 : 0"
+  },
+  "jmp_labels": {
+    "pattern": "jmp .L.label",
+    "description": "Unconditional jump to label. Labels are .L.name format.",
+    "conditional_jumps": {
+      "je": "je .L.label  ; Jump if equal (ZF=1)",
+      "jne": "jne .L.label  ; Jump if not equal (ZF=0)",
+      "jl": "jl .L.label  ; Jump if less (signed)",
+      "jle": "jle .L.label  ; Jump if less or equal (signed)",
+      "jg": "jg .L.label  ; Jump if greater (signed)",
+      "jge": "jge .L.label  ; Jump if greater or equal (signed)",
+      "jb": "jb .L.label  ; Jump if below (unsigned)",
+      "jbe": "jbe .L.label  ; Jump if below or equal (unsigned)",
+      "ja": "ja .L.label  ; Jump if above (unsigned)",
+      "jae": "jae .L.label  ; Jump if above or equal (unsigned)"
+    },
+    "label_definition": ".L.label:",
+    "example_if_else": "je .L.else.1; ...; jmp .L.end.1; .L.else.1: ...; .L.end.1:",
+    "example_loop": ".L.begin.1: ...; je .L.end.1; ...; jmp .L.begin.1; .L.end.1:"
+  },
+  "chibicc_key_insights": {
+    "comparison_pattern": "cmp %s, %s; setcc %%al; movzb %%al, %%rax",
+    "if_else_pattern": "gen_expr(cond); cmp_zero; je .L.else.N; gen_expr(then); jmp .L.end.N; .L.else.N: gen_expr(els); .L.end.N:",
+    "loop_pattern": ".L.begin.N: gen_expr(cond); je .L.end.N; gen_expr(body); jmp .L.begin.N; .L.end.N:",
+    "critical_note": "SETcc only sets the low byte (AL). Must use MOVZX or MOVZB to zero-extend to full register before using as 64-bit value."
+  }
+}

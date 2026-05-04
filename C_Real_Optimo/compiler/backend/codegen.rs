@@ -209,7 +209,7 @@ impl Codegen {
             IrInstr::Load { dst, ptr } => {
                 // For simple codegen with direct var storage, load from slot directly
                 if let IrValue::Reg(r) = ptr {
-                    self.load_var(Reg64::RAX, r);
+                    self.load_var(Reg64::RAX, *r);
                     self.store_var(*dst, Reg64::RAX);
                 } else {
                     self.load_value(Reg64::RAX, ptr);
@@ -291,9 +291,11 @@ impl Codegen {
         self.load_value(Reg64::RAX, lhs);
         self.load_value(Reg64::RCX, rhs);
         self.encoder.cmp_rr(Reg64::RAX, Reg64::RCX);
-        // XOR to clear RAX, then SETcc to AL, store to stack
+        // XOR to clear RAX, then SETcc to AL, then MOVZX to zero-extend to full RAX
         self.encoder.xor_rr(Reg64::RAX, Reg64::RAX);
         self.encoder.setcc(cc, Reg64::RAX);
+        // MOVZX AL to RAX (zero-extend) - CRITICAL for SETcc
+        self.encoder.movzx_rr(Reg64::RAX, Reg64::RAX);
         self.store_var(dst, Reg64::RAX);
     }
  
