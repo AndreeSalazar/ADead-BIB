@@ -19,3 +19,5 @@ pub use middle::ub_detector::UbDetector;
 pub use backend::codegen::Codegen;
 pub use backend::pe::PeBuilder;
 pub use backend::elf::ElfBuilder;
+pub use backend::coff_reader::CoffObject;
+pub use backend::bridge::BridgeLinker;

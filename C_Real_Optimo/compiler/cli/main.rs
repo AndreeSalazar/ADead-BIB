@@ -15,6 +15,7 @@ use adeb_compiler::middle::ub_detector::UbDetector;
 use adeb_compiler::backend::codegen::Codegen;
 use adeb_compiler::backend::pe::PeBuilder;
 use adeb_compiler::backend::elf::ElfBuilder;
+use adeb_compiler::backend::bridge::BridgeLinker;
 
 const VERSION: &str = "12.0.0";
 
@@ -25,6 +26,7 @@ struct Options {
     target: Target,
     strict: bool,
     step: bool,
+    link_objs: Vec<String>,  // .obj files to link (from ASM-BIB)
 }
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -87,6 +89,8 @@ fn parse_options(args: &[String]) -> Options {
                 };
                 i += 2;
             }
+            "--link-obj" if i + 1 < args.len() => { opts.link_objs.push(args[i+1].clone()); i += 2; }
+            arg if arg.ends_with(".obj") => { opts.link_objs.push(arg.to_string()); i += 1; }
             _ => i += 1,
         }
     }
@@ -158,25 +162,61 @@ fn compile_pipeline(opts: &Options) {
     let mut codegen = Codegen::new();
     let code = codegen.generate(&ir);
 
+    // Bridge: if --link-obj specified, merge ASM-BIB .obj files
+    let (final_code, final_data) = if !opts.link_objs.is_empty() {
+        println!("{} bytes (pre-bridge)", code.len());
+        println!("\x1b[36m  [BRIDGE]\x1b[0m Linking {} .obj file(s)...", opts.link_objs.len());
+
+        let mut bridge = BridgeLinker::new(
+            code,
+            codegen.data_section,
+            codegen.external_calls.clone(),
+            codegen.func_offsets.clone(),
+        );
+
+        for obj_path in &opts.link_objs {
+            let p = Path::new(obj_path);
+            match bridge.load_obj(p) {
+                Ok(()) => println!("    ✓ {}", obj_path),
+                Err(e) => {
+                    eprintln!("    ✗ {}: {}", obj_path, e);
+                    process::exit(1);
+                }
+            }
+        }
+
+        let result = bridge.link();
+        println!("    {} ASM functions linked, {} unresolved",
+            result.total_asm_functions, result.unresolved.len());
+        if !result.unresolved.is_empty() && opts.step {
+            for u in &result.unresolved {
+                eprintln!("      unresolved: {}", u);
+            }
+        }
+        (result.code, result.data)
+    } else {
+        (code, codegen.data_section)
+    };
+
     let bin: Vec<u8> = match opts.target {
         Target::PeExe | Target::PeDll => {
             let mut pe = PeBuilder::new().console();
-            pe.code = code;
-            pe.data = codegen.data_section;
+            pe.code = final_code;
+            pe.data = final_data;
             pe.build()
         }
         Target::Elf | Target::ElfSo => {
             let mut elf = ElfBuilder::new();
-            elf.code = code;
-            elf.data = codegen.data_section;
+            elf.code = final_code;
+            elf.data = final_data;
             if opts.target == Target::ElfSo { elf = elf.pie(); }
             elf.build()
         }
         Target::Flat | Target::AdebOs => {
             // Bare-metal: solo el code, sin headers. Entry en offset 0.
             // Para el OS Rust del usuario.
-            let mut bin = code.clone();
-            bin.extend_from_slice(&codegen.data_section);
+            let mut bin = final_code.clone();
+            bin.extend_from_slice(&final_data);
             bin
         }
     };
@@ -289,6 +329,7 @@ fn print_usage() {
     println!("");
     println!("USAGE:");
     println!("  adB cc <file.c> [-o out] [--dll|--so|--elf|--flat] [-Wstrict] [-step]");
+    println!("  adB cc <file.c> --link-obj stdlib.obj   Link with ASM-BIB .obj");
     println!("  adB cxx <file.cpp> [-o out]");
     println!("  adB run <file.c>            Compile and run");
     println!("  adB step <file.c>           Show pipeline stages");
