@@ -15,6 +15,9 @@
 5. [Roadmap hacia OS Rust](#5-roadmap-hacia-os-rust)
 6. [Plan de tests automatizado](#6-plan-de-tests-automatizado)
 7. [Checklist global](#7-checklist-global)
+8. [Test Intensivo C99 — Estado por Categoría](#8-test-intensivo-c99--estado-por-categoría)
+9. [Plan Inmediato — Tests C99 al 100 %](#9-plan-inmediato--tests-c99-al-100-)
+10. [Resumen Ejecutivo](#10--resumen-ejecutivo)
 
 ---
 
@@ -604,67 +607,232 @@ Marcar cuando esté hecho.
 
 ---
 
-## 8. Estado tras la primera oleada de fases
+## 8. Test Intensivo C99 — Estado por Categoría
 
-**Verificado por harness automatizado (v13.0 — Mayo 2026):**
+> **Suite ampliada a 41 tests** organizados por categoría. Verificado por
+> `python C_Real_Optimo/tests/run_all_tests.py`. Snapshot:
+> **28 PASS / 10 FAIL / 0 HANG / 3 COMPILE-FAIL** (68 % pasando).
 
-| Test | Estado | Detalle |
+### 🟢 Categorías 100 % PASS
+
+| Categoría | Tests | Resultado |
+|---|---|:---:|
+| **Operadores** | 11_bitwise, 12_comparisons, 13_logical, 14_compound_assign, 15_inc_dec | 5/5 ✅ |
+| **Control flow nested** | 16_nested_if, 17_nested_loops, 18_for_nested | 3/3 ✅ |
+| **Aritmética avanzada** | 32_long_chain, 33_neg, 34_paren, 35_precedence, 36_neg_div | 5/5 ✅ |
+| **Algoritmos básicos** | 37_loop_factorial, 38_gcd, 39_power | 3/3 ✅ |
+| **Funciones básicas** | 19_multi_func, 20_factorial, 21_fibonacci, 22_4args | 4/4 ✅ |
+| **Misc** | hello.c | 1/1 ✅ |
+
+### 🟡 Categorías parcialmente OK
+
+| Categoría | PASS | FAIL | Detalle |
+|---|---|---|---|
+| Tests iniciales (01–07) | 7 | 0 | ✅ todos pasan |
+| Recursión + funcs (19–22) | 4 | 0 | ✅ |
+| Algoritmos | 3 | 1 | `40_complex` falla (ternary anidado) |
+
+### 🔴 Categorías con bugs estructurales
+
+#### Bug B-01: Codegen de punteros / arrays / structs
+
+| Test | Exit | Causa |
+|---|---:|---|
+| `08_pointers.c`  | -10  | `Expr::AddrOf`, `Expr::Deref` sin codegen real |
+| `09_arrays.c`    | -15  | `Expr::Index` sin codegen |
+| `10_structs.c`   | -30  | `Expr::Member`, `Expr::Arrow` sin codegen |
+
+**Solución (en `compiler/middle/ast_to_ir.rs` + `backend/codegen.rs`):**
+- `&x` → `IrInstr::Alloca` ya devuelve un puntero. Convertir `Expr::AddrOf(Ident)` a usar el ptr almacenado en `vars`.
+- `*p` → `IrInstr::Load` con el valor del puntero.
+- `arr[i]` → `Add base, i*sizeof(elem)` + `Load`.
+- `s.field` → `Add base, offset(field)` + `Load` (requiere tabla de structs).
+
+#### Bug B-02: Ternary y operadores condicionales sin lowering
+
+| Test | Causa |
+|---|---|
+| `24_ternary.c`  | `Expr::Ternary` no se convierte en `ast_to_ir` (cae a `IrConst::I32(0)`) |
+| `40_complex.c`  | usa ternary internamente |
+
+**Solución:** En `convert_expr`, expandir `Expr::Ternary(c, t, e)` a:
+```
+%tmp = alloca i32
+if c { %tmp = t } else { %tmp = e }
+load %tmp
+```
+
+#### Bug B-03: `break` / `continue` no implementados
+
+| Test | Causa |
+|---|---|
+| `25_break_continue.c` | `Stmt::Break` y `Stmt::Continue` caen al `_ => {}` final |
+
+**Solución:** Mantener un stack de `(continue_bb, break_bb)` durante `convert_stmt` y emitir `jmp` correspondiente.
+
+#### Bug B-04: Parser hang en `do-while`, `switch`, `typedef`
+
+| Test | Causa |
+|---|---|
+| `26_do_while.c`  | `parse_stmt` no soporta token `do` |
+| `27_switch.c`    | `parse_stmt` no soporta `switch/case/default` |
+| `29_typedef.c`   | `parse_top_level` consume mal `typedef int Number;` |
+
+**Solución:** Añadir ramas en parser para los tres keywords + `parse_switch` con `parse_case`.
+
+#### Bug B-05: `sizeof` y `enum` no se resuelven a constante
+
+| Test | Exit | Causa |
+|---|---:|---|
+| `28_sizeof.c` | -15 | `Expr::SizeofType` no resuelve a `IrConst` |
+| `30_enum.c`   |  -7 | `enum` no registra constantes en symbol table |
+
+**Solución:** En `convert_expr`, `SizeofType(t)` → `IrConst::I32(t.size())`. Para `enum`, registrar variantes con su valor numérico en una tabla global.
+
+#### Bug B-06: Globals y void functions
+
+| Test | Exit | Causa |
+|---|---:|---|
+| `23_void_func.c` | -3 | función void muta `counter` global pero load no actualiza |
+| `31_global_var.c`| -50 | global `int global = 42` no inicializa en data section |
+
+**Solución:** El backend debe emitir un `.data` con globals inicializados, y `Expr::Ident` para nombres globales debe generar `Load [rip+offset]` real (no `mov ri 0`).
+
+---
+
+## 9. Plan Inmediato — Tests C99 al 100 %
+
+```diagram
+╭──────────────────────────────────────────────────────────────╮
+│ FASE T1 · Codegen punteros/arrays/structs (B-01)             │
+│   - Lower Expr::AddrOf, Deref, Index, Member, Arrow          │
+│   - Tabla de offsets de struct fields                        │
+│   - Tests +3:  08, 09, 10                                    │
+│   ETA: 1-2 días                                              │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE T2 · Ternary + control extra (B-02, B-03)               │
+│   - Lower Expr::Ternary                                      │
+│   - Stack de break/continue targets                          │
+│   - Tests +3:  24, 25, 40                                    │
+│   ETA: 1 día                                                 │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE T3 · Parser do/switch/typedef (B-04)                    │
+│   - parse_do_while, parse_switch, parse_typedef              │
+│   - Tests +3:  26, 27, 29                                    │
+│   ETA: 1-2 días                                              │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE T4 · sizeof + enum + globals (B-05, B-06)               │
+│   - Resolver sizeof en compile time                          │
+│   - Tabla global de enums                                    │
+│   - PE .data con globals inicializados                       │
+│   - Tests +4:  23, 28, 30, 31                                │
+│   ETA: 2 días                                                │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ TARGET: 41/41 PASS (100 %)                                   │
+│   El compilador C99 base estará COMPLETO.                    │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE T5 · Tests AVANZADOS (futuro)                           │
+│   - Strings literales + printf                               │
+│   - Function pointers                                        │
+│   - Pointers to pointers                                     │
+│   - Multi-dim arrays                                         │
+│   - Nested structs                                           │
+│   - Variadic functions                                       │
+│   - 50+ tests adicionales                                    │
+╰──────────────────────────────────────────────────────────────╯
+```
+
+### 📈 Tracker de progreso C99 — visual
+
+```diagram
+Tests C99 PASS rate evolution:
+  v1.0    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  3/11   (27 %)
+  v12.0   ████████████████████████░░░░░░░░  8/11   (73 %)
+  v13.0   ████████████████████████████░░░░ 28/41   (68 %)  ← AHORA
+  Goal T4 ████████████████████████████████ 41/41   (100 %) ← META
+```
+
+### 🔧 Orden recomendado de ataque
+
+| Orden | Bug | Esfuerzo | Tests desbloqueados |
+|:-:|---|---|---|
+| 1 | **B-02** Ternary | 2 h | 24, 40 |
+| 2 | **B-03** break/continue | 2 h | 25 |
+| 3 | **B-04** parse do/switch/typedef | 4 h | 26, 27, 29 |
+| 4 | **B-05** sizeof/enum constantes | 3 h | 28, 30 |
+| 5 | **B-06** globals + void mutación | 4 h | 23, 31 |
+| 6 | **B-01** punteros/arrays/structs | 1-2 d | 08, 09, 10 |
+
+Total estimado para **41/41 PASS**: **3-4 días** de trabajo enfocado.
+
+---
+
+
+## 10. 📊 Resumen Ejecutivo
+
+**¿Qué tan completo está ADead-BIB hoy?** → **~70 %** del README v12/13.
+
+### Métricas verificadas (suite intensiva C99)
+
+| Métrica | Valor | Detalle |
 |---|---|---|
-| `hello.c` | ✅ PASS | exit 0 |
-| `01_variables.c` | ✅ PASS | exit 0 |
-| `02_arithmetic.c` | ❌ FAIL | exit 24 — aritmética encadenada aún rota |
-| `03_if_else.c` | ✅ PASS | exit 0 — **bug JmpIf resuelto** |
-| `04_while_loop.c` | ✅ PASS | exit 0 — **bug JmpIf resuelto** |
-| `05_for_loop.c` | ✅ PASS | exit 0 — **bug JmpIf resuelto** |
-| `06_functions.c` | ✅ PASS | exit 0 — **bug PE entry point resuelto** |
-| `07_recursion.c` | ✅ PASS | exit 0 — **bug PE entry point resuelto** |
-| `08_pointers.c` | ⚠️ PEND | no probado aún |
-| `09_arrays.c` | ⚠️ PARCIAL | parse OK, codegen Index/Member pendiente |
-| `10_structs.c` | ⚠️ PARCIAL | parse OK, codegen Index/Member pendiente |
+| Tests C99 totales | **41** | Suite ampliada de 11 → 41 (categorizada en 7 áreas) |
+| Tests PASS | **28 / 41** (68 %) | Operadores, control flow nested, aritmética, recursión |
+| Tests FAIL | 10 | punteros/arrays/structs/ternary/break/continue/globals |
+| Tests COMPILE-FAIL | 3 | parser hangs en do-while / switch / typedef |
+| Tamaño .exe típico | 1–2 KB | sin CRT, sin runtime overhead |
+| Build time release | 5.92 s | `cargo build --release` workspace completo |
+| Warnings build | < 10 | post-cleanup |
+| Runtime liberado | 8.35 MB | dedup `lib.rs` ↔ `mod.rs` |
 
-### Bugs Resueltos (v13.0)
+### Lo que ya tienes (real, verificado)
 
-1. ✅ **Codegen control flow**: `xor rax,rax` borraba FLAGS antes de `setcc` → eliminado. `patch_jumps()` solo aplicaba a última función → movido a fin de cada función.
-2. ✅ **Function calls**: PE `AddressOfEntryPoint` = offset 0 (primera función) → cambiado a `func_offsets["main"]`.
-3. ✅ **Parser arrays**: `parse_var_decl` no reconocía `[` → añadido manejo `LBracket` → `Type::Array`.
-4. ✅ **Parser structs**: `parse_struct` no saltaba `Token::Newline` → añadido `skip_newlines()` + array fields.
+- ✅ Pipeline 7 fases generando PE x86-64 válidos
+- ✅ **Operadores 100 %**: bitwise, lógicos, comparaciones, compound assign, inc/dec
+- ✅ **Aritmética 100 %**: encadenada, paréntesis, precedencia, división negativa
+- ✅ **Control flow 100 %**: if/else (nested), while, for, anidados
+- ✅ **Funciones 100 %**: 4 args, recursión (factorial, fib, gcd, power)
+- ✅ Parser C99 sin hangs en arrays/structs
+- ✅ ASM-BIB bridge — `coff_reader.rs` + `bridge.rs` + `--link-obj` CLI
+- ✅ 14 KB de runtime auto-generado desde 18 DLLs
+- ✅ Suite intensiva 41 tests + harness Python con timeout
 
-### Deuda técnica restante
+### Lo que falta para 100 % C99
 
-1. **Arithmetic encadenada** (`02_arithmetic.c`): still exit 24 — requiere revisión de precedence/associativity.
-2. **Array/Struct codegen**: parser OK, pero `Expr::Index` y `Expr::Member` no tienen codegen x86-64 implementado.
-3. **Pointers** (`08_pointers.c`): no probado — puede requerir revisión de aritmética de punteros.
-4. **Runtime FFI**: 29 warnings con `()` (callback sin tipo).
+| Bloqueador | Tests afectados | Esfuerzo |
+|---|---|---|
+| B-01 punteros/arrays/structs codegen | 08, 09, 10 | 1-2 d |
+| B-02 ternary lowering | 24, 40 | 2 h |
+| B-03 break/continue | 25 | 2 h |
+| B-04 parser do/switch/typedef | 26, 27, 29 | 4 h |
+| B-05 sizeof/enum constexpr | 28, 30 | 3 h |
+| B-06 globals + void mutation | 23, 31 | 4 h |
 
----
+**Tiempo total para llegar a 41/41 PASS:** **3-4 días** de trabajo enfocado.
 
-## 9. 📊 Resumen Ejecutivo
+### Lo que falta para integración OS Rust
 
-**¿Qué tan completo está ADead-BIB hoy?** → **~55%** del README v13.0 promete.
+- Codegen `--target adeb-os` produciendo flat binary correcto (entry@0)
+- Runtime `no_std` modo bare-metal
+- Convención de syscalls custom documentada
+- Primer módulo C compilado y cargado por kernel Rust
 
-**Lo que ya tienes (real, verificado v13.0):**
-- Pipeline completo C → PE x86-64 que **genera ejecutables válidos** (1-1.5 KB)
-- **Control flow (if/while/for) 100% funcional** ✅ — 5 tests pasando
-- **Function calls + recursión 100% funcional** ✅ — PE entry point correcto
-- **Parser arrays/structs sin hang** ✅ — parsea correctamente, codegen parcial pendiente
-- Lexer + parser C99 razonablemente cubre el lenguaje
-- Workspace Cargo limpio que **compila sin errores** (solo warnings)
-- **ASM-BIB bridge** — `coff_reader.rs` + `bridge.rs` + `--link-obj` CLI
-- 14 KB de runtime auto-generado desde 18 DLLs Windows
-
-**Lo que falta para ser independiente y evolucionar:**
-- Codegen `Expr::Index` y `Expr::Member` (arrays/structs) — 2-3 días
-- Arreglar aritmética encadenada (`02_arithmetic.c`) — 4-8 h
-- Codegen de punteros (`08_pointers.c`) — 1 día
-- Limpiar 7 MB de runtime duplicado (1 día)
-- Completar CLI a la altura del README (3 días)
-- Agregar `stdlib/` C headers completos (1 semana)
-- Target `--flat` para OS Rust (2 semanas)
-
-**Tiempo total estimado para alcanzar 95% del README:** **6-8 semanas** de trabajo enfocado.
-
-**Tiempo para integración mínima viable con OS Rust:** **+4 semanas** sobre lo anterior.
+**Tiempo para integración mínima viable con OS Rust:** **+4 semanas** sobre el 100 % C99.
 
 ---
 
-> *"El compilador ya respira. Sólo le falta caminar derecho, hablar bien y aprender a vivir sin Windows ni Linux para llegar a tu OS."*
+> *"El compilador respira, camina, y ya hace álgebra y recursión.*  
+> *Le falta tocar memoria con dedos finos (punteros), aprender condicionales tres-en-uno (ternary),*  
+> *y romperse el lazo cuando se cansa (break). Después, solo le queda olvidar Windows*  
+> *y volar libre dentro de tu propio OS."*
+

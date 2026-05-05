@@ -18,6 +18,7 @@ ROOT = THIS_DIR.parent
 COMPILER = ROOT / "target" / "release" / "adB.exe"
 
 TESTS = [
+    # Categoría 1 — Tests originales (01-10)
     ("c99/01_variables.c",  0),
     ("c99/02_arithmetic.c", 0),
     ("c99/03_if_else.c",    0),
@@ -28,7 +29,44 @@ TESTS = [
     ("c99/08_pointers.c",   0),
     ("c99/09_arrays.c",     0),
     ("c99/10_structs.c",    0),
-    ("hello.c",             0),
+    # Categoría 2 — Operadores (11-15)
+    ("c99/11_bitwise.c",          0),
+    ("c99/12_comparisons.c",      0),
+    ("c99/13_logical.c",          0),
+    ("c99/14_compound_assign.c",  0),
+    ("c99/15_inc_dec.c",          0),
+    # Categoría 3 — Control flow (16-18, 24-27)
+    ("c99/16_nested_if.c",        0),
+    ("c99/17_nested_loops.c",     0),
+    ("c99/18_for_nested.c",       0),
+    ("c99/24_ternary.c",          0),
+    ("c99/25_break_continue.c",   0),
+    ("c99/26_do_while.c",         0),
+    ("c99/27_switch.c",           0),
+    # Categoría 4 — Funciones (19-23, 31)
+    ("c99/19_multi_func.c",       0),
+    ("c99/20_factorial.c",        0),
+    ("c99/21_fibonacci.c",        0),
+    ("c99/22_4args.c",            0),
+    ("c99/23_void_func.c",        0),
+    ("c99/31_global_var.c",       0),
+    # Categoría 5 — Tipos y declaraciones (28-30)
+    ("c99/28_sizeof.c",           0),
+    ("c99/29_typedef.c",          0),
+    ("c99/30_enum.c",             0),
+    # Categoría 6 — Aritmética avanzada (32-36)
+    ("c99/32_long_chain.c",       0),
+    ("c99/33_neg.c",              0),
+    ("c99/34_paren.c",            0),
+    ("c99/35_precedence.c",       0),
+    ("c99/36_neg_div.c",          0),
+    # Categoría 7 — Algoritmos (37-40)
+    ("c99/37_loop_factorial.c",   0),
+    ("c99/38_gcd.c",              0),
+    ("c99/39_power.c",            0),
+    ("c99/40_complex.c",          0),
+    # Misc
+    ("hello.c",                   0),
 ]
 
 TIMEOUT = 5  # seconds
