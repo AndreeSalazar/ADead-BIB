@@ -611,7 +611,9 @@ Marcar cuando esté hecho.
 
 > **Suite ampliada a 41 tests** organizados por categoría. Verificado por
 > `python C_Real_Optimo/tests/run_all_tests.py`. Snapshot:
-> **28 PASS / 10 FAIL / 0 HANG / 3 COMPILE-FAIL** (68 % pasando).
+> **30 PASS / 8 FAIL / 0 HANG / 3 COMPILE-FAIL** (73 % pasando · ↑ desde 68 %).
+>
+> **Última fase aplicada:** ✅ **B-02 — Ternary lowering** (FASE T2). Tests 24 y 40 ahora PASS.
 
 ### 🟢 Categorías 100 % PASS
 
@@ -648,19 +650,23 @@ Marcar cuando esté hecho.
 - `arr[i]` → `Add base, i*sizeof(elem)` + `Load`.
 - `s.field` → `Add base, offset(field)` + `Load` (requiere tabla de structs).
 
-#### Bug B-02: Ternary y operadores condicionales sin lowering
+#### ~~Bug B-02: Ternary y operadores condicionales sin lowering~~ ✅ RESUELTO
 
-| Test | Causa |
+| Test | Estado |
 |---|---|
-| `24_ternary.c`  | `Expr::Ternary` no se convierte en `ast_to_ir` (cae a `IrConst::I32(0)`) |
-| `40_complex.c`  | usa ternary internamente |
+| `24_ternary.c`  | ✅ PASS — exit 0 |
+| `40_complex.c`  | ✅ PASS — exit 0 |
 
-**Solución:** En `convert_expr`, expandir `Expr::Ternary(c, t, e)` a:
+**Fix aplicado** en [`compiler/middle/ast_to_ir.rs`](file:///c%3A/Users/andre/OneDrive/Documentos/ADead-BIB/C_Real_Optimo/compiler/middle/ast_to_ir.rs):
+añadido brazo `Expr::Ternary(c, t, e)` que genera:
 ```
 %tmp = alloca i32
-if c { %tmp = t } else { %tmp = e }
-load %tmp
+if c { jmp then_bb } else { jmp else_bb }
+then_bb: store %tmp, t; jmp merge
+else_bb: store %tmp, e; jmp merge
+merge:   %r = load %tmp
 ```
+**Build:** OK · **Tests desbloqueados:** 24, 40 · **Tiempo real:** ~5 min
 
 #### Bug B-03: `break` / `continue` no implementados
 
@@ -758,20 +764,21 @@ load %tmp
 Tests C99 PASS rate evolution:
   v1.0    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  3/11   (27 %)
   v12.0   ████████████████████████░░░░░░░░  8/11   (73 %)
-  v13.0   ████████████████████████████░░░░ 28/41   (68 %)  ← AHORA
+  v13.0   ████████████████████████████░░░░ 28/41   (68 %)
+  T2 done █████████████████████████████░░░ 30/41   (73 %)  ← AHORA
   Goal T4 ████████████████████████████████ 41/41   (100 %) ← META
 ```
 
 ### 🔧 Orden recomendado de ataque
 
-| Orden | Bug | Esfuerzo | Tests desbloqueados |
-|:-:|---|---|---|
-| 1 | **B-02** Ternary | 2 h | 24, 40 |
-| 2 | **B-03** break/continue | 2 h | 25 |
-| 3 | **B-04** parse do/switch/typedef | 4 h | 26, 27, 29 |
-| 4 | **B-05** sizeof/enum constantes | 3 h | 28, 30 |
-| 5 | **B-06** globals + void mutación | 4 h | 23, 31 |
-| 6 | **B-01** punteros/arrays/structs | 1-2 d | 08, 09, 10 |
+| Orden | Bug | Esfuerzo | Tests desbloqueados | Estado |
+|:-:|---|---|---|:-:|
+| 1 | **B-02** Ternary | 2 h | 24, 40 | ✅ HECHO |
+| 2 | **B-03** break/continue | 2 h | 25 | ⏳ siguiente |
+| 3 | **B-04** parse do/switch/typedef | 4 h | 26, 27, 29 | ⏳ |
+| 4 | **B-05** sizeof/enum constantes | 3 h | 28, 30 | ⏳ |
+| 5 | **B-06** globals + void mutación | 4 h | 23, 31 | ⏳ |
+| 6 | **B-01** punteros/arrays/structs | 1-2 d | 08, 09, 10 | ⏳ |
 
 Total estimado para **41/41 PASS**: **3-4 días** de trabajo enfocado.
 

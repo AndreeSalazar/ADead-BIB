@@ -316,6 +316,56 @@ impl AstToIr {
                 val
             }
             
+            // ============================================================
+            // B-02 (FASE T2): Ternary lowering — `cond ? a : b`
+            // ============================================================
+            // Estrategia: alloca + if/else + store en ambos brazos +
+            // load del slot temporal en el bloque merge.
+            //
+            //   %tmp = alloca i32
+            //   if cond { jmp then_bb } else { jmp else_bb }
+            // then_bb:
+            //   store %tmp, then_val
+            //   jmp merge_bb
+            // else_bb:
+            //   store %tmp, else_val
+            //   jmp merge_bb
+            // merge_bb:
+            //   %result = load %tmp
+            // ============================================================
+            Expr::Ternary(cond, then_e, else_e) => {
+                // 1. Reservar slot temporal
+                let tmp = self.builder.alloca(IrType::I32);
+
+                // 2. Evaluar condición ANTES de crear los bloques
+                let cond_val = self.convert_expr(cond);
+
+                // 3. Crear bloques then / else / merge
+                let then_bb  = self.builder.new_block("ter_then");
+                let else_bb  = self.builder.new_block("ter_else");
+                let merge_bb = self.builder.new_block("ter_merge");
+
+                // 4. Branch condicional
+                self.builder.jmp_if(cond_val, then_bb, else_bb);
+
+                // 5. Brazo THEN
+                self.builder.set_block(then_bb);
+                let then_val = self.convert_expr(then_e);
+                self.builder.store(IrValue::Reg(tmp), then_val);
+                self.builder.jmp(merge_bb);
+
+                // 6. Brazo ELSE
+                self.builder.set_block(else_bb);
+                let else_val = self.convert_expr(else_e);
+                self.builder.store(IrValue::Reg(tmp), else_val);
+                self.builder.jmp(merge_bb);
+
+                // 7. Bloque merge: cargar el resultado
+                self.builder.set_block(merge_bb);
+                let result = self.builder.load(IrType::I32, IrValue::Reg(tmp));
+                IrValue::Reg(result)
+            }
+            
             _ => IrValue::Const(IrConst::I32(0)),
         }
     }
