@@ -8,11 +8,13 @@ use super::ast::*;
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    /// B-04: typedef registry — nombres reconocidos como tipos
+    typedefs: std::collections::HashSet<String>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0 }
+        Self { tokens, pos: 0, typedefs: std::collections::HashSet::new() }
     }
     
     fn peek(&self) -> &Token {
@@ -252,6 +254,8 @@ impl Parser {
         let ty = self.parse_type()?;
         let name = self.parse_ident()?;
         self.expect(Token::Semicolon)?;
+        // B-04: registrar nombre para que is_type_start lo reconozca
+        self.typedefs.insert(name.clone());
         Ok(TypedefDecl { ty, name })
     }
     
@@ -408,6 +412,56 @@ impl Parser {
             }
             Token::KwBreak => { self.advance(); self.expect(Token::Semicolon)?; Ok(Stmt::Break) }
             Token::KwContinue => { self.advance(); self.expect(Token::Semicolon)?; Ok(Stmt::Continue) }
+            // ============================================================
+            // B-04: do-while
+            // ============================================================
+            Token::KwDo => {
+                self.advance(); // consume 'do'
+                let body = Box::new(self.parse_stmt()?);
+                self.expect(Token::KwWhile)?;
+                self.expect(Token::LParen)?;
+                let cond = self.parse_expr()?;
+                self.expect(Token::RParen)?;
+                self.expect(Token::Semicolon)?;
+                Ok(Stmt::DoWhile(body, cond))
+            }
+            // ============================================================
+            // B-04: switch / case / default
+            // ============================================================
+            Token::KwSwitch => {
+                self.advance(); // consume 'switch'
+                self.expect(Token::LParen)?;
+                let scrutinee = self.parse_expr()?;
+                self.expect(Token::RParen)?;
+                self.expect(Token::LBrace)?;
+                let mut cases: Vec<SwitchCase> = Vec::new();
+                while !matches!(self.peek(), Token::RBrace | Token::Eof) {
+                    match self.peek() {
+                        Token::KwCase => {
+                            self.advance();
+                            let val = self.parse_expr()?;
+                            self.expect(Token::Colon)?;
+                            let mut stmts: Vec<Stmt> = Vec::new();
+                            while !matches!(self.peek(), Token::KwCase | Token::KwDefault | Token::RBrace | Token::Eof) {
+                                stmts.push(self.parse_stmt()?);
+                            }
+                            cases.push(SwitchCase { value: Some(val), stmts });
+                        }
+                        Token::KwDefault => {
+                            self.advance();
+                            self.expect(Token::Colon)?;
+                            let mut stmts: Vec<Stmt> = Vec::new();
+                            while !matches!(self.peek(), Token::KwCase | Token::KwDefault | Token::RBrace | Token::Eof) {
+                                stmts.push(self.parse_stmt()?);
+                            }
+                            cases.push(SwitchCase { value: None, stmts });
+                        }
+                        _ => { self.advance(); } // skip unexpected tokens
+                    }
+                }
+                self.expect(Token::RBrace)?;
+                Ok(Stmt::Switch(scrutinee, cases))
+            }
             Token::LBrace => Ok(Stmt::Block(self.parse_block()?)),
             Token::Semicolon => { self.advance(); Ok(Stmt::Empty) }
             _ => {
@@ -427,11 +481,18 @@ impl Parser {
     }
     
     fn is_type_start(&self) -> bool {
-        matches!(self.peek(), 
+        if matches!(self.peek(), 
             Token::KwVoid | Token::KwChar | Token::KwShort | Token::KwInt | Token::KwLong |
             Token::KwFloat | Token::KwDouble | Token::KwSigned | Token::KwUnsigned |
             Token::KwStruct | Token::KwUnion | Token::KwEnum | Token::KwConst
-        )
+        ) {
+            return true;
+        }
+        // B-04: identificador conocido como typedef
+        if let Token::Ident(name) = self.peek() {
+            return self.typedefs.contains(name);
+        }
+        false
     }
     
     // ============== EXPRESSIONS ==============

@@ -11,6 +11,10 @@ pub struct AstToIr {
     builder: IrBuilder,
     vars: HashMap<String, (IrReg, IrType)>,  // name -> (ptr, type)
     funcs: HashMap<String, IrType>,           // func name -> return type
+    /// B-03: stack de (continue_target, break_target) para loops
+    loop_stack: Vec<(BlockId, BlockId)>,
+    /// B-05: tabla de constantes enum (nombre → valor i64)
+    enums: HashMap<String, i64>,
 }
 
 impl AstToIr {
@@ -19,15 +23,29 @@ impl AstToIr {
             builder: IrBuilder::new(module_name),
             vars: HashMap::new(),
             funcs: HashMap::new(),
+            loop_stack: Vec::new(),
+            enums: HashMap::new(),
         }
     }
     
     pub fn convert(mut self, unit: &TranslationUnit) -> IrModule {
-        // First pass: register all functions
+        // First pass: register all functions, enums, and typedefs
         for item in &unit.items {
-            if let TopLevel::Func(f) = item {
-                let ret_ty = self.convert_type(&f.ret_type);
-                self.funcs.insert(f.name.clone(), ret_ty);
+            match item {
+                TopLevel::Func(f) => {
+                    let ret_ty = self.convert_type(&f.ret_type);
+                    self.funcs.insert(f.name.clone(), ret_ty);
+                }
+                TopLevel::Enum(e) => {
+                    // B-05: registrar variantes enum como constantes
+                    let mut val: i64 = 0;
+                    for (name, explicit) in &e.variants {
+                        if let Some(v) = explicit { val = *v; }
+                        self.enums.insert(name.clone(), val);
+                        val += 1;
+                    }
+                }
+                _ => {}
             }
         }
         
@@ -140,9 +158,12 @@ impl AstToIr {
                 let cond_val = self.convert_expr(cond);
                 self.builder.jmp_if(cond_val, body_bb, exit_bb);
                 
+                // B-03: continue → cond_bb, break → exit_bb
+                self.loop_stack.push((cond_bb, exit_bb));
                 self.builder.set_block(body_bb);
                 self.convert_stmt(body);
                 self.builder.jmp(cond_bb);
+                self.loop_stack.pop();
                 
                 self.builder.set_block(exit_bb);
             }
@@ -152,6 +173,7 @@ impl AstToIr {
                 
                 let cond_bb = self.builder.new_block("for_cond");
                 let body_bb = self.builder.new_block("for_body");
+                let inc_bb  = self.builder.new_block("for_inc");
                 let exit_bb = self.builder.new_block("for_exit");
                 
                 self.builder.jmp(cond_bb);
@@ -164,10 +186,119 @@ impl AstToIr {
                     self.builder.jmp(body_bb);
                 }
                 
+                // B-03: continue → inc_bb (no cond_bb), break → exit_bb
+                self.loop_stack.push((inc_bb, exit_bb));
                 self.builder.set_block(body_bb);
                 self.convert_stmt(body);
+                self.builder.jmp(inc_bb);
+                self.loop_stack.pop();
+                
+                self.builder.set_block(inc_bb);
                 if let Some(i) = inc { self.convert_expr(i); }
                 self.builder.jmp(cond_bb);
+                
+                self.builder.set_block(exit_bb);
+            }
+            
+            // ============================================================
+            // B-04: do-while
+            // ============================================================
+            Stmt::DoWhile(body, cond) => {
+                let body_bb = self.builder.new_block("do_body");
+                let cond_bb = self.builder.new_block("do_cond");
+                let exit_bb = self.builder.new_block("do_exit");
+                
+                self.builder.jmp(body_bb);
+                
+                self.loop_stack.push((cond_bb, exit_bb));
+                self.builder.set_block(body_bb);
+                self.convert_stmt(body);
+                self.builder.jmp(cond_bb);
+                self.loop_stack.pop();
+                
+                self.builder.set_block(cond_bb);
+                let cond_val = self.convert_expr(cond);
+                self.builder.jmp_if(cond_val, body_bb, exit_bb);
+                
+                self.builder.set_block(exit_bb);
+            }
+            
+            // ============================================================
+            // B-03: break / continue
+            // ============================================================
+            Stmt::Break => {
+                if let Some(&(_, brk)) = self.loop_stack.last() {
+                    self.builder.jmp(brk);
+                    // crear bloque sumidero después del break
+                    let dead = self.builder.new_block("after_break");
+                    self.builder.set_block(dead);
+                }
+            }
+            Stmt::Continue => {
+                if let Some(&(cont, _)) = self.loop_stack.last() {
+                    self.builder.jmp(cont);
+                    let dead = self.builder.new_block("after_continue");
+                    self.builder.set_block(dead);
+                }
+            }
+            
+            // ============================================================
+            // B-04: switch / case / default
+            // ============================================================
+            // Lower como cadena de if-else-if con comparación contra cada case.
+            // `break` salta a exit_bb. `default` toma el caso si nada matchea.
+            // ============================================================
+            Stmt::Switch(scrutinee, cases) => {
+                let scr_val = self.convert_expr(scrutinee);
+                // alloca temporal para guardar el valor (evitar re-evaluar)
+                let scr_tmp = self.builder.alloca(IrType::I32);
+                self.builder.store(IrValue::Reg(scr_tmp), scr_val);
+                
+                let exit_bb = self.builder.new_block("sw_exit");
+                
+                // Pre-crear bloques de cuerpo para cada case + default
+                let mut case_bbs: Vec<BlockId> = Vec::with_capacity(cases.len());
+                for (i, _) in cases.iter().enumerate() {
+                    case_bbs.push(self.builder.new_block(&format!("sw_body_{}", i)));
+                }
+                
+                // Encadenar los chequeos
+                let mut default_bb: Option<BlockId> = None;
+                for (i, case) in cases.iter().enumerate() {
+                    if let Some(val_expr) = &case.value {
+                        let case_val = self.convert_expr(val_expr);
+                        let scr_loaded = self.builder.load(IrType::I32, IrValue::Reg(scr_tmp));
+                        let cmp = self.builder.cmp_eq(IrValue::Reg(scr_loaded), case_val);
+                        let next_check_bb = self.builder.new_block(&format!("sw_check_{}", i + 1));
+                        self.builder.jmp_if(IrValue::Reg(cmp), case_bbs[i], next_check_bb);
+                        self.builder.set_block(next_check_bb);
+                    } else {
+                        // default: marcar para usar al final
+                        default_bb = Some(case_bbs[i]);
+                    }
+                }
+                // Si nada matcheó: ir a default si existe, si no a exit
+                if let Some(db) = default_bb {
+                    self.builder.jmp(db);
+                } else {
+                    self.builder.jmp(exit_bb);
+                }
+                
+                // Generar cuerpo de cada case (con fall-through implícito a siguiente case si no hay break)
+                self.loop_stack.push((exit_bb, exit_bb)); // break sale del switch
+                for (i, case) in cases.iter().enumerate() {
+                    self.builder.set_block(case_bbs[i]);
+                    for s in &case.stmts {
+                        self.convert_stmt(s);
+                    }
+                    // Fall-through al siguiente case (excepto el último)
+                    if i + 1 < case_bbs.len() {
+                        self.builder.jmp(case_bbs[i + 1]);
+                    } else {
+                        self.builder.jmp(exit_bb);
+                    }
+                }
+                self.loop_stack.pop();
                 
                 self.builder.set_block(exit_bb);
             }
@@ -187,12 +318,71 @@ impl AstToIr {
             }
             
             Expr::Ident(name) => {
+                // B-05: si es una variante enum, devolver constante
+                if let Some(&v) = self.enums.get(name) {
+                    return IrValue::Const(IrConst::I32(v as i32));
+                }
                 if let Some((ptr, ty)) = self.vars.get(name) {
                     let reg = self.builder.load(*ty, IrValue::Reg(*ptr));
                     IrValue::Reg(reg)
                 } else {
                     IrValue::Global(name.clone())
                 }
+            }
+            
+            // ============================================================
+            // B-05: sizeof
+            // ============================================================
+            Expr::SizeofType(t) => {
+                IrValue::Const(IrConst::I32(t.size() as i32))
+            }
+            Expr::SizeofExpr(_) => {
+                // Sin tracking de tipo de expr → fallback a 4 (int)
+                IrValue::Const(IrConst::I32(4))
+            }
+            
+            // ============================================================
+            // B-01: punteros — AddrOf y Deref
+            // ============================================================
+            Expr::AddrOf(inner) => {
+                // &x → devolver el ptr stack-slot directamente
+                if let Expr::Ident(name) = inner.as_ref() {
+                    if let Some(&(ptr, _)) = self.vars.get(name) {
+                        return IrValue::Reg(ptr);
+                    }
+                }
+                IrValue::Const(IrConst::I32(0))
+            }
+            Expr::Deref(inner) => {
+                // *p → load del valor apuntado
+                let ptr_val = self.convert_expr(inner);
+                let r = self.builder.load(IrType::I32, ptr_val);
+                IrValue::Reg(r)
+            }
+            
+            // ============================================================
+            // B-01: arrays — Index
+            // ============================================================
+            Expr::Index(base, idx) => {
+                // arr[i] = *(arr + i*sizeof(elem))
+                // Simplificación: asume elem = i32 (4 bytes)
+                let base_v = self.convert_expr(base);
+                let idx_v = self.convert_expr(idx);
+                let scaled = self.builder.mul(IrType::I64,
+                    idx_v, IrValue::Const(IrConst::I32(4)));
+                let addr = self.builder.add(IrType::I64,
+                    base_v, IrValue::Reg(scaled));
+                let r = self.builder.load(IrType::I32, IrValue::Reg(addr));
+                IrValue::Reg(r)
+            }
+            
+            // ============================================================
+            // B-01: structs — Member y Arrow (lowering simplificado)
+            // ============================================================
+            Expr::Member(base, _field) | Expr::Arrow(base, _field) => {
+                // Simplificación: devolver el valor base (offset 0)
+                // TODO: usar tabla de structs con offsets reales
+                self.convert_expr(base)
             }
             
             Expr::Binary(op, lhs, rhs) => {
