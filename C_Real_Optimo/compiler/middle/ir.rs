@@ -341,7 +341,8 @@ impl IrFunction {
 pub struct IrModule {
     pub name: String,
     pub functions: Vec<IrFunction>,
-    pub globals: Vec<(String, IrType)>,
+    /// (name, type, optional initial value for `.data` section)
+    pub globals: Vec<(String, IrType, Option<i64>)>,
     pub strings: Vec<String>,
     pub structs: HashMap<String, Vec<(String, IrType)>>,
 }
@@ -588,8 +589,8 @@ impl IrBuilder {
     
 
     // Globals
-    pub fn add_global(&mut self, name: &str, ty: IrType) {
-        self.module.globals.push((name.to_string(), ty));
+    pub fn add_global(&mut self, name: &str, ty: IrType, init: Option<i64>) {
+        self.module.globals.push((name.to_string(), ty, init));
     }
     
     // Strings

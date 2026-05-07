@@ -417,7 +417,9 @@ impl Parser {
             // ============================================================
             Token::KwDo => {
                 self.advance(); // consume 'do'
+                self.skip_newlines();
                 let body = Box::new(self.parse_stmt()?);
+                self.skip_newlines();
                 self.expect(Token::KwWhile)?;
                 self.expect(Token::LParen)?;
                 let cond = self.parse_expr()?;
@@ -433,30 +435,42 @@ impl Parser {
                 self.expect(Token::LParen)?;
                 let scrutinee = self.parse_expr()?;
                 self.expect(Token::RParen)?;
+                self.skip_newlines();
                 self.expect(Token::LBrace)?;
+                self.skip_newlines();
                 let mut cases: Vec<SwitchCase> = Vec::new();
                 while !matches!(self.peek(), Token::RBrace | Token::Eof) {
+                    self.skip_newlines();
                     match self.peek() {
                         Token::KwCase => {
                             self.advance();
                             let val = self.parse_expr()?;
                             self.expect(Token::Colon)?;
+                            self.skip_newlines();
                             let mut stmts: Vec<Stmt> = Vec::new();
                             while !matches!(self.peek(), Token::KwCase | Token::KwDefault | Token::RBrace | Token::Eof) {
+                                self.skip_newlines();
+                                if matches!(self.peek(), Token::KwCase | Token::KwDefault | Token::RBrace | Token::Eof) { break; }
                                 stmts.push(self.parse_stmt()?);
+                                self.skip_newlines();
                             }
                             cases.push(SwitchCase { value: Some(val), stmts });
                         }
                         Token::KwDefault => {
                             self.advance();
                             self.expect(Token::Colon)?;
+                            self.skip_newlines();
                             let mut stmts: Vec<Stmt> = Vec::new();
                             while !matches!(self.peek(), Token::KwCase | Token::KwDefault | Token::RBrace | Token::Eof) {
+                                self.skip_newlines();
+                                if matches!(self.peek(), Token::KwCase | Token::KwDefault | Token::RBrace | Token::Eof) { break; }
                                 stmts.push(self.parse_stmt()?);
+                                self.skip_newlines();
                             }
                             cases.push(SwitchCase { value: None, stmts });
                         }
-                        _ => { self.advance(); } // skip unexpected tokens
+                        Token::RBrace | Token::Eof => break,
+                        _ => { self.advance(); } // skip unexpected tokens defensivamente
                     }
                 }
                 self.expect(Token::RBrace)?;
@@ -677,6 +691,27 @@ impl Parser {
     }
     
     fn parse_unary(&mut self) -> Result<Expr, String> {
+        // ============================================================
+        // B-04: Cast — `(type) expr`
+        // Si peek=`(` y el siguiente token comienza un tipo, es cast.
+        // ============================================================
+        if matches!(self.peek(), Token::LParen) {
+            let next = self.peek_n(1);
+            let is_type = matches!(next,
+                Token::KwVoid | Token::KwChar | Token::KwShort | Token::KwInt | Token::KwLong |
+                Token::KwFloat | Token::KwDouble | Token::KwSigned | Token::KwUnsigned |
+                Token::KwStruct | Token::KwUnion | Token::KwEnum | Token::KwConst
+            ) || (matches!(next, Token::Ident(_)) && {
+                if let Token::Ident(n) = next { self.typedefs.contains(n) } else { false }
+            });
+            if is_type {
+                self.advance(); // consume '('
+                let ty = self.parse_type()?;
+                self.expect(Token::RParen)?;
+                let expr = self.parse_unary()?;
+                return Ok(Expr::Cast(ty, Box::new(expr)));
+            }
+        }
         match self.peek() {
             Token::Minus => {
                 self.advance();

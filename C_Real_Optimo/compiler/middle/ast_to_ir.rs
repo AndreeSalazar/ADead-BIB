@@ -15,6 +15,8 @@ pub struct AstToIr {
     loop_stack: Vec<(BlockId, BlockId)>,
     /// B-05: tabla de constantes enum (nombre → valor i64)
     enums: HashMap<String, i64>,
+    /// B-06: tabla de variables globales (nombre → tipo IR)
+    globals: HashMap<String, IrType>,
 }
 
 impl AstToIr {
@@ -25,11 +27,12 @@ impl AstToIr {
             funcs: HashMap::new(),
             loop_stack: Vec::new(),
             enums: HashMap::new(),
+            globals: HashMap::new(),
         }
     }
     
     pub fn convert(mut self, unit: &TranslationUnit) -> IrModule {
-        // First pass: register all functions, enums, and typedefs
+        // First pass: register all functions, enums, typedefs y globals
         for item in &unit.items {
             match item {
                 TopLevel::Func(f) => {
@@ -44,6 +47,13 @@ impl AstToIr {
                         self.enums.insert(name.clone(), val);
                         val += 1;
                     }
+                }
+                TopLevel::Var(v) => {
+                    // B-06: registrar global ANTES de procesar funciones para que
+                    // referencias hacia adelante (`int counter = 0; void f() { counter++; }`)
+                    // resuelvan correctamente.
+                    let ty = self.convert_type(&v.ty);
+                    self.globals.insert(v.name.clone(), ty);
                 }
                 _ => {}
             }
@@ -94,9 +104,18 @@ impl AstToIr {
     }
     
     fn convert_global_var(&mut self, decl: &Decl) {
-        // Global variables - stored in data section
+        // B-06: Globals con inicializador entero constante (incluido `-N`).
+        // Para inicializadores no-constantes se emite 0 (TODO: ctor implícito).
         let ty = self.convert_type(&decl.ty);
-        self.builder.add_global(&decl.name, ty);
+        let init: Option<i64> = match decl.init.as_ref() {
+            Some(Expr::IntLit(n)) => Some(*n),
+            Some(Expr::CharLit(c)) => Some(*c as i64),
+            Some(Expr::Unary(UnaryOp::Neg, inner)) => {
+                if let Expr::IntLit(n) = inner.as_ref() { Some(-*n) } else { None }
+            }
+            _ => None,
+        };
+        self.builder.add_global(&decl.name, ty, init);
     }
     
     fn convert_stmt(&mut self, stmt: &Stmt) {
@@ -325,6 +344,10 @@ impl AstToIr {
                 if let Some((ptr, ty)) = self.vars.get(name) {
                     let reg = self.builder.load(*ty, IrValue::Reg(*ptr));
                     IrValue::Reg(reg)
+                } else if let Some(&ty) = self.globals.get(name) {
+                    // B-06: load desde dirección global (.data section)
+                    let reg = self.builder.load(ty, IrValue::Global(name.clone()));
+                    IrValue::Reg(reg)
                 } else {
                     IrValue::Global(name.clone())
                 }
@@ -383,6 +406,13 @@ impl AstToIr {
                 // Simplificación: devolver el valor base (offset 0)
                 // TODO: usar tabla de structs con offsets reales
                 self.convert_expr(base)
+            }
+            
+            // ============================================================
+            // B-04: Cast — pasar el valor (sin conversión real por ahora)
+            // ============================================================
+            Expr::Cast(_ty, inner) => {
+                self.convert_expr(inner)
             }
             
             Expr::Binary(op, lhs, rhs) => {
@@ -501,6 +531,9 @@ impl AstToIr {
                 if let Expr::Ident(name) = lhs.as_ref() {
                     if let Some((ptr, _)) = self.vars.get(name) {
                         self.builder.store(IrValue::Reg(*ptr), val.clone());
+                    } else if self.globals.contains_key(name) {
+                        // B-06: store en global (.data section)
+                        self.builder.store(IrValue::Global(name.clone()), val.clone());
                     }
                 }
                 val

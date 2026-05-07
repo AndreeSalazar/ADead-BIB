@@ -20,13 +20,21 @@ pub struct Codegen {
     pub func_offsets: HashMap<String, usize>, // function name → code offset
     pub pending_calls: Vec<(usize, String)>,  // (patch offset, func name)
     pub external_calls: Vec<(usize, String)>, // (patch offset, external func)
+    /// B-06: nombre de global → byte offset dentro de `data_section`
+    pub global_offsets: HashMap<String, u32>,
 }
- 
+
 // Windows x64 ABI registers
 const ARG_REGS: [Reg64; 4] = [Reg64::RCX, Reg64::RDX, Reg64::R8, Reg64::R9];
 const CALLER_SAVED: [Reg64; 7] = [Reg64::RAX, Reg64::RCX, Reg64::RDX, Reg64::R8, Reg64::R9, Reg64::R10, Reg64::R11];
 const CALLEE_SAVED: [Reg64; 5] = [Reg64::RBX, Reg64::RSI, Reg64::RDI, Reg64::R12, Reg64::R13];
 const SHADOW_SPACE: i32 = 32;
+
+// B-06: PE absolute addressing
+// PE32+ ImageBase = 0x140000000, .text @ RVA 0x1000, .data @ RVA 0x2000
+// (válido mientras text section ocupe < 0x1000 bytes; nuestros .exe son ~1-2 KB).
+const IMAGE_BASE: u64 = 0x140000000;
+const DATA_RVA:   u64 = 0x2000;
  
 impl Codegen {
     pub fn new() -> Self {
@@ -41,15 +49,39 @@ impl Codegen {
             func_offsets: HashMap::new(),
             pending_calls: Vec::new(),
             external_calls: Vec::new(),
+            global_offsets: HashMap::new(),
         }
     }
  
     pub fn generate(&mut self, module: &IrModule) -> Vec<u8> {
+        // B-06 [pass 1]: layout de globals en data_section.
+        // Cada global ocupa max(ty.size(), 8) bytes (alineamiento natural).
+        for (name, ty, init) in &module.globals {
+            let off = self.data_section.len() as u32;
+            let size = ty.size().max(1);
+            // valor inicial: low bytes en little-endian, padding a 8 con ceros
+            let imm: u64 = init.map(|v| v as u64).unwrap_or(0);
+            let bytes = imm.to_le_bytes();
+            let n = size.min(8);
+            self.data_section.extend_from_slice(&bytes[..n]);
+            // alinear a 8
+            while self.data_section.len() % 8 != 0 {
+                self.data_section.push(0);
+            }
+            self.global_offsets.insert(name.clone(), off);
+        }
+
+        // [pass 2]: generar código de funciones
         for func in &module.functions {
             self.generate_function(func);
         }
         self.patch_calls();
         self.encoder.code.clone()
+    }
+    
+    /// B-06: dirección absoluta de un global (PE absolute addressing).
+    fn global_addr(&self, name: &str) -> Option<u64> {
+        self.global_offsets.get(name).map(|&off| IMAGE_BASE + DATA_RVA + off as u64)
     }
  
     fn generate_function(&mut self, func: &IrFunction) {
@@ -219,26 +251,51 @@ impl Codegen {
                 // No code needed - slot is pre-allocated in prologue
             }
             IrInstr::Load { dst, ptr } => {
-                // For simple codegen with direct var storage, load from slot directly
-                if let IrValue::Reg(r) = ptr {
-                    self.load_var(Reg64::RAX, *r);
-                    self.store_var(*dst, Reg64::RAX);
-                } else {
-                    self.load_value(Reg64::RAX, ptr);
-                    self.encoder.mov_rm(Reg64::RAX, Reg64::RAX);
-                    self.store_var(*dst, Reg64::RAX);
+                match ptr {
+                    IrValue::Reg(r) => {
+                        // Load directo desde stack-slot (alloca tratada como var)
+                        self.load_var(Reg64::RAX, *r);
+                        self.store_var(*dst, Reg64::RAX);
+                    }
+                    IrValue::Global(name) => {
+                        // B-06: load desde dirección absoluta del global
+                        if let Some(addr) = self.global_addr(name) {
+                            self.encoder.mov_ri(Reg64::RAX, addr);   // RAX = &global
+                            self.encoder.mov_rm(Reg64::RAX, Reg64::RAX); // RAX = *RAX
+                            self.store_var(*dst, Reg64::RAX);
+                        } else {
+                            self.encoder.mov_ri(Reg64::RAX, 0);
+                            self.store_var(*dst, Reg64::RAX);
+                        }
+                    }
+                    _ => {
+                        self.load_value(Reg64::RAX, ptr);
+                        self.encoder.mov_rm(Reg64::RAX, Reg64::RAX);
+                        self.store_var(*dst, Reg64::RAX);
+                    }
                 }
             }
             IrInstr::Store { ptr, val } => {
-                // For simple codegen with direct var storage, store to slot directly
-                if let IrValue::Reg(r) = ptr {
-                    self.load_value(Reg64::RCX, val);
-                    let offset = self.get_var_offset(r.id);
-                    self.encoder.mov_mr_disp(Reg64::RBP, offset, Reg64::RCX);
-                } else {
-                    self.load_value(Reg64::RAX, ptr);
-                    self.load_value(Reg64::RCX, val);
-                    self.encoder.mov_mr(Reg64::RAX, Reg64::RCX);
+                match ptr {
+                    IrValue::Reg(r) => {
+                        // Store directo a stack-slot
+                        self.load_value(Reg64::RCX, val);
+                        let offset = self.get_var_offset(r.id);
+                        self.encoder.mov_mr_disp(Reg64::RBP, offset, Reg64::RCX);
+                    }
+                    IrValue::Global(name) => {
+                        // B-06: store a dirección absoluta del global
+                        if let Some(addr) = self.global_addr(name) {
+                            self.load_value(Reg64::RCX, val);        // RCX = val
+                            self.encoder.mov_ri(Reg64::RAX, addr);   // RAX = &global
+                            self.encoder.mov_mr(Reg64::RAX, Reg64::RCX); // *RAX = RCX
+                        }
+                    }
+                    _ => {
+                        self.load_value(Reg64::RAX, ptr);
+                        self.load_value(Reg64::RCX, val);
+                        self.encoder.mov_mr(Reg64::RAX, Reg64::RCX);
+                    }
                 }
             }
             IrInstr::Jmp { target } => {
@@ -337,9 +394,10 @@ impl Codegen {
                 let offset = self.get_var_offset(r.id);
                 self.encoder.mov_rm_disp(dst, Reg64::RBP, offset);
             }
-            IrValue::Global(_name) => {
-                // Will need relocation
-                self.encoder.mov_ri(dst, 0);
+            IrValue::Global(name) => {
+                // B-06: dirección absoluta del global (no su valor)
+                let addr = self.global_addr(name).unwrap_or(0);
+                self.encoder.mov_ri(dst, addr);
             }
             IrValue::Param(idx) => {
                 let offset = -((*idx as i32 + 1) * 8);

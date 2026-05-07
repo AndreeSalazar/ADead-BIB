@@ -43,7 +43,7 @@
 | Runtime FFI-safe | tipos C válidos | 29 warnings con `()` (callback sin tipo) |
 | ~~`tests/c99/09_arrays.c`, `10_structs.c`~~ | ~~compilar y correr~~ | ✅ **RESUELTO** — Parser soporta `int arr[N]` y structs con newlines |
 
-### ✅ Bugs resueltos (sesión actual)
+### ✅ Bugs resueltos (sesión actual + sesiones previas)
 
 | Bug | Root cause | Fix |
 |---|---|---|
@@ -51,6 +51,10 @@
 | **Function calls** (exit basura) | PE entry point = offset 0 (primera función, no main) | `pe.entry_rva = main_offset` en CLI |
 | **Parser hang arrays** (`int arr[5]`) | `parse_var_decl` no reconocía `[` | Añadido manejo de `LBracket` → `Type::Array` |
 | **Parser hang structs** (newlines) | `parse_struct` no saltaba `Token::Newline` | Añadido `skip_newlines()` + soporte array fields |
+| **B-02 Ternary** (`a ? b : c`) | `Expr::Ternary` no tenía lowering | alloca + jmp_if + 2 stores + load merge |
+| **B-03 break/continue** | `Stmt::Break/Continue` caían al `_ => {}` | `loop_stack: Vec<(cont_bb, brk_bb)>` push/pop en cada loop |
+| **B-04 do-while/switch/typedef** | parser no reconocía esos keywords | Añadidas ramas + lowering de `switch` como cadena de `cmp_eq` con fall-through |
+| **B-05 sizeof / enum** | sin resolución compile-time | `Expr::SizeofType(t) → IrConst(t.size())`; tabla `enums: HashMap<String, i64>` con auto-incremento |
 
 ---
 
@@ -594,8 +598,8 @@ Marcar cuando esté hecho.
 ### Tests
 - [x] **P-09** Harness automatizado en Python (`run_all_tests.py`) con timeout de 5 s ✅
   - Soporta: `[PASS]`, `[FAIL]`, `[HANG]`, `[FAIL-COMPILE]`, `[skip]`
-  - **Estado actual: 3 PASS / 5 FAIL / 1 HANG / 2 COMPILE-FAIL** (sobre 11 tests)
-- [ ] 30+ tests C99 pasando (control flow y calls aún rotos — ver §8)
+  - **Estado actual: 36 PASS / 5 FAIL / 0 HANG / 0 COMPILE-FAIL** (sobre 41 tests · 88 %)
+- [x] **30+ tests C99 pasando** ✅ (36/41) — sólo quedan B-01 punteros/arrays/structs y B-06 globals
 - [ ] 10+ tests Win32 pasando
 - [ ] `cargo test --workspace` 100% green
 
@@ -609,46 +613,46 @@ Marcar cuando esté hecho.
 
 ## 8. Test Intensivo C99 — Estado por Categoría
 
-> **Suite ampliada a 41 tests** organizados por categoría. Verificado por
-> `python C_Real_Optimo/tests/run_all_tests.py`. Snapshot:
-> **30 PASS / 8 FAIL / 0 HANG / 3 COMPILE-FAIL** (73 % pasando · ↑ desde 68 %).
+> **Suite de 41 tests** organizados por categoría. Verificado por
+> `python C_Real_Optimo/tests/run_all_tests.py`. Snapshot **actual**:
+> **36 PASS / 5 FAIL / 0 HANG / 0 COMPILE-FAIL** (88 % pasando · ↑ desde 73 %).
 >
-> **Última fase aplicada:** ✅ **B-02 — Ternary lowering** (FASE T2). Tests 24 y 40 ahora PASS.
+> **Fases aplicadas:** ✅ B-02 (ternary) · ✅ B-03 (break/continue) ·
+> ✅ B-04 (do-while / switch / typedef) · ✅ B-05 (sizeof / enum).
+> **Pendientes:** 🔴 B-01 (punteros/arrays/structs codegen real) · 🔴 B-06 (globals + void mutación).
 
 ### 🟢 Categorías 100 % PASS
 
 | Categoría | Tests | Resultado |
 |---|---|:---:|
+| **Tests iniciales** | 01_variables, 02_arithmetic, 03_if_else, 04_while, 05_for, 06_funcs, 07_recursion | 7/7 ✅ |
 | **Operadores** | 11_bitwise, 12_comparisons, 13_logical, 14_compound_assign, 15_inc_dec | 5/5 ✅ |
 | **Control flow nested** | 16_nested_if, 17_nested_loops, 18_for_nested | 3/3 ✅ |
+| **Funciones** | 19_multi_func, 20_factorial, 21_fibonacci, 22_4args | 4/4 ✅ |
+| **Ternary + flow** | 24_ternary, 25_break_continue, 26_do_while, 27_switch | 4/4 ✅ |
+| **Tipos C99** | 28_sizeof, 29_typedef, 30_enum | 3/3 ✅ |
 | **Aritmética avanzada** | 32_long_chain, 33_neg, 34_paren, 35_precedence, 36_neg_div | 5/5 ✅ |
-| **Algoritmos básicos** | 37_loop_factorial, 38_gcd, 39_power | 3/3 ✅ |
-| **Funciones básicas** | 19_multi_func, 20_factorial, 21_fibonacci, 22_4args | 4/4 ✅ |
+| **Algoritmos** | 37_loop_factorial, 38_gcd, 39_power, 40_complex | 4/4 ✅ |
 | **Misc** | hello.c | 1/1 ✅ |
-
-### 🟡 Categorías parcialmente OK
-
-| Categoría | PASS | FAIL | Detalle |
-|---|---|---|---|
-| Tests iniciales (01–07) | 7 | 0 | ✅ todos pasan |
-| Recursión + funcs (19–22) | 4 | 0 | ✅ |
-| Algoritmos | 3 | 1 | `40_complex` falla (ternary anidado) |
 
 ### 🔴 Categorías con bugs estructurales
 
-#### Bug B-01: Codegen de punteros / arrays / structs
+#### Bug B-01: Codegen de punteros / arrays / structs (PARCIAL)
 
-| Test | Exit | Causa |
+| Test | Exit actual | Causa pendiente |
 |---|---:|---|
-| `08_pointers.c`  | -10  | `Expr::AddrOf`, `Expr::Deref` sin codegen real |
-| `09_arrays.c`    | -15  | `Expr::Index` sin codegen |
-| `10_structs.c`   | -30  | `Expr::Member`, `Expr::Arrow` sin codegen |
+| `08_pointers.c`  | -10  | `Expr::AddrOf`/`Deref` lowered en IR pero `Load` con puntero stack-slot devuelve el valor original (no el escrito vía `*p = 20`) |
+| `09_arrays.c`    | 25   | `Expr::Index` no calcula bien la dirección base (alloca devuelve un reg, no una dirección de stack) |
+| `10_structs.c`   | -30  | `Expr::Member` simplificado a `convert_expr(base)` — sin tabla de offsets de struct |
 
-**Solución (en `compiler/middle/ast_to_ir.rs` + `backend/codegen.rs`):**
-- `&x` → `IrInstr::Alloca` ya devuelve un puntero. Convertir `Expr::AddrOf(Ident)` a usar el ptr almacenado en `vars`.
-- `*p` → `IrInstr::Load` con el valor del puntero.
-- `arr[i]` → `Add base, i*sizeof(elem)` + `Load`.
-- `s.field` → `Add base, offset(field)` + `Load` (requiere tabla de structs).
+**Lowering ya añadido** en [`ast_to_ir.rs`](file:///c%3A/Users/andre/OneDrive/Documentos/ADead-BIB/C_Real_Optimo/compiler/middle/ast_to_ir.rs):
+`Expr::AddrOf` → devuelve el `IrReg` del alloca · `Expr::Deref` → `Load` ·
+`Expr::Index` → `Mul + Add + Load` · `Expr::Member/Arrow` → forwarding al base.
+
+**Trabajo restante:**
+- Backend: tratar `IrReg` de `alloca` como dirección física en stack (RBP-offset), no como valor en registro.
+- Tabla de structs (`HashMap<String, Vec<(String, usize)>>`) con offsets calculados.
+- Para arrays con `int arr[5]`, hacer que `arr` evalúe a la dirección base (no al primer elemento).
 
 #### ~~Bug B-02: Ternary y operadores condicionales sin lowering~~ ✅ RESUELTO
 
@@ -668,41 +672,54 @@ merge:   %r = load %tmp
 ```
 **Build:** OK · **Tests desbloqueados:** 24, 40 · **Tiempo real:** ~5 min
 
-#### Bug B-03: `break` / `continue` no implementados
+#### ~~Bug B-03: `break` / `continue` no implementados~~ ✅ RESUELTO
 
-| Test | Causa |
+| Test | Estado |
 |---|---|
-| `25_break_continue.c` | `Stmt::Break` y `Stmt::Continue` caen al `_ => {}` final |
+| `25_break_continue.c` | ✅ PASS — exit 0 |
 
-**Solución:** Mantener un stack de `(continue_bb, break_bb)` durante `convert_stmt` y emitir `jmp` correspondiente.
+**Fix aplicado** (`AstToIr.loop_stack: Vec<(BlockId, BlockId)>`):
+en `Stmt::While`/`For`/`DoWhile`/`Switch` se hace `push((cont_bb, break_bb))` antes
+de convertir el cuerpo y `pop()` al salir. `Stmt::Break`/`Continue` emiten `jmp`
+al target correspondiente y abren un bloque sumidero post-jump.
 
-#### Bug B-04: Parser hang en `do-while`, `switch`, `typedef`
+#### ~~Bug B-04: Parser hang en `do-while`, `switch`, `typedef`~~ ✅ RESUELTO
 
-| Test | Causa |
+| Test | Estado |
 |---|---|
-| `26_do_while.c`  | `parse_stmt` no soporta token `do` |
-| `27_switch.c`    | `parse_stmt` no soporta `switch/case/default` |
-| `29_typedef.c`   | `parse_top_level` consume mal `typedef int Number;` |
+| `26_do_while.c`  | ✅ PASS — exit 0 |
+| `27_switch.c`    | ✅ PASS — exit 0 |
+| `29_typedef.c`   | ✅ PASS — exit 0 |
 
-**Solución:** Añadir ramas en parser para los tres keywords + `parse_switch` con `parse_case`.
+**Fix aplicado:** parser reconoce `do { … } while ( … );`, `switch (…) { case …: …  default: … }`
+y `typedef <type> <name>;`. `Stmt::Switch` se lowerea como cadena de comparaciones
+`cmp_eq` con fall-through implícito y `break` saliendo del `exit_bb`.
 
-#### Bug B-05: `sizeof` y `enum` no se resuelven a constante
+#### ~~Bug B-05: `sizeof` y `enum` no se resuelven a constante~~ ✅ RESUELTO
 
-| Test | Exit | Causa |
+| Test | Estado |
+|---|---|
+| `28_sizeof.c` | ✅ PASS — exit 0 |
+| `30_enum.c`   | ✅ PASS — exit 0 |
+
+**Fix aplicado:**
+- `Expr::SizeofType(t)` → `IrValue::Const(IrConst::I32(t.size() as i32))` usando `Type::size()`.
+- En primer pass de `convert()`, las variantes `enum` se registran en
+  `enums: HashMap<String, i64>` con auto-incremento (respetando overrides explícitos).
+- `Expr::Ident` consulta `self.enums` antes de buscar en `vars`.
+
+#### Bug B-06: Globals y void functions (PENDIENTE)
+
+| Test | Exit actual | Causa |
 |---|---:|---|
-| `28_sizeof.c` | -15 | `Expr::SizeofType` no resuelve a `IrConst` |
-| `30_enum.c`   |  -7 | `enum` no registra constantes en symbol table |
+| `23_void_func.c` | -3 | función `void increment()` muta global `counter` pero el load tras 3 calls devuelve 0 (la mutación no persiste en memoria global) |
+| `31_global_var.c`| -50 | `int global = 42` no se inicializa en sección `.data` — el load devuelve 0 |
 
-**Solución:** En `convert_expr`, `SizeofType(t)` → `IrConst::I32(t.size())`. Para `enum`, registrar variantes con su valor numérico en una tabla global.
-
-#### Bug B-06: Globals y void functions
-
-| Test | Exit | Causa |
-|---|---:|---|
-| `23_void_func.c` | -3 | función void muta `counter` global pero load no actualiza |
-| `31_global_var.c`| -50 | global `int global = 42` no inicializa en data section |
-
-**Solución:** El backend debe emitir un `.data` con globals inicializados, y `Expr::Ident` para nombres globales debe generar `Load [rip+offset]` real (no `mov ri 0`).
+**Trabajo pendiente:**
+- Backend PE debe emitir una sección `.data` real con los globals inicializados.
+- `convert_global_var` debe propagar `decl.init` al `add_global` (actualmente se ignora).
+- `Expr::Ident` para nombres globales debe generar `Load [rip+offset_global]` (RIP-relative), no `mov reg, 0`.
+- `Expr::Assign` cuyo LHS es global debe generar `Store [rip+offset_global], val`.
 
 ---
 
@@ -710,35 +727,36 @@ merge:   %r = load %tmp
 
 ```diagram
 ╭──────────────────────────────────────────────────────────────╮
-│ FASE T1 · Codegen punteros/arrays/structs (B-01)             │
-│   - Lower Expr::AddrOf, Deref, Index, Member, Arrow          │
-│   - Tabla de offsets de struct fields                        │
-│   - Tests +3:  08, 09, 10                                    │
-│   ETA: 1-2 días                                              │
+│ ✅ FASE T2 · Ternary (B-02) — COMPLETADA                     │
+│    Tests desbloqueados: 24, 40                               │
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
-│ FASE T2 · Ternary + control extra (B-02, B-03)               │
-│   - Lower Expr::Ternary                                      │
-│   - Stack de break/continue targets                          │
-│   - Tests +3:  24, 25, 40                                    │
-│   ETA: 1 día                                                 │
+│ ✅ FASE T3 · break/continue + do/switch/typedef (B-03 + B-04)│
+│    Tests desbloqueados: 25, 26, 27, 29                       │
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
-│ FASE T3 · Parser do/switch/typedef (B-04)                    │
-│   - parse_do_while, parse_switch, parse_typedef              │
-│   - Tests +3:  26, 27, 29                                    │
-│   ETA: 1-2 días                                              │
+│ ✅ FASE T4 · sizeof + enum (B-05) — COMPLETADA               │
+│    Tests desbloqueados: 28, 30                               │
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
-│ FASE T4 · sizeof + enum + globals (B-05, B-06)               │
-│   - Resolver sizeof en compile time                          │
-│   - Tabla global de enums                                    │
-│   - PE .data con globals inicializados                       │
-│   - Tests +4:  23, 28, 30, 31                                │
-│   ETA: 2 días                                                │
+│ 🔴 FASE T5 · Globals + void mutation (B-06) — EN CURSO       │
+│    - convert_global_var: propagar `decl.init`                │
+│    - PE backend: sección `.data` con bytes inicializados     │
+│    - Codegen: load/store global con [rip+offset]             │
+│    - Tests pendientes: 23_void_func, 31_global_var           │
+│    ETA: 4-6 h                                                │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ 🔴 FASE T6 · Punteros/arrays/structs codegen real (B-01)     │
+│    - Tratar IrReg de Alloca como dirección de stack-slot     │
+│    - Tabla de structs con offsets reales por field           │
+│    - arrays: emitir base address en lugar de primer elemento │
+│    - Tests pendientes: 08_pointers, 09_arrays, 10_structs    │
+│    ETA: 1-2 días                                             │
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
@@ -747,7 +765,7 @@ merge:   %r = load %tmp
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
-│ FASE T5 · Tests AVANZADOS (futuro)                           │
+│ FASE T7 · Tests AVANZADOS (futuro)                           │
 │   - Strings literales + printf                               │
 │   - Function pointers                                        │
 │   - Pointers to pointers                                     │
@@ -762,11 +780,12 @@ merge:   %r = load %tmp
 
 ```diagram
 Tests C99 PASS rate evolution:
-  v1.0    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  3/11   (27 %)
-  v12.0   ████████████████████████░░░░░░░░  8/11   (73 %)
-  v13.0   ████████████████████████████░░░░ 28/41   (68 %)
-  T2 done █████████████████████████████░░░ 30/41   (73 %)  ← AHORA
-  Goal T4 ████████████████████████████████ 41/41   (100 %) ← META
+  v1.0     ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  3/11   (27 %)
+  v12.0    ████████████████████████░░░░░░░░  8/11   (73 %)
+  v13.0    ████████████████████████████░░░░ 28/41   (68 %)
+  T2 done  █████████████████████████████░░░ 30/41   (73 %)
+  T3+T4+T5 ████████████████████████████████░ 36/41  (88 %)  ← AHORA
+  Goal T6  █████████████████████████████████ 41/41 (100 %) ← META
 ```
 
 ### 🔧 Orden recomendado de ataque
@@ -774,58 +793,63 @@ Tests C99 PASS rate evolution:
 | Orden | Bug | Esfuerzo | Tests desbloqueados | Estado |
 |:-:|---|---|---|:-:|
 | 1 | **B-02** Ternary | 2 h | 24, 40 | ✅ HECHO |
-| 2 | **B-03** break/continue | 2 h | 25 | ⏳ siguiente |
-| 3 | **B-04** parse do/switch/typedef | 4 h | 26, 27, 29 | ⏳ |
-| 4 | **B-05** sizeof/enum constantes | 3 h | 28, 30 | ⏳ |
-| 5 | **B-06** globals + void mutación | 4 h | 23, 31 | ⏳ |
+| 2 | **B-03** break/continue | 2 h | 25 | ✅ HECHO |
+| 3 | **B-04** parse do/switch/typedef | 4 h | 26, 27, 29 | ✅ HECHO |
+| 4 | **B-05** sizeof/enum constantes | 3 h | 28, 30 | ✅ HECHO |
+| 5 | **B-06** globals + void mutación | 4-6 h | 23, 31 | ⏳ siguiente |
 | 6 | **B-01** punteros/arrays/structs | 1-2 d | 08, 09, 10 | ⏳ |
 
-Total estimado para **41/41 PASS**: **3-4 días** de trabajo enfocado.
+Total estimado para **41/41 PASS** restante: **~2 días** de trabajo enfocado.
 
 ---
 
 
 ## 10. 📊 Resumen Ejecutivo
 
-**¿Qué tan completo está ADead-BIB hoy?** → **~70 %** del README v12/13.
+**¿Qué tan completo está ADead-BIB hoy?** → **~85 %** del README v12/13.
 
 ### Métricas verificadas (suite intensiva C99)
 
 | Métrica | Valor | Detalle |
 |---|---|---|
-| Tests C99 totales | **41** | Suite ampliada de 11 → 41 (categorizada en 7 áreas) |
-| Tests PASS | **28 / 41** (68 %) | Operadores, control flow nested, aritmética, recursión |
-| Tests FAIL | 10 | punteros/arrays/structs/ternary/break/continue/globals |
-| Tests COMPILE-FAIL | 3 | parser hangs en do-while / switch / typedef |
+| Tests C99 totales | **41** | Suite categorizada en 9 áreas |
+| Tests PASS | **36 / 41** (88 %) | ↑ desde 68 % en una sesión |
+| Tests FAIL | 5 | 3 estructurales (punteros/arrays/structs) + 2 globals |
+| Tests HANG | 0 | parser robusto, sin loops infinitos |
+| Tests COMPILE-FAIL | 0 | todos los tests compilan a `.exe` |
 | Tamaño .exe típico | 1–2 KB | sin CRT, sin runtime overhead |
-| Build time release | 5.92 s | `cargo build --release` workspace completo |
-| Warnings build | < 10 | post-cleanup |
+| Build time release | < 6 s | `cargo build --release -p adeb-compiler` |
+| Warnings build | 4 | sólo unused vars en stubs B-01 |
 | Runtime liberado | 8.35 MB | dedup `lib.rs` ↔ `mod.rs` |
 
 ### Lo que ya tienes (real, verificado)
 
 - ✅ Pipeline 7 fases generando PE x86-64 válidos
+- ✅ **Tests iniciales 100 %** (01–07): variables, aritmética, if/else, while, for, funcs, recursión
 - ✅ **Operadores 100 %**: bitwise, lógicos, comparaciones, compound assign, inc/dec
-- ✅ **Aritmética 100 %**: encadenada, paréntesis, precedencia, división negativa
-- ✅ **Control flow 100 %**: if/else (nested), while, for, anidados
-- ✅ **Funciones 100 %**: 4 args, recursión (factorial, fib, gcd, power)
-- ✅ Parser C99 sin hangs en arrays/structs
+- ✅ **Control flow 100 %**: if/else nested, while, for, do-while, switch/case/default, break/continue
+- ✅ **Funciones 100 %**: 4 args, recursión (factorial, fib, gcd, power), multi-func
+- ✅ **Tipos C99 100 %**: typedef, enum (con auto-incremento), sizeof
+- ✅ **Aritmética avanzada 100 %**: encadenada, paréntesis, precedencia, división negativa
+- ✅ **Algoritmos 100 %**: factorial, gcd, power, complex (con ternary)
+- ✅ **Ternary 100 %**: lowering vía alloca + if/else + load
+- ✅ Parser C99 sin hangs en arrays/structs/do-while/switch/typedef
 - ✅ ASM-BIB bridge — `coff_reader.rs` + `bridge.rs` + `--link-obj` CLI
-- ✅ 14 KB de runtime auto-generado desde 18 DLLs
-- ✅ Suite intensiva 41 tests + harness Python con timeout
+- ✅ 14 KB de runtime auto-generado desde 18 DLLs (callbacks `*mut c_void`)
+- ✅ Suite intensiva 41 tests + harness Python con timeout 5 s
 
 ### Lo que falta para 100 % C99
 
-| Bloqueador | Tests afectados | Esfuerzo |
-|---|---|---|
-| B-01 punteros/arrays/structs codegen | 08, 09, 10 | 1-2 d |
-| B-02 ternary lowering | 24, 40 | 2 h |
-| B-03 break/continue | 25 | 2 h |
-| B-04 parser do/switch/typedef | 26, 27, 29 | 4 h |
-| B-05 sizeof/enum constexpr | 28, 30 | 3 h |
-| B-06 globals + void mutation | 23, 31 | 4 h |
+| Bloqueador | Tests afectados | Esfuerzo | Estado |
+|---|---|---|:-:|
+| ~~B-02 ternary lowering~~ | 24, 40 | 2 h | ✅ |
+| ~~B-03 break/continue~~ | 25 | 2 h | ✅ |
+| ~~B-04 parser do/switch/typedef~~ | 26, 27, 29 | 4 h | ✅ |
+| ~~B-05 sizeof/enum constexpr~~ | 28, 30 | 3 h | ✅ |
+| **B-06 globals + void mutation** | 23, 31 | 4-6 h | 🔴 |
+| **B-01 punteros/arrays/structs codegen** | 08, 09, 10 | 1-2 d | 🔴 |
 
-**Tiempo total para llegar a 41/41 PASS:** **3-4 días** de trabajo enfocado.
+**Tiempo restante para 41/41 PASS:** **~2 días** de trabajo enfocado.
 
 ### Lo que falta para integración OS Rust
 
@@ -838,8 +862,9 @@ Total estimado para **41/41 PASS**: **3-4 días** de trabajo enfocado.
 
 ---
 
-> *"El compilador respira, camina, y ya hace álgebra y recursión.*  
-> *Le falta tocar memoria con dedos finos (punteros), aprender condicionales tres-en-uno (ternary),*  
-> *y romperse el lazo cuando se cansa (break). Después, solo le queda olvidar Windows*  
-> *y volar libre dentro de tu propio OS."*
+> *"El compilador respira, camina, hace álgebra, recursión, ternario y switch.*  
+> *Ya rompe el lazo cuando se cansa (break) y vuelve al inicio cuando quiere (continue).*  
+> *Sólo le falta tocar memoria con dedos finos (punteros) y recordar lo que escribió*  
+> *en su libreta global (data section). Después, olvidará Windows y volará libre*  
+> *dentro de tu propio OS."*
 
