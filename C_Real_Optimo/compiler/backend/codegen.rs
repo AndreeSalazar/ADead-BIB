@@ -5,7 +5,7 @@
  
 use crate::middle::ir::*;
 use super::encoder::{X86Encoder, Reg64};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
  
 // ============== CODEGEN ==============
  
@@ -22,6 +22,12 @@ pub struct Codegen {
     pub external_calls: Vec<(usize, String)>, // (patch offset, external func)
     /// B-06: nombre de global → byte offset dentro de `data_section`
     pub global_offsets: HashMap<String, u32>,
+    /// B-01: ids de IrReg que provienen de Alloca (su "valor" es su dirección).
+    /// Resto de regs son valores computados por ops.
+    alloca_regs: HashSet<u32>,
+    /// B-01: tamaño en bytes del slot reservado para cada alloca (≥ 8).
+    /// Permite reservar 20+ bytes para `int arr[5]`, etc.
+    alloca_sizes: HashMap<u32, i32>,
 }
 
 // Windows x64 ABI registers
@@ -50,6 +56,8 @@ impl Codegen {
             pending_calls: Vec::new(),
             external_calls: Vec::new(),
             global_offsets: HashMap::new(),
+            alloca_regs: HashSet::new(),
+            alloca_sizes: HashMap::new(),
         }
     }
  
@@ -88,14 +96,34 @@ impl Codegen {
         self.var_offsets.clear();
         self.label_offsets.clear();
         self.pending_jumps.clear();
+        self.alloca_regs.clear();
+        self.alloca_sizes.clear();
         self.next_offset = -8;  // Reset for each function
         
+        // B-01: pre-pass para descubrir tamaño extra de allocas (arrays/structs).
+        // Cada Alloca con `count = Some(N)` reserva N * sizeof(elem) bytes.
+        for block in &func.blocks {
+            for instr in &block.instrs {
+                if let IrInstr::Alloca { dst, ty, count } = instr {
+                    let elem = ty.size().max(1) as i32;
+                    let n = match count {
+                        Some(IrValue::Const(c)) => c.as_i64().unwrap_or(1) as i32,
+                        _ => 1,
+                    };
+                    let bytes = ((elem * n + 7) & !7).max(8); // alineado a 8, mínimo 8
+                    self.alloca_sizes.insert(dst.id, bytes);
+                }
+            }
+        }
+
         // Record function entry offset for intra-module calls
         self.func_offsets.insert(func.name.clone(), self.encoder.len());
 
-        // Pre-calculate stack space needed
+        // Pre-calculate stack space needed: 8 bytes por reg "normal"
+        // + bytes extra reservados por allocas grandes.
         let num_vars = func.next_reg as i32;
-        let stack_size = align16((num_vars * 8) + SHADOW_SPACE + 8);
+        let extra: i32 = self.alloca_sizes.values().map(|b| (b - 8).max(0)).sum();
+        let stack_size = align16((num_vars * 8) + extra + SHADOW_SPACE + 8);
         
         // Prologue: push rbp; mov rbp, rsp; sub rsp, stack_size
         self.encoder.push_r(Reg64::RBP);
@@ -139,6 +167,23 @@ impl Codegen {
             return offset;
         }
         // Allocate new slot
+        let offset = self.next_offset;
+        self.next_offset -= 8;
+        self.var_offsets.insert(id, offset);
+        offset
+    }
+
+    /// B-01: como `get_var_offset` pero reserva el tamaño exacto requerido por
+    /// `alloca_sizes[id]` (≥ 8). Para arrays/structs grandes esto evita que dos
+    /// allocas contiguos pisen sus slots.
+    fn get_alloca_offset(&mut self, id: u32) -> i32 {
+        if let Some(&offset) = self.var_offsets.get(&id) {
+            return offset;
+        }
+        let bytes = *self.alloca_sizes.get(&id).unwrap_or(&8);
+        // El "offset" es la dirección del primer byte del slot. Como crecemos hacia
+        // abajo, restamos `bytes` para reservar la región completa.
+        self.next_offset -= bytes - 8; // ya teníamos 8 reservados implícitamente
         let offset = self.next_offset;
         self.next_offset -= 8;
         self.var_offsets.insert(id, offset);
@@ -245,17 +290,28 @@ impl Codegen {
             IrInstr::Ge { dst, lhs, rhs } => {
                 self.emit_compare(*dst, lhs, rhs, 0x0D); // SETGE
             }
-            IrInstr::Alloca { dst, ty, count: _ } => {
-                // For simple codegen, just allocate a slot - treat as direct var storage
-                let offset = self.get_var_offset(dst.id);
-                // No code needed - slot is pre-allocated in prologue
+            IrInstr::Alloca { dst, ty: _, count: _ } => {
+                // B-01: registrar este reg como "address-of stack-slot".
+                // El offset se reserva al primer uso vía get_alloca_offset, garantizando
+                // suficiente espacio para arrays / structs según `alloca_sizes`.
+                self.alloca_regs.insert(dst.id);
+                let _ = self.get_alloca_offset(dst.id);
             }
             IrInstr::Load { dst, ptr } => {
                 match ptr {
                     IrValue::Reg(r) => {
-                        // Load directo desde stack-slot (alloca tratada como var)
-                        self.load_var(Reg64::RAX, *r);
-                        self.store_var(*dst, Reg64::RAX);
+                        let offset = self.get_var_offset(r.id);
+                        if self.alloca_regs.contains(&r.id) {
+                            // r es la dirección del slot → load directo desde slot.
+                            self.encoder.mov_rm_disp(Reg64::RAX, Reg64::RBP, offset);
+                            self.store_var(*dst, Reg64::RAX);
+                        } else {
+                            // B-01: r contiene un puntero (valor) → 1) cargar el ptr,
+                            // 2) deref → mov rax, [rcx]. Necesario para `*p`, `arr[i]`.
+                            self.encoder.mov_rm_disp(Reg64::RCX, Reg64::RBP, offset);
+                            self.encoder.mov_rm(Reg64::RAX, Reg64::RCX);
+                            self.store_var(*dst, Reg64::RAX);
+                        }
                     }
                     IrValue::Global(name) => {
                         // B-06: load desde dirección absoluta del global
@@ -278,10 +334,18 @@ impl Codegen {
             IrInstr::Store { ptr, val } => {
                 match ptr {
                     IrValue::Reg(r) => {
-                        // Store directo a stack-slot
-                        self.load_value(Reg64::RCX, val);
                         let offset = self.get_var_offset(r.id);
-                        self.encoder.mov_mr_disp(Reg64::RBP, offset, Reg64::RCX);
+                        if self.alloca_regs.contains(&r.id) {
+                            // Store directo al stack-slot (alloca)
+                            self.load_value(Reg64::RCX, val);
+                            self.encoder.mov_mr_disp(Reg64::RBP, offset, Reg64::RCX);
+                        } else {
+                            // B-01: r contiene un puntero (valor) → store con deref.
+                            // 1) cargar el ptr, 2) cargar val, 3) mov [rax], rcx.
+                            self.encoder.mov_rm_disp(Reg64::RAX, Reg64::RBP, offset);
+                            self.load_value(Reg64::RCX, val);
+                            self.encoder.mov_mr(Reg64::RAX, Reg64::RCX);
+                        }
                     }
                     IrValue::Global(name) => {
                         // B-06: store a dirección absoluta del global
@@ -390,9 +454,15 @@ impl Codegen {
                 self.encoder.mov_ri(dst, imm);
             }
             IrValue::Reg(r) => {
-                // Load from direct variable slot
                 let offset = self.get_var_offset(r.id);
-                self.encoder.mov_rm_disp(dst, Reg64::RBP, offset);
+                if self.alloca_regs.contains(&r.id) {
+                    // B-01: el "valor" de un alloca ES su dirección.
+                    // Emitimos `lea dst, [rbp+offset]`.
+                    self.encoder.lea(dst, Reg64::RBP, offset);
+                } else {
+                    // Reg "normal": load del valor desde stack-slot.
+                    self.encoder.mov_rm_disp(dst, Reg64::RBP, offset);
+                }
             }
             IrValue::Global(name) => {
                 // B-06: dirección absoluta del global (no su valor)

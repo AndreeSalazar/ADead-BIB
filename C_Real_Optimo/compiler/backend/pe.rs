@@ -150,8 +150,12 @@ impl PeBuilder {
         
         let text_rva = SECTION_ALIGNMENT;
         let text_size = align_up(self.code.len(), SECTION_ALIGNMENT as usize);
+        let data_size = align_up(self.data.len(), SECTION_ALIGNMENT as usize);
+        let rdata_size = align_up(self.rdata.len(), SECTION_ALIGNMENT as usize);
         
-        let image_size = headers_size_aligned + text_size;
+        // B-06: SizeOfImage debe cubrir todas las secciones (incluida .data),
+        // no sólo .text. Sin esto, el loader rechaza el binario o trunca .data.
+        let image_size = headers_size_aligned + text_size + data_size + rdata_size;
         let image_size_aligned = align_up(image_size, SECTION_ALIGNMENT as usize);
         
         // PE32+ Magic

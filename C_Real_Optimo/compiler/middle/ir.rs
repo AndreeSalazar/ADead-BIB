@@ -539,6 +539,12 @@ impl IrBuilder {
     
     // Memory
     pub fn alloca(&mut self, ty: IrType) -> IrReg {
+        self.alloca_n(ty, None)
+    }
+
+    /// B-01: alloca con count opcional para arrays / structs.
+    /// `count = Some(N)` reserva N * sizeof(ty) bytes contiguos.
+    pub fn alloca_n(&mut self, ty: IrType, count: Option<IrValue>) -> IrReg {
         let ptr_ty = match ty {
             IrType::I8 => IrPtrType::I8,
             IrType::I16 => IrPtrType::I16,
@@ -549,7 +555,7 @@ impl IrBuilder {
             _ => IrPtrType::Void,
         };
         let dst = self.new_reg(IrType::Ptr(ptr_ty));
-        self.emit(IrInstr::Alloca { dst, ty, count: None });
+        self.emit(IrInstr::Alloca { dst, ty, count });
         dst
     }
     

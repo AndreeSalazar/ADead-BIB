@@ -9,7 +9,10 @@ use std::collections::HashMap;
 
 pub struct AstToIr {
     builder: IrBuilder,
-    vars: HashMap<String, (IrReg, IrType)>,  // name -> (ptr, type)
+    /// (ptr, type, is_aggregate, struct_name). is_aggregate=true para arrays/structs:
+    /// el `Expr::Ident` devuelve la DIRECCIÓN, no el valor cargado.
+    /// `struct_name = Some(name)` para variables de tipo `struct Name`.
+    vars: HashMap<String, (IrReg, IrType, bool, Option<String>)>,
     funcs: HashMap<String, IrType>,           // func name -> return type
     /// B-03: stack de (continue_target, break_target) para loops
     loop_stack: Vec<(BlockId, BlockId)>,
@@ -17,6 +20,8 @@ pub struct AstToIr {
     enums: HashMap<String, i64>,
     /// B-06: tabla de variables globales (nombre → tipo IR)
     globals: HashMap<String, IrType>,
+    /// B-01: tabla de structs: nombre → lista de (campo, IrType, offset_bytes)
+    structs: HashMap<String, Vec<(String, IrType, usize)>>,
 }
 
 impl AstToIr {
@@ -28,6 +33,7 @@ impl AstToIr {
             loop_stack: Vec::new(),
             enums: HashMap::new(),
             globals: HashMap::new(),
+            structs: HashMap::new(),
         }
     }
     
@@ -54,6 +60,22 @@ impl AstToIr {
                     // resuelvan correctamente.
                     let ty = self.convert_type(&v.ty);
                     self.globals.insert(v.name.clone(), ty);
+                }
+                TopLevel::Struct(s) => {
+                    // B-01: construir tabla de fields con offsets calculados.
+                    if let Some(name) = &s.name {
+                        let mut fields = Vec::with_capacity(s.fields.len());
+                        let mut off: usize = 0;
+                        for f in &s.fields {
+                            let fty = self.convert_type(&f.ty);
+                            // Cada field se alinea a 8 bytes (simplificación).
+                            fields.push((f.name.clone(), fty, off));
+                            off += fty.size().max(1);
+                            // alinear el siguiente a 8 bytes
+                            off = (off + 7) & !7;
+                        }
+                        self.structs.insert(name.clone(), fields);
+                    }
                 }
                 _ => {}
             }
@@ -85,7 +107,7 @@ impl AstToIr {
         for (i, (name, ty)) in params.iter().enumerate() {
             let ptr = self.builder.alloca(*ty);
             self.builder.store(IrValue::Reg(ptr), IrValue::Param(i as u32));
-            self.vars.insert(name.clone(), (ptr, *ty));
+            self.vars.insert(name.clone(), (ptr, *ty, false, None));
         }
         
         // Convert body
@@ -134,15 +156,31 @@ impl AstToIr {
             }
             
             Stmt::Decl(decl) => {
-                let ty = self.convert_type(&decl.ty);
-                let ptr = self.builder.alloca(ty);
+                // B-01: arrays y structs reservan más de 8 bytes vía `count` y se
+                // marcan como aggregate (Ident devuelve la dirección, no un load).
+                let (ty, count, is_aggregate, struct_name) = match &decl.ty {
+                    Type::Array(elem, Some(n)) => {
+                        let elem_ty = self.convert_type(elem);
+                        (elem_ty, Some(IrValue::Const(IrConst::I32(*n as i32))), true, None)
+                    }
+                    Type::Struct(sname) => {
+                        // Reservamos `fields.len() * 8` bytes (8 por field alineado).
+                        let n = self.structs.get(sname).map(|f| f.len() as i32).unwrap_or(8);
+                        (IrType::I64, Some(IrValue::Const(IrConst::I32(n.max(1)))), true, Some(sname.clone()))
+                    }
+                    Type::Union(_) => {
+                        (IrType::I64, Some(IrValue::Const(IrConst::I32(8))), true, None)
+                    }
+                    _ => (self.convert_type(&decl.ty), None, false, None),
+                };
+                let ptr = self.builder.alloca_n(ty, count);
                 
                 if let Some(init) = &decl.init {
                     let val = self.convert_expr(init);
                     self.builder.store(IrValue::Reg(ptr), val);
                 }
                 
-                self.vars.insert(decl.name.clone(), (ptr, ty));
+                self.vars.insert(decl.name.clone(), (ptr, ty, is_aggregate, struct_name));
             }
             
             Stmt::If(cond, then_s, else_s) => {
@@ -341,9 +379,14 @@ impl AstToIr {
                 if let Some(&v) = self.enums.get(name) {
                     return IrValue::Const(IrConst::I32(v as i32));
                 }
-                if let Some((ptr, ty)) = self.vars.get(name) {
-                    let reg = self.builder.load(*ty, IrValue::Reg(*ptr));
-                    IrValue::Reg(reg)
+                if let Some((ptr, ty, is_agg, _sname)) = self.vars.get(name) {
+                    if *is_agg {
+                        // B-01: array/struct → devolver la DIRECCIÓN del primer elemento.
+                        IrValue::Reg(*ptr)
+                    } else {
+                        let reg = self.builder.load(*ty, IrValue::Reg(*ptr));
+                        IrValue::Reg(reg)
+                    }
                 } else if let Some(&ty) = self.globals.get(name) {
                     // B-06: load desde dirección global (.data section)
                     let reg = self.builder.load(ty, IrValue::Global(name.clone()));
@@ -370,7 +413,7 @@ impl AstToIr {
             Expr::AddrOf(inner) => {
                 // &x → devolver el ptr stack-slot directamente
                 if let Expr::Ident(name) = inner.as_ref() {
-                    if let Some(&(ptr, _)) = self.vars.get(name) {
+                    if let Some(&(ptr, _, _, _)) = self.vars.get(name) {
                         return IrValue::Reg(ptr);
                     }
                 }
@@ -458,7 +501,7 @@ impl AstToIr {
                 // x += rhs  →  x = x + rhs
                 let r = self.convert_expr(rhs);
                 if let Expr::Ident(name) = lhs.as_ref() {
-                    if let Some(&(ptr, ty_var)) = self.vars.get(name) {
+                    if let Some(&(ptr, ty_var, _, _)) = self.vars.get(name) {
                         let ir_ty = ty_var;
                         let cur = self.builder.load(ir_ty, IrValue::Reg(ptr));
                         let new_reg = match op {
@@ -483,7 +526,7 @@ impl AstToIr {
             
             Expr::PreInc(inner) | Expr::PostInc(inner) => {
                 if let Expr::Ident(name) = inner.as_ref() {
-                    if let Some(&(ptr, ty_var)) = self.vars.get(name) {
+                    if let Some(&(ptr, ty_var, _, _)) = self.vars.get(name) {
                         let cur = self.builder.load(ty_var, IrValue::Reg(ptr));
                         let new_reg = self.builder.add(ty_var, IrValue::Reg(cur), IrValue::Const(IrConst::I32(1)));
                         self.builder.store(IrValue::Reg(ptr), IrValue::Reg(new_reg));
@@ -495,7 +538,7 @@ impl AstToIr {
             
             Expr::PreDec(inner) | Expr::PostDec(inner) => {
                 if let Expr::Ident(name) = inner.as_ref() {
-                    if let Some(&(ptr, ty_var)) = self.vars.get(name) {
+                    if let Some(&(ptr, ty_var, _, _)) = self.vars.get(name) {
                         let cur = self.builder.load(ty_var, IrValue::Reg(ptr));
                         let new_reg = self.builder.sub(ty_var, IrValue::Reg(cur), IrValue::Const(IrConst::I32(1)));
                         self.builder.store(IrValue::Reg(ptr), IrValue::Reg(new_reg));
@@ -528,13 +571,37 @@ impl AstToIr {
             
             Expr::Assign(lhs, rhs) => {
                 let val = self.convert_expr(rhs);
-                if let Expr::Ident(name) = lhs.as_ref() {
-                    if let Some((ptr, _)) = self.vars.get(name) {
-                        self.builder.store(IrValue::Reg(*ptr), val.clone());
-                    } else if self.globals.contains_key(name) {
-                        // B-06: store en global (.data section)
-                        self.builder.store(IrValue::Global(name.clone()), val.clone());
+                match lhs.as_ref() {
+                    Expr::Ident(name) => {
+                        if let Some((ptr, _, _, _)) = self.vars.get(name) {
+                            self.builder.store(IrValue::Reg(*ptr), val.clone());
+                        } else if self.globals.contains_key(name) {
+                            // B-06: store en global (.data section)
+                            self.builder.store(IrValue::Global(name.clone()), val.clone());
+                        }
                     }
+                    // B-01: `*p = val` → cargar p, store val a esa dirección
+                    Expr::Deref(inner) => {
+                        let ptr_val = self.convert_expr(inner);
+                        self.builder.store(ptr_val, val.clone());
+                    }
+                    // B-01: `arr[i] = val` → addr = arr + i*sizeof(elem); store
+                    Expr::Index(base, idx) => {
+                        let base_v = self.convert_expr(base);
+                        let idx_v = self.convert_expr(idx);
+                        let scaled = self.builder.mul(IrType::I64,
+                            idx_v, IrValue::Const(IrConst::I32(4)));
+                        let addr = self.builder.add(IrType::I64,
+                            base_v, IrValue::Reg(scaled));
+                        self.builder.store(IrValue::Reg(addr), val.clone());
+                    }
+                    // B-01: `s.field = val` o `s->field = val` (offset 0 stub)
+                    Expr::Member(base, _field) | Expr::Arrow(base, _field) => {
+                        let base_v = self.convert_expr(base);
+                        // TODO: usar tabla de structs para offset real del field
+                        self.builder.store(base_v, val.clone());
+                    }
+                    _ => {}
                 }
                 val
             }
@@ -612,3 +679,5 @@ impl AstToIr {
 pub fn ast_to_ir(unit: &TranslationUnit) -> IrModule {
     AstToIr::new("main").convert(unit)
 }
+
+
