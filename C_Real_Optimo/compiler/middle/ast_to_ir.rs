@@ -443,12 +443,15 @@ impl AstToIr {
             }
             
             // ============================================================
-            // B-01: structs — Member y Arrow (lowering simplificado)
+            // B-01: structs — Member y Arrow con tabla real de offsets
             // ============================================================
-            Expr::Member(base, _field) | Expr::Arrow(base, _field) => {
-                // Simplificación: devolver el valor base (offset 0)
-                // TODO: usar tabla de structs con offsets reales
-                self.convert_expr(base)
+            Expr::Member(base, field) | Expr::Arrow(base, field) => {
+                if let Some((addr, fty)) = self.member_addr(base, field) {
+                    let r = self.builder.load(fty, addr);
+                    IrValue::Reg(r)
+                } else {
+                    self.convert_expr(base)
+                }
             }
             
             // ============================================================
@@ -595,11 +598,15 @@ impl AstToIr {
                             base_v, IrValue::Reg(scaled));
                         self.builder.store(IrValue::Reg(addr), val.clone());
                     }
-                    // B-01: `s.field = val` o `s->field = val` (offset 0 stub)
-                    Expr::Member(base, _field) | Expr::Arrow(base, _field) => {
-                        let base_v = self.convert_expr(base);
-                        // TODO: usar tabla de structs para offset real del field
-                        self.builder.store(base_v, val.clone());
+                    // B-01: `s.field = val` o `s->field = val` con offset real
+                    Expr::Member(base, field) | Expr::Arrow(base, field) => {
+                        if let Some((addr, _fty)) = self.member_addr(base, field) {
+                            self.builder.store(addr, val.clone());
+                        } else {
+                            // fallback: store en base (offset 0)
+                            let base_v = self.convert_expr(base);
+                            self.builder.store(base_v, val.clone());
+                        }
                     }
                     _ => {}
                 }
@@ -673,6 +680,31 @@ impl AstToIr {
             Type::Signed(t) | Type::Unsigned(t) => self.convert_type(t),
             _ => IrType::I32,
         }
+    }
+    
+    /// B-01: calcula la dirección IR de `base.field` o `base->field` y devuelve
+    /// también el tipo del field. Retorna `None` si la struct no está registrada.
+    /// 
+    ///   - Para `p.x` con `p: struct Point`: base_addr = &p, addr = &p + offset(x)
+    ///   - Para `q->x` con `q: struct Point*`: base_addr = q (cargar puntero), addr = q + offset(x)
+    fn member_addr(&mut self, base: &Expr, field: &str) -> Option<(IrValue, IrType)> {
+        // Resolver nombre del struct buscando el Ident base.
+        let struct_name = match base {
+            Expr::Ident(name) => self.vars.get(name).and_then(|(_, _, _, sn)| sn.clone()),
+            _ => None,
+        }?;
+        let fields = self.structs.get(&struct_name)?.clone();
+        let (_, fty, off) = fields.iter().find(|(n, _, _)| n == field)?.clone();
+        // Calcular dirección base (mismo lowering que Ident, pero forzando dirección)
+        let base_addr = self.convert_expr(base);
+        let addr = if off == 0 {
+            base_addr
+        } else {
+            let r = self.builder.add(IrType::I64,
+                base_addr, IrValue::Const(IrConst::I32(off as i32)));
+            IrValue::Reg(r)
+        };
+        Some((addr, fty))
     }
 }
 

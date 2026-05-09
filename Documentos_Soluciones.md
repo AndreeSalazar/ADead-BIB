@@ -55,6 +55,10 @@
 | **B-03 break/continue** | `Stmt::Break/Continue` caían al `_ => {}` | `loop_stack: Vec<(cont_bb, brk_bb)>` push/pop en cada loop |
 | **B-04 do-while/switch/typedef** | parser no reconocía esos keywords | Añadidas ramas + lowering de `switch` como cadena de `cmp_eq` con fall-through |
 | **B-05 sizeof / enum** | sin resolución compile-time | `Expr::SizeofType(t) → IrConst(t.size())`; tabla `enums: HashMap<String, i64>` con auto-incremento |
+| **B-06 globals + void mutación** | sin `.data` y sin RIP/abs addressing | Pass 1 codegen layout `.data` con bytes inicializados; PE `SizeOfImage` cubre `.data`; `IrValue::Global` → `mov rax, IMAGE_BASE+DATA_RVA+off`; load/store con deref absoluto |
+| **B-01 punteros** (`*p = 20`) | toda `IrReg` se trataba como stack-slot | `alloca_regs: HashSet<u32>` → para regs no-alloca, Load/Store hacen deref real (`mov rcx,[rbp+off]; mov rax,[rcx]`); `Expr::Assign(Deref(p), val)` lowered |
+| **B-01 arrays** (`int arr[5]`) | alloca reservaba sólo 8 bytes; `arr` cargaba primer elemento | `alloca_n(ty, count)`; `is_aggregate=true` en vars → `Ident` devuelve dirección; `Index` LHS calcula `addr = base + i*4` y store |
+| **B-01 structs** (`p.x = 10`) | `Member` reenvía base sin offset | `structs: HashMap<String, Vec<(field, ty, offset)>>` construido en pass 1; helper `member_addr` calcula `&base + offset`; `Member` lee con `Load(fty, addr)`; `Member` LHS escribe con `Store(addr, val)` |
 
 ---
 
