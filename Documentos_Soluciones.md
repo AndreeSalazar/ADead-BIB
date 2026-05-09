@@ -37,11 +37,11 @@
 
 | Caso | Esperado | Observado |
 |---|---|---|
-| `02_arithmetic.c` (aritmética encadenada) | `exit 0` | `exit 24` |
+| ~~`02_arithmetic.c` (aritmética encadenada)~~ | `exit 0` | ✅ **RESUELTO** — codegen BinOp correcto |
 | ~~Llamadas a función (`IrInstr::Call`)~~ | ~~Generar `call rel32`~~ | ✅ **RESUELTO** — PE entry_rva apunta a main, patch_calls funciona |
 | Headers ELF (`elf.rs`) | `phdr_offset`/`text_offset` escritos | Variables sin usar |
-| Runtime FFI-safe | tipos C válidos | 29 warnings con `()` (callback sin tipo) |
-| ~~`tests/c99/09_arrays.c`, `10_structs.c`~~ | ~~compilar y correr~~ | ✅ **RESUELTO** — Parser soporta `int arr[N]` y structs con newlines |
+| Runtime FFI-safe | tipos C válidos | Resuelto vía `*mut c_void` |
+| ~~`tests/c99/09_arrays.c`, `10_structs.c`~~ | ~~compilar y correr~~ | ✅ **RESUELTO** — Suite 41/41 PASS |
 
 ### ✅ Bugs resueltos (sesión actual + sesiones previas)
 
@@ -602,8 +602,8 @@ Marcar cuando esté hecho.
 ### Tests
 - [x] **P-09** Harness automatizado en Python (`run_all_tests.py`) con timeout de 5 s ✅
   - Soporta: `[PASS]`, `[FAIL]`, `[HANG]`, `[FAIL-COMPILE]`, `[skip]`
-  - **Estado actual: 36 PASS / 5 FAIL / 0 HANG / 0 COMPILE-FAIL** (sobre 41 tests · 88 %)
-- [x] **30+ tests C99 pasando** ✅ (36/41) — sólo quedan B-01 punteros/arrays/structs y B-06 globals
+  - **Estado actual: 41 PASS / 0 FAIL / 0 HANG / 0 COMPILE-FAIL** (41/41 · **100 %**) 🎉
+- [x] **30+ tests C99 pasando** ✅ (41/41 — TODOS pasan)
 - [ ] 10+ tests Win32 pasando
 - [ ] `cargo test --workspace` 100% green
 
@@ -619,44 +619,41 @@ Marcar cuando esté hecho.
 
 > **Suite de 41 tests** organizados por categoría. Verificado por
 > `python C_Real_Optimo/tests/run_all_tests.py`. Snapshot **actual**:
-> **36 PASS / 5 FAIL / 0 HANG / 0 COMPILE-FAIL** (88 % pasando · ↑ desde 73 %).
+> **🎉 41 PASS / 0 FAIL / 0 HANG / 0 COMPILE-FAIL — 100 %**.
 >
-> **Fases aplicadas:** ✅ B-02 (ternary) · ✅ B-03 (break/continue) ·
-> ✅ B-04 (do-while / switch / typedef) · ✅ B-05 (sizeof / enum).
-> **Pendientes:** 🔴 B-01 (punteros/arrays/structs codegen real) · 🔴 B-06 (globals + void mutación).
+> **Fases aplicadas:** ✅ B-01 (punteros/arrays/structs) · ✅ B-02 (ternary) ·
+> ✅ B-03 (break/continue) · ✅ B-04 (do-while/switch/typedef) ·
+> ✅ B-05 (sizeof/enum) · ✅ B-06 (globals + void mutación).
 
-### 🟢 Categorías 100 % PASS
+### 🟢 Categorías 100 % PASS — TODAS
 
 | Categoría | Tests | Resultado |
 |---|---|:---:|
 | **Tests iniciales** | 01_variables, 02_arithmetic, 03_if_else, 04_while, 05_for, 06_funcs, 07_recursion | 7/7 ✅ |
+| **Memoria** | 08_pointers, 09_arrays, 10_structs | 3/3 ✅ |
 | **Operadores** | 11_bitwise, 12_comparisons, 13_logical, 14_compound_assign, 15_inc_dec | 5/5 ✅ |
 | **Control flow nested** | 16_nested_if, 17_nested_loops, 18_for_nested | 3/3 ✅ |
-| **Funciones** | 19_multi_func, 20_factorial, 21_fibonacci, 22_4args | 4/4 ✅ |
+| **Funciones** | 19_multi_func, 20_factorial, 21_fibonacci, 22_4args, 23_void_func | 5/5 ✅ |
 | **Ternary + flow** | 24_ternary, 25_break_continue, 26_do_while, 27_switch | 4/4 ✅ |
-| **Tipos C99** | 28_sizeof, 29_typedef, 30_enum | 3/3 ✅ |
+| **Tipos C99** | 28_sizeof, 29_typedef, 30_enum, 31_global_var | 4/4 ✅ |
 | **Aritmética avanzada** | 32_long_chain, 33_neg, 34_paren, 35_precedence, 36_neg_div | 5/5 ✅ |
 | **Algoritmos** | 37_loop_factorial, 38_gcd, 39_power, 40_complex | 4/4 ✅ |
 | **Misc** | hello.c | 1/1 ✅ |
 
-### 🔴 Categorías con bugs estructurales
+### ✅ Bugs estructurales — TODOS RESUELTOS
 
-#### Bug B-01: Codegen de punteros / arrays / structs (PARCIAL)
+#### ~~Bug B-01: Codegen de punteros / arrays / structs~~ ✅ RESUELTO
 
-| Test | Exit actual | Causa pendiente |
-|---|---:|---|
-| `08_pointers.c`  | -10  | `Expr::AddrOf`/`Deref` lowered en IR pero `Load` con puntero stack-slot devuelve el valor original (no el escrito vía `*p = 20`) |
-| `09_arrays.c`    | 25   | `Expr::Index` no calcula bien la dirección base (alloca devuelve un reg, no una dirección de stack) |
-| `10_structs.c`   | -30  | `Expr::Member` simplificado a `convert_expr(base)` — sin tabla de offsets de struct |
+| Test | Estado |
+|---|---|
+| `08_pointers.c` | ✅ PASS — exit 0 |
+| `09_arrays.c`   | ✅ PASS — exit 0 |
+| `10_structs.c`  | ✅ PASS — exit 0 |
 
-**Lowering ya añadido** en [`ast_to_ir.rs`](file:///c%3A/Users/andre/OneDrive/Documentos/ADead-BIB/C_Real_Optimo/compiler/middle/ast_to_ir.rs):
-`Expr::AddrOf` → devuelve el `IrReg` del alloca · `Expr::Deref` → `Load` ·
-`Expr::Index` → `Mul + Add + Load` · `Expr::Member/Arrow` → forwarding al base.
-
-**Trabajo restante:**
-- Backend: tratar `IrReg` de `alloca` como dirección física en stack (RBP-offset), no como valor en registro.
-- Tabla de structs (`HashMap<String, Vec<(String, usize)>>`) con offsets calculados.
-- Para arrays con `int arr[5]`, hacer que `arr` evalúe a la dirección base (no al primer elemento).
+**Fix aplicado** (3 cambios coordinados):
+1. **Codegen** — `alloca_regs: HashSet<u32>` distingue regs alloca (su valor ES la dirección, emit `lea`) de regs no-alloca (valor en stack-slot, emit `mov`). Load/Store con ptr no-alloca hacen deref real.
+2. **Codegen** — `alloca_n(ty, count)` reserva N · sizeof(elem) bytes para `int arr[5]`; `alloca_sizes` ajusta el prólogo del frame.
+3. **Lowering AST→IR** — `vars: HashMap<String, (IrReg, IrType, bool, Option<String>)>` con flag `is_aggregate` (arrays/structs devuelven dirección, no load). Tabla `structs` con offsets reales por field. `Expr::Assign` maneja `*p = v`, `arr[i] = v`, `s.field = v` con address calculada.
 
 #### ~~Bug B-02: Ternary y operadores condicionales sin lowering~~ ✅ RESUELTO
 
@@ -712,22 +709,25 @@ y `typedef <type> <name>;`. `Stmt::Switch` se lowerea como cadena de comparacion
   `enums: HashMap<String, i64>` con auto-incremento (respetando overrides explícitos).
 - `Expr::Ident` consulta `self.enums` antes de buscar en `vars`.
 
-#### Bug B-06: Globals y void functions (PENDIENTE)
+#### ~~Bug B-06: Globals y void functions~~ ✅ RESUELTO
 
-| Test | Exit actual | Causa |
-|---|---:|---|
-| `23_void_func.c` | -3 | función `void increment()` muta global `counter` pero el load tras 3 calls devuelve 0 (la mutación no persiste en memoria global) |
-| `31_global_var.c`| -50 | `int global = 42` no se inicializa en sección `.data` — el load devuelve 0 |
+| Test | Estado |
+|---|---|
+| `23_void_func.c` | ✅ PASS — exit 0 |
+| `31_global_var.c`| ✅ PASS — exit 0 |
 
-**Trabajo pendiente:**
-- Backend PE debe emitir una sección `.data` real con los globals inicializados.
-- `convert_global_var` debe propagar `decl.init` al `add_global` (actualmente se ignora).
-- `Expr::Ident` para nombres globales debe generar `Load [rip+offset_global]` (RIP-relative), no `mov reg, 0`.
-- `Expr::Assign` cuyo LHS es global debe generar `Store [rip+offset_global], val`.
+**Fix aplicado:**
+- `IrModule.globals: Vec<(String, IrType, Option<i64>)>` ahora propaga el inicializador.
+- `convert_global_var` extrae literales (`IntLit`, `CharLit`, `Unary(Neg, IntLit)`).
+- En **codegen pass 1** se hace layout de `.data`: bytes inicializados (LE) + padding a 8.
+- `IMAGE_BASE = 0x140000000`, `DATA_RVA = 0x2000` → dirección absoluta calculada en compile-time.
+- `Expr::Ident` y `Expr::Assign` para nombres globales emiten `Load`/`Store` con `IrValue::Global(name)` como pointer.
+- En codegen, `Load{ptr=Global(name)}` → `mov rax, ABS_ADDR; mov rax, [rax]`. `Store` análogo.
+- **PE bugfix:** `SizeOfImage` ahora cubre todas las secciones (text + data + rdata), no sólo text.
 
 ---
 
-## 9. Plan Inmediato — Tests C99 al 100 %
+## 9. Plan Inmediato — Tests C99 al 100 % ✅ COMPLETADO
 
 ```diagram
 ╭──────────────────────────────────────────────────────────────╮
@@ -746,26 +746,20 @@ y `typedef <type> <name>;`. `Stmt::Switch` se lowerea como cadena de comparacion
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
-│ 🔴 FASE T5 · Globals + void mutation (B-06) — EN CURSO       │
-│    - convert_global_var: propagar `decl.init`                │
-│    - PE backend: sección `.data` con bytes inicializados     │
-│    - Codegen: load/store global con [rip+offset]             │
-│    - Tests pendientes: 23_void_func, 31_global_var           │
-│    ETA: 4-6 h                                                │
+│ ✅ FASE T5 · Globals + void mutation (B-06) — COMPLETADA     │
+│    .data layout + IMAGE_BASE addressing + PE SizeOfImage fix │
+│    Tests desbloqueados: 23, 31                               │
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
-│ 🔴 FASE T6 · Punteros/arrays/structs codegen real (B-01)     │
-│    - Tratar IrReg de Alloca como dirección de stack-slot     │
-│    - Tabla de structs con offsets reales por field           │
-│    - arrays: emitir base address en lugar de primer elemento │
-│    - Tests pendientes: 08_pointers, 09_arrays, 10_structs    │
-│    ETA: 1-2 días                                             │
+│ ✅ FASE T6 · Punteros/arrays/structs codegen real (B-01)     │
+│    alloca_regs + alloca_n + is_aggregate + structs table     │
+│    Tests desbloqueados: 08, 09, 10                           │
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
-│ TARGET: 41/41 PASS (100 %)                                   │
-│   El compilador C99 base estará COMPLETO.                    │
+│ 🎉 TARGET ALCANZADO: 41/41 PASS (100 %)                      │
+│    El compilador C99 base está COMPLETO.                     │
 ╰──────────────────────────────────────────────────────────────╯
                           ▼
 ╭──────────────────────────────────────────────────────────────╮
@@ -784,15 +778,15 @@ y `typedef <type> <name>;`. `Stmt::Switch` se lowerea como cadena de comparacion
 
 ```diagram
 Tests C99 PASS rate evolution:
-  v1.0     ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  3/11   (27 %)
-  v12.0    ████████████████████████░░░░░░░░  8/11   (73 %)
-  v13.0    ████████████████████████████░░░░ 28/41   (68 %)
-  T2 done  █████████████████████████████░░░ 30/41   (73 %)
-  T3+T4+T5 ████████████████████████████████░ 36/41  (88 %)  ← AHORA
-  Goal T6  █████████████████████████████████ 41/41 (100 %) ← META
+  v1.0      ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  3/11   (27 %)
+  v12.0     ████████████████████████░░░░░░░░  8/11   (73 %)
+  v13.0     ████████████████████████████░░░░ 28/41   (68 %)
+  T2 done   █████████████████████████████░░░ 30/41   (73 %)
+  T3+T4+T5  ███████████████████████████████░ 36/41   (88 %)
+  T6 done   █████████████████████████████████ 41/41 (100 %) 🎉 ← AHORA
 ```
 
-### 🔧 Orden recomendado de ataque
+### 🔧 Orden recomendado de ataque — TODO HECHO
 
 | Orden | Bug | Esfuerzo | Tests desbloqueados | Estado |
 |:-:|---|---|---|:-:|
@@ -800,40 +794,41 @@ Tests C99 PASS rate evolution:
 | 2 | **B-03** break/continue | 2 h | 25 | ✅ HECHO |
 | 3 | **B-04** parse do/switch/typedef | 4 h | 26, 27, 29 | ✅ HECHO |
 | 4 | **B-05** sizeof/enum constantes | 3 h | 28, 30 | ✅ HECHO |
-| 5 | **B-06** globals + void mutación | 4-6 h | 23, 31 | ⏳ siguiente |
-| 6 | **B-01** punteros/arrays/structs | 1-2 d | 08, 09, 10 | ⏳ |
+| 5 | **B-06** globals + void mutación | 4-6 h | 23, 31 | ✅ HECHO |
+| 6 | **B-01** punteros/arrays/structs | 1-2 d | 08, 09, 10 | ✅ HECHO |
 
-Total estimado para **41/41 PASS** restante: **~2 días** de trabajo enfocado.
+🎉 **Suite C99 base 41/41 PASS — el compilador es funcionalmente completo para C99 simple.**
 
 ---
 
 
 ## 10. 📊 Resumen Ejecutivo
 
-**¿Qué tan completo está ADead-BIB hoy?** → **~85 %** del README v12/13.
+**¿Qué tan completo está ADead-BIB hoy?** → **~95 %** del README v12/13 (C99 base completo).
 
 ### Métricas verificadas (suite intensiva C99)
 
 | Métrica | Valor | Detalle |
 |---|---|---|
-| Tests C99 totales | **41** | Suite categorizada en 9 áreas |
-| Tests PASS | **36 / 41** (88 %) | ↑ desde 68 % en una sesión |
-| Tests FAIL | 5 | 3 estructurales (punteros/arrays/structs) + 2 globals |
+| Tests C99 totales | **41** | Suite categorizada en 10 áreas |
+| Tests PASS | **🎉 41 / 41** (**100 %**) | TODOS los tests del C99 base |
+| Tests FAIL | 0 | — |
 | Tests HANG | 0 | parser robusto, sin loops infinitos |
 | Tests COMPILE-FAIL | 0 | todos los tests compilan a `.exe` |
-| Tamaño .exe típico | 1–2 KB | sin CRT, sin runtime overhead |
+| Tamaño .exe típico | 1.5 KB | sin CRT, sin runtime overhead |
 | Build time release | < 6 s | `cargo build --release -p adeb-compiler` |
-| Warnings build | 4 | sólo unused vars en stubs B-01 |
+| Warnings build | < 10 | post-cleanup |
 | Runtime liberado | 8.35 MB | dedup `lib.rs` ↔ `mod.rs` |
 
 ### Lo que ya tienes (real, verificado)
 
-- ✅ Pipeline 7 fases generando PE x86-64 válidos
+- ✅ Pipeline 7 fases generando PE x86-64 válidos (`SizeOfImage` correcto multi-sección)
 - ✅ **Tests iniciales 100 %** (01–07): variables, aritmética, if/else, while, for, funcs, recursión
+- ✅ **Memoria 100 %**: punteros (`*p = v`), arrays (`int a[5]; a[i]=v`), structs (`p.field=v`)
 - ✅ **Operadores 100 %**: bitwise, lógicos, comparaciones, compound assign, inc/dec
 - ✅ **Control flow 100 %**: if/else nested, while, for, do-while, switch/case/default, break/continue
-- ✅ **Funciones 100 %**: 4 args, recursión (factorial, fib, gcd, power), multi-func
-- ✅ **Tipos C99 100 %**: typedef, enum (con auto-incremento), sizeof
+- ✅ **Funciones 100 %**: 4 args, recursión (factorial, fib, gcd, power), multi-func, void
+- ✅ **Tipos C99 100 %**: typedef, enum (auto-incremento), sizeof, globals (.data inicializada)
 - ✅ **Aritmética avanzada 100 %**: encadenada, paréntesis, precedencia, división negativa
 - ✅ **Algoritmos 100 %**: factorial, gcd, power, complex (con ternary)
 - ✅ **Ternary 100 %**: lowering vía alloca + if/else + load
@@ -841,19 +836,22 @@ Total estimado para **41/41 PASS** restante: **~2 días** de trabajo enfocado.
 - ✅ ASM-BIB bridge — `coff_reader.rs` + `bridge.rs` + `--link-obj` CLI
 - ✅ 14 KB de runtime auto-generado desde 18 DLLs (callbacks `*mut c_void`)
 - ✅ Suite intensiva 41 tests + harness Python con timeout 5 s
+- ✅ Globals con dirección absoluta `IMAGE_BASE+DATA_RVA+offset` (sin necesidad de relocaciones)
+- ✅ Punteros con codegen real: `lea` para alloca-regs (= dirección), deref real (`mov [rcx]`) para non-alloca-regs (= valor pointer)
+- ✅ Tabla de structs con offsets reales calculados en pass 1 (alineamiento 8 bytes)
 
-### Lo que falta para 100 % C99
+### Próximas líneas (post-100 % C99)
 
-| Bloqueador | Tests afectados | Esfuerzo | Estado |
-|---|---|---|:-:|
-| ~~B-02 ternary lowering~~ | 24, 40 | 2 h | ✅ |
-| ~~B-03 break/continue~~ | 25 | 2 h | ✅ |
-| ~~B-04 parser do/switch/typedef~~ | 26, 27, 29 | 4 h | ✅ |
-| ~~B-05 sizeof/enum constexpr~~ | 28, 30 | 3 h | ✅ |
-| **B-06 globals + void mutation** | 23, 31 | 4-6 h | 🔴 |
-| **B-01 punteros/arrays/structs codegen** | 08, 09, 10 | 1-2 d | 🔴 |
-
-**Tiempo restante para 41/41 PASS:** **~2 días** de trabajo enfocado.
+| Iniciativa | Tipo | Esfuerzo |
+|---|---|---|
+| Strings literales + `printf` (FFI Win32) | Funcional | 1-2 d |
+| Function pointers (`int (*f)(int)`) | Funcional | 2-3 d |
+| Multi-dim arrays (`int m[3][4]`) | Funcional | 1-2 d |
+| Nested structs y unions reales | Funcional | 2-3 d |
+| Variadic functions (`printf("%d", x)`) | Funcional | 2-3 d |
+| `cargo test --workspace` 100% green | Calidad | 1-2 d |
+| 10+ tests Win32 | Cobertura | 3-4 d |
+| Re-extracción `knowledge.json` v2 (P-05) | Limpieza | 2 d |
 
 ### Lo que falta para integración OS Rust
 
@@ -862,13 +860,34 @@ Total estimado para **41/41 PASS** restante: **~2 días** de trabajo enfocado.
 - Convención de syscalls custom documentada
 - Primer módulo C compilado y cargado por kernel Rust
 
-**Tiempo para integración mínima viable con OS Rust:** **+4 semanas** sobre el 100 % C99.
+**Tiempo para integración mínima viable con OS Rust:** **~4 semanas** sobre el 100 % C99 actual.
 
 ---
 
 > *"El compilador respira, camina, hace álgebra, recursión, ternario y switch.*  
-> *Ya rompe el lazo cuando se cansa (break) y vuelve al inicio cuando quiere (continue).*  
-> *Sólo le falta tocar memoria con dedos finos (punteros) y recordar lo que escribió*  
-> *en su libreta global (data section). Después, olvidará Windows y volará libre*  
-> *dentro de tu propio OS."*
+> *Rompe el lazo cuando se cansa (break) y vuelve al inicio cuando quiere (continue).*  
+> *Toca memoria con dedos finos (`*p = v`), recorre arrays con índices (`a[i]`),*  
+> *guarda secretos en structs (`p.field`) y recuerda lo que escribió en su libreta global.*  
+> *La suite C99 base le dice 41/41 — está listo para olvidar Windows*  
+> *y volar libre dentro de tu propio OS."*
+
+---
+
+## 🎯 Conclusión final
+
+El compilador ADead-BIB **superó el hito C99 base con 100 % de tests pasando**.
+Pipeline `Lexer → Parser → AST→IR → Optimizer → UB → Codegen → PE` produce binarios
+PE x86-64 válidos (~1.5 KB) sin dependencia de CRT ni runtime externo, con soporte
+completo para:
+
+- Tipos primitivos + typedef + enum + sizeof
+- Punteros con `&` / `*` / `*p = v`
+- Arrays con `int a[N]` y acceso por índice (lectura/escritura)
+- Structs con `p.field` y `p->field` (offsets reales)
+- Globals inicializados en `.data`
+- Control flow completo: if/else, while, for, do-while, switch/case, break/continue, ternary
+- Funciones (recursivas, void, multi-arg, callee-saved registers)
+- Aritmética/lógica/bitwise completa con precedencia y compound assign
+
+**Próximo hito:** strings + printf (FFI Win32), o salto directo al target `adeb-os` para integración con kernel Rust.
 
