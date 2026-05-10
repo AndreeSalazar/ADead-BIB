@@ -18,6 +18,7 @@
 8. [Test Intensivo C99 — Estado por Categoría](#8-test-intensivo-c99--estado-por-categoría)
 9. [Plan Inmediato — Tests C99 al 100 %](#9-plan-inmediato--tests-c99-al-100-)
 10. [Resumen Ejecutivo](#10--resumen-ejecutivo)
+11. [Arquitectura ADead-BIB v2 — El Ecosistema Completo](#11-arquitectura-adead-bib-v2--el-ecosistema-completo)
 
 ---
 
@@ -890,4 +891,403 @@ completo para:
 - Aritmética/lógica/bitwise completa con precedencia y compound assign
 
 **Próximo hito:** strings + printf (FFI Win32), o salto directo al target `adeb-os` para integración con kernel Rust.
+
+---
+
+## 11. Arquitectura ADead-BIB v2 — El Ecosistema Completo
+
+> **Visión:** ADead-BIB no es "un compilador para Windows" — es **una plataforma
+> auto-contenida** (compilador + runtime + ABI + loader + GPU + FS) que produce
+> código C portable para **Windows hoy, FastOS mañana, bare-metal cuando quieras**,
+> sin depender de libc, MSVCRT, glibc ni de ningún SDK propietario.
+>
+> Comparable a: **MSVC + CRT, Go, Zig, Rust, Jai, Odin** —
+> donde compilador + runtime + ABI = una sola plataforma coherente.
+>
+> **Diferenciador:** un solo binario `.c` puede compilarse a `PE`, `ELF`, `flat`, `adeb-os`
+> y ejecutarse en Windows, Linux, FastOS o bare-metal **sin recompilar el frontend**.
+
+### 11.1 Layout objetivo del repositorio
+
+```diagram
+ADead-BIB/
+├── compiler/                       # Frontend + Middle + Backend (ISA-modular)
+│   ├── frontend/                   # lexer, parser, AST  (OS/ISA-agnostic)
+│   ├── middle/                     # IR, optimizer, UB   (OS/ISA-agnostic)
+│   ├── backend/
+│   │   ├── codegen/                # ✨ MODULAR POR ISA
+│   │   │   ├── mod.rs              # Trait Codegen + ISA dispatcher
+│   │   │   ├── x86_64/             # Intel/AMD 64-bit
+│   │   │   │   ├── encoder.rs
+│   │   │   │   ├── codegen.rs
+│   │   │   │   └── abi.rs          # Win64 / SysV / FastOS
+│   │   │   ├── aarch64/            # ARM64 (futuro)
+│   │   │   ├── riscv64/            # RISC-V (futuro)
+│   │   │   └── wasm/               # WebAssembly (futuro)
+│   │   ├── format/                 # ✨ MODULAR POR FORMATO
+│   │   │   ├── pe.rs               # Windows PE32+
+│   │   │   ├── elf.rs              # Linux ELF64
+│   │   │   ├── flat.rs             # Bare-metal flat binary
+│   │   │   ├── fastos.rs           # FastOS module format
+│   │   │   └── relocations.rs      # ✨ Tabla de relocs común
+│   │   └── bridge.rs               # COFF/ASM-BIB linker
+│   └── cli/                        # adB CLI
+│
+├── runtime/                        # ✨ EL RUNTIME ES TUYO
+│   ├── core/                       # OBLIGATORIO en todo binario
+│   │   ├── memcpy/memset
+│   │   ├── allocator base (bump)
+│   │   ├── panic / unreachable
+│   │   ├── init / shutdown
+│   │   └── atomic ops
+│   ├── memory/                     # ★ pieza más importante
+│   │   ├── arena allocator
+│   │   ├── pool allocator
+│   │   ├── linear / virtual memory
+│   │   ├── module memory
+│   │   ├── shared memory
+│   │   └── GPU-visible memory
+│   ├── modules/                    # carga dinámica
+│   │   ├── module loader
+│   │   ├── symbol resolver
+│   │   ├── hot reload
+│   │   ├── dependency graph
+│   │   └── runtime ABI
+│   ├── kernel_abi/                 # syscall layer abstracto
+│   │   ├── syscalls.rs             # tabla de syscalls custom
+│   │   ├── handles
+│   │   ├── IPC / threads
+│   │   ├── events / timers
+│   │   └── adapters/               # Win32, Linux, FastOS
+│   ├── gpu/                        # hardware acelerado
+│   │   ├── vulkan
+│   │   ├── dx12
+│   │   ├── opengl
+│   │   ├── scheduling
+│   │   ├── resource lifetime
+│   │   └── command buffers
+│   ├── fs/                         # virtual filesystem
+│   │   ├── vfs
+│   │   ├── package FS (.zip-like)
+│   │   ├── memory FS
+│   │   └── kernel FS bridge
+│   ├── debug/                      # observabilidad
+│   │   ├── symbols
+│   │   ├── logging
+│   │   ├── crash reports
+│   │   ├── profiling
+│   │   └── trace system
+│   ├── build/                      # build system embebido
+│   │   ├── manifests (adb.toml)
+│   │   ├── build graph
+│   │   ├── targets
+│   │   ├── cross compile
+│   │   └── incremental
+│   └── baremetal/                  # ✨ no_std puro para FastOS
+│       ├── putchar / getchar (UART)
+│       ├── exit (kernel hook)
+│       └── malloc/free (bump)
+│
+├── stdlib/                         # C ABI headers — universales
+│   ├── adeb_main.h                 # master include
+│   ├── adeb_types.h
+│   ├── adeb_stdio.h                # printf, fopen, ...
+│   ├── adeb_stdlib.h               # malloc, exit, ...
+│   ├── adeb_string.h               # memcpy, strlen, ...
+│   ├── adeb_math.h                 # sin, sqrt, ...
+│   ├── adeb_baremetal.h            # ★ NUEVO: putchar, exit (no libc)
+│   ├── adeb_win32.h                # solo si target=PE
+│   ├── adeb_vulkan.h
+│   ├── adeb_dx12.h
+│   └── adeb_opengl.h
+│
+├── asm/                            # ASM-BIB — rutas críticas
+│   ├── functions/                  # 21 funciones .pasm
+│   ├── asm_strlen / memcpy / memset / math / bit
+│   └── arch/                       # ✨ por ISA
+│       ├── x86_64/
+│       ├── aarch64/
+│       └── riscv64/
+│
+├── loader/                         # ✨ NUEVO — cargador de módulos
+│   ├── pe_loader.rs                # carga PE en host Windows
+│   ├── flat_loader.rs              # carga flat en bare-metal
+│   ├── fastos_loader.rs            # carga módulos FastOS
+│   └── relocator.rs                # aplica relocs comunes
+│
+├── kernel_abi/                     # ✨ NUEVO — contrato OS-agnostic
+│   ├── SYSCALLS.md                 # tabla canónica #0..#63
+│   ├── handles.h                   # tipos opacos
+│   ├── ipc.h
+│   └── events.h
+│
+├── memory/                         # ✨ NUEVO — primitivas de bajo nivel
+│   ├── page.rs                     # page allocator (4 KB)
+│   ├── slab.rs                     # slab allocator
+│   ├── vmm.rs                      # virtual memory manager
+│   └── mmu.rs                      # MMU abstraction
+│
+├── modules/                        # ✨ NUEVO — módulos de ejemplo
+│   ├── hello/                      # módulo C básico
+│   ├── ipc_demo/
+│   ├── gpu_triangle/
+│   └── fs_browser/
+│
+├── gpu/                            # ✨ NUEVO — capa de alto nivel GPU
+│   ├── shaders/                    # SPIR-V kernels
+│   ├── pipelines/
+│   └── compositor/
+│
+├── build/                          # ✨ NUEVO — orquestador (adb.toml)
+│   ├── targets.toml                # matrix de targets
+│   ├── ci/
+│   └── release/
+│
+└── tools/                          # ✨ NUEVO — herramientas auxiliares
+    ├── pe_dump
+    ├── ir_dump
+    ├── symbol_explorer
+    └── benchmark
+```
+
+### 11.2 Codegen Modular por ISA — el cambio arquitectural más importante
+
+Hoy `compiler/backend/codegen.rs` es **un solo archivo monolítico de 480 líneas** que sólo sabe x86-64 + Win64. Lo dividimos así:
+
+```diagram
+╭─────────────────────────────────────────────────────────────╮
+│                Codegen actual (monolítico)                  │
+├─────────────────────────────────────────────────────────────┤
+│ codegen.rs  ──────►  x86-64 + Win64 ABI + IMAGE_BASE Win   │
+╰─────────────────────────────────────────────────────────────╯
+
+                          ▼ refactor
+
+╭─────────────────────────────────────────────────────────────╮
+│                Codegen v2 (modular por ISA)                 │
+├─────────────────────────────────────────────────────────────┤
+│ codegen/mod.rs                                              │
+│   pub trait Codegen {                                       │
+│       fn generate(&mut self, ir: &IrModule) -> CodegenOut;  │
+│       fn isa() -> Isa;                                      │
+│       fn abi(&self) -> &dyn Abi;                            │
+│   }                                                         │
+│   pub struct CodegenOut {                                   │
+│       code: Vec<u8>,                                        │
+│       data: Vec<u8>,                                        │
+│       relocs: Vec<Reloc>,    ← clave para portabilidad      │
+│       symbols: Vec<Symbol>,                                 │
+│   }                                                         │
+│                                                             │
+│ codegen/x86_64/codegen.rs   ✅ (ya existe, refactorizar)    │
+│ codegen/x86_64/abi.rs       Win64 + SysV + FastOS-x64       │
+│ codegen/aarch64/codegen.rs  🚧 (futuro)                     │
+│ codegen/riscv64/codegen.rs  🚧 (futuro)                     │
+│ codegen/wasm/codegen.rs     🚧 (futuro)                     │
+╰─────────────────────────────────────────────────────────────╯
+```
+
+**Selección por CLI:**
+```bash
+adB cc app.c --isa x86_64 --abi win64    --target pe-exe   -o app.exe
+adB cc app.c --isa x86_64 --abi sysv     --target elf      -o app
+adB cc app.c --isa x86_64 --abi fastos   --target adeb-os  -o app.bin
+adB cc app.c --isa aarch64 --abi aapcs   --target elf      -o app.arm64
+adB cc app.c --isa wasm    --abi wasi    --target wasm     -o app.wasm
+```
+
+### 11.3 Relocaciones — la pieza que falta para ser OS-agnostic
+
+**Hoy:** codegen emite `mov rax, IMAGE_BASE+DATA_RVA+offset` con dirección absoluta hard-coded → sólo funciona en Windows.
+
+**Mañana:** codegen emite `mov rax, [rip+disp32]` (o `lea rax, [rip+disp32]`) con un `Reloc` registrado. Cada formato (PE/ELF/flat/fastos) consume la misma tabla:
+
+```rust
+pub enum Reloc {
+    /// 32-bit RIP-relative offset to a global symbol.
+    /// Patch site contains the disp32 to be filled.
+    Rip32 { patch_offset: usize, symbol: String, addend: i32 },
+    /// 64-bit absolute address of a symbol.
+    Abs64 { patch_offset: usize, symbol: String },
+    /// 32-bit absolute (legacy PE base).
+    Abs32 { patch_offset: usize, symbol: String },
+    /// PC-relative call site (intra-module already resolved).
+    PcRel32 { patch_offset: usize, symbol: String },
+}
+```
+
+Backend de cada formato resuelve relocs según su modelo:
+- **PE:** `Abs64` con `IMAGE_BASE` aplicado, agrega `.reloc` section para ASLR
+- **ELF:** `R_X86_64_PC32` para `Rip32`, dynamic linker resuelve resto
+- **Flat:** todas relativas a base=0; loader del kernel suma offset real al cargar
+- **FastOS:** módulo carga, kernel parchea relocs in-situ
+
+### 11.4 Matriz de targets soportados
+
+| Target | Formato | ISA | ABI | OS | Estado |
+|---|---|---|---|---|:-:|
+| `pe-exe`     | PE32+    | x86_64  | Win64    | Windows         | ✅ |
+| `pe-dll`     | PE32+    | x86_64  | Win64    | Windows         | 🟡 stub |
+| `elf`        | ELF64    | x86_64  | SysV     | Linux           | 🟡 stub |
+| `elf-so`     | ELF64    | x86_64  | SysV     | Linux           | 🔴 |
+| `flat`       | raw      | x86_64  | custom   | bare-metal      | 🟢 |
+| `adeb-os`    | flat+    | x86_64  | FastOS   | FastOS          | 🟡 alias |
+| `fastos-mod` | módulo   | x86_64  | FastOS   | FastOS          | 🔴 |
+| `wasm`       | wasm     | wasm    | WASI     | navegador/wasi  | 🔴 |
+| `arm64-pe`   | PE32+    | aarch64 | AAPCS64  | Win on ARM      | 🔴 |
+| `arm64-elf`  | ELF64    | aarch64 | AAPCS64  | Linux ARM       | 🔴 |
+| `riscv-elf`  | ELF64    | riscv64 | RV-ABI   | Linux RISC-V    | 🔴 |
+
+Una sola fuente `.c` → cualquier celda de esta matriz.
+
+### 11.5 Plan de migración en 5 fases (≈ 12 semanas)
+
+```diagram
+╭──────────────────────────────────────────────────────────────╮
+│ FASE Ω-1 · Refactor codegen → modular por ISA (2 sem)        │
+├──────────────────────────────────────────────────────────────┤
+│ - Crear backend/codegen/mod.rs con trait Codegen + Isa enum  │
+│ - Mover backend/codegen.rs → backend/codegen/x86_64/codegen.rs│
+│ - Mover backend/encoder.rs → backend/codegen/x86_64/encoder.rs│
+│ - Crear backend/codegen/x86_64/abi.rs (Win64/SysV/FastOS)    │
+│ - CLI: --isa x86_64 (default), --abi win64                   │
+│ - Tests Windows: 41/41 PASS sin regresión                    │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE Ω-2 · Relocaciones reales + RIP-relative (2 sem)        │
+├──────────────────────────────────────────────────────────────┤
+│ - Eliminar IMAGE_BASE hard-coded del codegen                 │
+│ - Globals: emit `lea rax, [rip+disp32]` con Reloc::Rip32     │
+│ - Calls externos: PcRel32 a IAT (PE) / PLT (ELF)             │
+│ - backend/format/relocations.rs centraliza tabla             │
+│ - PeBuilder/ElfBuilder/FlatBuilder consumen la tabla         │
+│ - Tests: regresión Windows + 1 binario flat ejecutable       │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE Ω-3 · Runtime modular según el plan (4 sem)             │
+├──────────────────────────────────────────────────────────────┤
+│ - runtime/core/ (memcpy/memset/alloc/panic/init)             │
+│ - runtime/memory/ (arena, pool, linear, virtual)             │
+│ - runtime/modules/ (loader + resolver)                       │
+│ - runtime/kernel_abi/ (syscalls + adapters Win32/Linux)      │
+│ - runtime/baremetal/ (putchar/getchar/exit con UART stub)    │
+│ - stdlib/adeb_baremetal.h con prototipos                     │
+│ - Tests: hello.c usando putchar funciona en flat binary      │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE Ω-4 · Loader + kernel_abi + memory subsystems (2 sem)   │
+├──────────────────────────────────────────────────────────────┤
+│ - loader/{pe,flat,fastos}_loader.rs                          │
+│ - loader/relocator.rs aplica relocs en runtime               │
+│ - kernel_abi/SYSCALLS.md documenta tabla canónica            │
+│ - memory/{page,slab,vmm,mmu}.rs                              │
+│ - tools/pe_dump, tools/ir_dump                               │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ FASE Ω-5 · FastOS bringup + módulo C cargado (2 sem)         │
+├──────────────────────────────────────────────────────────────┤
+│ - modules/hello/ compila como fastos-mod                     │
+│ - FastOS kernel: load_module("hello.bin"); jump entry@0      │
+│ - Kernel implementa #0 putchar, #1 exit (ints o syscall)     │
+│ - Verificar end-to-end:  C → adB → flat → FastOS → "Hello"   │
+│ - Documentar el contrato en kernel_abi/SYSCALLS.md           │
+╰──────────────────────────────────────────────────────────────╯
+                          ▼
+╭──────────────────────────────────────────────────────────────╮
+│ 🎉 LOGRO: "Compilador C MÁS COMPLETO" — multi-ISA, multi-OS │
+│   Mismo .c → Windows, Linux, FastOS, bare-metal              │
+│   Mismo runtime → adapters por OS, núcleo idéntico           │
+│   ABI documentado y estable                                  │
+╰──────────────────────────────────────────────────────────────╯
+```
+
+### 11.6 Inspiraciones (sin dependencias)
+
+| De… | Tomamos la **idea**, no el código |
+|---|---|
+| **Zig** | Cómo organizar allocators (arena/pool/general purpose) |
+| **Rust** | Trait-based dispatch para ISA backends |
+| **Go**  | Runtime auto-contenido en cada binario |
+| **Forth** | Runtime modular pequeño y reemplazable |
+| **Jai** | Metaprogramming útil sin macros invasivos |
+| **Odin** | Tooling integrado (build + test + doc) |
+| **MSVC + CRT** | Compilador + libc como una sola plataforma |
+| **LLVM** | Separación clara IR ↔ ISA backends |
+
+> Reglas de oro:
+> 1. **Cero dependencias externas** runtime — todo dentro de `ADead-BIB/`
+> 2. **Trait-based polymorphism** para ISA y formato (sin macros mágicos)
+> 3. **Una sola fuente C** debe compilar a todos los targets
+> 4. **El runtime es identidad** — refleja la visión de FastOS
+
+### 11.7 Checklist Ω — preparación para el Compilador C MÁS Completo
+
+#### Refactor compilador
+- [ ] `backend/codegen/` modularizado con trait `Codegen`
+- [ ] `backend/codegen/x86_64/` con encoder/codegen/abi separados
+- [ ] `backend/format/relocations.rs` centralizando relocs
+- [ ] `backend/format/{pe,elf,flat,fastos}.rs` consumiendo relocs
+- [ ] CLI con `--isa` y `--abi` explícitos
+
+#### Runtime
+- [ ] `runtime/core/` mínimo presente en todo binario
+- [ ] `runtime/memory/` con 5 allocators (bump/arena/pool/linear/virtual)
+- [ ] `runtime/modules/` con loader + symbol resolver
+- [ ] `runtime/kernel_abi/` con adapter Win32 (hoy) + FastOS (futuro)
+- [ ] `runtime/baremetal/` con putchar/getchar/exit syscalls
+
+#### Stdlib
+- [ ] `stdlib/adeb_baremetal.h` para targets sin libc
+- [ ] `stdlib/adeb_kernel_abi.h` declarando syscalls #0..#63
+
+#### Subsistemas nuevos
+- [ ] `loader/` con 3 cargadores (PE/flat/FastOS)
+- [ ] `kernel_abi/SYSCALLS.md` documentando contrato
+- [ ] `memory/{page,slab,vmm,mmu}.rs` primitivas
+- [ ] `modules/hello/` ejemplo end-to-end
+- [ ] `gpu/`, `fs/`, `debug/`, `build/`, `tools/` esqueletos
+
+#### Verificación
+- [ ] 41/41 tests C99 siguen verdes en Windows
+- [ ] `hello.c` compila a 4 targets distintos sin recompilación
+- [ ] Primer módulo C ejecutándose en FastOS
+
+### 11.8 ¿Mantener Windows o saltar a FastOS?
+
+**Recomendación: AMBOS — Windows como banco de pruebas, FastOS como destino.**
+
+```diagram
+╭───────────────────────────────────╮      ╭───────────────────────────────────╮
+│       Windows (HOY, estable)      │      │     FastOS (FUTURO, en bringup)   │
+├───────────────────────────────────┤      ├───────────────────────────────────┤
+│ • 41/41 tests C99 PASS            │      │ • adB cc app.c --target adeb-os   │
+│ • Banco de regresión inmediato    │ ───► │ • Loader carga .bin a memoria     │
+│ • Iteración rápida (no kernel)    │      │ • Kernel resuelve syscalls custom │
+│ • PE x86-64 + Win64 ABI           │      │ • Mismo compilador, mismo runtime │
+╰───────────────────────────────────╯      ╰───────────────────────────────────╯
+                  ▲                                          ▲
+                  └──────── mismo binario .c ────────────────┘
+                            mismo IR, mismo ASM
+                            distinto formato + ABI + relocs
+```
+
+**Conclusión estratégica:**
+- ✅ El **ADN** (lexer/parser/IR/optimizer/encoder) ya es **OS-agnostic**.
+- ✅ El **codegen** se vuelve OS-agnostic en Fase Ω-2 (relocaciones).
+- ✅ El **runtime** se vuelve OS-agnostic en Fase Ω-3 (modular).
+- 🎯 En Fase Ω-5 demuestras: **un solo `.c` → Windows + FastOS sin recompilar el frontend**.
+
+> Eso es exactamente lo que define a un **compilador C completo de plataforma propia**:
+> *no eres un parche sobre Windows — eres el dueño de tu cadena entera, desde `int main()` hasta el bit que el procesador ejecuta.*
+
+---
+
+> *"ADead-BIB no es un compilador. Es una plataforma.*  
+> *Windows es el lugar donde aprende a caminar.*  
+> *FastOS es el lugar donde por fin vuela.*  
+> *Y entre los dos, el mismo `.c` cruza el puente sin saber que cambió de mundo."*
 

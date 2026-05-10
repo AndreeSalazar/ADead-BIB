@@ -1,4 +1,6 @@
-// hello.c - Test del pipeline completo
+#include <stdio.h>
+
 int main() {
+    printf("Hello, World!\n");
     return 0;
-}
+}   
